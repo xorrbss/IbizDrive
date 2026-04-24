@@ -3,6 +3,11 @@
 
 type ProgressEventLike = { loaded: number; total: number; lengthComputable: boolean }
 
+type FakeXHROptions = {
+  /** 서버 측 side-effect 시뮬레이션 (200 성공 시에만 호출). api 레벨에서 MOCK 데이터 갱신용. */
+  onServerSuccess?: () => void
+}
+
 export class FakeXHR {
   upload: { onprogress: ((e: ProgressEventLike) => void) | null } = { onprogress: null }
   onload: (() => void) | null = null
@@ -15,6 +20,11 @@ export class FakeXHR {
   private filename = ''
   private totalBytes = 0
   private loaded = 0
+  private onServerSuccess?: () => void
+
+  constructor(opts: FakeXHROptions = {}) {
+    this.onServerSuccess = opts.onServerSuccess
+  }
 
   open(_method: string, _url: string): void {
     // no-op (실제 XHR로 교체 시 URL/method 보관)
@@ -52,6 +62,7 @@ export class FakeXHR {
     }
     this.status = status
     this.responseText = responseText
+    if (status === 200) this.onServerSuccess?.()
     this.onload?.()
   }
 

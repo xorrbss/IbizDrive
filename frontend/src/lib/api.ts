@@ -187,7 +187,35 @@ export const api = {
     resolution?: 'new_version' | 'rename'
     newName?: string
   }): FakeXHR {
-    const xhr = new FakeXHR()
+    const effectiveName = params.newName ?? params.file.name
+    const xhr = new FakeXHR({
+      // 200 성공 시 MOCK_FILES에 반영 (실제 서버의 커밋 단계를 시뮬레이션)
+      onServerSuccess: () => {
+        const now = new Date().toISOString()
+        if (params.resolution === 'new_version') {
+          const existing = MOCK_FILES.find(
+            (f) => f.parentId === params.folderId && f.name === effectiveName,
+          )
+          if (existing) {
+            existing.size = params.file.size
+            existing.updatedAt = now
+            existing.updatedBy = '나'
+            existing.mimeType = params.file.type || existing.mimeType
+            return
+          }
+        }
+        MOCK_FILES.push({
+          id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          name: effectiveName,
+          type: 'file',
+          mimeType: params.file.type || null,
+          size: params.file.size,
+          updatedAt: now,
+          updatedBy: '나',
+          parentId: params.folderId,
+        })
+      },
+    })
     const form = new FormData()
     const fileToSend = params.newName
       ? new File([params.file], params.newName, { type: params.file.type })
