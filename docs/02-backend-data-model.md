@@ -751,6 +751,9 @@ PATCH  /api/admin/users/:id                        사용자 수정 (role, quota
 | 409 | RENAME_CONFLICT | 이름 변경 충돌 | RenameDialog 재표시 |
 | 409 | RESTORE_CONFLICT | 복원 시 원위치 충돌 | 이름 변경 후 복원 제안 |
 | 409 | VERSION_CONFLICT | 버전 업로드 시 최신 버전 불일치 | "최신 버전 확인" 다이얼로그 |
+| 400 | MOVE_INTO_SELF | 자기 자신으로 이동 시도 | UI 차단, 도달 시 토스트 |
+| 400 | MOVE_INTO_DESCENDANT | 후손 폴더로 이동 시도 | UI 차단, 도달 시 토스트 |
+| 404 | TARGET_NOT_FOUND | 이동 타겟 폴더가 없음 | 토스트 + 폴더 트리 재조회 |
 | 413 | QUOTA_EXCEEDED | 스토리지 할당량 초과 | 관리자 문의 안내 |
 | 413 | FILE_TOO_LARGE | 단일 파일 크기 초과 | 경고 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | 금지된 확장자 | 경고 |
