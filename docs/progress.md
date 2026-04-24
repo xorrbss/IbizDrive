@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-04-25 — M4 완료 (선택 모델 + BulkActionBar)
+## 2026-04-25 — M4 완료 (선택 모델 + BulkActionBar) ✅ 브라우저 검증 통과
 
 ### 완료
 - [M4] selection store (stores/selection.ts) + Vitest 단위 테스트 12개
@@ -19,6 +19,8 @@
 - [M4] Vitest + jsdom + @testing-library/react 테스트 인프라 세팅
 - [M4] api.deleteBulk mock 추가
 - [M4] eslint.config.mjs: .next/build ignore 추가 (lint 오경보 수정)
+- [M4] BulkActionBar selector 무한 렌더 버그 수정 (a589032)
+- [M4] next.config.ts allowedDevOrigins 추가 (127.0.0.1 dev 접근 허용)
 
 ### 계약 파일 추가/수정
 - frontend/src/stores/selection.ts               신규 (docs/01 §5.1)
@@ -39,17 +41,44 @@
 - typecheck: 통과
 - lint: 통과
 - test: 15/15 통과 (selection 12 + useDeleteBulk 3)
-- **브라우저 수동 검증: 대기중** (다음 세션에서 M3 방식대로 진행 권장)
+- **브라우저 수동 검증: 12/12 시나리오 통과** (클릭/Ctrl+click/Shift+click/Space/Ctrl+A/Esc/폴더이동 clear/휴지통 pending→삭제→invalidate 포함)
 
-### 다음 세션 컨텍스트 (M5 백엔드 연결 또는 M6 DnD)
-- **우선 M4 브라우저 수동 검증 필요** — 플랜 Task 8 Step 3의 12개 시나리오 (클릭/Ctrl+click/Shift+click/Space/Ctrl+A/Esc/휴지통 등)
-- useDeleteBulk의 실패 경로는 mock이라 현재 console.warn까지만. M5에서 토스트 라이브러리 통합 필요
-- BulkActionBar 다운로드/이동은 여전히 스텁 (다운로드 별도, 이동은 M6 DnD)
-- usePermission은 스텁 — M7 권한에서 §14.2대로 useQuery 연결
-- Shift+↑↓ / Ctrl+↑↓ / F2 / Delete / `/` 검색 포커스는 M10으로 연기 유지
+### 버그 재발 방지 — Zustand v5 selector 무한 렌더
+- **증상**: "Maximum update depth exceeded" (BulkActionBar 마운트 직후)
+- **루트 원인**: `useSelectionStore((s) => Array.from(s.ids))` — selector가 매 snapshot 호출마다 **새 배열 참조** 반환
+- **메커니즘**: Zustand v5는 `useSyncExternalStore` 기반. React가 매 render마다 이전/신규 snapshot 참조 비교 → 항상 "변경됨" 판정 → 무한 재렌더
+- **올바른 패턴**: selector는 store에 **이미 존재하는 안정 참조**(Set/Map/객체 자체)만 반환. 파생 변환(Array.from, filter, map, spread)은 selector 밖 render 본문에서 수행
+  ```tsx
+  // ❌ 금지
+  const ids = useSelectionStore((s) => Array.from(s.ids))
+  // ✅ 권장
+  const idsSet = useSelectionStore((s) => s.ids)
+  const ids = Array.from(idsSet)
+  ```
+- **예외**: 변환이 꼭 필요하면 `useShallow` 또는 `zustand/shallow` equality 함수 명시. 하지만 대부분은 위 패턴이 충분하고 단순함
+
+### 다음 세션 컨텍스트
+**M5 (백엔드 API 연결)**
+- MOCK(api.ts)을 실제 fetch로 교체. 계약은 docs/02 §7
+- useDeleteBulk 실패 경로: 현재 console.warn → 토스트 라이브러리 통합 (sonner 후보)
+- 에러 코드 (docs/02 §8) 매핑: 409 CONFLICT / 403 FORBIDDEN / 423 LOCKED 등 UI 메시지
+
+**M6 (DnD 이동)**
+- BulkActionBar 이동 버튼: 현재 스텁 → dnd-kit + 이동 다이얼로그
+- 업로드 DnD(window native)와 컨텍스트 분리 원칙(§19) 유지
+- pendingIds 재사용 (이동 중인 row는 pending UI)
+
+**M7 (권한)**
+- usePermission 스텁 → `useQuery + api.getEffectivePermissions(nodeId)` 로 교체 (docs/01 §14.2)
+- BulkActionBar 버튼 표시 조건(can.download/move/delete) 실제 동작
+- docs/03 §3 권한 매트릭스 확정 선행 필요 (현재 스켈레톤)
+
+**M10 (고급 키보드)**
+- Shift+↑↓ 범위 선택, Ctrl+↑↓ 포커스-only 이동, F2 rename, Delete 삭제, `/` 검색 포커스
+- 설계 §12 참고, M4에서 anchor/pending 인프라 이미 확보됨
 
 ### 블로커
-- 없음
+- 없음 (M5 진입 가능. docs/03 §3 권한 매트릭스는 M7 시작 전 확정 필요)
 
 ---
 
