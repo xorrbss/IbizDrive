@@ -1,9 +1,11 @@
+// frontend/src/components/files/FileTable.tsx
 'use client'
 import { useRef, useState, useCallback, useEffect } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRouter } from 'next/navigation'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
+import { useSelectionStore } from '@/stores/selection'
 import { FileRow } from './FileRow'
 import { FileTableSkeleton } from './FileTableSkeleton'
 import { FileTableEmpty } from './FileTableEmpty'
@@ -24,12 +26,21 @@ export function FileTable({ folderId }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
 
-  // Reset focus when navigating to a different folder
+  const selectedIds = useSelectionStore((s) => s.ids)
+  const pendingIds = useSelectionStore((s) => s.pendingIds)
+  const selectOnly = useSelectionStore((s) => s.selectOnly)
+  const toggle = useSelectionStore((s) => s.toggle)
+  const selectRange = useSelectionStore((s) => s.selectRange)
+  const selectAll = useSelectionStore((s) => s.selectAll)
+  const clear = useSelectionStore((s) => s.clear)
+
+  // 폴더 변경 시 focus와 selection 모두 리셋 (pendingIds는 유지)
   useEffect(() => {
     setFocusedIndex(-1)
-  }, [folderId])
+    clear()
+  }, [folderId, clear])
 
-  // Move DOM focus to the focused row for screen reader announcements
+  // 포커스된 DOM 요소 동기화 (스크린 리더)
   useEffect(() => {
     if (focusedIndex < 0 || !items) return
     const row = scrollRef.current?.querySelector(
@@ -37,6 +48,24 @@ export function FileTable({ folderId }: Props) {
     ) as HTMLElement | null
     row?.focus()
   }, [focusedIndex, items])
+
+  // markPending 시 focus가 pending이 되면 최근접 non-pending으로 보정
+  useEffect(() => {
+    if (focusedIndex < 0 || !items) return
+    const focusedItem = items[focusedIndex]
+    if (!focusedItem || !pendingIds.has(focusedItem.id)) return
+
+    const findNonPending = (start: number, step: 1 | -1) => {
+      for (let i = start; i >= 0 && i < items.length; i += step) {
+        if (!pendingIds.has(items[i].id)) return i
+      }
+      return -1
+    }
+
+    const downIdx = findNonPending(focusedIndex + 1, 1)
+    const next = downIdx !== -1 ? downIdx : findNonPending(focusedIndex - 1, -1)
+    setFocusedIndex(next)
+  }, [pendingIds, focusedIndex, items])
 
   const rowCount = items?.length ?? 0
 
@@ -60,6 +89,25 @@ export function FileTable({ folderId }: Props) {
     [router]
   )
 
+  const handleRowClick = useCallback(
+    (item: FileItem, e: React.MouseEvent) => {
+      if (!items) return
+      const idx = items.findIndex((it) => it.id === item.id)
+      if (idx === -1) return
+      setFocusedIndex(idx)
+
+      if (e.shiftKey) {
+        const orderedIds = items.map((it) => it.id)
+        selectRange(item.id, orderedIds)
+      } else if (e.ctrlKey || e.metaKey) {
+        toggle(item.id)
+      } else {
+        selectOnly(item.id)
+      }
+    },
+    [items, selectOnly, toggle, selectRange]
+  )
+
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       if (!items || items.length === 0) return
@@ -68,7 +116,9 @@ export function FileTable({ folderId }: Props) {
         case 'ArrowDown': {
           e.preventDefault()
           setFocusedIndex((prev) => {
-            const next = Math.min(prev + 1, items.length - 1)
+            let next = prev + 1
+            while (next < items.length && pendingIds.has(items[next].id)) next++
+            if (next >= items.length) return prev
             virtualizer.scrollToIndex(next, { align: 'auto' })
             return next
           })
@@ -77,10 +127,32 @@ export function FileTable({ folderId }: Props) {
         case 'ArrowUp': {
           e.preventDefault()
           setFocusedIndex((prev) => {
-            const next = Math.max(prev - 1, 0)
+            let next = prev - 1
+            while (next >= 0 && pendingIds.has(items[next].id)) next--
+            if (next < 0) return prev
             virtualizer.scrollToIndex(next, { align: 'auto' })
             return next
           })
+          break
+        }
+        case ' ': {
+          if (focusedIndex < 0) return
+          const focusedId = items[focusedIndex]?.id
+          if (!focusedId || pendingIds.has(focusedId)) return
+          e.preventDefault()
+          toggle(focusedId)
+          break
+        }
+        case 'a':
+        case 'A': {
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault()
+            const selectable = items
+              .filter((it) => !pendingIds.has(it.id))
+              .map((it) => it.id)
+            if (selectable.length === 0) return
+            selectAll(selectable)
+          }
           break
         }
         case 'Enter': {
@@ -93,15 +165,15 @@ export function FileTable({ folderId }: Props) {
         case 'Escape': {
           e.preventDefault()
           setFocusedIndex(-1)
+          clear()
           scrollRef.current?.focus()
           break
         }
       }
     },
-    [items, focusedIndex, handleOpen, virtualizer]
+    [items, focusedIndex, pendingIds, toggle, selectAll, clear, handleOpen, virtualizer]
   )
 
-  // --- State routing ---
   if (isLoading) return <FileTableSkeleton />
 
   const status = (error as { status?: number })?.status
@@ -113,10 +185,10 @@ export function FileTable({ folderId }: Props) {
     <div
       role="grid"
       aria-rowcount={items.length + 1}
+      aria-multiselectable={true}
       aria-label="파일 목록"
       className="flex flex-col border rounded-lg overflow-hidden mt-4"
     >
-      {/* Column headers — static labels, sort UI deferred */}
       <div
         className="flex items-center gap-4 h-9 px-4 bg-gray-50 border-b text-xs font-medium text-gray-600"
         role="row"
@@ -129,7 +201,6 @@ export function FileTable({ folderId }: Props) {
         <span className="w-20 text-right" role="columnheader">수정자</span>
       </div>
 
-      {/* Virtualized rows */}
       <div
         ref={scrollRef}
         tabIndex={0}
@@ -156,7 +227,9 @@ export function FileTable({ folderId }: Props) {
                   item={item}
                   rowIndex={virtualRow.index + 2}
                   isFocused={focusedIndex === virtualRow.index}
-                  onClick={() => setFocusedIndex(virtualRow.index)}
+                  isSelected={selectedIds.has(item.id)}
+                  isPending={pendingIds.has(item.id)}
+                  onClick={handleRowClick}
                   onDoubleClick={handleOpen}
                   onKeyDown={handleKeyDown}
                 />

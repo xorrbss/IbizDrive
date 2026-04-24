@@ -1,12 +1,14 @@
-// src/components/files/FileRow.tsx
+// frontend/src/components/files/FileRow.tsx
 'use client'
 import type { FileItem } from '@/types/file'
 
 type Props = {
   item: FileItem
-  rowIndex: number         // 1-based for aria-rowindex
+  rowIndex: number
   isFocused: boolean
-  onClick?: (id: string) => void
+  isSelected: boolean
+  isPending: boolean
+  onClick?: (item: FileItem, e: React.MouseEvent) => void
   onDoubleClick?: (item: FileItem) => void
   onKeyDown?: (e: React.KeyboardEvent) => void
 }
@@ -40,21 +42,41 @@ export function FileRow({
   item,
   rowIndex,
   isFocused,
+  isSelected,
+  isPending,
   onClick,
   onDoubleClick,
   onKeyDown,
 }: Props) {
+  // 우선순위: pending > selected > focused > hover
+  const bgClass = isPending
+    ? 'opacity-50'
+    : isSelected && isFocused
+      ? 'bg-blue-100 outline outline-2 outline-blue-400'
+      : isSelected
+        ? 'bg-blue-100'
+        : isFocused
+          ? 'bg-blue-50 outline outline-2 outline-blue-400'
+          : 'hover:bg-gray-50'
+
   return (
     <div
       role="row"
       aria-rowindex={rowIndex}
-      aria-selected={false}
+      aria-selected={isPending ? false : isSelected}
+      aria-disabled={isPending || undefined}
       tabIndex={isFocused ? 0 : -1}
-      className={`flex items-center gap-4 h-10 px-4 cursor-pointer select-none border-b border-gray-100 ${
-        isFocused ? 'bg-blue-50 outline outline-2 outline-blue-400' : 'hover:bg-gray-50'
-      }`}
-      onClick={() => onClick?.(item.id)}
-      onDoubleClick={() => onDoubleClick?.(item)}
+      className={`flex items-center gap-4 h-10 px-4 select-none border-b border-gray-100 ${
+        isPending ? 'cursor-not-allowed' : 'cursor-pointer'
+      } ${bgClass}`}
+      onClick={(e) => {
+        if (isPending) return
+        onClick?.(item, e)
+      }}
+      onDoubleClick={() => {
+        if (isPending) return
+        onDoubleClick?.(item)
+      }}
       onKeyDown={onKeyDown}
       data-file-id={item.id}
     >
@@ -62,7 +84,10 @@ export function FileRow({
       <span className="flex-1 truncate text-sm font-medium" role="gridcell">{item.name}</span>
       <span className="w-24 text-right text-xs text-gray-500" role="gridcell">{formatFileSize(item.size)}</span>
       <span className="w-28 text-right text-xs text-gray-500" role="gridcell">{formatDate(item.updatedAt)}</span>
-      <span className="w-20 text-right text-xs text-gray-500 truncate" role="gridcell">{item.updatedBy}</span>
+      <span className="w-20 text-right text-xs text-gray-500 truncate flex items-center justify-end gap-1" role="gridcell">
+        {isPending && <span aria-hidden="true" className="inline-block w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />}
+        <span className="truncate">{item.updatedBy}</span>
+      </span>
     </div>
   )
 }
