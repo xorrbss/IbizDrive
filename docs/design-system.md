@@ -195,6 +195,43 @@ CSS 변수 `--row-h`로 노출. M5 이후 `view` store에 density 연결 예정 
 - 애니메이션은 `animate-pulse` (Tailwind 기본) 유지
 - 배경: `bg-surface-2` (기존 `bg-gray-200` 대체)
 
+### M5 업로드 컴포넌트 (추가, 2026-04-25)
+
+`styles.css`의 `.btn-primary` / `.drop-overlay` / `.upload-dock` / `.modal` 섹션 매핑.
+
+#### UploadButton (`.btn-primary` / `.btn-ghost`)
+
+- base: `h-7 px-2.5 inline-flex items-center gap-1.5 rounded border text-[12.5px] font-medium transition-colors`
+- primary: `bg-accent text-white border-accent hover:bg-accent-hover hover:border-accent-hover`
+- ghost: `bg-transparent text-fg-2 border-transparent hover:bg-surface-2 hover:text-fg`
+
+#### UploadOverlay (`.drop-overlay`)
+
+- `absolute inset-2 z-30 flex items-center justify-center pointer-events-none border-2 border-dashed border-accent rounded-lg backdrop-blur-[2px]`
+- 배경: `bg-[color-mix(in_oklch,var(--accent)_8%,transparent)]`
+- 안내문: `text-[14px] font-medium text-accent` (styles.css의 `drop-overlay-card` 카드형 구조는 JSX 변경 필요 — M13 범위 밖)
+
+#### UploadQueueDock (`.upload-dock`)
+
+- 컨테이너: `fixed bottom-5 right-5 w-[340px] max-h-[420px] z-40 bg-surface-1 border border-border-strong rounded-lg shadow-lg flex flex-col overflow-hidden`
+- 헤더: `flex items-center justify-between px-3 py-2.5 border-b border-border bg-surface-2`
+- 타이틀: `text-[12.5px] font-semibold text-fg`
+- 개별 progress bar: `h-[2px] bg-surface-3 rounded-[1px]` + fill `bg-accent`(또는 실패 시 `bg-danger`)
+- 개별 task 영역: `px-3.5 py-2` + `border-b border-border`(divide-y로 구현 중)
+
+#### UploadConflictDialog (`.modal` / `.modal-bg`)
+
+- 백드롭: `fixed inset-0 z-50 flex items-center justify-center p-5 bg-[rgba(0,0,0,0.32)]`
+- 다이얼로그: `w-full max-w-[460px] bg-surface-1 border border-border rounded-lg shadow-lg p-5`
+- 타이틀: `text-[15px] font-semibold text-fg`
+- 설명: `text-[12.5px] text-fg-muted break-all`
+- 버튼: 취소=`text-fg-2 hover:bg-surface-2` / 적용=`bg-accent text-white hover:bg-accent-hover`
+- **미적용(JSX 구조 필요)**: styles.css `.radio-option`의 카드형(border + accent-soft checked 상태) → 현재는 평문 radio. M7/M8에서 카드형 라디오 적용 예정.
+
+#### FolderToolbar (`.toolbar`)
+
+- `flex items-center gap-2 px-4 py-2 border-b border-border bg-bg` (styles.css `.toolbar` 기본. 우측 정렬 액션은 추후 SortChip/ViewSwitch 도입 시)
+
 ---
 
 ## 6. 레이아웃
@@ -255,6 +292,43 @@ TopBar는 본 리스타일 단계에서 skeleton만 (간단한 브랜드 마크 
 - TopBar 기능 (검색, 테마 토글, 아바타)
 - 다크 모드 토글 UI (변수는 이미 세팅)
 - GridView (FileTable grid 모드)
-- UploadDock / ConflictDialog / DropOverlay (M5 업로드 구현 시점에 이 토큰 위에서)
 - 탭 바 (RightPanel 버전/활동/권한)
 - 밀도 토글 (compact/regular/comfortable)
+- ConflictDialog 카드형 radio-option (M7/M8)
+- UploadOverlay 안내 카드 (아이콘 + 제목 + 부제) — JSX 확장
+- SortChip / ViewSwitch / StorageBar / StatusBar (mockup에만 존재, 기능 미구현)
+
+---
+
+## 10. Open Questions (미해결)
+
+### 다크 모드 활성화 방식
+
+현재 `[data-theme="dark"]` 오버라이드 토큰만 정의돼 있고 토글 UI 없음. 선택지:
+
+1. **시스템 선호 기반** (`prefers-color-scheme`) — `<html data-theme="dark">` 조건부 적용
+2. **사용자 토글 + localStorage** — TopBar에 토글 버튼, 선택 저장
+3. **둘 다** — 시스템 기본 + 사용자 override
+
+제안: 2번. 사용자 명시적 선택 우선, 초기 미선택 시 시스템 값. TopBar 구현 마일스톤 (추후)에서 결정.
+
+### Variant 지원 범위
+
+styles.css에는 default / notion / dropbox / terminal 4종 variant가 있음. M13에서는 default(warm gray + indigo accent)만 적용. 나머지는:
+
+- **결정 대기**: 다중 variant를 사용자 커스터마이징으로 노출할지, 또는 단일 테마로 고정할지
+- 현재 방향: 단일 테마(default) + 다크 모드 온/오프만. Variant는 디자인 탐색용으로만 보존.
+
+### 폰트 로딩
+
+현재 `Inter` / `JetBrains Mono`는 CSS fallback 체인에만 있고 실제 로드 없음 (시스템 `-apple-system` / `Segoe UI`로 대체). 선택지:
+
+1. **next/font/google** (`Inter`, `JetBrains_Mono`) — SSR 최적화, 자동 subset
+2. **CDN `<link>`** (Google Fonts) — design-reference의 방식. 간단하지만 FOIT/FOUT 가능성
+3. **로드 안 함** — 시스템 폰트로 사용 (현재 상태)
+
+제안: 1번 (next/font). 의존성 0개(Next.js 빌트인). M14 후보.
+
+### 체크박스 / 액션 컬럼 (FileTable 6열)
+
+design-reference는 6열 (check / name / owner / modified / size / actions). 현재 5열 (icon / name / size / modified / updater). BulkActionBar는 이미 선택 모델이 존재하므로 체크박스 컬럼 도입 준비 완료. M7에서 FileTable 재설계 때 함께 정리.

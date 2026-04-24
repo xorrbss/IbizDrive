@@ -22,11 +22,11 @@ export function UploadButton({ variant = 'primary', label = '업로드' }: Props
   }
 
   const base =
-    'h-8 px-3.5 inline-flex items-center gap-1.5 rounded text-[12.5px] font-medium transition-colors'
+    'h-7 px-2.5 inline-flex items-center gap-1.5 rounded border text-[12.5px] font-medium transition-colors'
   const styleClass =
     variant === 'primary'
-      ? 'bg-accent text-white hover:bg-accent-hover'
-      : 'bg-transparent text-fg-2 hover:bg-surface-2 hover:text-fg'
+      ? 'bg-accent text-white border-accent hover:bg-accent-hover hover:border-accent-hover'
+      : 'bg-transparent text-fg-2 border-transparent hover:bg-surface-2 hover:text-fg'
 
   return (
     <>

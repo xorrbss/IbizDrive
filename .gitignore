@@ -1,0 +1,9 @@
+.tmp/
+.claude/
+node_modules/
+*.tsbuildinfo
+.next/
+dist/
+build/
+.env.local
+.DS_Store

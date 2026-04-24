@@ -16,9 +16,9 @@ export function UploadQueueDock() {
     <aside
       role="region"
       aria-label="업로드 큐"
-      className="fixed bottom-4 right-4 w-[360px] max-h-[60vh] z-40 bg-surface-1 border border-border rounded-lg shadow-lg flex flex-col overflow-hidden"
+      className="fixed bottom-5 right-5 w-[340px] max-h-[420px] z-40 bg-surface-1 border border-border-strong rounded-lg shadow-lg flex flex-col overflow-hidden"
     >
-      <header className="flex items-center justify-between px-3.5 py-2 border-b border-border">
+      <header className="flex items-center justify-between px-3 py-2.5 border-b border-border bg-surface-2">
         <span className="text-[12.5px] font-semibold text-fg">
           업로드 {doneCount} / {queue.length}
         </span>
@@ -62,7 +62,7 @@ function TaskRow({ task }: { task: UploadTask }) {
         <span className="flex-1 truncate text-[12.5px] text-fg">{task.file.name}</span>
         <StatusBadge task={task} />
       </div>
-      <div className="mt-1 h-1 bg-surface-2 rounded overflow-hidden">
+      <div className="mt-[3px] h-[2px] bg-surface-3 rounded-[1px] overflow-hidden">
         <div
           className={`h-full ${task.status === 'failed' ? 'bg-danger' : 'bg-accent'} transition-[width]`}
           style={{ width: `${Math.round(task.progress * 100)}%` }}

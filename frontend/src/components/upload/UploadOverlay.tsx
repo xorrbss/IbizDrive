@@ -7,7 +7,7 @@ export function UploadOverlay({ visible }: Props) {
   return (
     <div
       role="presentation"
-      className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none bg-[color-mix(in_oklch,var(--accent)_10%,transparent)] border-2 border-dashed border-accent rounded"
+      className="absolute inset-2 z-30 flex items-center justify-center pointer-events-none bg-[color-mix(in_oklch,var(--accent)_8%,transparent)] backdrop-blur-[2px] border-2 border-dashed border-accent rounded-lg"
       aria-hidden
     >
       <div className="text-[14px] font-medium text-accent">여기에 놓아 업로드</div>

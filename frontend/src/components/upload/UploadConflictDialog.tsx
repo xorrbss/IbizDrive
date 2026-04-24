@@ -55,7 +55,7 @@ export function UploadConflictDialog() {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-[color-mix(in_oklch,#000_40%,transparent)]"
+      className="fixed inset-0 z-50 flex items-center justify-center p-5 bg-[rgba(0,0,0,0.32)]"
       onClick={skip}
     >
       <div
@@ -66,7 +66,7 @@ export function UploadConflictDialog() {
         aria-describedby={descId}
         onKeyDown={onKeyDown}
         onClick={(e) => e.stopPropagation()}
-        className="w-[440px] bg-surface-1 border border-border rounded-lg shadow-lg p-5"
+        className="w-full max-w-[460px] bg-surface-1 border border-border rounded-lg shadow-lg p-5"
       >
         <h2 id={titleId} className="text-[15px] font-semibold text-fg">
           파일 이름 충돌
