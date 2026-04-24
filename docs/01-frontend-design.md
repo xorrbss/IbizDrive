@@ -318,6 +318,16 @@ export const useSelectionStore = create<SelectionState>((set, get) => ({
 }))
 ```
 
+> **구현 노트 (M4, 2026-04-25)**
+>
+> 위 코드 shape는 그대로 유지하되 다음 규칙이 store 내부에서 강제된다:
+> - `markPending(ids)`는 해당 id들을 `ids`(selected)에서도 제거한다 (pending↔selected 상호 배제)
+> - `selectRange`는 앵커가 없거나 / pending이거나 / 현재 폴더에 없을 때 단일 선택으로 폴백
+> - `selectRange` 범위 내 pending은 선택에서 제외
+>
+> 상세: `docs/superpowers/specs/2026-04-25-m4-selection-bulkactionbar-design.md` §2.1, §2.2
+
+
 ### 5.2 View slice (persisted)
 
 ```ts
