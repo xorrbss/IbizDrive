@@ -1,0 +1,176 @@
+'use client'
+import { useCallback, useEffect, useRef } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { qk } from '@/lib/queryKeys'
+import { classifyError } from '@/lib/uploadErrors'
+import type { FakeXHR } from '@/lib/fakeXhr'
+import {
+  useUploadStore,
+  type UploadConflictResolution,
+  type UploadTask,
+} from '@/stores/upload'
+
+type XhrLike = FakeXHR
+
+/**
+ * useUpload — store의 queued task를 감지해 transport(FakeXHR)를 기동/취소한다.
+ *
+ * - queued → uploading (XHR 시작)
+ * - onprogress → updateTask(progress)
+ * - onload:
+ *    - 200 → done + invalidate filesInFolder(targetFolderId)
+ *    - 409 → applyToAll이면 자동 해결, 아니면 status: 'conflict'
+ *    - 기타 → failed + classifyError
+ * - onerror → failed + network
+ * - cancel(id) → xhr.abort() + store.cancel(id)
+ * - retry(id) → store.retry(id) → 상태 감시가 새 XHR 기동
+ */
+export function useUpload() {
+  const queryClient = useQueryClient()
+  const xhrMap = useRef<Map<string, XhrLike>>(new Map())
+  const enqueue = useUploadStore((s) => s.enqueue)
+  const updateTask = useUploadStore((s) => s.updateTask)
+  const resolveConflictStore = useUploadStore((s) => s.resolveConflict)
+  const retryStore = useUploadStore((s) => s.retry)
+  const cancelStore = useUploadStore((s) => s.cancel)
+
+  const startTask = useCallback(
+    (task: UploadTask) => {
+      const prev = xhrMap.current.get(task.id)
+      if (prev) prev.abort()
+
+      const newName =
+        task.conflictResolution === 'rename' ? renameFile(task.file.name) : undefined
+
+      const xhr = api.uploadFile({
+        file: task.file,
+        folderId: task.targetFolderId,
+        resolution:
+          task.conflictResolution === 'new_version' ||
+          task.conflictResolution === 'rename'
+            ? task.conflictResolution
+            : undefined,
+        newName,
+      })
+      xhrMap.current.set(task.id, xhr)
+
+      updateTask(task.id, { status: 'uploading' })
+
+      xhr.upload.onprogress = (e) => {
+        if (!e.lengthComputable) return
+        updateTask(task.id, {
+          progress: e.loaded / e.total,
+          uploadedBytes: e.loaded,
+        })
+      }
+
+      xhr.onload = () => {
+        xhrMap.current.delete(task.id)
+        if (xhr.status === 200) {
+          updateTask(task.id, { status: 'done', progress: 1 })
+          queryClient.invalidateQueries({
+            queryKey: [...qk.files(), 'list', task.targetFolderId],
+          })
+          return
+        }
+        if (xhr.status === 409) {
+          let conflictWith: UploadTask['conflictWith'] | undefined
+          try {
+            const body = JSON.parse(xhr.responseText) as {
+              existing?: { fileId: string; fileName: string }
+            }
+            conflictWith = body.existing
+          } catch {
+            // ignore
+          }
+          const apply = useUploadStore.getState().applyToAll
+          if (apply && apply !== 'skip') {
+            updateTask(task.id, { status: 'conflict', conflictWith })
+            resolveConflictStore(task.id, apply)
+          } else if (apply === 'skip') {
+            updateTask(task.id, { status: 'conflict', conflictWith })
+            resolveConflictStore(task.id, 'skip')
+          } else {
+            updateTask(task.id, { status: 'conflict', conflictWith })
+          }
+          return
+        }
+        updateTask(task.id, { status: 'failed', error: classifyError(xhr) })
+      }
+
+      xhr.onerror = () => {
+        xhrMap.current.delete(task.id)
+        const cur = useUploadStore.getState().queue.find((t) => t.id === task.id)
+        if (cur?.status === 'failed') return // cancel에 의한 onerror — 중복 업데이트 스킵
+        updateTask(task.id, {
+          status: 'failed',
+          error: { kind: 'network', message: '네트워크 연결을 확인하세요' },
+        })
+      }
+    },
+    [queryClient, updateTask, resolveConflictStore],
+  )
+
+  // queued task 감지 → startTask
+  useEffect(() => {
+    const unsub = useUploadStore.subscribe((state, prev) => {
+      for (const t of state.queue) {
+        if (t.status !== 'queued') continue
+        const prevTask = prev.queue.find((p) => p.id === t.id)
+        if (prevTask?.status === 'queued') continue
+        startTask(t)
+      }
+    })
+    const xhrMapSnapshot = xhrMap.current
+    return () => {
+      unsub()
+      for (const xhr of xhrMapSnapshot.values()) xhr.abort()
+      xhrMapSnapshot.clear()
+    }
+  }, [startTask])
+
+  const cancel = useCallback(
+    (id: string) => {
+      const xhr = xhrMap.current.get(id)
+      if (xhr) {
+        xhr.abort()
+        xhrMap.current.delete(id)
+      }
+      cancelStore(id)
+    },
+    [cancelStore],
+  )
+
+  const retry = useCallback(
+    (id: string) => {
+      const xhr = xhrMap.current.get(id)
+      if (xhr) {
+        xhr.abort()
+        xhrMap.current.delete(id)
+      }
+      retryStore(id)
+    },
+    [retryStore],
+  )
+
+  const resolveConflict = useCallback(
+    (id: string, resolution: UploadConflictResolution, applyToAll?: boolean) => {
+      resolveConflictStore(id, resolution, applyToAll)
+    },
+    [resolveConflictStore],
+  )
+
+  return {
+    enqueue,
+    cancel,
+    retry,
+    resolveConflict,
+  }
+}
+
+function renameFile(name: string): string {
+  const dot = name.lastIndexOf('.')
+  if (dot === -1) return `${name} (2)`
+  return `${name.slice(0, dot)} (2)${name.slice(dot)}`
+}
