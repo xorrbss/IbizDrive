@@ -393,6 +393,18 @@ type UploadState = {
 }
 ```
 
+#### M5 구현 노트 (2026-04-25)
+
+§5.3 스펙 대비 차이 (M5 MVP):
+- `status: 'paused'` 제외 (tus는 M5.1로 미룸)
+- `tusUrl?: string` 제외 (M5.1)
+- `conflictResolution: 'overwrite'` 제외 — 파괴적이므로 정책상 `new_version`으로 대체
+- `pendingCount()` selector 추가: `queued | uploading | conflict` 을 포함 (beforeunload 경고 대상)
+- `enqueue` 반환값: 생성된 task ids (훅이 task별 XHR 기동에 사용)
+- `applyToAll`은 store 전역, `clearDone` 호출 시점에 null 리셋 (배치별 스코프가 아님)
+- `cancel(id)`은 `failed` + `error.kind='network'` + `message='취소됨'`으로 전환 (별도 `canceled` 상태 도입 안 함)
+- `rename` 충돌 해결은 단일 시도 — 서버 정규화 결과 추측 금지(원칙 #6). 재차 409 시 dialog 재표시
+
 ### 5.4 DnD slice
 
 ```ts

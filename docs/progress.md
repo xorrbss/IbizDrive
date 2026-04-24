@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-04-25 — M5 완료 (업로드: multipart + 충돌 + 실패 분류)
+
+### 완료
+- [M5] `lib/uploadErrors.ts` 5종 분류 (network/permission/quota/server/conflict) + 단위 테스트 8개
+- [M5] `lib/fakeXhr.ts` + 매직 파일명 6종 (normal/conflict.pdf/huge.bin/deny.txt/srv_500.any/net_fail.any) + 단위 테스트 7개
+- [M5] `lib/api.ts#uploadFile` — FakeXHR 반환 (교체 경계: 실제 XHR로 교체 시 소비자 변경 없음)
+- [M5] `stores/upload.ts` — queue/applyToAll/enqueue/updateTask/resolveConflict/retry/cancel/clearDone + 단위 테스트 8개
+- [M5] `hooks/useUpload.ts` — store subscribe 기반 XHR orchestration + done시 `filesInFolder` invalidate + 단위 테스트 8개 (DoD o 포함)
+- [M5] `hooks/useNativeFileDrop.ts` — `types.includes('Files')` 가드로 dnd-kit 분리 (원칙 #7), depth counter + 단위 테스트 4개
+- [M5] `hooks/useUploadBeforeUnload.ts` — pending(`queued|uploading|conflict`) > 0 시 경고
+- [M5] UI 5개: `UploadButton` / `FolderToolbar` / `UploadOverlay` / `UploadQueueDock` / `UploadConflictDialog`
+  - UploadOverlay (2 tests), UploadQueueDock (4 tests), UploadConflictDialog (5 tests) — a11y (aria-modal, aria-labelledby/describedby, Esc=skip, Tab 포커스트랩, applyToAll)
+- [M5] `FileTable` — `containerRef` + `useNativeFileDrop` + `UploadOverlay` 통합, early return을 body 변수로 리팩토링하여 Empty/Error/Forbidden 상태에도 drop 동작
+- [M5] `ClientFilesPage` — `FolderToolbar` + `UploadQueueDock` + `UploadConflictDialog` + `useUploadBeforeUnload` 통합
+- [M5] `FileTableEmpty` — `UploadButton` CTA 삽입 (재사용)
+- [M5] `docs/01 §5.3` 구현 노트 추가 (paused/tusUrl/overwrite 제외 사유, pendingCount/enqueue/applyToAll/cancel 의미론)
+
+### DoD
+- ✅ typecheck / lint / test 전체 통과 (기존 30 + M5 46 = 76 passing)
+- ⏳ 수동 검증 a~l, n — 사용자 브라우저 확인 대기 (pnpm dev → /files/root → 시나리오 12종)
+
+### 원칙 체크
+- ✅ #1 URL folderId canonical — `task.targetFolderId`는 `enqueue` 시점의 folderId 스냅샷 (Zustand는 "무엇을" 올릴지만 가짐)
+- ✅ #3 낙관적 업데이트 비파괴적만 — 업로드 결과 낙관 append 금지, done 시 `invalidateQueries({ queryKey: [...qk.files(), 'list', folderId] })`로 prefix match
+- ✅ #7 DnD 분리 — native는 `FileTable` 컨테이너만, `types.includes('Files')` 가드로 dnd-kit 이벤트 무시
+- ✅ #12 에러 코드 — `lib/uploadErrors.ts`가 docs/02 §8의 status 코드 매핑 유지
+
+### 다음 세션 컨텍스트
+**M5.1 (tus 재개 업로드)**
+- `UploadTask`에 `tusUrl`, `paused` 상태 도입
+- `useUpload`의 transport만 교체 (store/UI 변경 없음)
+
+**실제 백엔드 연결**
+- `api.uploadFile` 내부를 실제 `XMLHttpRequest`로 교체 (인터페이스 동일)
+- `FakeXHR` 파일 및 매직 파일명 테스트는 제거 또는 e2e로 이관
+
+**M7 DnD 이동 + 드롭 타겟 확장**
+- `useNativeFileDrop`을 `FolderTree` 노드에도 연결 (dnd-kit 이동과 공존)
+- 동일 가드(`types.includes('Files')`)로 분리 유지
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-25 — 디자인 시스템 적용 (M5 업로드 구현 진입 전)
 
 ### 완료
