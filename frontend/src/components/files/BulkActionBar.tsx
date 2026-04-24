@@ -5,9 +5,13 @@ import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 
 export function BulkActionBar() {
-  const count = useSelectionStore((s) => s.ids.size)
-  const ids = useSelectionStore((s) => Array.from(s.ids))
+  // Set 자체를 구독 (stable ref). Array.from은 render에서 변환.
+  // 주의: selector가 매 호출마다 새 배열을 반환하면 Zustand v5의 useSyncExternalStore가
+  // 매번 "상태 변화"로 감지하여 무한 업데이트 루프를 유발함.
+  const selectedIds = useSelectionStore((s) => s.ids)
   const clear = useSelectionStore((s) => s.clear)
+  const count = selectedIds.size
+  const ids = Array.from(selectedIds)
   const can = usePermission()
   const { folderId } = useCurrentFolder()
   const deleteMut = useDeleteBulk()
