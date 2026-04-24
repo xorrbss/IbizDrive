@@ -1,6 +1,7 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import { FakeXHR } from './fakeXhr'
+import { findNode, containsNode } from './folderTreeUtils'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -119,6 +120,36 @@ function findNodeAndPath(
   return null
 }
 
+function detachFromTree(tree: FolderNode, nodeId: string): FolderNode | null {
+  if (!tree.children) return null
+  const idx = tree.children.findIndex((c) => c.id === nodeId)
+  if (idx !== -1) {
+    const [removed] = tree.children.splice(idx, 1)
+    return removed
+  }
+  for (const c of tree.children) {
+    const r = detachFromTree(c, nodeId)
+    if (r) return r
+  }
+  return null
+}
+
+function relocateInTree(
+  tree: FolderNode,
+  nodeId: string,
+  newParentId: string,
+): void {
+  const node = detachFromTree(tree, nodeId)
+  if (!node) return // MOCK_FILES에만 있는 파일은 트리 작업 불필요
+  const newParent = findNode(tree, newParentId)
+  if (!newParent) {
+    // 호출 전 newParent 존재를 보장해야 함. 도달 시 일관성 깨진 상태.
+    throw { status: 500, code: 'TREE_RELOCATE_FAILED' }
+  }
+  newParent.children = [...(newParent.children ?? []), node]
+  node.parentId = newParentId
+}
+
 export const api = {
   async getFolderTree(): Promise<FolderNode> {
     await new Promise((r) => setTimeout(r, 100))
@@ -178,6 +209,39 @@ export const api = {
       if (idx !== -1) MOCK_FILES.splice(idx, 1)
     }
     return { deletedIds: ids }
+  },
+
+  async moveFiles(
+    ids: string[],
+    targetFolderId: string,
+  ): Promise<{ movedIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 400))
+
+    // 1) 타겟 폴더 존재 검증
+    const targetExists = !!findNode(MOCK_TREE, targetFolderId)
+    if (!targetExists) throw { status: 404, code: 'TARGET_NOT_FOUND' }
+
+    // 2) self / descendant 검증 (원칙 #10 — UI와 독립적인 서버 재검증)
+    for (const id of ids) {
+      if (id === targetFolderId) {
+        throw { status: 400, code: 'MOVE_INTO_SELF' }
+      }
+      const node = findNode(MOCK_TREE, id)
+      if (node && containsNode(node, targetFolderId)) {
+        throw { status: 400, code: 'MOVE_INTO_DESCENDANT' }
+      }
+    }
+
+    // 3) 적용 — MOCK_FILES.parentId 갱신 + 폴더면 MOCK_TREE에서 재배치
+    for (const id of ids) {
+      const fileIdx = MOCK_FILES.findIndex((f) => f.id === id)
+      if (fileIdx !== -1) {
+        MOCK_FILES[fileIdx].parentId = targetFolderId
+      }
+      relocateInTree(MOCK_TREE, id, targetFolderId)
+    }
+
+    return { movedIds: ids }
   },
 
   // M5: FakeXHR 반환. 실제 백엔드 도입 시 내부 구현만 XMLHttpRequest로 교체.
