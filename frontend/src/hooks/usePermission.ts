@@ -14,6 +14,7 @@ export type Permission =
 
 export type PermissionFlags = Record<Permission, boolean>
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export function usePermission(_nodeId?: string): PermissionFlags {
   return {
     read: true,

@@ -24,8 +24,10 @@ vi.mock('@/lib/api', () => ({
 }))
 
 const makeWrapper = (qc: QueryClient) => {
-  return ({ children }: { children: React.ReactNode }) =>
+  const Wrapper = ({ children }: { children: React.ReactNode }) =>
     React.createElement(QueryClientProvider, { client: qc }, children)
+  Wrapper.displayName = 'QCWrapper'
+  return Wrapper
 }
 
 describe('useDeleteBulk', () => {
