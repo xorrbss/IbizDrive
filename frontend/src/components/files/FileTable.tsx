@@ -12,6 +12,9 @@ import { FileTableSkeleton } from './FileTableSkeleton'
 import { FileTableEmpty } from './FileTableEmpty'
 import { FileTableError } from './FileTableError'
 import { FileTableForbidden } from './FileTableForbidden'
+import { useNativeFileDrop } from '@/hooks/useNativeFileDrop'
+import { useUpload } from '@/hooks/useUpload'
+import { UploadOverlay } from '@/components/upload/UploadOverlay'
 import type { FileItem } from '@/types/file'
 
 const ROW_HEIGHT = 40
@@ -28,8 +31,17 @@ export function FileTable({ folderId }: Props) {
   const { data: items, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
+  const containerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { open: openFile } = useOpenFile()
+  const { enqueue: enqueueUploads } = useUpload()
+  const handleNativeDrop = useCallback(
+    (files: File[]) => {
+      if (files.length > 0) enqueueUploads(files, folderId)
+    },
+    [enqueueUploads, folderId],
+  )
+  const isDragging = useNativeFileDrop(containerRef, handleNativeDrop)
 
   const selectedIds = useSelectionStore((s) => s.ids)
   const pendingIds = useSelectionStore((s) => s.pendingIds)
@@ -177,14 +189,14 @@ export function FileTable({ folderId }: Props) {
     [items, focusedIndex, pendingIds, toggle, selectAll, clear, handleOpen, virtualizer]
   )
 
-  if (isLoading) return <FileTableSkeleton />
-
   const status = (error as { status?: number })?.status
-  if (status === 403) return <FileTableForbidden />
-  if (error) return <FileTableError onRetry={refetch} />
-  if (!items || items.length === 0) return <FileTableEmpty />
 
-  return (
+  let body: React.ReactNode
+  if (isLoading) body = <FileTableSkeleton />
+  else if (status === 403) body = <FileTableForbidden />
+  else if (error) body = <FileTableError onRetry={refetch} />
+  else if (!items || items.length === 0) body = <FileTableEmpty />
+  else body = (
     <div
       role="grid"
       aria-rowcount={items.length + 1}
@@ -241,6 +253,13 @@ export function FileTable({ folderId }: Props) {
           })}
         </div>
       </div>
+    </div>
+  )
+
+  return (
+    <div ref={containerRef} className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
+      <UploadOverlay visible={isDragging} />
+      {body}
     </div>
   )
 }

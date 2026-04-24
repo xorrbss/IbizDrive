@@ -18,6 +18,8 @@ export class FakeXHR {
 
   open(_method: string, _url: string): void {
     // no-op (실제 XHR로 교체 시 URL/method 보관)
+    void _method
+    void _url
   }
 
   send(form: FormData): void {
