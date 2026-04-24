@@ -4,6 +4,7 @@ import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useFolderTree } from '@/hooks/useFolderTree'
 import { useViewStore } from '@/stores/view'
 import { buildCanonicalPath } from '@/lib/folderPath'
+import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import type { FolderNode as FolderNodeType } from '@/types/folder'
 
 export function FolderTree() {
@@ -32,19 +33,34 @@ function FolderNodeItem({
   pathAcc: string[]
 }) {
   const { expandedFolderIds, toggleExpanded } = useViewStore()
+  const { setNodeRef, isOver, isInvalid, isDragging, isSameFolder } =
+    useFolderDroppable(node.id)
   const isExpanded = expandedFolderIds.includes(node.id)
   const isActive = activeId === node.id
   const nextPath = node.id === 'root' ? [] : [...pathAcc, node.slug]
   const href = buildCanonicalPath(node.id, nextPath)
 
+  // 드래그 중일 때만 droppable 시각화 적용
+  const dragClass = !isDragging
+    ? ''
+    : isInvalid || isSameFolder
+      ? 'opacity-50'
+      : isOver
+        ? 'bg-accent-soft ring-2 ring-accent'
+        : ''
+
   return (
     <div>
       <div
+        ref={setNodeRef}
+        aria-dropeffect={
+          isDragging && !isInvalid && !isSameFolder ? 'move' : undefined
+        }
         className={`flex items-center gap-1.5 px-2 py-1 rounded min-h-[26px] transition-colors ${
           isActive
             ? 'bg-accent-soft text-accent font-medium'
             : 'text-fg-2 hover:bg-surface-2 hover:text-fg'
-        }`}
+        } ${dragClass}`}
         style={{ paddingLeft: depth * 12 + 8 }}
       >
         {node.children?.length ? (

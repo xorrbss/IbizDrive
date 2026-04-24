@@ -2,6 +2,7 @@
 import Link from 'next/link'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { buildCanonicalPath } from '@/lib/folderPath'
+import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 
 export function Breadcrumb() {
   const { breadcrumb, isLoading } = useCurrentFolder()
@@ -27,17 +28,36 @@ export function Breadcrumb() {
                 {c.name}
               </span>
             ) : (
-              <Link
-                href={href}
-                className="px-1.5 py-[3px] rounded-sm text-fg-muted hover:bg-surface-2 hover:text-fg transition-colors"
-              >
-                {c.name}
-              </Link>
+              <BreadcrumbLink id={c.id} href={href} name={c.name} />
             )}
           </span>
         )
       })}
     </nav>
+  )
+}
+
+function BreadcrumbLink({ id, href, name }: { id: string; href: string; name: string }) {
+  const { setNodeRef, isOver, isInvalid, isDragging, isSameFolder } =
+    useFolderDroppable(id)
+  const dragClass = !isDragging
+    ? ''
+    : isInvalid || isSameFolder
+      ? 'opacity-50'
+      : isOver
+        ? 'bg-accent-soft ring-2 ring-accent text-accent'
+        : ''
+  return (
+    <Link
+      ref={setNodeRef as React.Ref<HTMLAnchorElement>}
+      href={href}
+      aria-dropeffect={
+        isDragging && !isInvalid && !isSameFolder ? 'move' : undefined
+      }
+      className={`px-1.5 py-[3px] rounded-sm text-fg-muted hover:bg-surface-2 hover:text-fg transition-colors ${dragClass}`}
+    >
+      {name}
+    </Link>
   )
 }
 
