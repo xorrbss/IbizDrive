@@ -5,12 +5,12 @@ import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { buildCanonicalPath } from '@/lib/folderPath'
 import { Breadcrumb } from '@/components/folders/Breadcrumb'
 import { FileTable } from '@/components/files/FileTable'
+import { BulkActionBar } from '@/components/files/BulkActionBar'
 
 export function ClientFilesPage({ parts }: { parts: string[] }) {
   const router = useRouter()
   const { folderId, folder, isLoading, error } = useCurrentFolder()
 
-  // Canonical redirect
   useEffect(() => {
     if (!folder) return
     const canonical = buildCanonicalPath(folder.id, folder.slugPath)
@@ -27,6 +27,7 @@ export function ClientFilesPage({ parts }: { parts: string[] }) {
   return (
     <div>
       <Breadcrumb />
+      <BulkActionBar />
       <FileTable folderId={folderId} />
     </div>
   )
