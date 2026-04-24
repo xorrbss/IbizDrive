@@ -162,4 +162,13 @@ export const api = {
       return dir === 'asc' ? cmp : -cmp
     })
   },
+
+  async deleteBulk(ids: string[]): Promise<{ deletedIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 500))
+    for (const id of ids) {
+      const idx = MOCK_FILES.findIndex((f) => f.id === id)
+      if (idx !== -1) MOCK_FILES.splice(idx, 1)
+    }
+    return { deletedIds: ids }
+  },
 }
