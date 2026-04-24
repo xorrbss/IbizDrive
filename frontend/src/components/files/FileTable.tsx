@@ -5,6 +5,7 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRouter } from 'next/navigation'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
+import { useOpenFile } from '@/hooks/useOpenFile'
 import { useSelectionStore } from '@/stores/selection'
 import { FileRow } from './FileRow'
 import { FileTableSkeleton } from './FileTableSkeleton'
@@ -25,6 +26,7 @@ export function FileTable({ folderId }: Props) {
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const { open: openFile } = useOpenFile()
 
   const selectedIds = useSelectionStore((s) => s.ids)
   const pendingIds = useSelectionStore((s) => s.pendingIds)
@@ -81,12 +83,10 @@ export function FileTable({ folderId }: Props) {
       if (item.type === 'folder') {
         router.push(`/files/${item.id}`)
       } else {
-        const url = new URL(window.location.href)
-        url.searchParams.set('file', item.id)
-        router.replace(url.pathname + url.search, { scroll: false })
+        openFile(item.id)
       }
     },
-    [router]
+    [router, openFile]
   )
 
   const handleRowClick = useCallback(

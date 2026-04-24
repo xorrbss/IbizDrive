@@ -5,6 +5,79 @@
 
 ---
 
+## 2026-04-25 — M6 완료 (RightPanel + useOpenFile + ?file= 자동 제거) ✅ 브라우저 검증 통과
+
+### 완료
+- [M6] `hooks/useOpenFile.ts` — §17.5 설계 그대로. `?file=` query param 진실 출처. open/close/fileId 반환, replace + scroll:false, 다른 param 보존
+- [M6] `hooks/useFileDetail.ts` — `qk.fileDetail(id)` 캐시 키, enabled:Boolean(id), staleTime 30s
+- [M6] `api.getFileDetail(id)` MOCK — 404 throw 포함
+- [M6] `components/files/RightPanel.tsx` — role=complementary, 이름/유형/크기/수정일/수정자 dl, 로딩 스켈레톤, 에러 role=alert, 닫기 버튼, document keydown Esc 리스너 (fileId 있을 때만 등록)
+- [M6] `ClientFilesPage` 2-pane 레이아웃: 좌측 Breadcrumb+BulkActionBar+FileTable, 우측 RightPanel (fileId 없으면 null 반환해 공간 미차지)
+- [M6] `FileTable.handleOpen` 리팩터 — 인라인 URL 조작 제거, `useOpenFile().open()` 사용. 분기 확정: folder → router.push, file → openFile(id)
+- [M6] `hooks/useCloseFileOnFolderChange.ts` — 폴더 변경 시 `?file=` 자동 제거. prevRef로 초기 마운트는 건너뜀 (딥링크 보존). M3 "folderId 변경 시 focus/selection reset"과 대칭
+- [M6] test/setup.ts에 afterEach cleanup 추가 (testing-library v16 + globals:false 조합에서 자동 cleanup 미작동 → 문서 레벨 리스너/DOM 누적 버그 방지)
+
+### 계약 파일 추가/수정
+- frontend/src/hooks/useOpenFile.ts                          신규 (docs/01 §17.5)
+- frontend/src/hooks/useFileDetail.ts                        신규 (docs/01 §6.1 키 사용)
+- frontend/src/hooks/useCloseFileOnFolderChange.ts           신규 (M3 대칭 정책)
+- frontend/src/hooks/useOpenFile.test.ts                     신규 (5 tests)
+- frontend/src/hooks/useCloseFileOnFolderChange.test.ts      신규 (5 tests)
+- frontend/src/components/files/RightPanel.tsx               신규 (docs/01 §11, §12.1)
+- frontend/src/components/files/RightPanel.test.tsx          신규 (5 tests)
+- frontend/src/lib/api.ts                                    수정 (getFileDetail 추가)
+- frontend/src/components/files/FileTable.tsx                수정 (useOpenFile로 refactor)
+- frontend/src/app/(explorer)/files/[...parts]/ClientFilesPage.tsx 수정 (RightPanel 통합, 2-pane, useCloseFileOnFolderChange 호출)
+- frontend/src/test/setup.ts                                 수정 (cleanup 추가)
+
+### 미결 결정 사항 (이번 세션 확정)
+1. **폴더 이동 시 `?file=` 자동 제거: YES** — 파일은 특정 폴더 컨텍스트이므로 폴더가 바뀌면 패널은 의미 없음. M3 focus/selection reset과 대칭. 딥링크는 prevRef=null 조건으로 보존
+2. **단일 클릭 = 패널 열기: 유지 (현재 Enter/더블클릭만)** — 단일 클릭은 M4에서 "선택"으로 합의됨. Windows/Mac 파일 탐색기 표준 UX와 일치. 빠른 미리보기는 향후 M10 별도 설계
+
+### 원칙 준수 체크
+- ✅ §19 원칙 2 (RightPanel은 query param, parallel route 아님) — `?file=` 유지
+- ✅ §19 원칙 1 (URL이 "어디"를 소유) — 파일 선택 상태도 URL query에 존재
+- ✅ Esc 정책 (§12.1) — RightPanel 전역 리스너가 닫기 담당. FileTable grid의 Esc(선택 해제)는 독립. 둘 다 누르면 각자 동작 (상호 방해 없음)
+
+### DoD
+- typecheck: 통과
+- lint: 통과
+- test: 30/30 통과 (기존 15 + useOpenFile 5 + RightPanel 5 + useCloseFileOnFolderChange 5 = M6 15개 신규)
+- 브라우저 수동 검증: 통과 (A~F 섹션 15 시나리오)
+
+### 회고 — testing-library v16 + vitest globals:false cleanup 이슈
+- 증상: RightPanel 테스트에서 "Found multiple elements with role button and name 패널 닫기"
+- 원인: vitest.config의 `globals: false` → `@testing-library/react`의 자동 afterEach cleanup이 비활성. 테스트 간 DOM이 `document.body`에 누적되어 이전 테스트의 aside가 남아 있었음. 동시에 RightPanel의 `document.addEventListener('keydown')` 리스너도 누적됨
+- 해결: `test/setup.ts`에서 `afterEach(cleanup)` 수동 등록. 앞으로 컴포넌트 테스트 추가 시 자동 적용됨
+- 교훈: `globals: false`를 선호한다면 cleanup/matchers는 setup에 명시적으로 넣어야 함
+
+### 회고 — 폴더 변경 시 ?file= 자동 제거 설계
+- 자연 네비게이션(FolderTree/Breadcrumb Link 클릭, handleOpen router.push)은 이미 ?file=을 자동 탈락시킴. 따라서 `useCloseFileOnFolderChange`는 엣지 케이스(back/forward, 프로그래밍 navigation, 딥링크 뒤 이동)를 위한 안전망 역할
+- 딥링크(`/files/foo?file=x` 초기 마운트) 보존을 위해 `prevRef.current === null`일 때는 건너뜀. 이후 이동부터 동작
+- 훅 분리 이유: 단일 callsite이지만 ref+초기 스킵 로직이 비자명 → 단위 테스트로 회귀 방지 (CLAUDE.md의 "premature abstraction 금지" 원칙에 근접하나 테스트 가치로 상쇄)
+
+### 다음 세션 컨텍스트
+**M5 (백엔드 API 연결)**
+- MOCK(api.ts) 전체 → 실제 fetch로 교체. 계약은 docs/02 §7
+- `getFileDetail`은 현재 `FileItem` 그대로 반환. 백엔드 계약에서 권한·버전·공유자 등 포함하면 `FileDetail` 타입 분리 필요
+- 에러 코드 (docs/02 §8) 매핑 후 RightPanel 에러 상태 메시지 세분화
+
+**M7 (권한)**
+- RightPanel에 권한 기반 액션 버튼 (다운로드/공유/이름변경) 추가 자리 있음
+- usePermission 실제 훅 교체 후 확장
+
+**M10 (고급 키보드)**
+- 단일 클릭 = 빠른 미리보기 UX 재검토 지점 (이번 세션에서 유지 결정)
+- Space로 패널 토글 등 탐색기 스타일 옵션 검토
+
+**후속 개선 (우선순위 낮음)**
+- ClientFilesPage의 canonical redirect가 현재 pathname만 비교, `router.replace(canonical)`에서 query를 전부 탈락시킴. `?file=` 및 `?sort=` 등이 의도치 않게 날아갈 가능성. 재현되면 canonical redirect에 query 보존 로직 추가
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-25 — M4 완료 (선택 모델 + BulkActionBar) ✅ 브라우저 검증 통과
 
 ### 완료

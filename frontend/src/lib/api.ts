@@ -163,6 +163,13 @@ export const api = {
     })
   },
 
+  async getFileDetail(id: string): Promise<FileItem> {
+    await new Promise((r) => setTimeout(r, 100))
+    const found = MOCK_FILES.find((f) => f.id === id)
+    if (!found) throw { status: 404, code: 'NOT_FOUND' }
+    return found
+  },
+
   async deleteBulk(ids: string[]): Promise<{ deletedIds: string[] }> {
     await new Promise((r) => setTimeout(r, 500))
     for (const id of ids) {
