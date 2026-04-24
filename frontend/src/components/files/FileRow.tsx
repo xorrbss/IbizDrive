@@ -11,6 +11,7 @@ type Props = {
   onClick?: (item: FileItem, e: React.MouseEvent) => void
   onDoubleClick?: (item: FileItem) => void
   onKeyDown?: (e: React.KeyboardEvent) => void
+  gridCols: string
 }
 
 function formatFileSize(bytes: number | null): string {
@@ -47,17 +48,16 @@ export function FileRow({
   onClick,
   onDoubleClick,
   onKeyDown,
+  gridCols,
 }: Props) {
-  // 우선순위: pending > selected > focused > hover
-  const bgClass = isPending
-    ? 'opacity-50'
-    : isSelected && isFocused
-      ? 'bg-blue-100 outline outline-2 outline-blue-400'
-      : isSelected
-        ? 'bg-blue-100'
-        : isFocused
-          ? 'bg-blue-50 outline outline-2 outline-blue-400'
-          : 'hover:bg-gray-50'
+  // 상태별 배경 — 디자인 토큰 기반
+  // 우선순위: pending > selected > hover
+  // focus는 focus-visible 전역 링이 담당 (globals.css)
+  const stateClass = isPending
+    ? 'opacity-55 cursor-not-allowed'
+    : isSelected
+      ? 'bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
+      : 'hover:bg-surface-2 cursor-default'
 
   return (
     <div
@@ -66,9 +66,7 @@ export function FileRow({
       aria-selected={isPending ? false : isSelected}
       aria-disabled={isPending || undefined}
       tabIndex={isFocused ? 0 : -1}
-      className={`flex items-center gap-4 h-10 px-4 select-none border-b border-gray-100 ${
-        isPending ? 'cursor-not-allowed' : 'cursor-pointer'
-      } ${bgClass}`}
+      className={`${gridCols} min-h-[var(--row-h)] h-10 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass}`}
       onClick={(e) => {
         if (isPending) return
         onClick?.(item, e)
@@ -80,12 +78,29 @@ export function FileRow({
       onKeyDown={onKeyDown}
       data-file-id={item.id}
     >
-      <span className="w-6 text-center" role="gridcell" aria-hidden="true">{fileIcon(item)}</span>
-      <span className="flex-1 truncate text-sm font-medium" role="gridcell">{item.name}</span>
-      <span className="w-24 text-right text-xs text-gray-500" role="gridcell">{formatFileSize(item.size)}</span>
-      <span className="w-28 text-right text-xs text-gray-500" role="gridcell">{formatDate(item.updatedAt)}</span>
-      <span className="w-20 text-right text-xs text-gray-500 truncate flex items-center justify-end gap-1" role="gridcell">
-        {isPending && <span aria-hidden="true" className="inline-block w-3 h-3 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />}
+      <span className="text-center" role="gridcell" aria-hidden="true">{fileIcon(item)}</span>
+      <span
+        className="truncate font-medium text-fg"
+        role="gridcell"
+      >
+        {item.name}
+      </span>
+      <span className="text-right text-[12.5px] text-fg-muted tabular-nums" role="gridcell">
+        {formatFileSize(item.size)}
+      </span>
+      <span className="text-right text-[12.5px] text-fg-muted tabular-nums" role="gridcell">
+        {formatDate(item.updatedAt)}
+      </span>
+      <span
+        className="text-right text-[12.5px] text-fg-2 truncate flex items-center justify-end gap-1"
+        role="gridcell"
+      >
+        {isPending && (
+          <span
+            aria-hidden="true"
+            className="inline-block w-3 h-3 border-2 border-surface-3 border-t-fg-muted rounded-full animate-spin"
+          />
+        )}
         <span className="truncate">{item.updatedBy}</span>
       </span>
     </div>

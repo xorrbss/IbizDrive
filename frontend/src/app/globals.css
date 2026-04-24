@@ -1,26 +1,140 @@
 @import "tailwindcss";
 
+/* ==============================================================
+   IbizDrive 디자인 토큰
+   베이스 CSS 변수 (:root / [data-theme="dark"])
+   → Tailwind @theme inline 으로 유틸리티(bg-*, text-*, border-*) 노출
+   원본: docs/design-system.md, design handoff styles.css
+   ============================================================== */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* 베이스 뉴트럴 (warm gray) */
+  --bg: #FAFAF9;
+  --surface-1: #FFFFFF;
+  --surface-2: #F3F3F1;
+  --surface-3: #EBEBE8;
+  --border: rgba(20, 20, 18, 0.08);
+  --border-strong: rgba(20, 20, 18, 0.14);
+  --fg: #1C1B18;
+  --fg-2: #3A3832;
+  --fg-muted: #6C6A62;
+  --fg-subtle: #97948C;
+
+  /* Accent / Semantic */
+  --accent: oklch(55% 0.14 250);
+  --accent-hover: oklch(50% 0.14 250);
+  --accent-soft: oklch(95% 0.03 250);
+  --danger: oklch(55% 0.16 25);
+  --warn: oklch(65% 0.13 70);
+  --success: oklch(55% 0.11 150);
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius: 6px;
+  --radius-lg: 10px;
+
+  /* Shadow */
+  --shadow-sm: 0 1px 2px rgba(20, 20, 18, 0.04);
+  --shadow-md: 0 2px 8px rgba(20, 20, 18, 0.06), 0 1px 2px rgba(20, 20, 18, 0.04);
+  --shadow-lg: 0 12px 40px rgba(20, 20, 18, 0.12), 0 2px 8px rgba(20, 20, 18, 0.06);
+
+  /* Typography */
+  --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard", "Noto Sans KR", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* 행 높이 (밀도) — M5 이후 view store에서 토글 예정 */
+  --row-h: 34px;
 }
 
+[data-theme="dark"] {
+  --bg: #131313;
+  --surface-1: #1A1A19;
+  --surface-2: #232321;
+  --surface-3: #2E2E2B;
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --fg: #EAE9E4;
+  --fg-2: #C8C6BE;
+  --fg-muted: #8A8880;
+  --fg-subtle: #5E5C54;
+  --accent: oklch(72% 0.14 250);
+  --accent-hover: oklch(78% 0.14 250);
+  --accent-soft: oklch(30% 0.08 250);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
+}
+
+/* Tailwind 4 토큰 매핑: @theme inline으로 var(...) 참조를 유틸리티에 노출
+   → bg-bg, bg-surface-1, text-fg, text-fg-muted, border-border, rounded, rounded-lg 등 생성
+   → data-theme 토글 시 값만 변경되어 자동 재평가 */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bg: var(--bg);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-fg: var(--fg);
+  --color-fg-2: var(--fg-2);
+  --color-fg-muted: var(--fg-muted);
+  --color-fg-subtle: var(--fg-subtle);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-soft: var(--accent-soft);
+  --color-danger: var(--danger);
+  --color-warn: var(--warn);
+  --color-success: var(--success);
+
+  --radius-sm: var(--radius-sm);
+  --radius: var(--radius);
+  --radius-lg: var(--radius-lg);
+
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
+  --shadow-lg: var(--shadow-lg);
+
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+/* ============ 전역 리셋 / 바디 ============ */
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; height: 100%; }
+html { font-family: var(--font-sans); }
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--fg);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* 포커스 링 — 모든 interactive 기본값
+   개별 컴포넌트가 outline:none을 주지 않는 한 가시성 유지 */
+button:focus-visible,
+a:focus-visible,
+[role="row"]:focus-visible,
+[role="grid"]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* 스크롤바 (webkit) — 디자인 원본 따름 */
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--fg) 15%, transparent);
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--fg) 28%, transparent);
+  background-clip: content-box;
 }

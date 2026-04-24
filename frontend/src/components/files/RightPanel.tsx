@@ -36,23 +36,23 @@ export function RightPanel() {
     <aside
       role="complementary"
       aria-label="파일 상세"
-      className="w-80 border-l bg-white flex flex-col shrink-0"
+      className="w-[360px] shrink-0 border-l border-border bg-surface-1 flex flex-col min-h-0 overflow-hidden"
     >
-      <header className="flex items-center justify-between px-4 h-12 border-b">
-        <h2 className="text-sm font-semibold text-gray-900 truncate">
+      <header className="px-3.5 pt-3 pb-2 border-b border-border flex items-center gap-2">
+        <h2 className="flex-1 text-[13.5px] font-semibold text-fg truncate">
           {isLoading ? '로딩…' : (data?.name ?? '파일')}
         </h2>
         <button
           type="button"
           onClick={close}
           aria-label="패널 닫기"
-          className="text-gray-500 hover:text-gray-900 text-lg leading-none"
+          className="w-7 h-7 inline-flex items-center justify-center rounded text-fg-muted hover:bg-surface-2 hover:text-fg transition-colors"
         >
           ×
         </button>
       </header>
 
-      <div className="p-4 text-sm flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto px-3.5 py-3 text-[12px]">
         {isLoading && <PanelSkeleton />}
         {!isLoading && error && <PanelError />}
         {!isLoading && !error && data && <PanelBody file={data} />}
@@ -64,16 +64,16 @@ export function RightPanel() {
 function PanelSkeleton() {
   return (
     <div className="space-y-2 animate-pulse" aria-hidden>
-      <div className="h-4 bg-gray-200 rounded w-3/4" />
-      <div className="h-4 bg-gray-200 rounded w-1/2" />
-      <div className="h-4 bg-gray-200 rounded w-2/3" />
+      <div className="h-4 bg-surface-2 rounded w-3/4" />
+      <div className="h-4 bg-surface-2 rounded w-1/2" />
+      <div className="h-4 bg-surface-2 rounded w-2/3" />
     </div>
   )
 }
 
 function PanelError() {
   return (
-    <div role="alert" className="text-sm text-red-600">
+    <div role="alert" className="text-[12px] text-danger">
       파일 정보를 불러오지 못했습니다.
     </div>
   )
@@ -81,21 +81,21 @@ function PanelError() {
 
 function PanelBody({ file }: { file: FileItem }) {
   return (
-    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 text-sm">
-      <dt className="text-gray-500">이름</dt>
-      <dd className="text-gray-900 break-all">{file.name}</dd>
+    <dl className="grid grid-cols-[80px_1fr] gap-x-2.5 gap-y-2 text-[12px]">
+      <dt className="text-fg-muted">이름</dt>
+      <dd className="text-fg break-all">{file.name}</dd>
 
-      <dt className="text-gray-500">유형</dt>
-      <dd className="text-gray-900">{file.type === 'folder' ? '폴더' : (file.mimeType ?? '파일')}</dd>
+      <dt className="text-fg-muted">유형</dt>
+      <dd className="text-fg">{file.type === 'folder' ? '폴더' : (file.mimeType ?? '파일')}</dd>
 
-      <dt className="text-gray-500">크기</dt>
-      <dd className="text-gray-900">{formatSize(file.size)}</dd>
+      <dt className="text-fg-muted">크기</dt>
+      <dd className="text-fg tabular-nums">{formatSize(file.size)}</dd>
 
-      <dt className="text-gray-500">수정일</dt>
-      <dd className="text-gray-900">{formatDate(file.updatedAt)}</dd>
+      <dt className="text-fg-muted">수정일</dt>
+      <dd className="text-fg tabular-nums">{formatDate(file.updatedAt)}</dd>
 
-      <dt className="text-gray-500">수정자</dt>
-      <dd className="text-gray-900">{file.updatedBy}</dd>
+      <dt className="text-fg-muted">수정자</dt>
+      <dd className="text-fg">{file.updatedBy}</dd>
     </dl>
   )
 }

@@ -37,44 +37,48 @@ export function BulkActionBar() {
       role="toolbar"
       aria-label="선택 항목 액션"
       aria-live="polite"
-      className="sticky top-0 z-20 flex items-center gap-2 bg-white border-b px-4 py-2 shadow-sm"
+      className="sticky top-0 z-20 flex items-center justify-between gap-2 px-4 py-1.5 bg-accent-soft border-y border-border"
     >
-      <span className="text-sm font-medium">{count}개 선택</span>
-      {can.download && (
+      <div className="flex items-center gap-2.5">
+        <span className="text-[12.5px] font-semibold text-accent">{count}개 선택</span>
+      </div>
+      <div className="flex items-center gap-1">
+        {can.download && (
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg transition-colors"
+          >
+            다운로드
+          </button>
+        )}
+        {can.move && (
+          <button
+            type="button"
+            onClick={handleMove}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg transition-colors"
+          >
+            이동
+          </button>
+        )}
+        {can.delete && (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleteMut.isPending}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] hover:text-danger disabled:opacity-50 transition-colors"
+          >
+            휴지통으로
+          </button>
+        )}
         <button
           type="button"
-          onClick={handleDownload}
-          className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
+          onClick={clear}
+          className="h-7 px-2.5 inline-flex items-center rounded bg-transparent text-fg-muted text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg transition-colors"
         >
-          다운로드
+          선택 해제
         </button>
-      )}
-      {can.move && (
-        <button
-          type="button"
-          onClick={handleMove}
-          className="px-3 py-1 text-sm border rounded hover:bg-gray-50"
-        >
-          이동
-        </button>
-      )}
-      {can.delete && (
-        <button
-          type="button"
-          onClick={handleDelete}
-          disabled={deleteMut.isPending}
-          className="px-3 py-1 text-sm border rounded text-red-600 border-red-300 hover:bg-red-50 disabled:opacity-50"
-        >
-          휴지통으로
-        </button>
-      )}
-      <button
-        type="button"
-        onClick={clear}
-        className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-50 rounded ml-auto"
-      >
-        선택 해제
-      </button>
+      </div>
     </div>
   )
 }

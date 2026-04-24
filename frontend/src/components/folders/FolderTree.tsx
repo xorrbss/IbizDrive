@@ -14,7 +14,7 @@ export function FolderTree() {
   if (!tree) return null
 
   return (
-    <nav aria-label="폴더 트리">
+    <nav aria-label="폴더 트리" className="text-[12.5px]">
       <FolderNodeItem node={tree} activeId={activeId} depth={0} pathAcc={[]} />
     </nav>
   )
@@ -40,8 +40,10 @@ function FolderNodeItem({
   return (
     <div>
       <div
-        className={`flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 ${
-          isActive ? 'bg-blue-100 text-blue-900' : ''
+        className={`flex items-center gap-1.5 px-2 py-1 rounded min-h-[26px] transition-colors ${
+          isActive
+            ? 'bg-accent-soft text-accent font-medium'
+            : 'text-fg-2 hover:bg-surface-2 hover:text-fg'
         }`}
         style={{ paddingLeft: depth * 12 + 8 }}
       >
@@ -50,14 +52,14 @@ function FolderNodeItem({
             onClick={() => toggleExpanded(node.id)}
             aria-label={isExpanded ? '접기' : '펼치기'}
             aria-expanded={isExpanded}
-            className="w-4 text-center"
+            className="w-3.5 inline-flex items-center justify-center text-fg-muted text-[10px]"
           >
             {isExpanded ? '▾' : '▸'}
           </button>
         ) : (
-          <span className="w-4" />
+          <span className="w-3.5" />
         )}
-        <Link href={href} className="flex-1 truncate">
+        <Link href={href} className="flex-1 truncate text-inherit">
           📁 {node.name}
         </Link>
       </div>
@@ -77,9 +79,9 @@ function FolderNodeItem({
 
 function FolderTreeSkeleton() {
   return (
-    <div className="space-y-2 animate-pulse">
+    <div className="space-y-1.5 animate-pulse" aria-hidden>
       {[1, 2, 3].map((i) => (
-        <div key={i} className="h-6 bg-gray-200 rounded" />
+        <div key={i} className="h-6 bg-surface-2 rounded" />
       ))}
     </div>
   )

@@ -16,6 +16,9 @@ import type { FileItem } from '@/types/file'
 
 const ROW_HEIGHT = 40
 
+// 현 M5 단계 — 5열 유지 (M7에서 체크박스/액션 컬럼 추가 시 재매핑)
+const GRID_COLS = 'grid grid-cols-[28px_1fr_110px_130px_90px] gap-3 items-center px-4'
+
 type Props = {
   folderId: string
 }
@@ -187,26 +190,25 @@ export function FileTable({ folderId }: Props) {
       aria-rowcount={items.length + 1}
       aria-multiselectable={true}
       aria-label="파일 목록"
-      className="flex flex-col border rounded-lg overflow-hidden mt-4"
+      className="flex flex-col flex-1 min-h-0 overflow-hidden"
     >
       <div
-        className="flex items-center gap-4 h-9 px-4 bg-gray-50 border-b text-xs font-medium text-gray-600"
+        className={`${GRID_COLS} h-[30px] bg-surface-1 border-y border-border text-[11px] uppercase tracking-[0.04em] font-medium text-fg-muted`}
         role="row"
         aria-rowindex={1}
       >
-        <span className="w-6" role="columnheader" />
-        <span className="flex-1" role="columnheader">이름</span>
-        <span className="w-24 text-right" role="columnheader">크기</span>
-        <span className="w-28 text-right" role="columnheader">수정일</span>
-        <span className="w-20 text-right" role="columnheader">수정자</span>
+        <span role="columnheader" aria-hidden />
+        <span role="columnheader">이름</span>
+        <span className="text-right" role="columnheader">크기</span>
+        <span className="text-right" role="columnheader">수정일</span>
+        <span className="text-right" role="columnheader">수정자</span>
       </div>
 
       <div
         ref={scrollRef}
         tabIndex={0}
         onKeyDown={handleKeyDown}
-        className="flex-1 overflow-auto outline-none"
-        style={{ maxHeight: 'calc(100vh - 200px)' }}
+        className="flex-1 overflow-auto outline-none pb-10"
       >
         <div
           className="relative w-full"
@@ -232,6 +234,7 @@ export function FileTable({ folderId }: Props) {
                   onClick={handleRowClick}
                   onDoubleClick={handleOpen}
                   onKeyDown={handleKeyDown}
+                  gridCols={GRID_COLS}
                 />
               </div>
             )
