@@ -188,7 +188,17 @@ export const api = {
     newName?: string
   }): FakeXHR {
     const effectiveName = params.newName ?? params.file.name
+    // 충돌 검사: resolution이 없고 동일 폴더에 같은 이름이 있으면 409 시뮬레이션
+    // (resolution='new_version'|'rename'은 이미 사용자가 해결 방법을 선택한 상태이므로 스킵)
+    const conflictExisting = !params.resolution
+      ? MOCK_FILES.find(
+          (f) => f.parentId === params.folderId && f.name === effectiveName,
+        )
+      : null
     const xhr = new FakeXHR({
+      simulateConflict: conflictExisting
+        ? { fileId: conflictExisting.id, fileName: conflictExisting.name }
+        : null,
       // 200 성공 시 MOCK_FILES에 반영 (실제 서버의 커밋 단계를 시뮬레이션)
       onServerSuccess: () => {
         const now = new Date().toISOString()

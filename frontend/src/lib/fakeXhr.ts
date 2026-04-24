@@ -6,6 +6,8 @@ type ProgressEventLike = { loaded: number; total: number; lengthComputable: bool
 type FakeXHROptions = {
   /** 서버 측 side-effect 시뮬레이션 (200 성공 시에만 호출). api 레벨에서 MOCK 데이터 갱신용. */
   onServerSuccess?: () => void
+  /** 동일 폴더 내 이름 충돌 시뮬레이션. 주입 시 매직 파일명 분기보다 우선. */
+  simulateConflict?: { fileId: string; fileName: string } | null
 }
 
 export class FakeXHR {
@@ -21,9 +23,11 @@ export class FakeXHR {
   private totalBytes = 0
   private loaded = 0
   private onServerSuccess?: () => void
+  private simulateConflict: FakeXHROptions['simulateConflict']
 
   constructor(opts: FakeXHROptions = {}) {
     this.onServerSuccess = opts.onServerSuccess
+    this.simulateConflict = opts.simulateConflict ?? null
   }
 
   open(_method: string, _url: string): void {
@@ -86,6 +90,13 @@ export class FakeXHR {
     const pct = this.loaded / this.totalBytes
 
     if (pct >= 0.4) {
+      if (this.simulateConflict) {
+        this.finish(
+          409,
+          JSON.stringify({ existing: this.simulateConflict }),
+        )
+        return
+      }
       switch (this.filename) {
         case 'net_fail.any':
           this.fail()
