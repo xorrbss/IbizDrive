@@ -1,5 +1,6 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
+import { FakeXHR } from './fakeXhr'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -177,5 +178,29 @@ export const api = {
       if (idx !== -1) MOCK_FILES.splice(idx, 1)
     }
     return { deletedIds: ids }
+  },
+
+  // M5: FakeXHR 반환. 실제 백엔드 도입 시 내부 구현만 XMLHttpRequest로 교체.
+  uploadFile(params: {
+    file: File
+    folderId: string
+    resolution?: 'new_version' | 'rename'
+    newName?: string
+  }): FakeXHR {
+    const xhr = new FakeXHR()
+    const form = new FormData()
+    const fileToSend = params.newName
+      ? new File([params.file], params.newName, { type: params.file.type })
+      : params.file
+    form.append('file', fileToSend)
+    form.append('folderId', params.folderId)
+    if (params.resolution) form.append('resolution', params.resolution)
+
+    const url = `/files/upload?folderId=${encodeURIComponent(params.folderId)}${
+      params.resolution ? `&resolution=${params.resolution}` : ''
+    }`
+    xhr.open('POST', url)
+    xhr.send(form)
+    return xhr
   },
 }
