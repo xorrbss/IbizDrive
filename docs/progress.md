@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-04-25 — M13 완료 (Claude 디자인 시스템 토큰 적용)
+
+### 완료
+- [M13] `design-reference/` 번들 추가 (Claude 핸드오프: `IbizDrive.html` + `styles.css` 1318줄 + `README.md` + 4 jsx 참고용)
+- [M13] `docs/design-system.md` 갱신 — §5에 M5 업로드 컴포넌트 매핑 섹션 추가, §10 Open Questions(다크 모드 토글, variant 범위, 폰트 로딩, 6열 확장)
+- [M13] M5 업로드 컴포넌트 4종 className만 styles.css 치수에 맞춰 조정 (JSX/props/handlers/aria 변경 없음):
+  - `UploadButton`: h-7 px-2.5 + border-accent (`.btn-primary` 매핑)
+  - `UploadOverlay`: inset-2 + backdrop-blur-[2px] + accent 8% + rounded-lg (`.drop-overlay`)
+  - `UploadQueueDock`: w-[340px] max-h-[420px] + border-border-strong + header bg-surface-2 + progress h-[2px] bg-surface-3
+  - `UploadConflictDialog`: max-w-[460px] + 백드롭 rgba(0,0,0,.32)
+- [M13] `.gitignore` 초기 생성 (`.tmp/`, `.claude/`, `node_modules/`, `.next/`, etc.)
+
+### DoD
+- ✅ typecheck / lint / test 76/76 통과
+- ✅ SSR HTML 검증: `bg-bg`, `bg-surface-1`, `bg-accent`, `text-fg` 등 토큰 클래스 렌더링 확인
+- ✅ CSS 번들 검증: `.bg-accent { background-color: var(--accent); }` 등 13종 토큰 유틸 정상 생성
+- ✅ 코드베이스 전수 검사: `bg-white` / `bg-gray-*` / `text-gray-*` 0건
+- ✅ 사용자 시각 확인 (스크린샷): 따뜻한 회색 배경, 인디고 accent 버튼, surface-1 사이드바 모두 토큰 값 적용 확인
+
+### 원칙 체크
+- ✅ 디자인 진실 출처: `design-reference/styles.css` → `globals.css` (이미 prior 세션 0315a04에서 적용) → `@theme inline`으로 Tailwind 유틸 노출
+- ✅ "토큰만, 구조 변경 없음" 원칙 준수: JSX 트리, props, handlers, aria 속성 모두 그대로
+
+### 사용자 결정 (2026-04-25 세션)
+시각적 임팩트가 큰 추가 작업(TopBar / Lucide 아이콘 / FileRow 밀도 / StatusBar / SortChip / ViewSwitch / 6열 테이블 / RightPanel 탭)은 M13 범위에서 명시적으로 제외하고 후속 마일스톤으로 분리:
+- **M14 Visual Identity** — TopBar + Lucide 아이콘 + FileRow 밀도 + StatusBar
+- **M15 Layout Extras** — SortChip + ViewSwitch + StorageBar + RightPanel 탭
+- **M16 Grid View** — FileTable grid 모드 (M14 ViewSwitch 의존)
+
+→ `docs/01-frontend-design.md §18` 로드맵에 추가됨.
+
+### 다음 세션 컨텍스트
+**M14 진입 시 필요**
+- 의존성 1개 추가 검토: `lucide-react` (아이콘) — 사용자 confirm 필요
+- TopBar는 새 컴포넌트 (`src/components/layout/TopBar.tsx`) — `app/(explorer)/layout.tsx` grid를 `grid-rows-[48px_1fr]`로 재구성
+- FileRow는 emoji → SVG 아이콘 매핑 테이블 도입 (mime → 아이콘)
+- StatusBar는 사이드바 하단 또는 main 하단 고정 — 디자인 결정 필요
+- 테스트 영향: FileRow 테스트가 emoji assertion을 쓰면 수정 필요 (현재 없음 확인 → 영향 0)
+
+**브랜드 다크 모드 토글 UI**
+- M13에서 토큰만 정의됨. 토글 UI는 M14 TopBar에 포함 검토.
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-25 — M5 완료 (업로드: multipart + 충돌 + 실패 분류)
 
 ### 완료
