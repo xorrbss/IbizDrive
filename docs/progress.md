@@ -5,7 +5,26 @@
 
 ---
 
-## 2026-04-24 — M3 완료
+## 2026-04-25 — M3 브라우저 검증 완료
+
+### 검증 결과
+- /files/root — 5개 항목 정상 렌더링 (📁영업팀, 📁인사팀, 📄제안서, 📊예산안, 📝회의록)
+- /files/folder_contracts — 계약서 2개 정상
+- /files/folder_hr — empty state ("이 폴더는 비어 있습니다") 정상
+- 키보드 ↑↓ Enter Esc 모두 정상 동작
+- hydration 에러는 브라우저 확장(testim) 주입 문제, 코드 무관
+
+### 다음 세션 컨텍스트 (M4: 선택 모델 + BulkActionBar)
+- FileRow aria-selected 항상 false → M4에서 useSelectionStore 연결
+- FileRow onClick → M4에서 selectOnly/toggle/range 로직 연결
+- aria-multiselectable={true} → M4에서 grid에 다시 추가
+- 컬럼 헤더 정렬 토글 UI 미구현 (sort/dir은 URL param으로 동작)
+- F2/Delete/Ctrl+A/검색(/) 키보드는 M10으로 미룸
+- 3000~4000 포트 대역은 다른 앱이 점유 중 → dev 서버는 4100+ 사용 권장
+
+---
+
+## 2026-04-24 — M3 구현
 
 ### 완료
 - [M3] FileTable — TanStack Virtual 가상화 (overscan: 10, 10k+ 행 대응)
