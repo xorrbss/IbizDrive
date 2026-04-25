@@ -7,37 +7,233 @@
 
 ## 1. 위협 모델 (Threat Model)
 
-### 1.1 보호 대상 자산
+> 본 절은 v1.0 위협 모델 초안. **백엔드 스택 미정 부분은 "TBD: A 트랙에서 확정"** 으로 표기하며,
+> 백엔드 합류 후 A 트랙(NestJS or Spring Boot 결정)에서 구체 구현 채워넣음.
 
-- [ ] 문서 기밀성 (Confidentiality)
-- [ ] 문서 무결성 (Integrity)
-- [ ] 가용성 (Availability)
-- [ ] 감사 증적 (Audit trail)
+### 1.1 보호 대상 자산 (Assets)
 
-### 1.2 위협 시나리오
+| ID | 자산 | 가치 | 노출 채널 |
+|---|---|---|---|
+| A1 | **문서 본문** (S3 객체) | 회사 영업기밀 / 개인정보 / 계약서 | API 다운로드, presigned URL, S3 버킷 |
+| A2 | **문서 메타데이터** (DB `files`/`folders`) | 디렉터리 구조·작성자·소유자가 곧 조직 활동 노출 | API JSON, 검색 결과 |
+| A3 | **권한 데이터** (DB `permissions`) | 권한 우회 시 전 자산 노출 | 관리자 API, 권한 평가 미들웨어 |
+| A4 | **감사 로그** (DB `audit_log`) | 사후 추적·법적 증거 | DB, 감사 페이지(/admin/audit/logs), CSV export |
+| A5 | **인증 토큰 / 세션** | 탈취 시 어떤 사용자도 사칭 가능 | 브라우저 쿠키, refresh 엔드포인트 |
+| A6 | **암호화 키 (KMS)** | 저장소 객체 일괄 복호화 가능 | KMS API |
+| A7 | **백업 / 스냅샷** | 운영 데이터와 동등 가치 | 백업 버킷, RDS 스냅샷 |
 
-- [ ] 내부자 무단 접근
-- [ ] 외부 공격자 (phishing, credential stuffing)
-- [ ] 권한 상승 (Privilege escalation)
-- [ ] 경로 추측 공격 (Path traversal)
-- [ ] 악성 파일 업로드
-- [ ] 감사 로그 변조
+### 1.2 트러스트 경계 (Trust Boundaries)
+
+```text
+[브라우저] ──TLS──▶ [Edge/CDN] ──▶ [API 게이트웨이] ──▶ [App 서버] ──▶ [DB / S3 / KMS]
+                                            │
+                                            └──▶ [Auth (SSO/IdP)]    [관리자 콘솔]
+```
+
+- **외부 ↔ Edge**: 익명. TLS 종단 + WAF.
+- **Edge ↔ App**: 인증된 사용자(JWT). 권한 평가는 App 내부.
+- **App ↔ DB/S3**: 서비스 IAM 역할. **app 역할은 audit_log INSERT만**, UPDATE/DELETE 권한 없음 (CLAUDE.md §3 원칙 8).
+- **Admin ↔ App**: 관리자 페이지는 동일 App이지만 권한이 `admin` preset 필요. 감사 작업도 별도 audit role 분리(§4).
+
+### 1.3 STRIDE 위협 매트릭스
+
+> 카테고리별 자산·위협·완화책. **"TBD"는 A 트랙에서 채움.**
+
+#### Spoofing (위장)
+
+| 위협 | 자산 | 완화책 | 상태 |
+|---|---|---|---|
+| 세션 토큰 탈취·재사용 | A5 | HTTP-only + Secure + SameSite=Lax 쿠키 / refresh rotation / IP·UA 변동 시 재인증 | 설계 |
+| 비밀번호 추측 / credential stuffing | A5 | 로그인 실패 5회/15분 락아웃 + captcha · MFA 강제 (§2.1) | 설계 |
+| 관리자 사칭 (역할 위조) | A3, A4 | 권한 평가는 항상 서버측 DB 조회, JWT 클레임 단독 신뢰 금지 | 설계 |
+| presigned URL 도용 | A1 | 만료 ≤ 10분, IP/UA bind는 v1.x. 다운로드 자체를 audit (`file.downloaded`) | 설계 |
+
+#### Tampering (변조)
+
+| 위협 | 자산 | 완화책 | 상태 |
+|---|---|---|---|
+| 파일 본문 변조 | A1 | S3 versioning + ETag 검증 + 업로드 완료 트랜잭션(02 §6.1) | 설계 |
+| DB 메타 직접 변조 | A2, A3 | DB 접근 IAM 최소권한 + 변경은 마이그레이션만 / app 역할은 trigger로 무결성 강제 | 설계 |
+| 감사 로그 변조·삭제 | A4 | **DB 레벨 REVOKE UPDATE, DELETE** (02 §2.8, CLAUDE.md §3 원칙 8). admin role과 app role 분리. WORM 버킷 아카이빙(v1.x) | 설계 |
+| Path traversal (`../`) | A1, A2 | storage_key는 UUID(03 §1 원칙 9). 사용자 제공 경로 직접 사용 금지. 정규화 후 화이트리스트 검증 | 설계 |
+| 악성 파일 업로드 (XSS/RCE 페이로드) | A1 | 확장자 화이트리스트 + MIME magic 검증 (§5.3) + 다운로드 시 `Content-Disposition: attachment` + 별도 도메인 미리보기 | 설계 |
+
+#### Repudiation (부인)
+
+| 위협 | 자산 | 완화책 | 상태 |
+|---|---|---|---|
+| 사용자가 자신의 행위 부인 | A4 | 모든 변경 이벤트(`file.*`, `permission.*`, `share.*`) audit_log 기록 + actor·sessionId·IP 보존 | 설계 |
+| 관리자 행위 부인 | A4 | `admin.*` 이벤트 별도 분류, audit role만 조회 가능 | 설계 |
+| 토큰 탈취 후 위장 → "내가 안 했다" | A4, A5 | 세션별 sessionId를 audit에 함께 기록 → 사후 IP/UA로 감식 가능 | 설계 |
+
+#### Information Disclosure (정보 노출)
+
+| 위협 | 자산 | 완화책 | 상태 |
+|---|---|---|---|
+| 권한 없는 폴더 트리 enumeration | A2 | tree API는 effective_permissions 필터링 후 반환 (docs/01 §14) | 설계 |
+| 검색을 통한 메타 누설 | A2 | 검색 결과도 권한 필터 후 반환. 검색어 자체는 audit 안 함(폭증) | 설계 |
+| 직접 S3 객체 URL 추측 | A1 | UUID 키 + 버킷 public access 차단 + presigned only | 설계 |
+| 다운로드 로그 누설 | A4 | audit 조회는 admin/auditor 권한 한정 | 설계 |
+| 백업본을 통한 노출 | A7 | 백업 버킷 별도 IAM, KMS 분리 키, cross-region replication 시 액세스 로그 필수 | 설계 |
+| 에러 메시지 leak (SQL/스택트레이스) | A2, A3 | 프로덕션은 generic 에러 메시지, 상세는 서버 로그에만. 에러 코드는 docs/02 §8 계약 | 설계 |
+
+#### Denial of Service (서비스 거부)
+
+| 위협 | 자산 | 완화책 | 상태 |
+|---|---|---|---|
+| 대용량 업로드로 스토리지 고갈 | A1 | 업로드 사이즈 한도 + 사용자/부서별 quota (docs/04 §13). 청크 업로드 abort cron | 설계 |
+| 검색 N+1 / 깊은 트리 lazy 로딩 | A2 | tree API lazy 로딩(>10k 폴더), 검색 결과 페이지네이션 강제 | 설계 |
+| 인증 엔드포인트 brute force | A5 | 락아웃 + IP rate limit + CAPTCHA. **TBD: A 트랙에서 RateLimiter 구현체 확정** | 부분 설계 |
+| audit_log 폭증 | A4 | `audit_level` (folder별 standard/strict — §4.2) + 파티션 + 콜드 스토리지 | 설계 |
+
+#### Elevation of Privilege (권한 상승)
+
+| 위협 | 자산 | 완화책 | 상태 |
+|---|---|---|---|
+| 프론트 권한 우회 | 전체 | 프론트 권한은 UX용. **모든 파괴적 액션은 백엔드 재검증** (CLAUDE.md §3 원칙 10) | 설계 |
+| 권한 상속 버그 (override 미적용) | A3 | 재귀 CTE + deny 우선 로직 + 단위 테스트 골든셋 (§3.3) | 설계 |
+| 비활성 사용자 토큰 재사용 | A5 | 토큰 만료 + 사용자 비활성 시 즉시 revoke (logout-all 엔드포인트) | 설계 |
+| MFA 미적용 관리자 계정 | A3 | admin/auditor role은 MFA 필수, 미설정 시 로그인 차단 | 설계 |
+| 부서 LTREE 경계 우회 | A3 | LTREE prefix 기반 권한은 `<@` 연산자만 사용, 문자열 startsWith 금지 | 설계 |
+
+### 1.4 잔여 위험 (Out of Scope, v1.x로 이월)
+
+- **클라이언트 측 E2E 암호화**: v1.0은 KMS 기반 서버측 암호화. 사용자측 키는 미지원.
+- **이상 행동 탐지 (UEBA)**: 비정상 다운로드 패턴 탐지는 v1.x.
+- **소버린 클라우드**: 데이터 국외 이전 정책은 §8.2/§8.4 도메인별로 향후 결정.
 
 ---
 
 ## 2. 인증 (Authentication)
 
-### 2.1 기본 인증
+> **백엔드 스택 미정**: 아래 흐름은 토큰 종류·저장 위치·DB 스키마는 결정,
+> 라이브러리(NestJS Passport vs Spring Security)는 **TBD: A 트랙에서 확정**.
 
-- [ ] 방식: SSO (SAML / OIDC) 또는 자체 ID/PW + MFA
-- [ ] 세션 관리: JWT (짧은 만료) + refresh token (HTTP-only cookie)
-- [ ] 로그인 실패 제한: 5회 / 15분, 이후 captcha
-- [ ] 비활성 세션 타임아웃: 30분
+### 2.1 인증 방식 (선택지)
 
-### 2.2 서비스 계정
+- **1순위 (운영)**: SSO (SAML 2.0 또는 OIDC) — 사내 IdP(예: Azure AD, Google Workspace)와 페더레이션
+- **2순위 (백업/관리자)**: 자체 ID/PW + MFA(TOTP). 관리자/감사자는 MFA 필수
+- 두 경로 모두 동일 `users` 테이블을 owner로 매핑 (`users.external_id` 컬럼 — TBD: A 트랙)
 
-- [ ] 관리자 도구용 별도 권한
-- [ ] 감사 로그는 서비스 계정이어도 기록
+### 2.2 토큰 / 세션 모델
+
+| 토큰 | 저장 위치 | 만료 | 회전 | 용도 |
+|---|---|---|---|---|
+| **access token** (JWT) | 메모리 (또는 HttpOnly 쿠키) | 15분 | 짧게 발급, 재발급으로 갱신 | API 호출 인증 |
+| **refresh token** | HttpOnly + Secure + SameSite=Lax 쿠키 | 14일 | 사용 시 1회용 회전 (rotation) | access token 재발급 |
+| **sessionId** (불투명 ID) | DB `sessions` 테이블 + 쿠키 | refresh 동기 | refresh 회전 시 갱신 | audit 기록·강제 로그아웃 |
+
+- **클레임 최소화**: JWT는 `sub`/`role`/`exp`/`iat`/`sessionId` 만. **권한 평가는 DB**.
+- **회전 전략**: refresh 1회용 — 사용 시 invalidate + 새 토큰 발급. 동시 사용 감지 시 전체 세션 무효화 (탈취 의심).
+
+### 2.3 시퀀스 — 로그인 (Login)
+
+```text
+사용자(브라우저)         App 서버               IdP/SSO            DB
+      │                    │                     │                 │
+      │ GET /login         │                     │                 │
+      │───────────────────▶│                     │                 │
+      │ 302 → IdP          │                     │                 │
+      │◀───────────────────│                     │                 │
+      │ SSO 인증 (외부)    │                     │                 │
+      │═══════════════════════════════════════════▶                │
+      │ 302 callback?code  │                     │                 │
+      │◀═══════════════════════════════════════════                │
+      │ GET /auth/callback │                     │                 │
+      │───────────────────▶│                     │                 │
+      │                    │ POST /token (code)  │                 │
+      │                    │────────────────────▶│                 │
+      │                    │ id_token (verified) │                 │
+      │                    │◀────────────────────│                 │
+      │                    │ users.upsert(email) │                 │
+      │                    │─────────────────────────────────────▶ │
+      │                    │ sessions.insert     │                 │
+      │                    │─────────────────────────────────────▶ │
+      │                    │ audit: user.login.success             │
+      │                    │─────────────────────────────────────▶ │
+      │ 200 + Set-Cookie:  │                     │                 │
+      │   refresh, session │                     │                 │
+      │   + JSON access    │                     │                 │
+      │◀───────────────────│                     │                 │
+      │ → /files (탐색기)  │                     │                 │
+```
+
+**실패 분기 (login.failed):**
+- IdP 검증 실패 → `401`, audit `user.login.failed`(reason=idp_reject), 세션 미생성.
+- 자체 ID/PW 5회 실패 → 15분 락. 락 해제 시도도 실패로 카운트.
+
+### 2.4 시퀀스 — API 호출 + Access 만료 (Refresh)
+
+```text
+브라우저                App 서버              DB
+   │ GET /api/files     │                     │
+   │ (Authorization: Bearer access)           │
+   │ + Cookie: refresh, sessionId             │
+   │───────────────────▶│                     │
+   │                    │ verify(access)      │
+   │                    │   → exp 만료 (401)  │
+   │ 401 + WWW-Auth     │                     │
+   │◀───────────────────│                     │
+   │ POST /auth/refresh │                     │
+   │ (Cookie: refresh)  │                     │
+   │───────────────────▶│                     │
+   │                    │ sessions.find(sid)  │
+   │                    │ + refresh 일치 검증 │
+   │                    │────────────────────▶│
+   │                    │ refresh 회전:       │
+   │                    │  invalidate old     │
+   │                    │  insert new token   │
+   │                    │────────────────────▶│
+   │ 200 + Set-Cookie   │                     │
+   │ + new access token │                     │
+   │◀───────────────────│                     │
+   │ Retry /api/files   │                     │
+   │───────────────────▶│ ... (정상 응답)     │
+```
+
+**탈취 의심 분기 (replay detection):**
+- 회전된(이미 사용된) refresh가 다시 들어옴 → **세션 전체 강제 종료** + audit `user.login.failed`(reason=refresh_replay) + 사용자에게 알림.
+
+### 2.5 시퀀스 — 로그아웃 (Logout)
+
+```text
+브라우저              App 서버              DB
+   │ POST /auth/logout │                     │
+   │───────────────────▶                     │
+   │                   │ sessions.delete(sid)│
+   │                   │────────────────────▶│
+   │                   │ refresh blacklist   │
+   │                   │  (남은 ttl 동안)    │
+   │                   │────────────────────▶│
+   │                   │ audit: user.logout  │
+   │                   │────────────────────▶│
+   │ 204 + Clear-Cookie│                     │
+   │◀──────────────────│                     │
+```
+
+- **logout-all** 엔드포인트는 사용자의 모든 sessionId를 일괄 삭제 (다른 기기 로그아웃).
+
+### 2.6 비활성·만료 정책
+
+| 항목 | 값 | 비고 |
+|---|---|---|
+| Access 만료 | 15분 | 짧게 — 노출 시 영향 최소화 |
+| Refresh 만료 | 14일 | 회전 시 만료 시점도 갱신 (롤링) |
+| 비활성 자동 로그아웃 | 30분 (SPA idle) | 클라이언트 타이머 + 다음 요청 시 만료 응답 |
+| MFA 재인증 | 24시간 (관리자) | 민감 작업(권한 변경/Legal Hold) 시 즉시 재인증 |
+
+### 2.7 서비스 계정 (Service Account)
+
+- 배치/통합용 별도 계정. 사람과 동일 `users` 테이블이지만 `kind='service'`로 구분.
+- **세션 토큰 대신 장기 API 키** (저장 시 hash). 키 회전은 관리자 콘솔 — `admin.api_key.rotated` audit.
+- 모든 행위는 사람과 동일하게 audit. service account 우대 없음.
+- **TBD: A 트랙** — 키 회전 주기 정책(90일 권장).
+
+### 2.8 인증 관련 audit 이벤트 (§4.1과 동기화)
+
+`user.login.success` / `user.login.failed` / `user.logout` /
+`user.password.changed` / `user.mfa.enabled` /
+(추가 예정) `user.session.revoked` — TBD: A 트랙에서 §4.1에 추가.
 
 ---
 

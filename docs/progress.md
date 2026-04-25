@@ -5,6 +5,82 @@
 
 ---
 
+## 2026-04-25 — Track H: docs/03 §1·§2 보강 (위협 모델 + 인증 흐름)
+
+### 완료
+- [H] **docs/03 §1 위협 모델** — Assets 표(A1~A7), Trust Boundary 다이어그램, **STRIDE 매트릭스**(Spoofing/Tampering/Repudiation/Info Disclosure/DoS/Elevation 카테고리별 자산·위협·완화책 표), 잔여 위험(out of scope) 명시
+- [H] **docs/03 §2 인증** — 인증 방식(SSO/자체+MFA), 토큰 모델(access/refresh/sessionId 표), **시퀀스 다이어그램 3종**(로그인 SSO 콜백 / Access 만료+Refresh 회전 / 로그아웃), 비활성 정책 표, 서비스 계정 정책, audit 이벤트 동기화 메모
+- [H] 백엔드 스택 미정 부분은 **"TBD: A 트랙에서 확정"** 으로 명시 (RateLimiter 구현체 / NestJS vs Spring / users.external_id / API 키 회전 주기)
+- [H] **검증** — 코드 변경 없음 → typecheck PASS · lint PASS · 190 tests PASS (회귀 없음 확인)
+
+### 핵심 설계 결정
+- **클레임 최소화** — JWT는 sub/role/exp/iat/sessionId만, 권한 평가는 항상 DB. 토큰 단독 신뢰 금지(Spoofing 완화)
+- **Refresh 1회용 회전 + replay 감지** — 이미 사용된 refresh가 다시 들어오면 세션 전체 강제 종료 + audit
+- **app role과 audit role 분리** — DB 레벨 REVOKE UPDATE/DELETE on audit_log (CLAUDE.md §3 원칙 8과 일치)
+- **STRIDE를 표 중심으로 정리** — 자산 ID(A1~A7) 참조 가능, 향후 §3 권한 매트릭스/§4 감사 정책에서 cross-link 용이
+
+### 다음 세션 컨텍스트
+- **A 트랙 (백엔드 합류)** — TBD 항목 채우기: NestJS or Spring 결정 → users.external_id 매핑 / RateLimiter 구현체 / API 키 회전 정책 / sessions 테이블 스키마
+- **§3 권한 매트릭스** — 본 위협 모델의 "프론트 권한 우회"·"권한 상속 버그" 위협을 실제 엔드포인트×권한 매트릭스로 매핑 (현재 §3.1 preset만 존재)
+- **§4 감사 정책 보강** — `user.session.revoked` 이벤트 추가 + audit_level=strict 폴더 정의 가이드
+
+### 블로커
+- 없음 (A 트랙 합류 전까지는 TBD 표기로 지연 가능)
+
+---
+
+## 2026-04-25 — Track G: BulkActionBar "이름 변경" 버튼
+
+### 완료
+- [G] **BulkActionBar 이름 변경 버튼** — 단일 선택 시만 활성, 클릭 시 F2와 동일한 `openRename(id, name)` 호출
+- [G] **단일 항목 name lookup** — `useFilesInFolder(folderId, sort, dir)` 캐시에서 단일 선택 항목의 이름 조회. `useSortParams`로 현재 정렬 키 사용 → FileTable과 동일 캐시 슬롯 hit
+- [G] **disabled UX** — 다중 선택 시 disabled + `title="단일 선택 시 사용 가능"` tooltip + aria-disabled
+- [G] **테스트 4건 신규** — 단일 활성+다이얼로그 오픈 / 다중 비활성+tooltip / cache miss 비활성 / 폴더 단일 활성 (정책)
+- [G] **검증** — typecheck PASS · lint PASS · 190 tests PASS (186→+4)
+
+### 핵심 설계 결정
+- **정책: count===1 활성, 폴더/파일 구분 없음** — RenameDialog와 백엔드(`api.renameFile`/`renameFile.test`)가 양쪽을 모두 지원하므로 BulkActionBar에서 추가로 막을 이유 없음. 추후 권한 모델(03 §3) 확정 시 `usePermission().edit` 게이트 외 추가 분기 필요 여부 재검토
+- **Cache miss 시 안전 비활성** — items=undefined(로딩 중)일 때 `singleItem`이 없으면 disabled로 폴백. 로딩 끝나면 자동으로 활성화
+- **`can.edit` 게이트만 사용** — 권한 없는 사용자에게는 버튼 자체 미노출 (BulkActionBar 다른 액션과 동일 패턴)
+
+### 다음 세션 컨텍스트
+- **권한 매트릭스(03 §3) 확정 후** — `can.edit` semantic 재검토 (folder rename은 `move` 권한? `edit`?)
+- **Rename 외 단일 액션 추가 시** — 같은 패턴(`useFilesInFolder` lookup + count===1 게이트)으로 확장. 다수 단일 액션이면 `useSelectedSingleItem()` 헬퍼 추출 검토
+
+### 블로커
+- 없음
+
+---
+
+## 2026-04-25 — Track F: 다크 모드 토글 (TopBar Sun/Moon)
+
+### 완료
+- [F] **lib/theme.ts** — `THEME_STORAGE_KEY`/`getStoredTheme`/`getSystemTheme`/`getInitialTheme`/`applyTheme`/`persistTheme`. SSR 안전(window/document 가드), localStorage 에러 swallow (11 tests)
+- [F] **hooks/useTheme** — mount effect로 SSR 동기화, toggle/setTheme/theme 반환
+- [F] **components/topbar/ThemeToggle** — `lucide-react` Sun/Moon 아이콘, button + aria-pressed + aria-label, 키보드(Enter/Space) 동작 (5 tests)
+- [F] **components/topbar/TopBar** — main 상단 banner, 우측 정렬에 ThemeToggle
+- [F] **(explorer)/layout** — TopBar 마운트
+- [F] **app/layout** — FOUC 방지 inline script (hydration 전 동기 [data-theme] 적용)
+- [F] **`lucide-react` 추가** — frontend/package.json dependencies
+- [F] **검증** — typecheck PASS · lint PASS · 186 tests PASS (170→+16)
+
+### 핵심 설계 결정
+- **`[data-theme="dark"]` on `<html>`** — globals.css가 이미 :root와 [data-theme="dark"]를 정의해 둠. JS는 attribute 토글만 담당
+- **localStorage 우선 + prefers-color-scheme fallback** — 사용자가 한 번이라도 토글하면 그 선택을 영속, 그 전까지는 시스템 설정 따라감
+- **FOUC 방지 inline script** — Next.js App Router는 RSC 첫 페인트 시점에 React 마운트 전 단계가 있음. `<head>`의 `dangerouslySetInnerHTML` 동기 스크립트로 해결 (theme.ts 로직과 동일 규칙 inline 복제)
+- **role=switch 대신 button + aria-pressed** — eslint jsx-a11y 가 role=switch에 aria-checked 요구. button + aria-pressed가 토글 패턴에서 더 보편 (WAI-ARIA Button pattern)
+- **lucide-react 도입** — 기존 의존성에 아이콘 라이브러리 없었음. 향후 다른 곳에서도 활용 가능
+
+### 다음 세션 컨텍스트
+- **시스템 prefers-color-scheme 변화 감지 미구현** — 사용자가 OS에서 라이트→다크 전환 시 자동 동기화 X. 필요 시 `matchMedia.addEventListener('change', ...)`를 useTheme에 추가
+- **다크 모드 시각 검수 필요** — globals.css의 [data-theme="dark"] 토큰이 실제 컴포넌트(FileTable/Breadcrumb/UploadOverlay 등)에서 의도대로 보이는지 e2e 또는 수동 QA 필요
+- **/admin 페이지에도 TopBar 적용?** — 현재는 (explorer)/layout만. admin/layout.tsx는 별도 헤더 — 통일 시 공용 컴포넌트로 승격 검토
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-25 — Track D: e2e Playwright 도입
 
 ### 완료
