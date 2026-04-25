@@ -1306,7 +1306,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 4 | **선택 모델 + BulkActionBar** | Shift/Ctrl/A/Esc 전부 동작 |
 | 5 | **업로드 (multipart + 충돌 + 실패 분류)** | 동일 이름 충돌 시 ConflictDialog, beforeunload |
 | 6 | **RightPanel (query param)** | `?file=xxx` 딥링크, Esc로 닫기 |
-| 7 | **DnD 이동** (dnd-kit) | Row → FolderNode/Breadcrumb |
+| 7 | **DnD 이동** (dnd-kit, 완료 2026-04-25) | Row → FolderNode/Breadcrumb/FileRow(폴더). BulkActionBar 다이얼로그 키보드 경로. 자기/후손/같은-폴더 차단. pending 시각화 + role="status" 카운트 배지. |
 | 8 | **권한 UI + 조건부 렌더링** | 생산적=비활성, 파괴적=숨김, 403 전역 처리 |
 | 9 | **휴지통 + Undo** | 5초 토스트, `/trash` 페이지 |
 | 10 | **접근성 + 키보드** | 마우스 없이 모든 액션 가능 |

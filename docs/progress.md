@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-04-25 — M7 완료 (DnD 이동: dnd-kit + 다이얼로그 듀얼 경로)
+
+### 완료
+- [M7] **@dnd-kit/core 6.x 설치** — 이동 전용 (업로드 native DnD와 분리, 원칙 #7)
+- [M7] **lib/folderTreeUtils.ts** — `findNode`/`containsNode`/`isSelfOrDescendantOfAny` 순수 유틸 (12 tests)
+- [M7] **api.moveFiles mock** — MOCK_TREE/MOCK_FILES 상태 갱신, self/descendant/target 검증, 3 에러 코드 throw (5 tests)
+- [M7] **에러 코드 추가 (docs/02 §8)** — `MOVE_INTO_SELF` / `MOVE_INTO_DESCENDANT` / `TARGET_NOT_FOUND` (원칙 #12)
+- [M7] **stores/moveUi.ts** — Zustand 다이얼로그 슬라이스 (`isMoveDialogOpen`/`moveIds`/`moveSourceFolderId`) (3 tests)
+- [M7] **components/dnd/types.ts** — `MoveDragData` 타입 + droppable id prefix
+- [M7] **useDragPayload** — selection vs single-row 결정, containsFolderIds 캐시 조회 (4 tests)
+- [M7] **useMoveBulk** — markPending → moveFiles → invalidate(source/target/folderTree/fileDetail) → unmarkPending (3 tests)
+- [M7] **MoveDragOverlay** — `role="status" aria-live="polite"` 카운트 배지 (행 복제 X)
+- [M7] **useFolderDroppable** — useDndContext로 active 읽음, isInvalid/isSameFolder/isOver/isDragging 플래그
+- [M7] **DndProvider** — PointerSensor distance:5px (클릭 vs 드래그 구분), DragEnd 시 self/descendant/같은-폴더 no-op
+- [M7] **explorer/layout.tsx** — DndProvider 마운트 (sidebar+main 모두 droppable 영역)
+- [M7] **FolderTree / Breadcrumb / FileRow(폴더)** — drop 타겟 통합 + 시각화
+- [M7] **FileRow draggable** — useDraggable + dragData 합성, hook 호출 순서 안정화 위해 비폴더 행도 droppable hook 호출 (`__not_a_target__`)
+- [M7] **BulkActionBar 이동 버튼** — 스텁 제거, openMoveDialog(ids, folderId) 호출
+- [M7] **MoveFolderDialog** — radiogroup 폴더 트리 picker, source/self/descendant disabled, Esc/Enter, role="dialog" aria-modal (5 tests)
+- [M7] **ClientFilesPage 마운트** — UploadConflictDialog 옆에 MoveFolderDialog 마운트
+- [M7] **린트 정리** — useDragPayload/useMoveBulk 테스트 wrapper에 displayName 부여
+- [M7] **검증** — typecheck PASS · lint PASS · 108 tests PASS (M5 기준 76 → +32)
+- [M7] **로드맵** — docs/01 §18 M7 행에 완료 마커(2026-04-25) + 핵심 DoD 추가
+
+### 핵심 설계 결정
+- **듀얼 진입**: 마우스(DnD) + 키보드(BulkActionBar 다이얼로그). 두 경로 모두 `useMoveBulk` mutation으로 수렴 (단일 책임)
+- **DragOverlay = 카운트 배지** (`📎 N개 항목 이동 중`). 행 복제 X — 가상화/접근성 충돌 회피
+- **자기/후손 차단 3중 방어**: ① useFolderDroppable.disabled (드롭 자체 불가) ② DndProvider.handleDragEnd 재검증 ③ api.moveFiles에서 throw
+- **낙관적 업데이트 X** (원칙 #3): selection.markPending → mutation 완료 후 invalidate. 실패 시 unmarkPending만.
+- **무효화 매트릭스 (원칙 #6)**: source/target `filesInFolder` (모든 sort/dir 변종, prefix 매치) + `folderTree` + 각 id의 `fileDetail`
+- **`__not_a_target__` 트릭**: FileRow에서 폴더가 아닌 행도 useFolderDroppable을 호출해 React Hook 순서 안정화. 트리에 없는 id이므로 자동으로 드롭 비대상.
+
+### 다음 세션 컨텍스트
+- 백엔드 연결 시 api.moveFiles는 `POST /folders/:id/move` 또는 `POST /files/move-bulk`로 교체 (mock fakeXHR 패턴 유지)
+- DragOverlay 카운트 배지의 i18n 처리는 v1.x 검색 마일스톤(M11)과 함께 처리
+- Task 17 DnDProvider 통합 테스트는 jsdom DnD 한계로 스킵 — Playwright e2e에서 검증 (관련 항목은 M10 접근성/키보드 마일스톤에 함께)
+- M8 권한 UI는 `usePermission()` 훅 이미 BulkActionBar에 사용 중 → 권한 매트릭스 (docs/03 §3) 작성 필요
+
+### 블로커
+- 없음
+
+### 마일스톤 상태 (docs/01 §18)
+- ✅ M1~M7 완료. M8(권한 UI)는 docs/03 §3 작성 후 진입 가능. M13(디자인 토큰) 별도 완료.
+
+---
+
 ## 2026-04-25 — M13 완료 (Claude 디자인 시스템 토큰 적용)
 
 ### 완료
