@@ -2,6 +2,7 @@ import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
+import { normalizedNameForDedup } from './normalize'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -242,6 +243,42 @@ export const api = {
     }
 
     return { movedIds: ids }
+  },
+
+  async renameFile(id: string, newName: string): Promise<FileItem> {
+    await new Promise((r) => setTimeout(r, 200))
+
+    const trimmed = newName.trim()
+    if (trimmed.length === 0) {
+      throw { status: 400, code: 'INVALID_NAME' }
+    }
+
+    const target = MOCK_FILES.find((f) => f.id === id)
+    if (!target) throw { status: 404, code: 'NOT_FOUND' }
+
+    // 같은 부모 내 normalized 중복 검사 (자기 자신 제외)
+    const normalized = normalizedNameForDedup(trimmed)
+    const conflict = MOCK_FILES.find(
+      (f) =>
+        f.id !== id &&
+        f.parentId === target.parentId &&
+        normalizedNameForDedup(f.name) === normalized,
+    )
+    if (conflict) throw { status: 409, code: 'NAME_CONFLICT' }
+
+    target.name = trimmed
+    target.updatedAt = new Date().toISOString()
+
+    // 폴더면 MOCK_TREE의 노드 이름도 갱신
+    if (target.type === 'folder') {
+      const node = findNode(MOCK_TREE, id)
+      if (node) {
+        node.name = trimmed
+        node.slug = trimmed
+      }
+    }
+
+    return target
   },
 
   // M5: FakeXHR 반환. 실제 백엔드 도입 시 내부 구현만 XMLHttpRequest로 교체.
