@@ -14,6 +14,8 @@ import { FileTableError } from './FileTableError'
 import { FileTableForbidden } from './FileTableForbidden'
 import { useNativeFileDrop } from '@/hooks/useNativeFileDrop'
 import { useUpload } from '@/hooks/useUpload'
+import { useDeleteBulk } from '@/hooks/useDeleteBulk'
+import { useRenameUiStore } from '@/stores/renameUi'
 import { UploadOverlay } from '@/components/upload/UploadOverlay'
 import type { FileItem } from '@/types/file'
 
@@ -50,6 +52,8 @@ export function FileTable({ folderId }: Props) {
   const selectRange = useSelectionStore((s) => s.selectRange)
   const selectAll = useSelectionStore((s) => s.selectAll)
   const clear = useSelectionStore((s) => s.clear)
+  const deleteBulk = useDeleteBulk()
+  const openRename = useRenameUiStore((s) => s.open)
 
   // 폴더 변경 시 focus와 selection 모두 리셋 (pendingIds는 유지)
   useEffect(() => {
@@ -127,6 +131,8 @@ export function FileTable({ folderId }: Props) {
     (e: React.KeyboardEvent) => {
       if (!items || items.length === 0) return
 
+      const orderedIds = items.map((it) => it.id)
+
       switch (e.key) {
         case 'ArrowDown': {
           e.preventDefault()
@@ -135,6 +141,10 @@ export function FileTable({ folderId }: Props) {
             while (next < items.length && pendingIds.has(items[next].id)) next++
             if (next >= items.length) return prev
             virtualizer.scrollToIndex(next, { align: 'auto' })
+            // Shift: 범위 확장 (anchor 유지). Ctrl/Meta: focus only.
+            if (e.shiftKey) {
+              selectRange(items[next].id, orderedIds)
+            }
             return next
           })
           break
@@ -146,6 +156,9 @@ export function FileTable({ folderId }: Props) {
             while (next >= 0 && pendingIds.has(items[next].id)) next--
             if (next < 0) return prev
             virtualizer.scrollToIndex(next, { align: 'auto' })
+            if (e.shiftKey) {
+              selectRange(items[next].id, orderedIds)
+            }
             return next
           })
           break
@@ -184,9 +197,62 @@ export function FileTable({ folderId }: Props) {
           scrollRef.current?.focus()
           break
         }
+        case 'F2': {
+          e.preventDefault()
+          // 대상: 단일 선택이면 그것, 아니면 focused row.
+          // 다중 선택이거나 pending이면 무시.
+          let targetId: string | null = null
+          let targetName: string | null = null
+          if (selectedIds.size === 1) {
+            const onlyId = Array.from(selectedIds)[0]
+            const item = items.find((it) => it.id === onlyId)
+            if (item && !pendingIds.has(item.id)) {
+              targetId = item.id
+              targetName = item.name
+            }
+          } else if (selectedIds.size === 0 && focusedIndex >= 0) {
+            const item = items[focusedIndex]
+            if (item && !pendingIds.has(item.id)) {
+              targetId = item.id
+              targetName = item.name
+            }
+          }
+          if (targetId && targetName) openRename(targetId, targetName)
+          break
+        }
+        case 'Delete': {
+          e.preventDefault()
+          // 대상: selection이 있으면 그 ids, 없으면 focused row.
+          let ids: string[] = []
+          if (selectedIds.size > 0) {
+            ids = Array.from(selectedIds).filter((id) => !pendingIds.has(id))
+          } else if (focusedIndex >= 0) {
+            const focused = items[focusedIndex]
+            if (focused && !pendingIds.has(focused.id)) ids = [focused.id]
+          }
+          if (ids.length === 0) return
+          const ok = window.confirm(`${ids.length}개 항목을 휴지통으로 이동할까요?`)
+          if (!ok) return
+          deleteBulk.mutate({ ids, folderIdAtStart: folderId })
+          break
+        }
       }
     },
-    [items, focusedIndex, pendingIds, toggle, selectAll, clear, handleOpen, virtualizer]
+    [
+      items,
+      focusedIndex,
+      pendingIds,
+      selectedIds,
+      toggle,
+      selectAll,
+      selectRange,
+      clear,
+      handleOpen,
+      virtualizer,
+      openRename,
+      deleteBulk,
+      folderId,
+    ],
   )
 
   const status = (error as { status?: number })?.status
