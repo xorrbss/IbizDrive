@@ -250,7 +250,7 @@ export const api = {
 
     const trimmed = newName.trim()
     if (trimmed.length === 0) {
-      throw { status: 400, code: 'INVALID_NAME' }
+      throw { status: 400, code: 'VALIDATION_ERROR' }
     }
 
     const target = MOCK_FILES.find((f) => f.id === id)
@@ -264,7 +264,7 @@ export const api = {
         f.parentId === target.parentId &&
         normalizedNameForDedup(f.name) === normalized,
     )
-    if (conflict) throw { status: 409, code: 'NAME_CONFLICT' }
+    if (conflict) throw { status: 409, code: 'RENAME_CONFLICT' }
 
     target.name = trimmed
     target.updatedAt = new Date().toISOString()

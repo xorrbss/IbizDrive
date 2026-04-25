@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-04-25 — M10 완료 (고급 키보드 + 접근성 마무리)
+
+### 완료
+- [M10] **api.renameFile mock** — VALIDATION_ERROR (빈 이름) / RENAME_CONFLICT (같은 부모 정규화 중복) / NOT_FOUND, 폴더 시 MOCK_TREE도 갱신 (6 tests)
+- [M10] **에러 코드 정합성** — docs/02 §8의 기존 코드 `RENAME_CONFLICT`(409) / `VALIDATION_ERROR`(400) 그대로 사용 (원칙 #12). 신규 코드 추가 없이 계약 유지
+- [M10] **stores/renameUi.ts** — `{ isOpen, targetId, targetName, error }` + open/close/setError (3 tests)
+- [M10] **useRenameFile** — markPending → renameFile → invalidate(filesInFolder/fileDetail/+folderTree+folder if folder) → unmarkPending + close, 실패 시 setError (5 tests)
+- [M10] **RenameDialog** — role=dialog aria-modal, input focus + select-all, 이전 focus 복귀, role=alert 에러, 동일/빈 이름 disabled (7 tests)
+- [M10] **useGlobalShortcuts** — `/` 키 → window CustomEvent 'app:focus-search' (input/textarea/contenteditable/modifier 시 무시, JSDOM contentEditable 폴백 포함) (7 tests)
+- [M10] **FileTable handleKeyDown 확장** — Shift+↑↓ (anchor 유지 selectRange), Ctrl/Meta+↑↓ (focus only), F2 (단일 선택 또는 focus → openRename), Delete (selection or focus → confirm → useDeleteBulk)
+- [M10] **ClientFilesPage 마운트** — RenameDialog + useGlobalShortcuts() 호출
+- [M10] **검증** — typecheck PASS · lint PASS · 136 tests PASS (M7 기준 108 → +28 신규)
+- [M10] **로드맵** — docs/01 §18 M10 행에 완료 마커(2026-04-25)
+
+### 핵심 설계 결정
+- **F2 다이얼로그 (인라인 X)** — 가상화 컨테이너에서 인라인 편집은 row 리렌더링으로 입력 휘발 위험. 다이얼로그는 MoveFolderDialog 패턴 그대로 재사용
+- **Shift+↑↓ anchor 안정성** — selectRange가 lastClickedId를 변경하지 않으므로 진동 없음. M4 anchor 폴백(null/pending/폴더 변경) 그대로 동작
+- **Ctrl/Meta+↑↓ alias** — 현재 ↑↓가 이미 focus-only이므로 modifier는 §12.1 키맵 명세 만족용 별칭
+- **Delete native confirm** — 브라우저 내장 포커스 트랩/스크린리더 지원, MVP zero-cost. 디자인 일관성 필요해지면 ConfirmDialog로 교체 (M14/M15)
+- **`/` 트리거는 lazy 이벤트** — 검색 입력 컴포넌트(M11/M14)와 디커플. listener 없으면 no-op
+- **원칙 #6 (서버가 진실)** — RenameDialog는 빈 입력 외 client validation X. 충돌은 서버 RENAME_CONFLICT → setError로 다이얼로그 유지
+- **에러 코드 계약 준수** — spec 작성 시 `NAME_CONFLICT`/`INVALID_NAME` 가정했으나 docs/02 §8에 이미 `RENAME_CONFLICT`/`VALIDATION_ERROR`가 동일 의미로 존재 → 코드를 docs에 정합 (원칙 #12)
+
+### 다음 세션 컨텍스트
+- 검색 입력 컴포넌트(M11) 마운트 시 `useEffect`에서 `window.addEventListener(FOCUS_SEARCH_EVENT, onFocus)` 등록 잊지 말 것 (`useGlobalShortcuts`가 이미 디스패치 중)
+- ConfirmDialog 디자인 시스템 컴포넌트화는 M14 Visual Identity와 함께 검토 (현재 native confirm)
+- 다중 선택 + F2 일괄 이름 변경(prefix 등)은 v1.x 범위
+- 백엔드 연결 시 `api.renameFile`는 `PATCH /files/:id` 또는 `POST /folders/:id/rename`으로 교체
+- BulkActionBar에 "이름 변경" 버튼 추가는 M14 Visual Identity와 함께 (단일 선택 시만 활성화)
+
+### 블로커
+- 없음
+
+### 마일스톤 상태 (docs/01 §18)
+- ✅ M1~M7, M10, M13 완료. M8 (권한 UI)는 docs/03 §3 작성 후 진입 가능. M11 검색은 M10의 `app:focus-search` 트리거 활용 가능.
+
+---
+
 ## 2026-04-25 — M7 완료 (DnD 이동: dnd-kit + 다이얼로그 듀얼 경로)
 
 ### 완료

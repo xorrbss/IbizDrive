@@ -116,10 +116,10 @@ describe('useRenameFile', () => {
     expect(calls.some((arg) => JSON.stringify(arg).includes('"tree"'))).toBe(true)
   })
 
-  it('NAME_CONFLICT 실패 → setError + 다이얼로그 유지 + unmarkPending', async () => {
+  it('RENAME_CONFLICT 실패 → setError + 다이얼로그 유지 + unmarkPending', async () => {
     ;(api.renameFile as ReturnType<typeof vi.fn>).mockRejectedValue({
       status: 409,
-      code: 'NAME_CONFLICT',
+      code: 'RENAME_CONFLICT',
     })
     const qc = new QueryClient()
     const { result } = renderHook(() => useRenameFile(), {
@@ -143,10 +143,10 @@ describe('useRenameFile', () => {
     expect(useSelectionStore.getState().pendingIds.size).toBe(0)
   })
 
-  it('INVALID_NAME 실패 → 다른 에러 메시지', async () => {
+  it('VALIDATION_ERROR 실패 → 다른 에러 메시지', async () => {
     ;(api.renameFile as ReturnType<typeof vi.fn>).mockRejectedValue({
       status: 400,
-      code: 'INVALID_NAME',
+      code: 'VALIDATION_ERROR',
     })
     const qc = new QueryClient()
     const { result } = renderHook(() => useRenameFile(), {

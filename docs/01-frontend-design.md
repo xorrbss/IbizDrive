@@ -1309,7 +1309,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 7 | **DnD 이동** (dnd-kit, 완료 2026-04-25) | Row → FolderNode/Breadcrumb/FileRow(폴더). BulkActionBar 다이얼로그 키보드 경로. 자기/후손/같은-폴더 차단. pending 시각화 + role="status" 카운트 배지. |
 | 8 | **권한 UI + 조건부 렌더링** | 생산적=비활성, 파괴적=숨김, 403 전역 처리 |
 | 9 | **휴지통 + Undo** | 5초 토스트, `/trash` 페이지 |
-| 10 | **접근성 + 키보드** | 마우스 없이 모든 액션 가능 |
+| 10 | **접근성 + 키보드** (완료 2026-04-25) | Shift/Ctrl+화살표, F2 rename(다이얼로그), Delete 휴지통, `/` 전역 트리거. RenameDialog focus trap + role=alert 에러. |
 | 11 | **검색** (debounce, abort, normalize 일치) | 2자 이상, 타이핑 중 placeholderData |
 | 12 | **감사 로그 UI** (도메인에 따라) | `/admin/audit-logs` 필터/export |
 | 13 | **디자인 토큰 적용** (M13, 완료 2026-04-25) | `:root` 토큰 + `@theme inline` + 모든 className 토큰화. 기준: `design-reference/IbizDrive.html` |

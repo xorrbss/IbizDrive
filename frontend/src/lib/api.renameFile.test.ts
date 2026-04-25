@@ -24,20 +24,20 @@ describe('api.renameFile', () => {
     expect(hr?.name).toBe('인사관리팀')
   })
 
-  it('빈 이름 → INVALID_NAME', async () => {
+  it('빈 이름 → VALIDATION_ERROR', async () => {
     await expect(api.renameFile('file_budget', '   ')).rejects.toMatchObject({
       status: 400,
-      code: 'INVALID_NAME',
+      code: 'VALIDATION_ERROR',
     })
   })
 
-  it('같은 부모 내 중복 이름 → NAME_CONFLICT', async () => {
+  it('같은 부모 내 중복 이름 → RENAME_CONFLICT', async () => {
     // file_minutes(parent=root)을 file_budget의 이름으로 변경 시도
     await expect(
       api.renameFile('file_minutes', '예산안.xlsx'),
     ).rejects.toMatchObject({
       status: 409,
-      code: 'NAME_CONFLICT',
+      code: 'RENAME_CONFLICT',
     })
   })
 

@@ -14,8 +14,8 @@ type Vars = {
 
 function errorMessage(err: unknown): string {
   const e = err as { code?: string }
-  if (e?.code === 'NAME_CONFLICT') return '같은 이름의 파일/폴더가 있습니다'
-  if (e?.code === 'INVALID_NAME') return '이름은 비어있을 수 없습니다'
+  if (e?.code === 'RENAME_CONFLICT') return '같은 이름의 파일/폴더가 있습니다'
+  if (e?.code === 'VALIDATION_ERROR') return '이름은 비어있을 수 없습니다'
   return '이름 변경에 실패했습니다'
 }
 
