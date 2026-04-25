@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-04-25 — M16 완료 (Grid View: FileTable view 분기 + FileGrid + FileCard)
+
+### 완료
+- [M16] **components/files/FileCard.tsx** — 4:3 thumbnail(getFileIcon, size 44, accent/danger/sheet 등 색상 그대로) + meta(name truncate + date). 상태별 border/ring 분기. role=gridcell + aria-selected/disabled/label
+- [M16] **components/files/FileGrid.tsx + test** — CSS `auto-fill, minmax(172px, 1fr)`, gap 12px. role=grid + aria-label/multiselectable. handleKeyDown은 FileTable에서 prop으로 위임 — list와 동일한 키보드 머신(↑↓/Space/Ctrl+A/Enter/Esc/F2/Delete) 그대로 (4 tests)
+- [M16] **components/files/FileTable.tsx** — `useViewParam()` 추가, body 분기에 `view === 'grid'` → `<FileGrid />`. 모든 hook(`useFilesInFolder`, selection, openFile, deleteBulk, ...)과 handlers는 그대로 공유
+- [M16] **검증** — typecheck PASS · lint PASS · **196 tests PASS** (M15 기준 192 → +4)
+- [M16] **로드맵** — docs/01 §18 M16 행 완료 마커(2026-04-25)
+
+### 핵심 설계 결정
+- **list와 grid가 데이터/handler 100% 공유** — FileTable이 모든 hook 호출 + handler 정의를 소유. FileGrid는 visual-only 컴포넌트로 props 받아 렌더만. 분기는 body 부분에서만 발생 → 중복 0건
+- **가상화는 list 한정 — grid는 단순 DOM** — 폴더당 100개 미만 mock 데이터 가정 MVP. 1k+ 시 IntersectionObserver/react-virtual grid 모드는 v1.x. 문서화로 가시화
+- **2D arrow nav 미구현** — viewport 폭에 따라 컬럼 수가 동적이라 ResizeObserver + 행렬 좌표 추적 필요. M16 MVP는 linear ↑↓ (list와 동일). 사용자 학습 비용 낮음
+- **DnD draggable 미적용** — FileCard에 `useDraggable` 호출 안 함. grid 시 이동은 BulkActionBar 다이얼로그 또는 list로 전환 후 DnD. M7 정책과 충돌 없음 (DnD context는 list만)
+- **검색 결과는 grid 미지원** — SearchResults는 list 고정. 부모 폴더명("위치") 컬럼이 grid에서 의미 약함. 검색 시 ViewSwitch 비활성화는 v1.x 검토
+- **focused 시각적 강조** — `ring-2 ring-offset-1 ring-accent`로 키보드 포커스 명시 (list의 box-shadow와 다름 — card 경계에 적합)
+
+### 다음 세션 컨텍스트
+**M8 (권한 UI)**
+- docs/03 §3 권한 매트릭스 미정 — 백엔드 미들웨어 설계 의존
+- 일단 mock으로 진행 가능: `useEffectivePermissions()` (현재 qk.effectivePermissions 키만 존재) — 폴더당 권한 enum 반환
+- BulkActionBar의 파괴적 액션(이동/삭제) 권한별 비활성/숨김
+- RightPanel 권한 탭 본체 (M15 placeholder 교체)
+- 403 전역 처리는 M3에서 완료
+
+**M9 (휴지통 + Undo)**
+- Delete 키 → 5초 Undo 토스트 (M10에서 키바인딩만 등록, 현재 window.confirm으로 폴백)
+- `/trash` 라우트 + 휴지통 전용 list/grid variant
+- 영구 삭제 / 복원 — 백엔드 트랜잭션 의존 (docs/02 §6.5)
+
+---
+
 ## 2026-04-25 — M15 완료 (Layout Extras: SortChip + ViewSwitch + StorageBar + RightPanel 탭)
 
 ### 완료

@@ -5,9 +5,11 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRouter } from 'next/navigation'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
+import { useViewParam } from '@/hooks/useViewParam'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useSelectionStore } from '@/stores/selection'
 import { FileRow } from './FileRow'
+import { FileGrid } from './FileGrid'
 import { FileTableSkeleton } from './FileTableSkeleton'
 import { FileTableEmpty } from './FileTableEmpty'
 import { FileTableError } from './FileTableError'
@@ -30,6 +32,7 @@ type Props = {
 
 export function FileTable({ folderId }: Props) {
   const { sort, dir } = useSortParams()
+  const { view } = useViewParam()
   const { data: items, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -262,6 +265,18 @@ export function FileTable({ folderId }: Props) {
   else if (status === 403) body = <FileTableForbidden />
   else if (error) body = <FileTableError onRetry={refetch} />
   else if (!items || items.length === 0) body = <FileTableEmpty />
+  else if (view === 'grid') body = (
+    <FileGrid
+      items={items}
+      focusedIndex={focusedIndex}
+      selectedIds={selectedIds}
+      pendingIds={pendingIds}
+      onClick={handleRowClick}
+      onDoubleClick={handleOpen}
+      onKeyDown={handleKeyDown}
+      scrollRef={scrollRef}
+    />
+  )
   else body = (
     <div
       role="grid"
