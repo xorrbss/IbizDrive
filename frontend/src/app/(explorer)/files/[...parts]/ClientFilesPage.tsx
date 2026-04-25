@@ -12,7 +12,9 @@ import { FolderToolbar } from '@/components/upload/FolderToolbar'
 import { UploadQueueDock } from '@/components/upload/UploadQueueDock'
 import { UploadConflictDialog } from '@/components/upload/UploadConflictDialog'
 import { MoveFolderDialog } from '@/components/files/MoveFolderDialog'
+import { RenameDialog } from '@/components/files/RenameDialog'
 import { useUploadBeforeUnload } from '@/hooks/useUploadBeforeUnload'
+import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
 
 export function ClientFilesPage({ parts }: { parts: string[] }) {
   const router = useRouter()
@@ -20,6 +22,7 @@ export function ClientFilesPage({ parts }: { parts: string[] }) {
 
   useCloseFileOnFolderChange(folder?.id)
   useUploadBeforeUnload()
+  useGlobalShortcuts()
 
   useEffect(() => {
     if (!folder) return
@@ -56,6 +59,7 @@ export function ClientFilesPage({ parts }: { parts: string[] }) {
       <UploadQueueDock />
       <UploadConflictDialog />
       <MoveFolderDialog />
+      <RenameDialog />
     </div>
   )
 }
