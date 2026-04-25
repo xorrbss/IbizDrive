@@ -370,4 +370,9 @@ export const api = {
     xhr.send(form)
     return xhr
   },
+
+  async getStorageQuota(): Promise<{ usedBytes: number; totalBytes: number }> {
+    await new Promise((r) => setTimeout(r, 50))
+    return { usedBytes: 65 * 1024 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 * 1024 }
+  },
 }

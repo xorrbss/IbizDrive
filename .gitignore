@@ -1,5 +1,6 @@
 .tmp/
 .claude/
+.vite/
 node_modules/
 *.tsbuildinfo
 .next/

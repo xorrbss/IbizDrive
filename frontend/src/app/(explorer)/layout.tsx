@@ -1,6 +1,7 @@
 import { FolderTree } from '@/components/folders/FolderTree'
 import { DndProvider } from '@/components/dnd/DndProvider'
 import { TopBar } from '@/components/layout/TopBar'
+import { StorageBar } from '@/components/layout/StorageBar'
 
 export default function ExplorerLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -20,6 +21,7 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
               <span className="text-[14px] font-semibold tracking-tight text-fg">IbizDrive</span>
             </div>
             <FolderTree />
+            <StorageBar />
           </aside>
           <main className="min-w-0 flex flex-col bg-bg overflow-hidden">
             {children}

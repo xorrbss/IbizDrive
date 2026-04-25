@@ -109,4 +109,39 @@ describe('RightPanel', () => {
       expect(screen.getByRole('alert')).toBeTruthy()
     })
   })
+
+  it('탭바 mount 시 details 탭 active', () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc', name: 'x', type: 'file', mimeType: 'application/pdf',
+      size: 1, updatedAt: '2026-04-20T09:00:00Z', updatedBy: 'u', parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    const detailsTab = screen.getByRole('tab', { name: '세부정보' })
+    expect(detailsTab.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('탭 클릭 → tabpanel 변경', () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc', name: 'x', type: 'file', mimeType: 'application/pdf',
+      size: 1, updatedAt: '2026-04-20T09:00:00Z', updatedBy: 'u', parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '버전' }))
+    expect(screen.getByRole('tab', { name: '버전' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText('버전 기록 — 준비 중입니다')).toBeTruthy()
+  })
+
+  it('ArrowRight 키 → 다음 탭으로 이동', () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc', name: 'x', type: 'file', mimeType: 'application/pdf',
+      size: 1, updatedAt: '2026-04-20T09:00:00Z', updatedBy: 'u', parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    const tablist = screen.getByRole('tablist')
+    fireEvent.keyDown(tablist, { key: 'ArrowRight' })
+    expect(screen.getByRole('tab', { name: '버전' }).getAttribute('aria-selected')).toBe('true')
+  })
 })

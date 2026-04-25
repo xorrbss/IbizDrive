@@ -16,4 +16,6 @@ export const qk = {
 
   search: (q: string, filters: SearchFilters) =>
     [...qk.all, 'search', q, filters] as const,
+
+  storageQuota: () => [...qk.all, 'storage', 'quota'] as const,
 } as const

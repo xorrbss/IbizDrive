@@ -1,8 +1,16 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useFileDetail } from '@/hooks/useFileDetail'
 import type { FileItem } from '@/types/file'
+
+type TabKey = 'details' | 'versions' | 'activity' | 'permissions'
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'details', label: '세부정보' },
+  { key: 'versions', label: '버전' },
+  { key: 'activity', label: '활동' },
+  { key: 'permissions', label: '권한' },
+]
 
 /**
  * RightPanel: ?file=<id> 에 대응하는 파일 상세 패널.
@@ -16,6 +24,8 @@ import type { FileItem } from '@/types/file'
 export function RightPanel() {
   const { fileId, close } = useOpenFile()
   const { data, isLoading, error } = useFileDetail(fileId)
+  const [tab, setTab] = useState<TabKey>('details')
+  const tablistRef = useRef<HTMLDivElement>(null)
 
   // Esc 전역 핸들러 — 포커스 위치와 무관하게 패널 닫기
   useEffect(() => {
@@ -29,6 +39,29 @@ export function RightPanel() {
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
   }, [fileId, close])
+
+  // 패널 열릴 때 details로 리셋 (file 바뀔 때마다)
+  useEffect(() => {
+    setTab('details')
+  }, [fileId])
+
+  const handleTabKey = (e: React.KeyboardEvent) => {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight' && e.key !== 'Home' && e.key !== 'End') return
+    e.preventDefault()
+    const idx = TABS.findIndex((t) => t.key === tab)
+    let next = idx
+    if (e.key === 'ArrowLeft') next = (idx - 1 + TABS.length) % TABS.length
+    else if (e.key === 'ArrowRight') next = (idx + 1) % TABS.length
+    else if (e.key === 'Home') next = 0
+    else if (e.key === 'End') next = TABS.length - 1
+    setTab(TABS[next].key)
+    requestAnimationFrame(() => {
+      const btn = tablistRef.current?.querySelector(
+        `[data-tab-key="${TABS[next].key}"]`,
+      ) as HTMLElement | null
+      btn?.focus()
+    })
+  }
 
   if (!fileId) return null
 
@@ -52,12 +85,64 @@ export function RightPanel() {
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3.5 py-3 text-[12px]">
-        {isLoading && <PanelSkeleton />}
-        {!isLoading && error && <PanelError />}
-        {!isLoading && !error && data && <PanelBody file={data} />}
+      <div
+        ref={tablistRef}
+        role="tablist"
+        aria-label="파일 정보 탭"
+        onKeyDown={handleTabKey}
+        className="flex border-b border-border px-1.5"
+      >
+        {TABS.map((t) => {
+          const active = tab === t.key
+          return (
+            <button
+              key={t.key}
+              type="button"
+              role="tab"
+              data-tab-key={t.key}
+              id={`tab-${t.key}`}
+              aria-selected={active}
+              aria-controls={`tabpanel-${t.key}`}
+              tabIndex={active ? 0 : -1}
+              onClick={() => setTab(t.key)}
+              className={`px-2.5 py-1.5 text-[12px] border-b-2 -mb-px transition-colors ${
+                active
+                  ? 'border-accent text-fg font-medium'
+                  : 'border-transparent text-fg-muted hover:text-fg'
+              }`}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <div
+        role="tabpanel"
+        id={`tabpanel-${tab}`}
+        aria-labelledby={`tab-${tab}`}
+        className="flex-1 overflow-y-auto px-3.5 py-3 text-[12px]"
+      >
+        {tab === 'details' && (
+          <>
+            {isLoading && <PanelSkeleton />}
+            {!isLoading && error && <PanelError />}
+            {!isLoading && !error && data && <PanelBody file={data} />}
+          </>
+        )}
+        {tab === 'versions' && <PanelStub label="버전 기록" />}
+        {tab === 'activity' && <PanelStub label="활동 로그" />}
+        {tab === 'permissions' && <PanelStub label="권한 설정" />}
       </div>
     </aside>
+  )
+}
+
+function PanelStub({ label }: { label: string }) {
+  return (
+    <div className="text-fg-subtle text-[12px] py-4">
+      {label} — 준비 중입니다
+    </div>
   )
 }
 

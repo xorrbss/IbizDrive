@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-04-25 — M15 완료 (Layout Extras: SortChip + ViewSwitch + StorageBar + RightPanel 탭)
+
+### 완료
+- [M15] **hooks/useSetSortParams.ts** — URL `?sort=&dir=` setter, 다른 query params 보존
+- [M15] **components/files/SortChip.tsx + test** — 네이티브 `<select>`(이름/수정일/크기) + ArrowUp/Down 방향 버튼. 네이티브 select로 키보드/ARIA 무료 (3 tests)
+- [M15] **hooks/useViewParam.ts + test** — `?view=list|grid` 양방향. setView('list')는 ?view 제거, setView('grid')는 ?view=grid (3 tests). M16 사전 인프라
+- [M15] **components/files/ViewSwitch.tsx + test** — segmented 토글 (List/LayoutGrid icons, aria-pressed). active 시 surface-1 + shadow-sm (3 tests)
+- [M15] **FolderToolbar** — 우측에 SortChip + ViewSwitch 마운트. flex-1 spacer로 양쪽 분리
+- [M15] **lib/api.ts** — `getStorageQuota()` mock (65 GB / 100 GB, 50ms latency)
+- [M15] **lib/queryKeys.ts** — `qk.storageQuota()`
+- [M15] **hooks/useStorageQuota.ts** — staleTime 5분
+- [M15] **components/layout/StorageBar.tsx + test** — `mt-auto`로 사이드바 하단 push. 사용량 % + progressbar(role/aria-valuenow) + GB/GB + 업그레이드 버튼. 90/100% 임계 시 warn/danger 색 자동 분기 (3 tests)
+- [M15] **(explorer)/layout.tsx** — 사이드바 `<FolderTree/>` 다음에 `<StorageBar/>` 마운트
+- [M15] **components/files/RightPanel.tsx + test** — 헤더-바디 사이 tablist 추가 (세부정보/버전/활동/권한). role=tab/tablist/tabpanel + aria-selected/controls/labelledby. ←→/Home/End 키보드 이동 + roving tabindex. fileId 변경 시 details로 리셋 (+3 tests)
+- [M15] **검증** — typecheck PASS · lint PASS · **192 tests PASS** (M11 기준 177 → +15)
+- [M15] **로드맵** — docs/01 §18 M15 행 완료 마커(2026-04-25)
+
+### 핵심 설계 결정
+- **SortChip은 네이티브 `<select>`** — Radix dropdown은 의존성/번들 비용. 네이티브가 키보드/ARIA/모바일 모두 무료. 디자인은 chip 컨테이너로 감쌈
+- **ViewSwitch는 M15에서 URL만, Grid 본체는 M16** — `?view=grid` 진입은 가능하지만 FileTable/SearchResults는 list 그대로 렌더. 분기는 M16의 책임. URL 인프라 선행으로 M16 진입 시 변경 범위 축소
+- **StorageBar는 mock 데이터** — 실제 quota API는 백엔드 의존(docs/02 §5.x 미정). 65/100 GB 고정값. 임계 색상(90/100%)은 토큰(`bg-warn`, `bg-danger`)으로 자동 적용
+- **RightPanel 탭 = local state** — `?file_tab=` URL 동기화 안 함. 패널을 닫고 다시 열면 details로 리셋되는 게 자연스러운 UX (`useEffect [fileId] → setTab('details')`)
+- **버전/활동/권한 탭은 placeholder** — 각각 M5(업로드 본체)/M11/M8(권한 매트릭스 미정) 의존. 탭 인프라만 선행하여 후속 마일스톤에서 placeholder만 교체
+- **flex-1 spacer로 toolbar 양쪽 분리** — 좌측 업로드 버튼, 우측 SortChip+ViewSwitch. 디자인 ref와 동일
+
+### 다음 세션 컨텍스트
+**M16 (Grid View)**
+- M15 ViewSwitch URL 인프라 활용 — `useViewParam()`으로 `view === 'grid'` 분기
+- FileTable에 grid 모드 추가 — 가상화는 list 전용. grid는 CSS grid + IntersectionObserver 검토
+- design-reference `GridView`/`GridThumb` 패턴
+- 썸네일 mock — mimeType별 색상 placeholder 또는 큰 Lucide 아이콘 카드
+
+**M8 (권한 UI)**
+- docs/03 §3 권한 매트릭스 미정 — 백엔드 미들웨어 설계 의존
+- 일단 프론트는 mock permissions(`useEffectivePermissions`?)로 진행 가능. 403 전역 처리는 M3에서 완료
+- RightPanel 권한 탭 본체 + BulkActionBar의 파괴적 액션 숨김 분기
+
+---
+
 ## 2026-04-25 — M11 완료 (검색: URL `?q=` canonical + debounce + abort + 결과 그리드)
 
 ### 완료
