@@ -856,59 +856,162 @@ export function usePermission(nodeId?: string) {
 
 ---
 
-## 15. 실시간 동기화 (MVP: 폴링, v1.x: SSE)
+## 15. 실시간 동기화 (SSE)
 
-### 15.1 MVP — 폴링
+> ADR #14에 의해 SSE를 MVP부터 채택 (ADR #8 superseded). Spring `SseEmitter` (MVC) + `EventSource` 클라이언트.
+> 백엔드 endpoint·이벤트 정의: `docs/02-backend-data-model.md §7.13`. 본 절은 **프론트 통합** 관점.
 
-```ts
-// app/providers.tsx
-new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 30_000,
-      refetchInterval: 30_000,       // 30초 폴링
-      refetchOnWindowFocus: true,    // 탭 포커스 시 재조회
-      refetchOnReconnect: true,
-    }
-  }
-})
-```
+### 15.1 개요
 
-### 15.2 v1.x — SSE
+- 단일 `EventSource` 연결로 폴더 단위 구독 (`?folderIds=fld_a,fld_b`).
+- 서버 push → 클라가 `queryKeys`(§6.1)에 매핑하여 `invalidateQueries` 호출.
+- **낙관적 setQueriesData는 사용 안 함** — race 위험 회피, 단일 무효화 경로 유지.
+- 연결 라이프사이클: 폴더 진입 시 open, 폴더 변경 시 close+reopen, 페이지 leave 시 close.
+
+### 15.2 이벤트 타입 (`SseEventType` enum)
+
+`src/types/sse.ts` 신규 파일 — 백엔드 `docs/02 §7.13.1`과 1:1 미러. 변경 시 양쪽 동시 갱신 (CLAUDE.md §4 계약 파일).
 
 ```ts
-export function useRealtimeSync(folderId: string) {
-  const qc = useQueryClient()
-  useEffect(() => {
-    const es = new EventSource(`/api/events?scope=folder:${folderId}`)
-    es.addEventListener('file.created', (e) => {
-      const file = JSON.parse(e.data)
-      qc.setQueriesData<FileListPage>(
-        { queryKey: qk.filesInFolder(folderId, /*...*/), exact: false },
-        (old) => old && { ...old, items: [file, ...old.items.filter((f) => f.id !== file.id)] }
-      )
-    })
-    // file.updated / file.moved / file.deleted / version.created / permission.changed
-    return () => es.close()
-  }, [folderId, qc])
+export type SseEventType =
+  // 파일 — payload: { fileId, name?, folderId, ... }
+  | 'FILE_CREATED'           // 업로드 완료, finalize 후
+  | 'FILE_RENAMED'           // PATCH /api/files/:id { name }
+  | 'FILE_MOVED'             // POST /api/files/:id/move — sourceFolderId + targetFolderId 양쪽 fan-out
+  | 'FILE_VERSION_CREATED'   // POST /api/files/:id/versions
+  | 'FILE_DELETED'           // soft delete (휴지통 이동)
+  | 'FILE_RESTORED'          // POST /api/files/:id/restore
+  | 'FILE_PURGED'            // 영구 삭제 (관리자 trash purge)
+  // 폴더 — payload: { folderId, name?, parentFolderId, ... }
+  | 'FOLDER_CREATED'
+  | 'FOLDER_RENAMED'
+  | 'FOLDER_MOVED'           // sourceParent + targetParent 양쪽 fan-out
+  | 'FOLDER_DELETED'         // soft delete
+  | 'FOLDER_RESTORED'
+  | 'FOLDER_PURGED'
+  // 권한 — payload: { resource, resourceId, subject?, permissionId? }
+  | 'PERMISSION_GRANTED'     // POST /api/:resource/:id/permissions
+  | 'PERMISSION_REVOKED'     // DELETE /api/permissions/:permissionId
+  | 'PERMISSION_CHANGED'     // 기존 권한의 preset/expiry 변경
+
+export interface SseEnvelope<T = unknown> {
+  id: string                    // evt_<uuid>
+  type: SseEventType
+  occurredAt: string            // ISO8601
+  actor: { userId: string; displayName: string }
+  scope: { folderIds: string[] }
+  payload: T
 }
 ```
 
-### 15.3 MVP 단계 결정
+### 15.3 useRealtimeSync 훅
 
+```ts
+// src/hooks/useRealtimeSync.ts
+import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
+import { qk } from '@/lib/queryKeys'
+import type { SseEnvelope, SseEventType } from '@/types/sse'
+
+const FILE_EVENTS: SseEventType[] = [
+  'FILE_CREATED', 'FILE_RENAMED', 'FILE_MOVED', 'FILE_VERSION_CREATED',
+  'FILE_DELETED', 'FILE_RESTORED', 'FILE_PURGED',
+]
+const FOLDER_EVENTS: SseEventType[] = [
+  'FOLDER_CREATED', 'FOLDER_RENAMED', 'FOLDER_MOVED',
+  'FOLDER_DELETED', 'FOLDER_RESTORED', 'FOLDER_PURGED',
+]
+const PERMISSION_EVENTS: SseEventType[] = [
+  'PERMISSION_GRANTED', 'PERMISSION_REVOKED', 'PERMISSION_CHANGED',
+]
+
+export function useRealtimeSync(folderIds: string[]) {
+  const qc = useQueryClient()
+
+  useEffect(() => {
+    if (folderIds.length === 0) return
+    const url = `${process.env.NEXT_PUBLIC_API_BASE_URL}/api/sse/files?folderIds=${folderIds.join(',')}`
+    const es = new EventSource(url, { withCredentials: true })
+
+    const onMessage = (e: MessageEvent) => {
+      const env = JSON.parse(e.data) as SseEnvelope
+      handleEvent(qc, env)
+    }
+    // 모든 이벤트 타입에 동일 핸들러 등록 (서버는 event: <TYPE> 송신)
+    ;[...FILE_EVENTS, ...FOLDER_EVENTS, ...PERMISSION_EVENTS].forEach((t) =>
+      es.addEventListener(t, onMessage),
+    )
+
+    es.onerror = () => {
+      // EventSource는 자동 재연결 (브라우저 기본 동작) — 우리는 로깅만
+      // 장기 disconnect 감지 시 staleTime 0으로 모든 쿼리 무효화 (TODO: A5)
+    }
+    return () => es.close()
+  }, [folderIds.join(','), qc])
+}
+
+function handleEvent(qc: QueryClient, env: SseEnvelope) {
+  const { type, scope, payload } = env
+
+  if (FILE_EVENTS.includes(type)) {
+    // 파일 이벤트 — scope.folderIds 각각의 filesInFolder 쿼리 무효화
+    scope.folderIds.forEach((fid) =>
+      qc.invalidateQueries({ queryKey: qk.filesInFolder(fid), exact: false }),
+    )
+    // 단일 파일 상세 캐시도 무효화
+    if ((payload as { fileId?: string }).fileId) {
+      qc.invalidateQueries({ queryKey: qk.file((payload as { fileId: string }).fileId) })
+    }
+    return
+  }
+
+  if (FOLDER_EVENTS.includes(type)) {
+    // 폴더 이벤트 — 트리 + 해당 폴더 상세 + 부모 폴더의 자식 목록 무효화
+    qc.invalidateQueries({ queryKey: qk.folderTree() })
+    scope.folderIds.forEach((fid) => {
+      qc.invalidateQueries({ queryKey: qk.folder(fid) })
+      qc.invalidateQueries({ queryKey: qk.filesInFolder(fid), exact: false })
+    })
+    return
+  }
+
+  if (PERMISSION_EVENTS.includes(type)) {
+    const p = payload as { resource: 'folder' | 'file'; resourceId: string }
+    qc.invalidateQueries({ queryKey: qk.effectivePermissions(p.resourceId) })
+    // 권한 변경은 가시성에도 영향 — 트리 + 목록 무효화
+    qc.invalidateQueries({ queryKey: qk.folderTree() })
+    scope.folderIds.forEach((fid) =>
+      qc.invalidateQueries({ queryKey: qk.filesInFolder(fid), exact: false }),
+    )
+  }
+}
 ```
-파일 크기 분포 <50MB, 사용자 <100명, 컴플라이언스 요구 없음
-  → MVP: multipart + 폴링
 
-파일 크기 >500MB 흔함, 불안정 네트워크
-  → MVP에 tus 포함
+### 15.4 무효화 매트릭스
 
-실시간 협업 성격 (여러 사용자가 동시에 한 폴더 편집)
-  → MVP에 SSE 포함
+| 이벤트 그룹 | 무효화되는 쿼리 키 |
+|---|---|
+| `FILE_*` | `qk.filesInFolder(scope.folderIds[i])` (각각), `qk.file(payload.fileId)` |
+| `FOLDER_*` | `qk.folderTree()`, `qk.folder(scope.folderIds[i])`, `qk.filesInFolder(scope.folderIds[i])` |
+| `PERMISSION_*` | `qk.effectivePermissions(payload.resourceId)`, `qk.folderTree()`, `qk.filesInFolder(scope.folderIds[i])` |
 
-법무/의료/금융/공공
-  → MVP에 감사 로그 (16절) 포함
-```
+> `FILE_MOVED` / `FOLDER_MOVED`는 `scope.folderIds`에 source + target이 함께 들어옴 — 양쪽 무효화 자동.
+
+### 15.5 연결 정책
+
+- **재연결**: `EventSource`의 브라우저 기본 자동 재연결 사용 (마지막 이벤트 ID 기반). 서버는 `Last-Event-ID` 헤더 수신 시 갭 메시지 replay (A5에서 구현).
+- **하트비트**: 서버 25초 keepalive (docs/02 §7.13). 클라는 별도 로직 불필요.
+- **백오프**: 브라우저 기본 (1~3초 점증). 사용자 정의 백오프 필요 시 `EventSource`를 wrap한 polyfill 도입 (TODO: A5에서 결정).
+- **다중 폴더**: 단일 연결로 다중 `folderIds` 구독. 폴더 변경 시 close + 새 URL로 reopen.
+
+### 15.6 ADR #8 (폴링) 폐기 사유
+
+ADR #8(MVP 폴링)은 SSE 인프라 복잡도 회피가 목적이었으나:
+1. `SseEmitter`는 Spring MVC에 내장, Webflux 도입 불필요 (ADR #14)
+2. 폴링 staleTime 추정의 트레이드오프(즉시성 vs 서버 부하) 회피
+3. 권한 변경 등 즉시 반영이 필요한 이벤트(예: 회수 후 노출 차단)에서 폴링 지연이 보안 갭이 됨
+
+따라서 MVP부터 SSE 채택.
 
 ---
 

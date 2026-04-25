@@ -1,0 +1,443 @@
+{
+  "version": "1.0.0",
+  "description": "Shared fixtures for IbizDrive normalize functions. Loaded by frontend (Vitest) and backend (JUnit). See docs/02-backend-data-model.md §3 for the spec. CI gate: both test suites must pass.",
+  "schema": {
+    "id": "stable identifier for the fixture",
+    "category": "grouping (nfc / whitespace / control / case / extension / forbidden / reserved / length / dot / unicode / search)",
+    "description": "human-readable explanation",
+    "input": "raw input string (may contain \\uXXXX escapes for invisible chars)",
+    "expected": {
+      "normalizeFileName": "{ ok: true, value: string } | { ok: false, error: 'INVALID_NAME_*' }",
+      "normalizedNameForDedup": "{ ok: true, value: string } | { ok: false, error: 'INVALID_NAME_*' }",
+      "normalizeForSearch": "{ ok: true, value: string }  // search never rejects except NUL"
+    }
+  },
+  "errorCodes": [
+    "INVALID_NAME_NUL_CHAR",
+    "INVALID_NAME_EMPTY",
+    "INVALID_NAME_TOO_LONG",
+    "INVALID_NAME_FORBIDDEN_CHAR",
+    "INVALID_NAME_RESERVED",
+    "INVALID_NAME_TRAILING_DOT"
+  ],
+  "fixtures": [
+    {
+      "id": "nfc_001",
+      "category": "nfc",
+      "description": "한글 NFD(자모 분리)는 NFC(결합)로 변환되어야 함",
+      "input": "\u1112\u1161\u11AB.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "한.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "한.txt" },
+        "normalizeForSearch": { "ok": true, "value": "한.txt" }
+      }
+    },
+    {
+      "id": "nfc_002",
+      "category": "nfc",
+      "description": "베트남어 ế(U+1EBF)는 NFC 그대로 유지",
+      "input": "ti\u1EBFng vi\u1EC7t.md",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "tiếng việt.md" },
+        "normalizedNameForDedup": { "ok": true, "value": "tiếng việt.md" },
+        "normalizeForSearch": { "ok": true, "value": "tiếng việt.md" }
+      }
+    },
+    {
+      "id": "nfc_003",
+      "category": "nfc",
+      "description": "조합형 ñ (n + combining tilde) → 단일 코드포인트 ñ",
+      "input": "ma\u006E\u0303ana.doc",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "mañana.doc" },
+        "normalizedNameForDedup": { "ok": true, "value": "mañana.doc" },
+        "normalizeForSearch": { "ok": true, "value": "mañana.doc" }
+      }
+    },
+    {
+      "id": "nfc_004",
+      "category": "nfc",
+      "description": "이미 NFC인 한글은 변경 없음",
+      "input": "보고서.docx",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "보고서.docx" },
+        "normalizedNameForDedup": { "ok": true, "value": "보고서.docx" },
+        "normalizeForSearch": { "ok": true, "value": "보고서.docx" }
+      }
+    },
+    {
+      "id": "ws_001",
+      "category": "whitespace",
+      "description": "NBSP(U+00A0)는 일반 공백으로 통일",
+      "input": "report\u00A0final.pdf",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "report final.pdf" },
+        "normalizedNameForDedup": { "ok": true, "value": "report final.pdf" },
+        "normalizeForSearch": { "ok": true, "value": "report final.pdf" }
+      }
+    },
+    {
+      "id": "ws_002",
+      "category": "whitespace",
+      "description": "Fullwidth Space(U+3000, 한중일 입력기)는 일반 공백으로 통일",
+      "input": "보고서\u30002025.pdf",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "보고서 2025.pdf" },
+        "normalizedNameForDedup": { "ok": true, "value": "보고서 2025.pdf" },
+        "normalizeForSearch": { "ok": true, "value": "보고서 2025.pdf" }
+      }
+    },
+    {
+      "id": "ws_003",
+      "category": "whitespace",
+      "description": "Tab(U+0009)은 공백으로 치환 후 유지(filename) / collapse(search)",
+      "input": "a\tb.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "a b.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "a b.txt" },
+        "normalizeForSearch": { "ok": true, "value": "a b.txt" }
+      }
+    },
+    {
+      "id": "ws_004",
+      "category": "whitespace",
+      "description": "Narrow No-Break Space(U+202F) 통일",
+      "input": "1\u202F000.csv",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "1 000.csv" },
+        "normalizedNameForDedup": { "ok": true, "value": "1 000.csv" },
+        "normalizeForSearch": { "ok": true, "value": "1 000.csv" }
+      }
+    },
+    {
+      "id": "ws_005",
+      "category": "whitespace",
+      "description": "Zero-Width Space(U+200B)는 제거",
+      "input": "in\u200Bvisible.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "invisible.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "invisible.txt" },
+        "normalizeForSearch": { "ok": true, "value": "invisible.txt" }
+      }
+    },
+    {
+      "id": "ws_006",
+      "category": "whitespace",
+      "description": "BOM(U+FEFF)은 제거",
+      "input": "\uFEFFREADME.md",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "README.md" },
+        "normalizedNameForDedup": { "ok": true, "value": "readme.md" },
+        "normalizeForSearch": { "ok": true, "value": "readme.md" }
+      }
+    },
+    {
+      "id": "ws_007",
+      "category": "whitespace",
+      "description": "양끝 공백 trim, 가운데 공백 보존",
+      "input": "  hello world  ",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "hello world" },
+        "normalizedNameForDedup": { "ok": true, "value": "hello world" },
+        "normalizeForSearch": { "ok": true, "value": "hello world" }
+      }
+    },
+    {
+      "id": "ws_008",
+      "category": "whitespace",
+      "description": "공백만 있는 입력은 정규화 후 빈 → 거부 (검색은 빈 결과 허용)",
+      "input": "   \u00A0 \u3000  ",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_EMPTY" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_EMPTY" },
+        "normalizeForSearch": { "ok": true, "value": "" }
+      }
+    },
+    {
+      "id": "ctrl_001",
+      "category": "control",
+      "description": "NUL(U+0000)은 즉시 거부 (filename/dedup/search 모두)",
+      "input": "evil\u0000.txt",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_NUL_CHAR" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_NUL_CHAR" },
+        "normalizeForSearch": { "ok": false, "error": "INVALID_NAME_NUL_CHAR" }
+      }
+    },
+    {
+      "id": "ctrl_002",
+      "category": "control",
+      "description": "LF(U+000A) / CR(U+000D)은 공백으로 치환",
+      "input": "line1\nline2.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "line1 line2.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "line1 line2.txt" },
+        "normalizeForSearch": { "ok": true, "value": "line1 line2.txt" }
+      }
+    },
+    {
+      "id": "ctrl_003",
+      "category": "control",
+      "description": "BIDI override(U+202E, RLO)는 제거 — 파일명 시각 위장 공격 방어",
+      "input": "evil\u202Etxt.exe",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "eviltxt.exe" },
+        "normalizedNameForDedup": { "ok": true, "value": "eviltxt.exe" },
+        "normalizeForSearch": { "ok": true, "value": "eviltxt.exe" }
+      }
+    },
+    {
+      "id": "ctrl_004",
+      "category": "control",
+      "description": "DEL(U+007F)은 제거",
+      "input": "name\u007F.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "name.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "name.txt" },
+        "normalizeForSearch": { "ok": true, "value": "name.txt" }
+      }
+    },
+    {
+      "id": "case_001",
+      "category": "case",
+      "description": "filename은 대소문자 보존, dedup/search는 lowercase",
+      "input": "Hello.PDF",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "Hello.PDF" },
+        "normalizedNameForDedup": { "ok": true, "value": "hello.pdf" },
+        "normalizeForSearch": { "ok": true, "value": "hello.pdf" }
+      }
+    },
+    {
+      "id": "case_002",
+      "category": "case",
+      "description": "터키어 İ(U+0130) lowercase는 Locale.ROOT 사용 — 'i̇'(i+dot above)이 아닌 'i'+combining(분리됨)",
+      "input": "İstanbul.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "İstanbul.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "i̇stanbul.txt" },
+        "normalizeForSearch": { "ok": true, "value": "i̇stanbul.txt" }
+      }
+    },
+    {
+      "id": "case_003",
+      "category": "case",
+      "description": "독일어 ß는 lowercase 유지 (uppercase는 'SS'로 변환되지만 우리는 lowercase만)",
+      "input": "Straße.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "Straße.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "straße.txt" },
+        "normalizeForSearch": { "ok": true, "value": "straße.txt" }
+      }
+    },
+    {
+      "id": "ext_001",
+      "category": "extension",
+      "description": "확장자 대소문자만 다른 두 파일은 dedup상 충돌",
+      "input": "report.PDF",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "report.PDF" },
+        "normalizedNameForDedup": { "ok": true, "value": "report.pdf" },
+        "normalizeForSearch": { "ok": true, "value": "report.pdf" }
+      }
+    },
+    {
+      "id": "ext_002",
+      "category": "extension",
+      "description": "다중 점 확장자(archive.tar.gz)는 그대로 보존",
+      "input": "archive.tar.gz",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "archive.tar.gz" },
+        "normalizedNameForDedup": { "ok": true, "value": "archive.tar.gz" },
+        "normalizeForSearch": { "ok": true, "value": "archive.tar.gz" }
+      }
+    },
+    {
+      "id": "fb_001",
+      "category": "forbidden",
+      "description": "Path traversal 시도 — 슬래시는 거부",
+      "input": "../etc/passwd",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_FORBIDDEN_CHAR" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_FORBIDDEN_CHAR" },
+        "normalizeForSearch": { "ok": true, "value": "../etc/passwd" }
+      }
+    },
+    {
+      "id": "fb_002",
+      "category": "forbidden",
+      "description": "백슬래시(Windows 경로 구분자)도 거부",
+      "input": "back\\slash.txt",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_FORBIDDEN_CHAR" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_FORBIDDEN_CHAR" },
+        "normalizeForSearch": { "ok": true, "value": "back\\slash.txt" }
+      }
+    },
+    {
+      "id": "fb_003",
+      "category": "forbidden",
+      "description": "정상적인 이름은 통과",
+      "input": "valid name.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "valid name.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "valid name.txt" },
+        "normalizeForSearch": { "ok": true, "value": "valid name.txt" }
+      }
+    },
+    {
+      "id": "res_001",
+      "category": "reserved",
+      "description": "Windows 예약어 CON은 거부",
+      "input": "CON",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_RESERVED" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_RESERVED" },
+        "normalizeForSearch": { "ok": true, "value": "con" }
+      }
+    },
+    {
+      "id": "res_002",
+      "category": "reserved",
+      "description": "확장자 있어도 base가 예약어면 거부 (Windows 호환)",
+      "input": "con.txt",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_RESERVED" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_RESERVED" },
+        "normalizeForSearch": { "ok": true, "value": "con.txt" }
+      }
+    },
+    {
+      "id": "res_003",
+      "category": "reserved",
+      "description": "COM5는 예약어",
+      "input": "COM5.dat",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_RESERVED" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_RESERVED" },
+        "normalizeForSearch": { "ok": true, "value": "com5.dat" }
+      }
+    },
+    {
+      "id": "res_004",
+      "category": "reserved",
+      "description": "console은 예약어 아님 (정확히 일치만 거부)",
+      "input": "console.log",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "console.log" },
+        "normalizedNameForDedup": { "ok": true, "value": "console.log" },
+        "normalizeForSearch": { "ok": true, "value": "console.log" }
+      }
+    },
+    {
+      "id": "len_001",
+      "category": "length",
+      "description": "정규화 후 256자는 거부 (255 초과)",
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_TOO_LONG" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_TOO_LONG" },
+        "normalizeForSearch": { "ok": true, "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      }
+    },
+    {
+      "id": "len_002",
+      "category": "length",
+      "description": "빈 문자열 입력은 거부 (filename/dedup), 검색은 빈 출력",
+      "input": "",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_EMPTY" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_EMPTY" },
+        "normalizeForSearch": { "ok": true, "value": "" }
+      }
+    },
+    {
+      "id": "len_003",
+      "category": "length",
+      "description": "정규화 후 정확히 255자는 허용",
+      "input": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "normalizedNameForDedup": { "ok": true, "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
+        "normalizeForSearch": { "ok": true, "value": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" }
+      }
+    },
+    {
+      "id": "dot_001",
+      "category": "dot",
+      "description": "끝 점은 거부 (Windows 호환 — 'foo.'은 'foo'로 저장됨)",
+      "input": "foo.",
+      "expected": {
+        "normalizeFileName": { "ok": false, "error": "INVALID_NAME_TRAILING_DOT" },
+        "normalizedNameForDedup": { "ok": false, "error": "INVALID_NAME_TRAILING_DOT" },
+        "normalizeForSearch": { "ok": true, "value": "foo." }
+      }
+    },
+    {
+      "id": "dot_002",
+      "category": "dot",
+      "description": "시작 점은 허용 (.gitignore 등 dotfile)",
+      "input": ".gitignore",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": ".gitignore" },
+        "normalizedNameForDedup": { "ok": true, "value": ".gitignore" },
+        "normalizeForSearch": { "ok": true, "value": ".gitignore" }
+      }
+    },
+    {
+      "id": "unicode_001",
+      "category": "unicode",
+      "description": "Emoji는 보존 (filename/dedup/search 모두)",
+      "input": "📁 Project.docx",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "📁 Project.docx" },
+        "normalizedNameForDedup": { "ok": true, "value": "📁 project.docx" },
+        "normalizeForSearch": { "ok": true, "value": "📁 project.docx" }
+      }
+    },
+    {
+      "id": "unicode_002",
+      "category": "unicode",
+      "description": "한자 보존, dedup/search lowercase는 ASCII만 영향",
+      "input": "中文档案.txt",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "中文档案.txt" },
+        "normalizedNameForDedup": { "ok": true, "value": "中文档案.txt" },
+        "normalizeForSearch": { "ok": true, "value": "中文档案.txt" }
+      }
+    },
+    {
+      "id": "unicode_003",
+      "category": "unicode",
+      "description": "다국어 혼합 (한국어+ASCII)",
+      "input": "한국어Document.PDF",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "한국어Document.PDF" },
+        "normalizedNameForDedup": { "ok": true, "value": "한국어document.pdf" },
+        "normalizeForSearch": { "ok": true, "value": "한국어document.pdf" }
+      }
+    },
+    {
+      "id": "search_001",
+      "category": "search",
+      "description": "검색어 다중 공백은 collapse (filename/dedup은 보존)",
+      "input": "Hello   World",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "Hello   World" },
+        "normalizedNameForDedup": { "ok": true, "value": "hello   world" },
+        "normalizeForSearch": { "ok": true, "value": "hello world" }
+      }
+    },
+    {
+      "id": "search_002",
+      "category": "search",
+      "description": "검색어: NFC + 공백 통일 + collapse + lowercase",
+      "input": "  김치 \t 만두\u3000찌개  ",
+      "expected": {
+        "normalizeFileName": { "ok": true, "value": "김치   만두 찌개" },
+        "normalizedNameForDedup": { "ok": true, "value": "김치   만두 찌개" },
+        "normalizeForSearch": { "ok": true, "value": "김치 만두 찌개" }
+      }
+    }
+  ]
+}

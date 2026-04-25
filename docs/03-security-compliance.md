@@ -239,33 +239,87 @@
 
 ## 3. 권한 모델 (단일 진실 출처)
 
-### 3.1 Preset 정의
+### 3.1 권한 enum (Permission)
 
-| Preset | read | upload | edit | delete | download | move | share | admin |
-|---|---|---|---|---|---|---|---|---|
-| **read** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **upload** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ |
-| **edit** | ✅ | ✅ | ✅ | ✅ (자기 것) | ✅ | ✅ | ❌ | ❌ |
-| **admin** | ✅ | ✅ | ✅ | ✅ (전체) | ✅ | ✅ | ✅ | ✅ |
+> ADR #17: 백엔드 권위. 프론트 `src/types/permission.ts`는 1:1 미러 (UX용 게이트만, 보안 아님).
 
-### 3.2 Subject 유형
+| 권한 | 의미 | 체크 지점 (대표 endpoint) |
+|---|---|---|
+| `READ` | 메타/내용 조회 | GET `/api/folders/:id`, GET `/api/files/:id`, tree, search 결과 필터 |
+| `UPLOAD` | 폴더에 새 파일 추가 | POST `/api/files/upload`, finalize |
+| `EDIT` | 메타/이름/버전 변경 | PATCH `/api/folders/:id`, PATCH `/api/files/:id`, POST versions |
+| `MOVE` | 자기 자신을 이동 | POST `/api/folders/:id/move`, POST `/api/files/:id/move` |
+| `DOWNLOAD` | 다운로드 | GET `/api/files/:id/download` |
+| `DELETE` | 휴지통으로 이동 (soft delete) + 복원 | DELETE `/api/folders/:id`, POST `/api/folders/:id/restore`, 동일한 file/trash endpoint |
+| `SHARE` | 외부/내부 공유 링크 생성 | POST `/api/files/:id/share` |
+| `PERMISSION_ADMIN` | 권한 부여/회수 | POST/DELETE `/api/:resource/:id/permissions` |
+| **`PURGE`** | **영구 삭제 (소프트 → 완전 제거)** | **DELETE `/api/trash/:id`, DELETE `/api/trash`** |
 
-- [ ] user: 개인
-- [ ] department: 부서 (LTREE 기반 하위 부서 포함 옵션)
-- [ ] role: 역할 (member/admin/auditor)
-- [ ] everyone: 전사
+> `PURGE`는 회복 불가 액션이므로 별도 권한으로 분리. **시스템 ROLE `ADMIN`만 보유** (§3.2.5 참조). `DELETE` 권한이 있어도 `PURGE`는 자동 부여되지 않음.
 
-### 3.3 권한 상속
+### 3.2 Preset × 권한 매트릭스
 
-- [ ] 자식 폴더/파일은 부모 권한 상속 (default)
-- [ ] 자식에서 명시적 권한 → override
-- [ ] 계산 로직: 재귀 CTE (최상위 root까지 순회, deny 우선)
+| Preset | READ | UPLOAD | EDIT | MOVE | DOWNLOAD | DELETE | SHARE | PERMISSION_ADMIN | PURGE |
+|---|---|---|---|---|---|---|---|---|---|
+| **read** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **upload** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (자기 것) | ❌ | ❌ | ❌ |
+| **share** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (자기 것) | ✅ | ❌ | ❌ |
+| **admin** *(노드 admin)* | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (전체) | ✅ | ✅ | ❌ |
+| **system_admin** *(role)* | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (전체) | ✅ | ✅ | ✅ |
 
-### 3.4 권한 매트릭스 (엔드포인트 × 권한)
+> `PURGE`는 **노드 admin preset에도 부여하지 않음** — 시스템 전역 ROLE `ADMIN`만 가능. 이중 안전장치: 노드 단위 권한 위임이 영구 삭제로 번지지 않도록.
 
-- [ ] 모든 엔드포인트에 요구 권한 명시
-- [ ] 백엔드 미들웨어 `requirePermission(['edit'])` 예시 작성
-- [ ] 403 응답 기준 문서화
+#### 3.2.5 시스템 ROLE
+
+| ROLE | 보유 권한 |
+|---|---|
+| `MEMBER` | 노드별 preset만 적용 (별도 가산 없음) |
+| `AUDITOR` | 모든 노드에 `READ` (감사 페이지 한정 — `/api/admin/*` 일부) + audit_log 조회 |
+| `ADMIN` | 전 노드 admin preset + **`PURGE`** + 사용자 관리 (`PATCH /api/admin/users/:id`) + Legal Hold |
+
+### 3.3 Subject 유형
+
+- `user`: 개인 (`users.id`)
+- `department`: 부서. LTREE 기반 — 하위 부서 자동 포함 옵션 (`includeDescendants: bool`)
+- `role`: 시스템 역할 (`MEMBER` / `AUDITOR` / `ADMIN`) — §3.2.5
+- `everyone`: 전사
+
+### 3.4 권한 상속 & 평가
+
+- 폴더 → 자식 폴더/파일로 상속 (default)
+- 자식에 명시적 권한 정의 시 → override
+- 계산 로직: 재귀 CTE로 root까지 순회, **deny 우선** (deny가 한 번이라도 나오면 최종 deny)
+- `PermissionService.check(userId, resource, resourceId, permission)`이 단일 진입점.
+
+### 3.5 권한 매트릭스 (엔드포인트 × 권한)
+
+각 endpoint의 권한 요구는 **`docs/02-backend-data-model.md §7.4~§7.13` Guard 컬럼**에 명시 (단일 진실 출처). 본 문서는 권한 enum과 preset 정의만 담당, endpoint 매핑은 02 문서 참조.
+
+`@PreAuthorize` 표현식 패턴:
+
+```java
+// 단일 권한
+@PreAuthorize("hasPermission(#id, 'folder', 'READ')")
+public FolderDto getFolder(@PathVariable String id) { ... }
+
+// 복합 권한 (이동: 양쪽 모두)
+@PreAuthorize(
+  "hasPermission(#id, 'file', 'MOVE') and "
+  + "hasPermission(#req.targetFolderId, 'folder', 'EDIT')"
+)
+public FileDto moveFile(@PathVariable String id, @RequestBody MoveRequest req) { ... }
+
+// PURGE는 ROLE 검사 (노드 권한 무시)
+@PreAuthorize("hasRole('ADMIN')")
+public void purge(@PathVariable String id) { ... }
+```
+
+### 3.6 403 응답 기준
+
+- `PermissionService.check`가 false 반환 → `403 PERMISSION_DENIED` (`docs/02 §8`)
+- 응답 body: `{ error: { code: 'PERMISSION_DENIED', message, details: { required: ['EDIT'], have: ['READ'] } } }`
+- 프론트 핸들러 → 토스트 + `effectivePermissions` 재조회 (캐시된 권한이 stale일 수 있음)
 
 ---
 

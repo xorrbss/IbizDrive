@@ -295,29 +295,132 @@ users ──┬── departments
 
 ## 3. 정규화 함수
 
-### 3.1 의사 코드 (프론트/백엔드 동일)
+> ADR #16: 프론트(`src/lib/normalize.ts`)와 백엔드(`backend/.../common/normalize/NormalizeUtil.java`)는 동일 로직, 동일 fixtures(`docs/normalize-fixtures.json`)로 양방향 검증.
+> CLAUDE.md §3 원칙 11에 따라 두 구현의 드리프트는 CI 게이트로 차단.
+
+### 3.1 함수 분리
+
+3개 함수가 있고, 사용 지점이 분리됨:
+
+| 함수 | 입력 | 출력 사용처 | 적용 단계 |
+|---|---|---|---|
+| `normalizeFileName(name)` | 사용자 입력 이름 | 표시·저장용 `name` 컬럼 | NFC + trim + 제어문자 strip |
+| `normalizedNameForDedup(name)` | 사용자 입력 이름 | UNIQUE 제약 검사용 `normalized_name` 컬럼 | NFC + 제어문자 strip + 공백 통일 + lowercase + trim |
+| `normalizeForSearch(query)` | 검색어 | tsvector 매칭 키 | NFC + 제어문자 strip + 공백 통일 + lowercase + trim + 다중 공백 collapse |
+
+### 3.2 정규화 단계 (Pipeline)
+
+각 단계는 **순서가 중요** — fixtures가 단계별 결정성을 검증.
+
+#### Step 1: NFC 정규화 (Unicode Normalization Form Canonical Composition)
+
+- 한글 자모 분리형(NFD) → 결합형(NFC). 예: `"한"`(U+1112 U+1161 U+11AB, NFD) → `"한"`(U+D55C, NFC)
+- 라이브러리:
+  - JavaScript: `String.prototype.normalize('NFC')`
+  - Java: `java.text.Normalizer.normalize(input, Normalizer.Form.NFC)`
+  - Postgres: `NORMALIZE(input, NFC)` (15+ 내장)
+
+#### Step 2: 제어 문자 제거 (Control Character Strip)
+
+다음 코드포인트는 **모두 제거** (이름에 부적합):
+
+| 범위 | 의미 | 처리 |
+|---|---|---|
+| `U+0000` (NUL) | NULL | **거부**: `INVALID_NAME_NUL_CHAR` (입력 검증 단계) |
+| `U+0001 ~ U+001F` | C0 제어 (Tab=`U+0009`, LF=`U+000A`, CR=`U+000D` 포함) | **공백으로 치환** (다음 단계에서 통일) |
+| `U+007F` (DEL) | DEL | 제거 |
+| `U+0080 ~ U+009F` | C1 제어 | 제거 |
+| `U+200B ~ U+200F` | Zero-Width Space, ZWNJ, ZWJ, LRM, RLM | 제거 |
+| `U+202A ~ U+202E` | LRE, RLE, PDF, LRO, RLO (양방향 마커) | 제거 |
+| `U+2060` | Word Joiner | 제거 |
+| `U+FEFF` | BOM / Zero-Width No-Break Space | 제거 |
+
+#### Step 3: 공백 통일 (Whitespace Unification)
+
+다음 문자는 **모두 일반 공백 `U+0020`으로 치환**:
+
+- `U+00A0` (NBSP, Non-Breaking Space)
+- `U+2000 ~ U+200A` (En Quad, Em Quad, Thin Space 등)
+- `U+202F` (Narrow No-Break Space)
+- `U+205F` (Medium Mathematical Space)
+- `U+3000` (Ideographic Space, fullwidth 공백)
+- `Tab` (Step 2에서 치환된 결과 포함)
+
+#### Step 4: 다중 공백 Collapse (Search 함수만)
+
+- `normalizeForSearch`만 적용: `\s+` → 단일 공백
+- `normalizeFileName` / `normalizedNameForDedup`은 **collapse 안 함** (사용자가 입력한 공백 보존)
+
+#### Step 5: Lowercase (Dedup/Search 함수만)
+
+- `normalizedNameForDedup` / `normalizeForSearch`에만 적용
+- `String.prototype.toLowerCase()` (JavaScript) / `String.toLowerCase(Locale.ROOT)` (Java) — **로케일 비의존**
+- 터키어 `İ`/`I` 문제 회피 위해 `Locale.ROOT` 강제
+
+#### Step 6: Trim
+
+- 양 끝 공백 제거 (Step 3에서 통일된 공백 + 일반 공백)
+
+#### Step 7: 검증 (Validation, 정규화 후)
+
+- **정규화 후 빈 문자열** → `INVALID_NAME_EMPTY` 거부
+- **길이 제약**: 정규화 후 1~255자 (UTF-16 code unit 기준). 초과 시 `INVALID_NAME_TOO_LONG`
+- **금지 문자**: `/`, `\`, NUL — 발견 시 `INVALID_NAME_FORBIDDEN_CHAR` 거부 (NUL은 Step 2에서 즉시 거부)
+- **예약어**: Windows 호환성을 위해 `CON`, `PRN`, `AUX`, `NUL`, `COM1~COM9`, `LPT1~LPT9` (대소문자 무관) 거부 → `INVALID_NAME_RESERVED`
+- **시작/끝 점·공백**: `.foo`는 허용, `foo.`는 거부 (`INVALID_NAME_TRAILING_DOT`), `   foo`/`foo   `는 Step 6에서 trim됨
+
+### 3.3 의사 코드
 
 ```text
 normalizeFileName(name):
-    return name.normalize('NFC').trim()
+    s = NFC(name)
+    s = stripControlChars(s)            # NUL은 즉시 throw
+    s = unifyWhitespace(s)
+    s = trim(s)
+    validate(s)                          # 빈 문자열 / 길이 / 금지 문자 / 예약어
+    return s
 
 normalizedNameForDedup(name):
-    return name.normalize('NFC').toLowerCase().trim()
+    s = NFC(name)
+    s = stripControlChars(s)
+    s = unifyWhitespace(s)
+    s = lowercase(s, Locale.ROOT)
+    s = trim(s)
+    validate(s)
+    return s
 
-normalizeForSearch(s):
-    return s.normalize('NFC').toLowerCase().trim().replaceAll(/\s+/g, ' ')
+normalizeForSearch(query):
+    s = NFC(query)
+    s = stripControlChars(s)
+    s = unifyWhitespace(s)
+    s = lowercase(s, Locale.ROOT)
+    s = collapseWhitespace(s)            # \s+ → ' '
+    s = trim(s)
+    return s                             # 검색어는 길이/금지 문자 검증 안 함 (서버에서 부드럽게 처리)
 ```
 
-### 3.2 Postgres 구현
+### 3.4 fixtures 기반 검증 (CI 게이트)
+
+- 단일 진실 출처: **`docs/normalize-fixtures.json`**
+- 프론트(Vitest): `frontend/src/lib/normalize.test.ts`가 fixtures 로드해 각 케이스의 `expected.{normalizeFileName, normalizedNameForDedup, normalizeForSearch}` 일치 검증
+- 백엔드(JUnit): `backend/src/test/java/.../NormalizeUtilTest.java`가 동일 fixtures 로드해 동일 검증
+- CI: 두 테스트 잡 모두 통과해야 PR merge 가능 (양쪽 드리프트 차단)
+
+### 3.5 Postgres 구현
+
+DB는 **이름 저장 시점 검증의 보조 수단** — 진실의 출처는 애플리케이션 정규화 함수. DB 트리거는 동일 결과를 보장하는 안전망.
 
 ```sql
--- 의존: intarray, unaccent (필요 시)
+-- 의존: 없음 (Postgres 15+ 내장 NORMALIZE 사용)
+
 CREATE OR REPLACE FUNCTION normalize_name_for_dedup(input TEXT)
 RETURNS TEXT IMMUTABLE LANGUAGE SQL AS $$
-  SELECT LOWER(TRIM(NORMALIZE(input, NFC)))
+  -- Step 1~3을 SQL로 구현. lowercase + trim
+  -- 주의: 제어문자/공백 통일 일부는 애플리케이션 단계에 의존하므로
+  --       이 트리거는 애플리케이션이 이미 정규화한 값을 재계산하는 안전망 역할
+  SELECT LOWER(TRIM(REGEXP_REPLACE(NORMALIZE(input, NFC), '[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2060\uFEFF]', '', 'g')))
 $$;
 
--- 저장 시 자동 계산
 CREATE OR REPLACE FUNCTION set_normalized_name()
 RETURNS TRIGGER LANGUAGE PLPGSQL AS $$
 BEGIN
@@ -334,6 +437,8 @@ CREATE TRIGGER trg_folders_normalize
   BEFORE INSERT OR UPDATE OF name ON folders
   FOR EACH ROW EXECUTE FUNCTION set_normalized_name();
 ```
+
+> 트리거의 SQL 정규화는 **`normalizedNameForDedup`만 부분 일치** — `unifyWhitespace`(NBSP/fullwidth → space)는 SQL에서 누락. 애플리케이션이 항상 정규화 후 저장하므로 실제 동작상 문제 없음. fixtures CI는 애플리케이션 함수만 검증. DB 트리거 SQL 검증은 §10.3 마이그레이션 테스트에서 별도 (TODO).
 
 ---
 
@@ -620,15 +725,27 @@ COMMIT;
 
 ### 7.1 인증 / 공통 헤더
 
+ADR #12에 따라 인증은 **쿠키 세션 + Spring Session(Redis)** + **CSRF double-submit**.
+
 ```text
-Authorization: Bearer <JWT>
-X-Request-Id: <uuid>  (클라이언트 생성, 로그 추적용)
-Accept-Language: ko-KR
+요청 공통:
+  Cookie: SESSION=<spring-session-id>          (HttpOnly, Secure, SameSite=Lax)
+  X-CSRF-Token: <csrf-token>                    (mutation 시 필수, GET 시 생략)
+  X-Request-Id: <uuid>                          (클라이언트 생성, 로그 추적용)
+  Accept-Language: ko-KR
+  Origin: <frontend-origin>                     (CORS 검증)
 
 응답 공통:
   X-Request-Id: <echo>
   X-RateLimit-Remaining: <int>
+  Set-Cookie: SESSION=...                       (세션 갱신 시)
+  Set-Cookie: XSRF-TOKEN=...                    (CSRF 발급 시 — JS 읽기 가능)
 ```
+
+CSRF 정책:
+- 쿠키 `XSRF-TOKEN` (HttpOnly **아님**, JS 읽기 가능) ↔ 헤더 `X-CSRF-Token` 일치 검증
+- `GET /api/auth/csrf`로 발급, `mutation` 요청 전 클라가 헤더에 첨부
+- 불일치 시 → `403 CSRF_MISMATCH`
 
 ### 7.2 에러 응답 포맷
 
@@ -646,96 +763,341 @@ Accept-Language: ko-KR
 }
 ```
 
-### 7.3 주요 엔드포인트
+### 7.3 매트릭스 컬럼 정의
 
-#### 폴더
+| 컬럼 | 의미 |
+|---|---|
+| Guard | Spring Security 권한 가드. `@PreAuthorize` 표현식 또는 `PermissionService.check(...)` 호출 |
+| TX | `@Transactional` 전파/격리 + 행 잠금. mutation에 필수, GET은 `—`. `REQUIRED + FOR UPDATE` = 트랜잭션 내 `SELECT ... FOR UPDATE` 사용 (race 방지, §6 참조) |
+| Norm | 입력 이름의 정규화 적용 지점. `name → NormalizeUtil.normalize(name) → normalized_name`. `q → normalizeForSearch(q)` |
+| SoftDel | soft delete 필터. `WHERE deleted_at IS NULL` = 활성 리소스만, `WHERE deleted_at IS NOT NULL` = 휴지통, `SET deleted_at = NOW()` = 휴지통 이동, `SET deleted_at = NULL + UNIQUE 재검사` = 복원 |
+| Errors | 가능한 에러 코드 (docs/02 §8). `401/403`은 모든 인증 endpoint 공통 — 표에서 생략 가능, 명시된 경우만 기재 |
 
-```text
-GET    /api/folders/tree                 폴더 트리 (사용자 권한 필터링)
-GET    /api/folders/:id                   폴더 상세 + breadcrumb + effective permissions
-POST   /api/folders                       { parentId, name } 생성
-PATCH  /api/folders/:id                   { name? } 이름 변경
-POST   /api/folders/:id/move              { targetParentId } 이동
-DELETE /api/folders/:id                   휴지통 이동
-POST   /api/folders/:id/restore           복원
-```
+> 모든 mutation endpoint는 CSRF 토큰 검증 + 세션 인증 필수. 미명시 시 표 단순화를 위해 `403 CSRF_MISMATCH`, `401 UNAUTHORIZED`는 생략.
 
-#### 파일
+### 7.4 인증 (Auth)
 
-```text
-GET    /api/folders/:id/files?sort=&dir=&cursor=   목록 (cursor 페이지네이션)
-GET    /api/files/:id                              상세
-POST   /api/files/upload                           업로드 (multipart)
-  - Request: multipart with { file, folderId, conflictResolution? }
-  - 200: { file, version }
-  - 409 UPLOAD_CONFLICT: { existingFile }
-  - 413 QUOTA_EXCEEDED
-  - 403 PERMISSION_DENIED
+**Guard 약어**: `permitAll` = 인증 불필요 (login/csrf), `isAuthenticated()` = 세션 검증.
 
-POST   /api/files/:id/versions                     새 버전 업로드
-  - Body: { expectedCurrentVersionId, conflictResolution? }
-  - 409 VERSION_CONFLICT: { currentVersion }
-
-PATCH  /api/files/:id                              { name? } 이름 변경
-  - 409 RENAME_CONFLICT
-POST   /api/files/:id/move                         이동
-DELETE /api/files/:id                              휴지통 이동
-POST   /api/files/:id/restore                      복원
-  - 409 RESTORE_CONFLICT: 원위치에 동일명 파일 존재
-
-GET    /api/files/:id/download?version=?           원본 다운로드
-  - 헤더: Content-Disposition (filename*)
-GET    /api/files/:id/preview?version=?            프리뷰 스트림
-GET    /api/files/:id/versions                     버전 목록
-GET    /api/files/:id/activity                     활동 이력 (사용자 활동 한정)
-```
-
-#### 검색
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| POST | `/api/auth/login` | permitAll | REQUIRED | — | — | 400 VALIDATION_ERROR, 401 UNAUTHORIZED |
+| POST | `/api/auth/logout` | isAuthenticated | REQUIRED | — | — | — |
+| GET  | `/api/auth/me` | isAuthenticated | — | — | — | 401 |
+| GET  | `/api/auth/csrf` | permitAll | — | — | — | — |
 
 ```text
-GET    /api/search?q=&type=&owner=&modifiedFrom=&modifiedTo=
-  - minLength: 2
-  - normalize(q) = normalizeForSearch(q)
-  - AbortController 지원 (서버는 stateless, 클라이언트 cancel만)
+POST /api/auth/login
+  Request:  { email: string, password: string }
+  Response: 200 { user: UserDto, departments: DeptDto[], roles: Role[] }
+            Set-Cookie: SESSION=...; HttpOnly; Secure; SameSite=Lax
+  Errors:   401 UNAUTHORIZED ({ reason: 'INVALID_CREDENTIALS' | 'LOCKED' | 'EXPIRED' })
+
+POST /api/auth/logout
+  Response: 204
+            Set-Cookie: SESSION=; Max-Age=0
+  Note:     Redis 세션 즉시 무효화
+
+GET  /api/auth/me
+  Response: 200 { user, departments, roles, effectivePermissionsCacheKey }
+
+GET  /api/auth/csrf
+  Response: 200 { csrfToken: string }
+            Set-Cookie: XSRF-TOKEN=<token>; SameSite=Lax  (HttpOnly 아님)
 ```
 
-#### 공유
+### 7.5 폴더 (Folders)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/folders/tree` | `hasPermission(#root, 'folder', 'READ')` (필터링) | — | — | `WHERE deleted_at IS NULL` | — |
+| GET | `/api/folders/:id` | `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` | — | — | `WHERE deleted_at IS NULL` | 404 NOT_FOUND |
+| POST | `/api/folders` | `hasPermission(#req.parentId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `parentId` | `name → normalized_name` | — | 400 VALIDATION_ERROR, 404 (parent), 409 RENAME_CONFLICT |
+| PATCH | `/api/folders/:id` | `hasPermission(#id, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + sibling | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
+| POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `hasPermission(#req.targetParentId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
+| DELETE | `/api/folders/:id` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW()` (재귀: 후손 폴더/파일 cascade) | 404 |
+| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
 
 ```text
-GET    /api/shares/by-me                           내가 공유한 것
-GET    /api/shares/with-me                         내가 공유받은 것
-POST   /api/files/:id/share                        { subjects: [...], preset, expiresAt?, message? }
-DELETE /api/shares/:shareId                        공유 회수
+POST /api/folders
+  Request:  { parentId: string (UUID), name: string }
+  Response: 201 { folder: FolderDto, breadcrumb: FolderDto[] }
+  TX:       INSERT folders → audit_log INSERT (FOLDER_CREATE) → COMMIT
+
+PATCH /api/folders/:id
+  Request:  { name: string }
+  Response: 200 { folder: FolderDto }
+  TX:       SELECT FOR UPDATE folders WHERE id=:id AND deleted_at IS NULL
+            → UNIQUE (parent_id, normalized_name) WHERE deleted_at IS NULL 검증
+            → UPDATE → audit_log INSERT (FOLDER_RENAME) → COMMIT
+
+POST /api/folders/:id/move
+  Request:  { targetParentId: string }
+  Response: 200 { folder: FolderDto, breadcrumb: FolderDto[] }
+  TX:       SELECT FOR UPDATE on source + target → 후손 관계 검사 (closure or 재귀)
+            → UNIQUE 검증 → UPDATE parent_id → audit_log (FOLDER_MOVE) → COMMIT
+
+DELETE /api/folders/:id   (휴지통 이동)
+  Response: 204
+  TX:       재귀 SELECT FOR UPDATE 후손 → SET deleted_at = NOW(), purge_after = NOW() + 30d
+            → audit_log (FOLDER_DELETE) → COMMIT
+
+POST /api/folders/:id/restore
+  Response: 200 { folder, breadcrumb }
+  TX:       SELECT FOR UPDATE → 원위치 parent_id 확인 (deleted 아님)
+            → UNIQUE 충돌 검사 → SET deleted_at = NULL → audit_log (FOLDER_RESTORE)
+  Errors:   409 RESTORE_CONFLICT (원위치에 동일 normalized_name)
 ```
 
-#### 권한
+### 7.6 파일 (Files)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/folders/:id/files` | `hasPermission(#id, 'folder', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/files/:id` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| PATCH | `/api/files/:id` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
+| POST | `/api/files/:id/move` | `hasPermission(#id, 'file', 'MOVE')` AND `hasPermission(#req.targetFolderId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + targetFolder | — | `WHERE deleted_at IS NULL` | 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
+| DELETE | `/api/files/:id` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW(), purge_after = NOW()+30d` | 404 |
+| POST | `/api/files/:id/restore` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
+| POST | `/api/files/:id/versions` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE on file row | — | `WHERE deleted_at IS NULL` | 409 VERSION_CONFLICT, 413 QUOTA_EXCEEDED, 415 |
+| GET | `/api/files/:id/download` | `hasPermission(#id, 'file', 'DOWNLOAD')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/files/:id/preview` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/files/:id/versions` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/files/:id/activity` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+
+> 파일 업로드(tus)는 §7.7에서 별도. 위 표는 메타데이터/버전 mutation 한정.
 
 ```text
-GET    /api/:resource/:id/permissions              권한 목록
-POST   /api/:resource/:id/permissions              권한 부여
-DELETE /api/permissions/:permissionId              권한 회수
-GET    /api/me/effective-permissions?nodeId=?      유효 권한 계산
+PATCH /api/files/:id
+  Request:  { name: string }
+  Response: 200 { file: FileDto }
+  TX:       SELECT FOR UPDATE → UNIQUE (folder_id, normalized_name) WHERE deleted_at IS NULL
+            → UPDATE → audit_log (FILE_RENAME) → COMMIT
+  Norm:     normalized_name = NormalizeUtil.normalize(name)
+
+POST /api/files/:id/move
+  Request:  { targetFolderId: string }
+  Response: 200 { file: FileDto }
+  TX:       SELECT FOR UPDATE on file + target folder
+            → UNIQUE 충돌 검사 → UPDATE folder_id → audit_log (FILE_MOVE) → COMMIT
+
+DELETE /api/files/:id
+  Response: 204
+  TX:       SELECT FOR UPDATE → SET deleted_at, purge_after → audit_log (FILE_DELETE) → COMMIT
+
+POST /api/files/:id/restore
+  TX:       SELECT FOR UPDATE → 원 폴더 deleted 검증 → UNIQUE 검사 → restore + audit
+  Errors:   409 RESTORE_CONFLICT
+
+POST /api/files/:id/versions   (이미 업로드된 임시 객체에서 새 버전 등록)
+  Request:  { uploadId: string, expectedCurrentVersionId: string, conflictResolution?: 'overwrite' | 'keep-both' }
+  Response: 201 { file, version }
+  TX:       SELECT FOR UPDATE files → expectedCurrentVersionId 일치 검증
+            → INSERT file_versions → UPDATE files.current_version_id → audit_log (FILE_VERSION_CREATE) → COMMIT
+  Errors:   409 VERSION_CONFLICT { currentVersion }, 413 QUOTA_EXCEEDED
 ```
 
-#### 휴지통
+### 7.7 업로드 (tus, ADR #13)
+
+`tus-java-server` 표준 프로토콜. 경로 prefix `/api/files/upload`. S3 multipart는 라이브러리가 내부 위임.
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| POST | `/api/files/upload` | `hasPermission(#header.UploadFolderId, 'folder', 'UPLOAD')` | (init은 메타만, COMMIT 분리) | `Upload-Metadata.filename → normalized_name` (중복 사전 체크) | — | 403, 409 UPLOAD_CONFLICT (사전 체크), 413 QUOTA_EXCEEDED, 415 UNSUPPORTED_MEDIA_TYPE |
+| HEAD | `/api/files/upload/:uploadId` | 업로드 소유자 본인 | — | — | — | 404, 410 (만료) |
+| PATCH | `/api/files/upload/:uploadId` | 업로드 소유자 본인 | (chunk append, S3 multipart part 위임) | — | — | 409 (offset 불일치), 413 |
+| DELETE | `/api/files/upload/:uploadId` | 업로드 소유자 본인 | REQUIRED | — | — | 404 |
+| POST | `/api/files/upload/:uploadId/finalize` | `hasPermission(#folderId, 'folder', 'UPLOAD')` | **REQUIRED + FOR UPDATE on folder + sibling** | `name → normalized_name` (최종 충돌 검사) | — | 409 UPLOAD_CONFLICT, 413, 415 |
 
 ```text
-GET    /api/trash                                  휴지통 목록
-POST   /api/trash/:id/restore                      복원
-DELETE /api/trash/:id                              영구 삭제 (관리자만)
-DELETE /api/trash                                  전체 영구 삭제 (관리자만)
+POST /api/files/upload  (tus Creation)
+  Headers:  Tus-Resumable: 1.0.0
+            Upload-Length: <bytes>
+            Upload-Metadata: filename <base64>, folderId <base64>, contentType <base64>
+  Response: 201 Location: /api/files/upload/:uploadId
+            Tus-Resumable: 1.0.0
+  사전 체크: UPLOAD_CONFLICT, QUOTA_EXCEEDED, UNSUPPORTED_MEDIA_TYPE → 즉시 실패
+
+PATCH /api/files/upload/:uploadId  (tus chunk)
+  Headers:  Upload-Offset, Content-Type: application/offset+octet-stream
+  Body:     <chunk bytes>
+  Response: 204 + Upload-Offset
+  내부:     S3 multipart part 업로드 위임
+
+POST /api/files/upload/:uploadId/finalize
+  Request:  { conflictResolution?: 'overwrite' | 'keep-both' }
+  Response: 201 { file: FileDto, version: FileVersionDto }
+  TX (반드시 트랜잭션 + FOR UPDATE):
+    1) SELECT FOR UPDATE folders WHERE id=:folderId AND deleted_at IS NULL
+    2) UNIQUE (folder_id, normalized_name) WHERE deleted_at IS NULL 재검증
+       └ 충돌 시 conflictResolution 분기 (overwrite=새 버전, keep-both=이름 변경, 미지정=409)
+    3) S3 multipart complete (라이브러리 위임)
+    4) INSERT files + INSERT file_versions
+    5) UPDATE quota
+    6) INSERT audit_log (FILE_UPLOAD)
+    7) COMMIT — 실패 시 S3 객체 cleanup job 큐잉
+  ADR #16 정규화: NormalizeUtil.normalize(filename) 결과로 normalized_name 저장
+
+DELETE /api/files/upload/:uploadId  (사용자 취소 또는 만료)
+  Response: 204
+  내부:     S3 multipart abort
 ```
 
-#### 관리자
+### 7.8 검색 (Search)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/search` | isAuthenticated (결과는 권한 필터링) | — | `q → normalizeForSearch(q)` | `WHERE deleted_at IS NULL` | 400 (minLength 미달) |
 
 ```text
-GET    /api/admin/audit-logs?...                   감사 로그 (필터/페이지네이션)
-GET    /api/admin/download-logs
-GET    /api/admin/permission-logs
-GET    /api/admin/storage-usage                    전체 사용량
-GET    /api/admin/users                            사용자 관리
-PATCH  /api/admin/users/:id                        사용자 수정 (role, quota 등)
+GET /api/search?q=&type=&owner=&modifiedFrom=&modifiedTo=&cursor=
+  - minLength: 2 (정규화 후 기준)
+  - 서버 정규화: q' = normalizeForSearch(q) (NFC + lowercase + 공백 collapse)
+  - 결과는 사용자 effective READ 권한 있는 노드만
+  Response: 200 { items: SearchResultDto[], nextCursor?, totalEstimate }
 ```
+
+### 7.9 공유 (Shares)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/shares/by-me` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | — |
+| GET | `/api/shares/with-me` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | — |
+| POST | `/api/files/:id/share` | `hasPermission(#id, 'file', 'SHARE')` | REQUIRED | — | `WHERE deleted_at IS NULL` | 400, 404 |
+| DELETE | `/api/shares/:shareId` | `share.owner = currentUser OR hasRole('ADMIN')` | REQUIRED | — | — | 403, 404 |
+
+```text
+POST /api/files/:id/share
+  Request:  { subjects: [{ type: 'USER'|'DEPT', id: string }], preset: 'VIEW'|'EDIT'|'FULL', expiresAt?: ISO8601, message?: string }
+  Response: 201 { shares: ShareDto[] }
+  TX:       INSERT shares + INSERT permissions (preset 매핑) + audit_log (PERMISSION_GRANT)
+```
+
+### 7.10 권한 (Permissions)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'ADMIN')` | REQUIRED | — | — | 400, 403, 404 |
+| DELETE | `/api/permissions/:permissionId` | `PermissionService.canRevokePermission(#permissionId, currentUser)` | REQUIRED | — | — | 403, 404 |
+| GET | `/api/me/effective-permissions?nodeId=` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | 404 |
+
+```text
+POST /api/:resource/:id/permissions
+  Request:  { subject: { type: 'USER'|'DEPT'|'ROLE', id: string }, permissions: Permission[], expiresAt? }
+  Response: 201 { permission: PermissionDto }
+  TX:       INSERT permissions + audit_log (PERMISSION_GRANT)
+  Note:     resource ∈ { 'folder', 'file' }
+```
+
+### 7.11 휴지통 (Trash, A7)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/trash` | isAuthenticated (결과는 사용자가 DELETE 권한 가진 항목만) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
+| POST | `/api/trash/:id/restore` | `hasPermission(#id, _, 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
+| DELETE | `/api/trash/:id` | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + S3 객체) | 403, 404 |
+| DELETE | `/api/trash` | `hasRole('ADMIN')` | REQUIRED (배치) | — | (purge: 전체 만료된 항목) | 403 |
+
+```text
+GET /api/trash?cursor=&type=
+  Response: 200 { items: TrashItemDto[], nextCursor? }
+  Note:     items 필드 = (id, name, type='file'|'folder', deletedAt, purgeAfter, originalPath)
+
+POST /api/trash/:id/restore
+  TX:       SELECT FOR UPDATE → 원 부모 폴더 활성 검증 → UNIQUE 충돌 검사
+            → SET deleted_at = NULL → audit_log (RESTORE) → COMMIT
+  Errors:   409 RESTORE_CONFLICT { suggestedName }
+
+DELETE /api/trash/:id  (영구 삭제, 관리자)
+  TX:       S3 객체 삭제 큐잉 → DELETE row → audit_log (PURGE) → COMMIT
+  Note:     audit_log은 append-only이므로 PURGE 이벤트는 보존
+```
+
+### 7.12 관리자 (Admin)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/admin/audit-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | (audit_log 자체에 deleted_at 없음) | 403 |
+| GET | `/api/admin/download-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
+| GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
+| GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |
+| GET | `/api/admin/users` | `hasRole('ADMIN')` | — | — | `WHERE disabled_at IS NULL` (옵션) | 403 |
+| PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` | REQUIRED | — | — | 403, 404, 400 |
+
+> 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
+
+### 7.13 SSE 실시간 동기화 (ADR #14)
+
+`SseEmitter` (Spring MVC) 기반. 단일 endpoint `GET /api/sse/files`로 폴더 ID 구독.
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/sse/files?folderIds=id1,id2,...` | `hasPermission(#folderIds[*], 'folder', 'READ')` | — | — | — | 403 (구독 불가 폴더 포함 시 → 권한 있는 것만 자동 필터), 429 (구독 한도) |
+
+```text
+GET /api/sse/files?folderIds=fld_a,fld_b
+  Response: 200 (text/event-stream)
+            Cache-Control: no-cache
+            X-Accel-Buffering: no
+  Heartbeat: 25초마다 ': keepalive\n\n' (프록시 타임아웃 회피)
+  종료:     클라이언트 disconnect → SseEmitter.completeWithError 또는 complete()
+```
+
+#### 7.13.1 이벤트 타입 (`SseEventType` enum)
+
+> 프론트 미러: `frontend/src/types/sse.ts` (docs/01 §15.2). 변경 시 양쪽 동시 갱신.
+
+| event | 트리거 | scope.folderIds |
+|---|---|---|
+| `FILE_CREATED` | 업로드 완료 (A4 finalize) | `[folderId]` |
+| `FILE_RENAMED` | `PATCH /api/files/:id { name }` | `[folderId]` |
+| `FILE_MOVED` | `POST /api/files/:id/move` — 출발/도착 양쪽 fan-out | `[sourceFolderId, targetFolderId]` |
+| `FILE_VERSION_CREATED` | `POST /api/files/:id/versions` | `[folderId]` |
+| `FILE_DELETED` | soft delete (휴지통 이동) | `[folderId]` |
+| `FILE_RESTORED` | `POST /api/files/:id/restore` | `[folderId]` |
+| `FILE_PURGED` | 영구 삭제 (`DELETE /api/trash/:id`, ADMIN) | `[folderId]` |
+| `FOLDER_CREATED` | 폴더 생성 | `[parentFolderId]` |
+| `FOLDER_RENAMED` | 폴더 이름변경 | `[parentFolderId, folderId]` |
+| `FOLDER_MOVED` | 폴더 이동 | `[sourceParent, targetParent]` |
+| `FOLDER_DELETED` | soft delete | `[parentFolderId]` |
+| `FOLDER_RESTORED` | 복원 | `[parentFolderId]` |
+| `FOLDER_PURGED` | 영구 삭제 (ADMIN) | `[parentFolderId]` |
+| `PERMISSION_GRANTED` | `POST /api/:resource/:id/permissions` | `[resourceId]` (folder인 경우) |
+| `PERMISSION_REVOKED` | `DELETE /api/permissions/:permissionId` | `[resourceId]` |
+| `PERMISSION_CHANGED` | 기존 권한의 preset/expiry 변경 | `[resourceId]` |
+
+#### 7.13.2 페이로드 스키마
+
+```json
+{
+  "id": "evt_<uuid>",
+  "type": "FILE_CREATED",
+  "occurredAt": "2026-04-25T12:34:56.789Z",
+  "actor": { "userId": "usr_xxx", "displayName": "홍길동" },
+  "scope": { "folderIds": ["fld_a"] },
+  "payload": {
+    "fileId": "file_xxx",
+    "name": "report.pdf",
+    "currentVersionId": "ver_xxx"
+  }
+}
+```
+
+이벤트별 `payload` 필드는 별도 DTO (`FileCreatedPayload`, `FileMovedPayload` 등)로 정의 — A5 구현 시 명세화.
+
+#### 7.13.3 무효화 규약 (프론트 ↔ TanStack Query)
+
+- 클라이언트는 이벤트 수신 시 `queryKeys`(docs/01 §6.1)에 매핑하여 `invalidateQueries` 호출.
+- `FILE_*` 이벤트 → `queryKeys.filesInFolder(folderId)` 무효화
+- `FOLDER_*` 이벤트 → `queryKeys.folderTree()` + `queryKeys.folder(folderId)` 무효화
+- `PERMISSION_CHANGED` → `queryKeys.effectivePermissions(nodeId)` 무효화
+
+#### 7.13.4 EventBus 설계 (백엔드 내부)
+
+- 모든 mutation 트랜잭션이 **COMMIT 후** `EventBus.publish(SseEvent)` 호출 (트랜잭션 롤백 시 이벤트 누출 방지).
+- `EventBus`는 ApplicationEventPublisher + `@TransactionalEventListener(phase=AFTER_COMMIT)` 패턴.
+- `FilesSseController`는 `EventBus`를 구독, 활성 `SseEmitter`의 scope와 매칭하여 fan-out.
 
 ---
 

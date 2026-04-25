@@ -18,11 +18,14 @@
 ### 1.3 기술 스택
 ```text
 Frontend: Next.js 15 (App Router) + TypeScript + Zustand + TanStack Query v5 + dnd-kit
-Backend:  TBD (Node.js/NestJS 또는 Spring Boot 권장)
+Backend:  Spring Boot 3.x + Java 21 (LTS) + Gradle (Kotlin DSL)
+          Spring Data JPA + Hibernate / Spring Security 6 + Spring Session (Redis)
+          tus-java-server + AWS SDK v2 (S3 multipart) / SseEmitter (MVC)
+          Hibernate Envers 또는 AOP 기반 audit / Flyway
 DB:       PostgreSQL 15+
 Storage:  S3 호환 (AWS S3 / MinIO / Azure Blob)
 Search:   Postgres tsvector (MVP) → OpenSearch (v1.x)
-Realtime: Polling (MVP) → SSE (v1.x)
+Realtime: SSE (SseEmitter, MVC 기반)
 ```
 
 ---
@@ -70,6 +73,8 @@ Realtime: Polling (MVP) → SSE (v1.x)
 
 ## 4. 개발 마일스톤
 
+> 프론트엔드 마일스톤(M1~M16)은 `docs/progress.md`에서 추적, 백엔드 마일스톤은 §4.4 참조.
+
 ### 4.1 MVP (8~12주)
 ```text
 Week 1-2   : DB 스키마 + 기본 인증 + 업로드/다운로드 API
@@ -98,6 +103,26 @@ Week 11-12 : QA + 보안 점검 + 베타
 - DLP (Data Loss Prevention)
 ```
 
+### 4.4 백엔드 마일스톤 (A0~A7)
+
+Spring Boot 도입(ADR #11)에 따른 백엔드 트랙. A0~A1은 수동 spec 모드, A2 이후는 구조 안정 후 자율 모드 검토.
+
+| # | 단계 | 산출물 | 의존 | 작업 모드 |
+|---|---|---|---|---|
+| **A0** | 프로젝트 셋업 + 정규화 spec | `backend/` 스캐폴딩, Gradle(Kotlin DSL), Flyway V1, `docs/normalize-fixtures.json`, `NormalizeUtil` (Java) + Vitest/JUnit 양쪽 통과, CI 게이트 | — | 수동 |
+| **A1** | 인증 | Spring Security 6 + Spring Session(Redis) + 쿠키 세션(HttpOnly+SameSite=Lax) + CSRF double-submit + `LoginController` + 로그아웃 + `SessionFilter` | A0 | 수동 |
+| **A1.5** | 권한 매트릭스 (백엔드 권위) | docs/03 §3 작성 → `@PreAuthorize` 표현식 + `PermissionService` + 단위 테스트. ADR #17 발효 | A1 | 수동→자율 검토 |
+| **A2** | 폴더/파일 GET | JPA 엔티티/리포지토리 + 트리·목록·상세 endpoint + 정렬/페이지네이션 + 권한 가드 적용 (read 권한) | A1.5 | 자율 검토 |
+| **A3** | Mutation | 생성/이름변경/이동 + `@Transactional` + `SELECT FOR UPDATE` + soft delete (`deleted_at` + UNIQUE WHERE) + 에러 코드 매핑 (docs/02 §8) | A2 | 자율 검토 |
+| **A4** | tus 업로드 + 감사 (M12 일부 흡수) | tus-java-server + `S3Store`(AWS SDK v2) + 권한·정규화·충돌 검사 + 완료 시 `audit_log` 기록 + audit 뷰어 endpoint + 프론트 연결 | A3 | 자율 검토 |
+| **A5** | SSE 실시간 동기화 | `FilesSseController` + `EventBus` + 무효화 트리거 ↔ TanStack Query | A4 | 자율 검토 |
+| **A7** | 휴지통 | `/trash` GET + `restore` / `permanent-delete` endpoint + 프론트 라우트 백엔드 연결 (UI는 기존) | A3 | 자율 검토 |
+
+흡수/통합 내역:
+- **A6 → A1.5**: 권한 백엔드 이전이 mutation 진입(A3) 전에 완료되어야 함(ADR #17). 별도 후행 단계 금지.
+- **M5.1 (tus 재개) → A4**: tus-java-server 도입으로 재개 로직이 표준화, 별도 마일스톤 불필요.
+- **M12 (감사 로그) → A4 후반**: audit_log writer + 뷰어 endpoint를 A4에 통합.
+
 ---
 
 ## 5. 의사결정 로그 (ADR)
@@ -114,6 +139,31 @@ Week 11-12 : QA + 보안 점검 + 베타
 | 8 | MVP 실시간 = 폴링 | SSE 인프라 복잡도 회피 | 01 §15.1 |
 | 9 | 뷰 로그 = 민감 폴더만 | 로그 폭증 방지 | 03 §4.2 |
 | 10 | 문서 분리 | v3 단일 문서 2000줄 초과, 팀 병렬화 필요 | 00 본 문서 |
+| 11 | **백엔드 = Spring Boot 3.x + Java 21** | 엔터프라이즈 보안·트랜잭션 성숙도, JPA + Flyway + Spring Security 통합 안정성. NestJS 후보 대비 정규화 함수 이중구현 비용은 ADR #16 fixtures 공유로 상쇄 | 00 §1.3, 02 §1 |
+| 12 | **인증 = 쿠키 세션 (HttpOnly + SameSite=Lax) + Spring Session(Redis)** | XSS 토큰 탈취 차단(JWT in localStorage 회피), Next.js SSR/RSC 친화. CSRF는 double-submit 토큰. 다중 인스턴스 세션 공유 위해 Redis 저장소 | 03 §1, §2 |
+| 13 | **업로드 = tus-java-server (S3 multipart 위임)** | ADR #7 superseded. 표준 프로토콜 재개·체크섬 검증을 자체 구현 회피, S3 multipart는 라이브러리가 위임 처리. M5.1 useUpload 인터페이스 안정 | 01 §9, 02 §6.1 |
+| 14 | **실시간 = SSE (SseEmitter, MVC 유지)** | ADR #8 superseded. 문서 변경 알림은 단방향, WS sticky session 인프라 회피. Webflux 도입 안 함 — MVC 단일 모델 유지로 복잡도 통제 | 01 §15 |
+| 15 | **API base URL = build-time `.env.local`** | `NEXT_PUBLIC_API_BASE_URL` 빌드시 주입. dev/staging/prod 분리 필요 시점에 runtime `window.__ENV__` 주입으로 전환(deferred) | 00 §1.3 |
+| 16 | **정규화 함수 = 공유 fixtures 검증 (docs/normalize-fixtures.json)** | CLAUDE.md §3 원칙 11(프론트/백엔드 동일 로직) 보증. Vitest + JUnit 양쪽 동일 fixtures 로드, CI 게이트로 드리프트 차단 | 02 §3 |
+| 17 | **권한 매트릭스 = 백엔드 권위 (`@PreAuthorize`)** | 프론트 `usePermission`은 UX용, 보안 아님(CLAUDE.md §3 원칙 10). A3 mutation부터 즉시 활성화 — A6 후이전 금지(권한 미적용 mutation merge 방지) | 03 §3 |
+
+### 5.1 Superseded ADRs
+
+#### ADR #7: MVP 업로드 = multipart
+
+- Status: Superseded by ADR #13 (2026-04-25)
+- 결정: MVP에서는 단순 multipart 업로드 채택. tus 재개 업로드는 v1.x로 연기.
+- 근거: tus 복잡도 대비 ROI, 파일 크기 분포가 소형 중심.
+- 참조 문서: 01 §9
+- Superseded 사유: 백엔드 스택 결정(ADR #11)과 함께 tus-java-server + S3 multipart 위임이 라이브러리로 안정화되어, 자체 재개 로직 부재의 위험이 ROI 판단을 역전. M5.1 useUpload 인터페이스 설계 시점부터 재개 지원.
+
+#### ADR #8: MVP 실시간 = 폴링
+
+- Status: Superseded by ADR #14 (2026-04-25)
+- 결정: MVP 실시간 동기화는 TanStack Query staleTime 단축 기반 폴링. SSE는 v1.x로 연기.
+- 근거: SSE 인프라 복잡도 회피.
+- 참조 문서: 01 §15.1
+- Superseded 사유: SseEmitter(MVC)는 Webflux 도입 없이 표준 Spring MVC에서 사용 가능하여 인프라 추가 부담이 사실상 없음. 폴링 staleTime 추정의 트레이드오프(즉시성 vs 서버 부하)를 회피.
 
 ---
 

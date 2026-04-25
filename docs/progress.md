@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-04-25 — Track A 큐 #3: 정규화 spec + fixtures + SSE enum + PURGE 권한
+
+### 완료 (큐 #3 — docs only)
+- [A] **docs/00 §5 ADR 7건 추가** (#11~#17): Spring Boot, 쿠키 세션, tus-java-server, SSE, .env build-time, 정규화 fixtures 공유, 권한 매트릭스 백엔드 권위. ADR #7/#8은 §5.1 Superseded 섹션에 standard ADR 패턴으로 보존
+- [A] **docs/00 §1.3 스택 갱신** — TBD → Spring Boot 3.x + Java 21 + 부속 스택 명시
+- [A] **docs/00 §4.4 백엔드 마일스톤(A0~A7) 신설** — A6→A1.5 흡수, M5.1→A4 흡수, M12→A4 후반 통합
+- [A] **docs/02 §7 endpoint 매트릭스 전면 재작성** — Auth/Folders/Files/Upload(tus)/Search/Shares/Permissions/Trash/Admin/SSE 그룹화. Guard(@PreAuthorize)/TX(REQUIRED + FOR UPDATE)/Norm(NormalizeUtil 적용 지점)/SoftDel(WHERE deleted_at)/Errors 5개 컬럼. tus finalize 7-step TX 상세 명시. 인증 헤더 JWT → 쿠키 세션 + CSRF double-submit 갱신
+- [A] **docs/02 §3 정규화 spec 정식 명세화** — 7-step pipeline (NFC → 제어문자 strip → 공백 통일 → collapse → lowercase → trim → validate). 함수 분리표(filename/dedup/search), 단계별 제어문자 표(NUL/C0-C1/ZWSP/BIDI/BOM), 길이/금지문자/예약어/trailing dot 검증 규칙
+- [A] **docs/normalize-fixtures.json 신규** (38 케이스): nfc(4) / whitespace(8) / control(4) / case(3) / extension(2) / forbidden(3) / reserved(4) / length(3) / dot(2) / unicode(3) / search(2). errorCodes enum 6종. Vitest+JUnit 양쪽 검증 게이트 (CLAUDE.md §3 원칙 11)
+- [A] **docs/01 §15 SSE 본문 재작성** — ADR #14에 의해 폴링 폐기, MVP부터 SSE. SseEventType enum 16종(FILE 7 / FOLDER 6 / PERMISSION 3), useRealtimeSync 훅 구현, 이벤트→queryKeys 무효화 매트릭스, 연결 정책(자동 재연결/heartbeat/다중 폴더 구독)
+- [A] **docs/02 §7.13.1 SSE enum 동기화** — FOLDER_UPDATED 분리(RENAMED), PERMISSION_GRANTED/REVOKED 추가, FILE_VERSION_CREATED/FOLDER_PURGED 신설
+- [A] **docs/03 §3 권한 매트릭스 정식 명세화** — 권한 enum 9종(READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN/**PURGE**), Preset×권한 매트릭스, 시스템 ROLE(MEMBER/AUDITOR/ADMIN), 권한 상속(deny 우선 재귀 CTE), `@PreAuthorize` 패턴 예시, 403 응답 포맷
+- [A] **검증** — 코드 변경 없음 → typecheck PASS · lint PASS · 190 tests PASS (회귀 없음)
+
+### 핵심 설계 결정
+- **PURGE는 ROLE ADMIN 전용** — 노드 admin preset에도 부여하지 않음. 노드 단위 권한 위임이 영구 삭제로 번지지 않도록 이중 안전장치
+- **fixtures 단일 진실 출처** — `docs/normalize-fixtures.json`을 frontend(Vitest) + backend(JUnit) 양쪽이 로드, CI 게이트로 드리프트 차단. 38 케이스로 NFC/공백/제어/대소문자/예약어/길이/다국어 커버
+- **터키어 İ는 Locale.ROOT lowercase** — `i̇`(i + U+0307 combining dot above) 결과. JS `toLowerCase()`와 Java `toLowerCase(Locale.ROOT)` 동일 동작 (fixtures `case_002`)
+- **SSE 낙관적 setQueriesData 안 씀** — race 회피, 단일 무효화 경로(`invalidateQueries`)로 일관 처리
+- **FILE_MOVED는 source+target 양쪽 fan-out** — `scope.folderIds` 배열에 두 폴더 ID 동시 포함, 클라가 양쪽 모두 무효화
+
+### 다음 세션 컨텍스트
+- **사용자 결정 대기** — 옵션 1: 로컬 인프라(docker-compose + JDK 21) → #4~#12 자율 / 옵션 2: 백엔드 팀 인계 / 옵션 3: 하이브리드(#4 scaffold만)
+- **fixtures 누락 영역** — 현재 38 케이스에서 다루지 않은 영역: combining mark RTL 텍스트 시퀀스, surrogate pair, 일본어 가나/탁점 분리. 백엔드 구현 단계(A0)에서 NormalizeUtil 작성하며 추가 케이스 발견 시 fixtures 확장
+- **A0 진입 시 검증** — `frontend/src/lib/normalize.ts` 신규 작성 + 기존 fixtures 로드 테스트. 현 frontend는 `normalizeFileName` 등이 별도 라이브러리에 없음 (mock backend가 모든 정규화 처리) — A0에서 분리 필요
+
+### 블로커
+- 없음 (큐 #4 진입은 사용자 결정 게이트)
+
+---
+
 ## 2026-04-25 — Track H: docs/03 §1·§2 보강 (위협 모델 + 인증 흐름)
 
 ### 완료
