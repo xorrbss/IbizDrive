@@ -9,6 +9,9 @@ export type FileItem = {
   updatedAt: string          // ISO 8601
   updatedBy: string          // user display name
   parentId: string
+  // 휴지통 (M9) — active 파일에는 undefined
+  deletedAt?: string
+  originalParentId?: string
 }
 
 export type SortKey = 'name' | 'updatedAt' | 'size'

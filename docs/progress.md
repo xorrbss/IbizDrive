@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-04-25 — M9 완료 (휴지통 + Undo)
+
+### 완료
+- [M9] **types/file.ts** — `FileItem`에 optional `deletedAt`/`originalParentId` 추가 (active 파일에선 undefined)
+- [M9] **lib/api.ts** — `MOCK_TRASH` 별도 배열 신규. `deleteBulk` 재정의(MOCK_FILES → MOCK_TRASH 이동, 시각/원부모 보존). `listTrash` (deletedAt desc), `restoreFiles` (충돌 검사 + 원위치 복귀 + RESTORE_CONFLICT 발생), `purgeFiles` (영구 삭제) 신규. 시뮬 latency 100/300/400/500ms
+- [M9] **lib/queryKeys.ts** — `qk.trash()`, `qk.trashList()` 신규
+- [M9] **hooks/useTrashList.ts** — `useQuery({ staleTime: 10s })`
+- [M9] **hooks/useRestoreFiles.ts** — mutation. onSuccess: `qk.trashList()` + `qk.files()` + `qk.folderTree()` 무효화 (원위치 모름 → 광범위 invalidate, 비용 적음)
+- [M9] **hooks/usePurgeFiles.ts** — mutation. onSuccess: `qk.trashList()` 무효화
+- [M9] **hooks/useDeleteBulk.ts 재작성** — onSuccess에 sonner toast (5초 duration, label='되돌리기' action). action.onClick 시 `api.restoreFiles` 호출 + invalidate. error 분기는 RESTORE_CONFLICT 안내. onError는 `toast.error('휴지통으로 이동 실패')`
+- [M9] **(explorer)/layout.tsx** — `<Toaster position="bottom-right" richColors closeButton />` (DndProvider 내부) + `<TrashLink />` (FolderTree와 StorageBar 사이) 마운트
+- [M9] **components/layout/TrashLink.tsx + test** — 사이드바 휴지통 링크. lucide Trash2 + 카운트 배지(0 시 숨김) + active 시 accent-soft. aria-current=page (3 tests)
+- [M9] **components/files/TrashTable.tsx + test** — 4컬럼(이름/원위치/삭제일/액션). 행 액션: [복원] 모두 노출, [영구 삭제] admin 권한만. 복원/영구삭제 충돌 시 sonner toast.error. busyId 로컬 state로 중복 클릭 방지 (4 tests)
+- [M9] **(explorer)/trash/page.tsx** — TrashTable 마운트. header에 "30일간 보관" 안내
+- [M9] **lib/api.trash.test.ts** — deleteBulk → listTrash → restoreFiles → purgeFiles + RESTORE NOT_FOUND (5 tests)
+- [M9] **hooks/useDeleteBulk.test.ts** 보강 — sonner mock + Undo action 클릭 → restoreFiles 호출 검증 (+1 test, 총 4 tests)
+- [M9] **package** — `sonner` 신규 의존성 추가
+- [M9] **검증** — typecheck PASS · lint PASS · **215 tests PASS** (M8 기준 202 → +13)
+- [M9] **로드맵** — docs/01 §18 M9 행 완료 마커(2026-04-25). docs/02 §8 RESTORE_CONFLICT는 이미 정의됨
+
+### 핵심 설계 결정
+- **deleteBulk 호출부는 무변경, 의미만 "휴지통 이동"으로 재정의** — FileTable Delete 키바인딩, BulkActionBar [휴지통으로] 모두 그대로. 내부 구현이 splice → push로 바뀔 뿐. 호출부에 변화가 전파되지 않아 충격 최소
+- **Undo는 onSuccess 토스트 안에서, restore mutation 호출 X** — `useRestoreFiles` 훅을 거치지 않고 onClick에서 `api.restoreFiles` 직접 호출 + 캐시 무효화. 이유: 토스트는 즉시 disappear할 수 있고 컴포넌트 라이프사이클과 분리됨. mutation hook은 컴포넌트 unmount 시 cleanup 가능성 있음
+- **sonner 도입** — shadcn 생태 표준. `toast(message, { action, duration })`로 5초 Undo 한 줄. richColors + closeButton로 success/error 색상/dismiss 자동
+- **권한 분기 — 영구 삭제는 admin만** — docs/01 §14.3 파괴적 = 숨김. M8 패턴(`{can.admin && ...}`) 재사용. 복원은 모두 노출(생산적)
+- **광범위 invalidate** — restoreFiles는 어느 폴더로 복원될지 모름 → `qk.files()` 전체 무효화. 비용은 staleTime이 흡수. 정확한 폴더만 무효화하려면 originalParentId를 mutation context로 전달해야 하는데 복잡도 증가 대비 이득 적음
+- **MOCK_TRASH 별도 배열** — 같은 배열에 `deletedAt` 플래그로 분리하지 않은 이유: `getFilesInFolder`/`searchFiles`/`renameFile` 등 모든 active 경로가 active 파일만 보도록 자연스럽게 격리. 백엔드 SQL의 `WHERE deleted_at IS NULL` 가드와 일치
+- **RESTORE_CONFLICT** — 원위치 폴더에 동일 normalized_name 활성 파일 존재 시. 현재 mock은 시나리오 만들기 어려워 NOT_FOUND 분기만 직접 검증. v1.x에서 "다른 이름으로 복원" 다이얼로그
+- **테스트 격리** — vitest 기본 file-level 모듈 캐시 격리(threads pool) 덕에 api.trash.test의 `purgeFiles(file_minutes)` 같은 영구 변형이 다른 .test 파일 영향 X. 동일 파일 내에선 `beforeEach(emptyTrash)` + restore 우선/실패 시 purge fallback으로 격리
+
+### 다음 세션 컨텍스트
+**M12 (감사 로그 UI)** — `/admin/audit-logs` 라우트 + 필터(사용자/이벤트 타입/날짜) + 페이지네이션 + CSV export. docs/03 §4 audit event enum 활용. `src/types/audit.ts` 생성 필요. 도메인 우선순위 따라 v1.x 이연 가능
+
+**잠재 후속 (휴지통)**
+- v1.x: RESTORE_CONFLICT UX — "다른 이름으로 복원" 다이얼로그
+- v1.x: 자동 영구 삭제 D-day 카운트다운 (purge_after - now)
+- v1.x: 다중 선택 복원/영구 삭제 (현재 행 단일만 — 다중은 BulkActionBar 패턴 재사용)
+- v1.x: 토스트 dismiss 후 자동 영구 삭제 X — 백엔드 30일 cron 의존. 현재 mock은 dismiss 후 trash에 그대로 잔존
+
+**잔여 마일스톤**
+- M12 (감사 로그 UI), M17+ (관리자 페이지), v1.x (tus 재개 업로드, SSE 실시간)
+
+---
+
 ## 2026-04-25 — M8 완료 (권한 UI + 조건부 렌더링)
 
 ### 완료

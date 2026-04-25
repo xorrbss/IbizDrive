@@ -36,6 +36,9 @@ const MOCK_TREE: FolderNode = {
   ],
 }
 
+// M9 — 휴지통 mock storage. deleteBulk 시 MOCK_FILES → 여기로 이동.
+const MOCK_TRASH: FileItem[] = []
+
 const MOCK_FILES: FileItem[] = [
   {
     id: 'file_proposal',
@@ -205,13 +208,92 @@ export const api = {
     return found
   },
 
+  // M9 — 휴지통으로 이동 (논리적 삭제). MOCK_FILES → MOCK_TRASH.
+  // deletedAt + originalParentId 보존해 복원 가능. 백엔드 트랜잭션은 docs/02 §6.5.
   async deleteBulk(ids: string[]): Promise<{ deletedIds: string[] }> {
     await new Promise((r) => setTimeout(r, 500))
+    const now = new Date().toISOString()
     for (const id of ids) {
       const idx = MOCK_FILES.findIndex((f) => f.id === id)
-      if (idx !== -1) MOCK_FILES.splice(idx, 1)
+      if (idx !== -1) {
+        const [removed] = MOCK_FILES.splice(idx, 1)
+        MOCK_TRASH.push({
+          ...removed,
+          deletedAt: now,
+          originalParentId: removed.parentId,
+        })
+      }
     }
     return { deletedIds: ids }
+  },
+
+  // M9 — 휴지통 목록. deletedAt desc.
+  async listTrash(): Promise<FileItem[]> {
+    await new Promise((r) => setTimeout(r, 100))
+    return [...MOCK_TRASH].sort((a, b) =>
+      (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''),
+    )
+  },
+
+  // M9 — 복원. 원위치 폴더에 동일 normalized_name 존재 시 409 RESTORE_CONFLICT.
+  async restoreFiles(ids: string[]): Promise<{ restoredIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 400))
+
+    // 1) 모두 휴지통에 있는지 검증
+    const targets = ids.map((id) => {
+      const item = MOCK_TRASH.find((f) => f.id === id)
+      if (!item) throw { status: 404, code: 'NOT_FOUND' }
+      return item
+    })
+
+    // 2) 원위치 충돌 재검사 (docs/02 §6.5 — 활성 파일과 동일 normalized_name 금지)
+    for (const t of targets) {
+      const targetParent = t.originalParentId ?? t.parentId
+      const targetNorm = normalizedNameForDedup(t.name)
+      const conflict = MOCK_FILES.find(
+        (f) =>
+          f.parentId === targetParent &&
+          normalizedNameForDedup(f.name) === targetNorm,
+      )
+      if (conflict) {
+        throw {
+          status: 409,
+          code: 'RESTORE_CONFLICT',
+          conflictId: t.id,
+          conflictName: t.name,
+        }
+      }
+    }
+
+    // 3) 적용 — MOCK_TRASH → MOCK_FILES, deletedAt/originalParentId 제거
+    for (const t of targets) {
+      const idx = MOCK_TRASH.findIndex((f) => f.id === t.id)
+      if (idx === -1) continue
+      MOCK_TRASH.splice(idx, 1)
+      const restoredParent = t.originalParentId ?? t.parentId
+      MOCK_FILES.push({
+        id: t.id,
+        name: t.name,
+        type: t.type,
+        mimeType: t.mimeType,
+        size: t.size,
+        updatedAt: t.updatedAt,
+        updatedBy: t.updatedBy,
+        parentId: restoredParent,
+      })
+    }
+
+    return { restoredIds: ids }
+  },
+
+  // M9 — 영구 삭제. MOCK_TRASH에서만 동작 (active 파일 보호).
+  async purgeFiles(ids: string[]): Promise<{ purgedIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 300))
+    for (const id of ids) {
+      const idx = MOCK_TRASH.findIndex((f) => f.id === id)
+      if (idx !== -1) MOCK_TRASH.splice(idx, 1)
+    }
+    return { purgedIds: ids }
   },
 
   async moveFiles(

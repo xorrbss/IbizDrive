@@ -1308,7 +1308,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 6 | **RightPanel (query param)** | `?file=xxx` 딥링크, Esc로 닫기 |
 | 7 | **DnD 이동** (dnd-kit, 완료 2026-04-25) | Row → FolderNode/Breadcrumb/FileRow(폴더). BulkActionBar 다이얼로그 키보드 경로. 자기/후손/같은-폴더 차단. pending 시각화 + role="status" 카운트 배지. |
 | 8 | **권한 UI + 조건부 렌더링** (완료 2026-04-25) | usePermission(useQuery 기반) + getEffectivePermissions/getNodePermissionGrants mock. UploadButton: upload 없으면 disabled+title(생산적). BulkActionBar: 다운로드 disabled+title(생산적), 이동/휴지통 숨김(파괴적). RightPanel '권한' 탭에 PermissionsPanel(grant 목록 + role 뱃지 + 상속 표시). 403은 M3에서 전역 처리. docs/03 §3 매트릭스 확정 후 mock 교체 필요. |
-| 9 | **휴지통 + Undo** | 5초 토스트, `/trash` 페이지 |
+| 9 | **휴지통 + Undo** (완료 2026-04-25) | sonner Toaster (explorer layout) + useDeleteBulk onSuccess에 5초 Undo 토스트(action: 되돌리기 → api.restoreFiles). 사이드바 `<TrashLink />` (휴지통 아이콘 + 카운트 배지). `(explorer)/trash` 페이지 + TrashTable(이름/원위치/삭제일/액션). 영구 삭제는 admin 권한만(파괴적). RESTORE_CONFLICT 에러 분기. mock: MOCK_TRASH 별도 배열 + deletedAt/originalParentId 보존 |
 | 10 | **접근성 + 키보드** (완료 2026-04-25) | Shift/Ctrl+화살표, F2 rename(다이얼로그), Delete 휴지통, `/` 전역 트리거. RenameDialog focus trap + role=alert 에러. |
 | 11 | **검색** (완료 2026-04-25) | URL `?q=` canonical, debounce 300ms, AbortSignal cancel, normalize 일치, 결과 그리드(SearchResults: 부모 폴더명 컬럼/가상화/선택/키보드/RightPanel 연동), 검색 모드 시 FileTable·StatusBar 숨김 |
 | 12 | **감사 로그 UI** (도메인에 따라) | `/admin/audit-logs` 필터/export |

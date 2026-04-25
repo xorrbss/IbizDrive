@@ -21,4 +21,7 @@ export const qk = {
     [...qk.all, 'search', q, filters] as const,
 
   storageQuota: () => [...qk.all, 'storage', 'quota'] as const,
+
+  trash: () => [...qk.all, 'trash'] as const,
+  trashList: () => [...qk.trash(), 'list'] as const,
 } as const
