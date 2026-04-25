@@ -1,5 +1,7 @@
 import type { SortKey } from '@/types/file'
 
+export type SearchFilters = Record<string, never>
+
 export const qk = {
   all: ['explorer'] as const,
   folders: () => [...qk.all, 'folders'] as const,
@@ -11,4 +13,7 @@ export const qk = {
   filesInFolder: (folderId: string, sort: SortKey, dir: 'asc' | 'desc') =>
     [...qk.files(), 'list', folderId, sort, dir] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
+
+  search: (q: string, filters: SearchFilters) =>
+    [...qk.all, 'search', q, filters] as const,
 } as const

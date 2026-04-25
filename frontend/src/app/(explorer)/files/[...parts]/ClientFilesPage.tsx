@@ -1,11 +1,13 @@
 'use client'
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useCloseFileOnFolderChange } from '@/hooks/useCloseFileOnFolderChange'
 import { buildCanonicalPath } from '@/lib/folderPath'
+import { normalizeForSearch } from '@/lib/normalize'
 import { Breadcrumb } from '@/components/folders/Breadcrumb'
 import { FileTable } from '@/components/files/FileTable'
+import { SearchResults } from '@/components/files/SearchResults'
 import { BulkActionBar } from '@/components/files/BulkActionBar'
 import { RightPanel } from '@/components/files/RightPanel'
 import { FolderToolbar } from '@/components/upload/FolderToolbar'
@@ -13,11 +15,16 @@ import { UploadQueueDock } from '@/components/upload/UploadQueueDock'
 import { UploadConflictDialog } from '@/components/upload/UploadConflictDialog'
 import { MoveFolderDialog } from '@/components/files/MoveFolderDialog'
 import { RenameDialog } from '@/components/files/RenameDialog'
+import { StatusBar } from '@/components/layout/StatusBar'
 import { useUploadBeforeUnload } from '@/hooks/useUploadBeforeUnload'
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
 
 export function ClientFilesPage({ parts }: { parts: string[] }) {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const rawQ = searchParams.get('q') ?? ''
+  const normalizedQ = normalizeForSearch(rawQ.trim())
+  const isSearchMode = normalizedQ.length >= 2
   const { folderId, folder, isLoading, error } = useCurrentFolder()
 
   useCloseFileOnFolderChange(folder?.id)
@@ -53,7 +60,14 @@ export function ClientFilesPage({ parts }: { parts: string[] }) {
         <Breadcrumb />
         <FolderToolbar />
         <BulkActionBar />
-        <FileTable folderId={folderId} />
+        {isSearchMode ? (
+          <SearchResults query={rawQ} />
+        ) : (
+          <>
+            <FileTable folderId={folderId} />
+            <StatusBar folderId={folderId} />
+          </>
+        )}
       </div>
       <RightPanel />
       <UploadQueueDock />

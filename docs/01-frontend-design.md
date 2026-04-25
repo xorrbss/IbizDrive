@@ -1310,10 +1310,10 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 8 | **권한 UI + 조건부 렌더링** | 생산적=비활성, 파괴적=숨김, 403 전역 처리 |
 | 9 | **휴지통 + Undo** | 5초 토스트, `/trash` 페이지 |
 | 10 | **접근성 + 키보드** (완료 2026-04-25) | Shift/Ctrl+화살표, F2 rename(다이얼로그), Delete 휴지통, `/` 전역 트리거. RenameDialog focus trap + role=alert 에러. |
-| 11 | **검색** (debounce, abort, normalize 일치) | 2자 이상, 타이핑 중 placeholderData |
+| 11 | **검색** (완료 2026-04-25) | URL `?q=` canonical, debounce 300ms, AbortSignal cancel, normalize 일치, 결과 그리드(SearchResults: 부모 폴더명 컬럼/가상화/선택/키보드/RightPanel 연동), 검색 모드 시 FileTable·StatusBar 숨김 |
 | 12 | **감사 로그 UI** (도메인에 따라) | `/admin/audit-logs` 필터/export |
 | 13 | **디자인 토큰 적용** (M13, 완료 2026-04-25) | `:root` 토큰 + `@theme inline` + 모든 className 토큰화. 기준: `design-reference/IbizDrive.html` |
-| 14 | **Visual Identity** | TopBar(검색/테마 토글/아바타) + Lucide 아이콘 도입 + FileRow 밀도 재조정 + StatusBar 하단. M13 토큰 위에서 JSX 추가 |
+| 14 | **Visual Identity** (완료 2026-04-25) | TopBar(검색/테마 토글/아바타) + Lucide 아이콘 도입(mime→icon) + FileRow 밀도 36px + StatusBar(main 하단). M13 토큰 위에서 JSX 추가. |
 | 15 | **Layout Extras** | SortChip(정렬 드롭다운) + ViewSwitch(List/Grid 토글) + StorageBar(사이드바 하단) + RightPanel 탭(세부정보/버전/활동/권한) |
 | 16 | **Grid View** | FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글 |
 | v1.x | **tus 재개 업로드** | UploadStore 계약 유지, 훅만 교체 |

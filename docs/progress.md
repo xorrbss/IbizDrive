@@ -5,6 +5,98 @@
 
 ---
 
+## 2026-04-25 — M11 완료 (검색: URL `?q=` canonical + debounce + abort + 결과 그리드)
+
+### 완료
+- [M11] **lib/queryKeys.ts** — `SearchFilters` type alias(`Record<string, never>` — 향후 type/owner/date 등 확장) + `qk.search(q, filters)` 추가
+- [M11] **lib/api.ts** — `searchFiles({ q, filters }, { signal })` mock. `normalizeForSearch` 적용 후 `MOCK_FILES` 부분일치 검색 (`includes`) + 한글 locale sort. 200ms 시뮬 latency + `AbortSignal` 즉시/사후 cancel 양쪽 처리(`DOMException('Aborted', 'AbortError')`). <2자 즉시 빈 배열 (7 tests)
+- [M11] **hooks/useDebounce.ts** — generic `useDebounce<T>(value, ms)`. setTimeout/clearTimeout (4 tests, fakeTimers)
+- [M11] **hooks/useSearch.ts** — `useQuery<FileItem[], Error>`. `useDebounce(rawQuery.trim(), 300)` → `normalizeForSearch` → `enabled: normalized.length >= 2`. `placeholderData: (prev) => prev` (타이핑 중 이전 결과 유지). `staleTime: 30_000` (4 tests: <2자 disabled, 결과 반환, trim, lowercase)
+- [M11] **components/files/SearchEmpty.tsx** — SearchX 아이콘 + "검색 결과가 없습니다" + q 표시
+- [M11] **components/files/SearchRow.tsx** — FileRow 슬림 버전 (DnD 없음). columns: icon / name / parentName(위치) / updatedAt / updatedBy. 행 36px, role=row + aria-rowindex + data-file-id
+- [M11] **components/files/SearchResults.tsx** — 가상화 그리드. SearchHeader(role=status, aria-live=polite, "검색 결과: 'q' · N개 항목"). useFolderTree + findNode로 부모 폴더명 lookup. 키보드 네비(↑↓/Space/Ctrl+A/Enter/Esc) + selection store 연동. Enter on folder → router.push(/files/<id>) (URL 자연 변경으로 ?q= drop). FileTable과 동일한 4가지 상태 처리(skeleton/empty/error/forbidden) (3 tests)
+- [M11] **components/layout/TopBar.tsx** — `?q=` URL canonical 양방향 동기화. `useSearchParams.get('q')`로 mount 시드, `useDebounce(query, 300)`로 `router.replace` 호출(타이핑 중 history pollution 방지). clear 버튼은 즉시 URL 제거. 다른 query params(`?file=` 등) 보존 (7 tests, +2 신규)
+- [M11] **ClientFilesPage** — `?q=` 정규화 후 ≥2자면 검색 모드 진입. `<SearchResults query={rawQ}/>` 렌더 + FileTable·StatusBar 숨김. Breadcrumb·FolderToolbar·BulkActionBar는 그대로 표시(현재 폴더 컨텍스트 유지)
+- [M11] **검증** — typecheck PASS · lint PASS · 177 tests PASS (M14 기준 157 → +20 신규)
+- [M11] **로드맵** — docs/01 §18 M11 행 완료 마커(2026-04-25)
+
+### 핵심 설계 결정
+- **URL `?q=` canonical (Option A)** — 별도 `/search` 라우트(B)나 dropdown(C) 대신 인라인 결과 페이지. selection store / RightPanel(`?file=`) / 키보드 인프라 그대로 재사용. 폴더 클릭 시 `router.push(/files/<id>)`로 pathname 자체가 바뀌어 `?q=` 자연 소실 (Next15 App Router 동작)
+- **enable threshold = 2자** — normalize 후 길이로 판정. trim + NFC + lowercase + 공백 collapse 일관 적용. 백엔드 검색 API 동일 정규화 가정(docs/02 §3)
+- **debounce 300ms** — 사용자 perception 임계와 cancel 비용 균형. AbortSignal로 inflight 요청 자동 취소(useQuery v5는 queryKey 변경 시 자동 abort)
+- **placeholderData = (prev) => prev** — 타이핑 중 결과 깜빡임 제거. v5 패턴(v4 `keepPreviousData` 대체). `isFetching` 분리하여 SearchHeader에 "검색 중…" 표시
+- **SearchRow ≠ FileRow** — FileRow는 동일 부모 폴더 기준 DnD draggable. 검색 결과는 부모가 섞여서 DnD 의미 없음. 별도 슬림 컴포넌트로 책임 분리(props 부담 감소)
+- **부모 폴더명 컬럼** — useFolderTree 캐시(60s staleTime) + findNode lookup. 별도 API 라운드트립 0건. design-reference 검색 결과의 "위치" 컬럼 매칭
+- **검색 모드 시 StatusBar 숨김** — StatusBar는 "현재 폴더 컨텍스트"(folderId 의존). 검색은 폴더-횡단이라 의미 충돌. SearchHeader가 항목 개수 역할 대체
+- **SearchResults 테스트 — virtualizer 행은 e2e** — jsdom layout 0px라 `getVirtualItems()` 빈 배열. unit test는 SearchHeader 개수/role=grid만 검증, 실제 행 렌더는 Playwright(v1.x)에서
+
+### 블로커 / TODO
+- **백엔드 search API 미정** — 정규화 일치 정책(docs/02 §3) 외에 ranking/highlighting 스펙 미설계. v1.x에서 `filters: SearchFilters` 확장(type/parent/owner/date) 시 docs/01 §10 + docs/02 §7.x 동기 업데이트 필요
+- **search API에 `signal: AbortSignal` 통과** — useQuery v5 자동 abort, mock api도 처리. 실제 fetch 구현 시 axios `CancelToken` 또는 fetch `signal` 전달 패턴 유지
+
+### 다음 세션 컨텍스트
+**M9 (휴지통 + Undo)**
+- `/trash` 라우트 + 휴지통 전용 FileTable variant
+- Delete 키 → 5초 Undo 토스트 (현재 M10에서 키바인딩만 등록)
+- 영구 삭제 / 복원 — 백엔드 트랜잭션 의존 (docs/02 §6.5)
+
+**M8 (권한 UI)**
+- 403 전역 처리는 M3에서 완료. 권한별 비활성/숨김 분기 + RightPanel 권한 탭
+- docs/03 §3 권한 매트릭스 미완성 → 대기
+
+---
+
+## 2026-04-25 — M14 완료 (Visual Identity: TopBar + Lucide + 밀도 + StatusBar)
+
+### 완료
+- [M14] **lucide-react 0.468 의존성 추가** — 트리쉐이킹 아이콘. React 19 호환. design-reference의 inline SVG를 표준 라이브러리로 환원
+- [M14] **lib/fileIcons.tsx** — `getFileIcon(item)`/`getFileIconColor(item)`. mime/type → Lucide 컴포넌트 매핑(folder/image/video/pdf/spreadsheet/code/archive/word/text/default) + 색상 (folder=accent, pdf=danger, sheet=#3EA971, image=#B06BCC, video=#C95A7B, code=#5A7C9E, default=fg-muted) (13 tests)
+- [M14] **FileRow** — emoji 함수 제거 → `<Icon size={16} className={iconColor} strokeWidth={1.6} />`. `h-10` → `h-9` (40 → 36px). aria-hidden 유지
+- [M14] **FileTable** — `ROW_HEIGHT = 40` → `36` (가상화 픽셀 동기화)
+- [M14] **components/layout/TopBar.tsx** — `grid grid-cols-[auto_1fr_auto] h-12` (48px). 좌: Menu icon-btn (사이드바 토글 스텁). 중: SearchBox (Search icon + input + ⌘K hint, max-w-560, focus-within으로 surface-1 + border-strong). 우: ThemeToggle (Sun/Moon, `data-theme` 직접 조작) + Help + Avatar("나", 26px accent 원). `useEffect`로 `app:focus-search` 이벤트 수신 → input.focus() (5 tests)
+- [M14] **components/layout/StatusBar.tsx** — `h-7 border-t bg-surface-1 text-[11.5px]`. `useFilesInFolder` + `useSelectionStore` 구독. 좌: "N개 항목 · M개 선택됨", 우: 선택 size sum (folder=null 제외). role=contentinfo (3 tests)
+- [M14] **(explorer)/layout.tsx** — `grid-rows-[48px_1fr]` 재구성. TopBar 마운트 후 sidebar+main 가로 분할. 사이드바 brand mark는 그대로 유지 (M13 적용분)
+- [M14] **ClientFilesPage** — 메인 컬럼 끝(FileTable 아래)에 `<StatusBar folderId={folderId} />` 추가
+- [M14] **검증** — typecheck PASS · lint PASS · 157 tests PASS (M10 기준 136 → +21 신규)
+- [M14] **로드맵** — docs/01 §18 M14 행에 완료 마커(2026-04-25)
+
+### 핵심 설계 결정
+- **StatusBar = main 하단** — sidebar 하단은 M15 StorageBar(저장공간 진척률)로 분리. StatusBar는 "현재 폴더 컨텍스트"(항목/선택/size sum), StorageBar는 "사용자 계정 컨텍스트"
+- **FileRow 36px (단일 밀도)** — 디자인 ref의 `density-comfortable` 40px는 sparse, `density-compact` 28px는 hit-area 부족. 36px 중간값 채택. 밀도 toggle은 v1.x
+- **TopBar 위치 = 전체 폭** — design-reference 구조 그대로. grid-rows로 재구성하여 sidebar 브랜드(M13)와 TopBar 좌측 menu icon이 시각적으로 분리 (현재 menu는 no-op)
+- **테마 토글 비영구** — `document.documentElement.dataset.theme` 직접 조작. localStorage 영속화는 v1.x. M13 토큰 체계상 className 변경 0건으로 즉시 전환
+- **Lucide 아이콘 색상은 인라인 hex** — `text-[#3EA971]` 등. 정식 토큰 등록은 6열 확장(v1.x)과 함께 일괄 검토
+- **검색 입력은 컴포넌트 내부 state** — M11 진입 시 URL `?q=` 파라미터로 승격 + `useDebouncedSearchQuery` 추가. 현재는 placeholder/포커스/⌘K hint만
+- **`/` 키 → TopBar focus 결합** — M10이 디스패치하던 `app:focus-search` 이벤트의 첫 리스너 등록. 기존 listener 없으면 no-op이던 lazy 패턴 그대로 검증
+
+### 다음 세션 컨텍스트
+**M15 (Layout Extras)**
+- SortChip — 현재 헤더 클릭으로만 정렬. URL `?sort=&dir=` 그대로 사용하는 dropdown UI
+- ViewSwitch — List/Grid 토글. `viewMode` Zustand 슬라이스 신설 (URL? 검토 필요 — 현재 URL 진실 출처 원칙상 query param이 자연스러움)
+- StorageBar — 사이드바 하단 (`sidebar-storage` 클래스 매핑). 저장공간 % + 진척바 + "용량 업그레이드" 버튼
+- RightPanel 탭 — 세부정보/버전/활동/권한 4개. M8 권한 UI와 함께 검토
+
+**M16 (Grid View)**
+- M15 ViewSwitch 의존. design-reference `GridView`/`GridThumb` 패턴
+- 가상화는 List만 적용 — Grid는 CSS grid + IntersectionObserver 검토 (별도 spec)
+
+**TopBar 검색 (M11)**
+- `query` state → URL `?q=` 파라미터 승격
+- `lib/api.search` 신규 (debounce 250ms, abort)
+- `qk.search(q, folderId?)` 키 팩토리
+
+**테마 영속화 (v1.x)**
+- localStorage `ibizdrive:theme` + 시스템 prefers-color-scheme 폴백
+- M9 설정 페이지에 토글 추가
+
+### 블로커
+- 없음
+
+### 마일스톤 상태 (docs/01 §18)
+- ✅ M1~M7, M10, M13, M14 완료. M8(권한 UI)는 docs/03 §3 작성 후 진입 가능. M11(검색)은 M14 TopBar 인프라 + M10 `app:focus-search` 결합 완료 → 즉시 진입 가능. M15는 디자인 ref 매핑만 남은 상태.
+
+---
+
 ## 2026-04-25 — M10 완료 (고급 키보드 + 접근성 마무리)
 
 ### 완료

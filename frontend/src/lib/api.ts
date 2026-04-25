@@ -1,8 +1,9 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
+import type { SearchFilters } from './queryKeys'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
-import { normalizedNameForDedup } from './normalize'
+import { normalizedNameForDedup, normalizeForSearch } from './normalize'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -243,6 +244,33 @@ export const api = {
     }
 
     return { movedIds: ids }
+  },
+
+  async searchFiles(
+    { q }: { q: string; filters: SearchFilters },
+    opts?: { signal?: AbortSignal },
+  ): Promise<FileItem[]> {
+    const norm = normalizeForSearch(q)
+    if (norm.length < 2) return []
+
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, 200)
+      const onAbort = () => {
+        clearTimeout(t)
+        reject(new DOMException('Aborted', 'AbortError'))
+      }
+      if (opts?.signal) {
+        if (opts.signal.aborted) {
+          clearTimeout(t)
+          reject(new DOMException('Aborted', 'AbortError'))
+          return
+        }
+        opts.signal.addEventListener('abort', onAbort, { once: true })
+      }
+    })
+
+    return MOCK_FILES.filter((f) => normalizeForSearch(f.name).includes(norm))
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko'))
   },
 
   async renameFile(id: string, newName: string): Promise<FileItem> {
