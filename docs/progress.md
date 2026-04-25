@@ -5,6 +5,100 @@
 
 ---
 
+## 2026-04-25 — Track D: e2e Playwright 도입
+
+### 완료
+- [M_e2e] **@playwright/test 도입** + `playwright.config.ts` (chromium만, webServer 자동 기동, baseURL 3000, retries CI=2)
+- [M_e2e] **e2e/routing.e2e.ts** — / → /files 리다이렉트 / 사이드바·breadcrumb / FolderTree 클릭 → URL+breadcrumb 갱신 / `/` 키 → app:focus-search 디스패치 (4 specs)
+- [M_e2e] **e2e/move.e2e.ts** — BulkActionBar 이동 다이얼로그 → 대상 선택 → 토스트 / source 폴더 disabled (2 specs)
+- [M_e2e] **e2e/trash.e2e.ts** — BulkActionBar 휴지통으로 → 토스트 + bar 사라짐 (1 spec)
+- [M_e2e] **e2e/tsconfig.json** — main tsconfig에서 e2e/ 제외 + Playwright types 별도 설정
+- [M_e2e] **package.json** — `test:e2e`, `test:e2e:ui` 스크립트 추가
+- [M_e2e] **.gitignore** — playwright-report / test-results / playwright/.cache
+
+### 핵심 설계 결정
+- **chromium only (v1.0)** — 키바인딩/DnD 안정성 우선, firefox/webkit은 프로덕션 안정화 후
+- **DnD 시나리오 → 다이얼로그 경로로 대체** — dnd-kit PointerSensor activationConstraint(distance:5px) + Playwright mouse 시퀀싱이 flaky. DnD 통합은 후속 (E2E_dnd_followup) — `page.mouse.move`를 50ms 단위 다단계 + `force: true` 필요
+- **검색 input UI 미구현** — '/' 키 디스패치까지만 검증. 검색 input 도입 (M_search) 후 input.focus 검증 추가
+- **휴지통 Undo 미구현** — soft delete + 토스트만. 복원 흐름은 M_trash 후속
+
+### 다음 세션 컨텍스트
+- **브라우저 미설치** — 첫 실행 전 `npx playwright install chromium` 필요. CI 통합 시 `actions/setup-node` 후 install step 추가
+- **CI 통합은 후속** — `.github/workflows/e2e.yml`에서 webServer reuseExistingServer:false + retries 2
+- **mock 데이터 기반** — MOCK_FILES/MOCK_TREE를 변경하면 e2e 셀렉터(영업팀/인사팀/내 드라이브) 동기화 필요
+- **vitest 단위 테스트와 분리** — testMatch는 `*.e2e.ts`, vitest는 `*.test.ts(x)` — 충돌 없음
+
+### 블로커
+- 검색 input UI / 휴지통 Undo 미구현 — 시나리오 부분 적용. 후속 마일스톤에서 보강 예정
+
+---
+
+## 2026-04-25 — Track B: M12 감사 로그 페이지 (mock)
+
+### 완료
+- [M12] **types/audit.ts** — `AuditEventType` (docs/03 §4.1 mirror, audit.exported 포함) + `AuditLogEntry` + `AuditLogFilters` + `AuditLogPage`
+- [M12] **api.getAuditLogs** — filters/page/pageSize → 정렬(occurredAt desc) + 60-entry mock 데이터 (6 tests)
+- [M12] **lib/auditCsv.ts** — RFC 4180 quoting + `toAuditCsvBlob` (UTF-8 BOM, text/csv MIME) (6 tests)
+- [M12] **hooks/useAuditLogs** — useQuery wrapper, queryKey에 filters/page 포함 → 자동 재요청 (2 tests)
+- [M12] **/admin/audit/logs** — Filters + Table + Pagination + CSV export 페이지 (docs/04 §7)
+- [M12] **components/audit** — AuditFilters (4 tests), AuditTable (6 tests, aria-rowcount/rowindex 포함), AuditPagination
+- [M12] **/admin/layout.tsx** — 관리자 헤더 (감사 로그 링크)
+- [M12] **docs/03 §4.1** — 클라이언트 mirror 표시 + audit.exported 추가
+- [M12] **검증** — typecheck PASS · lint PASS · 170 tests PASS (M10 기준 146 → +24 신규)
+
+### 핵심 설계 결정
+- **mock 우선, 백엔드 분리 (A 트랙)** — getAuditLogs는 클라이언트 mock. 실제 연결 시 audit.exported 서버 기록 필요 (docs/04 §7.2)
+- **CSV는 현재 페이지만 export (mock)** — 백엔드 연결 후 전체 필터 결과 서버 스트리밍으로 교체
+- **필터 변경 시 자동 setPage(1)** — UX 일관성. 페이지네이션 키에 filters 포함되어 자동 refetch
+- **UTF-8 BOM Blob** — Excel에서 한글 깨짐 방지. BOM 자체는 toAuditCsv 결과에 prefix
+- **resourceType=null 허용** — 시스템 이벤트(system.backup.completed) 처리. UI는 `[type]` 또는 dash로 표시
+- **즉시 반영 폼 (Apply 버튼 없음)** — onChange로 즉시 부모 setState. 디바운스는 actorQuery 입력 압박 시 부모에서 추가
+
+### 다음 세션 컨텍스트
+- **백엔드 연결 (A 트랙)** — `api.getAuditLogs`를 fetch로 교체 + `audit.exported` 서버 기록 추가
+- **상세 뷰 (docs/04 §7.3)** — before/after diff 표시 + 같은 세션 이벤트 연결은 v1.x
+- **IP/리소스 필터 (docs/04 §7.1)** — mock 범위 외. 백엔드 연결 후 UI 추가
+- **권한 체크** — 감사 로그 접근은 admin role 필수. ProtectedRoute는 §3 권한 매트릭스 작성 후
+- **/admin 다른 페이지** — dashboard / users / departments 등 docs/04 §2 라우트 v1.x
+
+### 블로커
+- 없음
+
+---
+
+## 2026-04-25 — Track C: 회고/리팩토링 (sonner 분리 + 무효화 헬퍼 + mock 공통화)
+
+### 완료
+- [C-1] **sonner 도입** — providers.tsx `<Toaster position="bottom-right" richColors />`
+- [C-1] **hooks 토스트 분리** — `useDeleteBulk`/`useMoveBulk`/`useRenameFile`은 결과만 반환, 토스트는 호출부 (`Options.onSuccess/onError`)
+- [C-1] **호출부 마이그레이션** — BulkActionBar / MoveFolderDialog / DndProvider / RenameDialog 모두 hook-level 콜백으로 토스트 호출
+- [C-2] **lib/queryKeys.ts invalidations** — `afterFilesMoved` / `afterRename` / `afterDelete` 헬퍼. 무효화 매트릭스를 한 곳으로 집결 (3 hooks가 같은 룰 공유)
+- [C-2] **filesListPrefix(folderId)** — sort/dir 변종 전체 prefix 매칭용 키 추가 (직접 단일 read는 filesInFolder)
+- [C-3] **test/setup.ts** — sonner 글로벌 vi.mock (Toaster=null + toast methods=vi.fn)
+- [C-3] **test/mocks/sonner.ts** — `toastSpy(method)` / `resetSonnerToastMock()` 공통 헬퍼
+- [C-3] **호출부 테스트 갱신** — MoveFolderDialog.test (toast success/error 추가) / RenameDialog.test (toast success + inline-error-no-toast)
+- [C] **검증** — typecheck PASS · lint PASS · 146 tests PASS
+
+### 핵심 설계 결정
+- **hook-level Options 패턴** — 호출부가 매번 mutate options을 넘기지 않고 hook 호출 시점에 콜백 등록. mutation 완료 시 컴포넌트가 mount되어 있어야 콜백이 발화 (TanStack Query v5의 onSuccess는 observer 기반)
+- **MoveFolderDialog `close()` 즉시 호출** — ClientFilesPage에서 항상 mount되므로 다이얼로그가 isOpen=false로 null 반환해도 hook은 살아있음 → 콜백 발화 보장
+- **RenameDialog는 onSuccess만 hook-level** — 실패는 inline alert(setError)로 다이얼로그 유지가 UX 우선
+- **vi.mock 글로벌 setup** — vi.mock 팩토리는 호이스트되어 import된 심볼 참조 불가 → setup.ts에서 inline 팩토리로 처리. 헬퍼는 vi.mocked(toast)로 사후 접근
+
+### v1.x 후속 (이번 스코프 제외)
+- **ApiError 타입화** — `unknown` throws → 구조화 타입 (status/code/details)
+- **vi.hoisted 표준화** — 일부 테스트의 vi.mock 패턴 통일
+- **useStorageQuota env-driven** — quota 표시 컴포넌트의 환경변수 readout
+
+### 다음 세션 컨텍스트
+- **mutation hooks 추가 시 invalidations 헬퍼 재사용** — 새 패턴 발생 시 헬퍼에 추가
+- **ApiError 타입은 백엔드 연결 (A 트랙) 시 필수** — 현재 mock은 `{ status, code }` plain object를 throw
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-25 — M10 완료 (고급 키보드 + 접근성 마무리)
 
 ### 완료
