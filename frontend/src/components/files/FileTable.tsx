@@ -19,7 +19,7 @@ import { useRenameUiStore } from '@/stores/renameUi'
 import { UploadOverlay } from '@/components/upload/UploadOverlay'
 import type { FileItem } from '@/types/file'
 
-const ROW_HEIGHT = 40
+const ROW_HEIGHT = 36
 
 // 현 M5 단계 — 5열 유지 (M7에서 체크박스/액션 컬럼 추가 시 재매핑)
 const GRID_COLS = 'grid grid-cols-[28px_1fr_110px_130px_90px] gap-3 items-center px-4'

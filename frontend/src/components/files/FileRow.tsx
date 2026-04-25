@@ -4,6 +4,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
+import { getFileIcon, getFileIconColor } from '@/lib/fileIcons'
 import type { FileItem } from '@/types/file'
 
 type Props = {
@@ -32,15 +33,6 @@ function formatDate(iso: string): string {
     month: '2-digit',
     day: '2-digit',
   })
-}
-
-function fileIcon(item: FileItem): string {
-  if (item.type === 'folder') return '📁'
-  if (item.mimeType?.startsWith('image/')) return '🖼️'
-  if (item.mimeType?.includes('pdf')) return '📄'
-  if (item.mimeType?.includes('spreadsheet') || item.mimeType?.includes('excel')) return '📊'
-  if (item.mimeType?.includes('word') || item.mimeType?.includes('document')) return '📝'
-  return '📎'
 }
 
 export function FileRow({
@@ -74,6 +66,8 @@ export function FileRow({
   }
 
   const isDraggingThis = draggable.isDragging
+  const Icon = getFileIcon(item)
+  const iconColor = getFileIconColor(item)
 
   // 드래그 중인 폴더 타겟 시각화
   const dropClass =
@@ -109,7 +103,7 @@ export function FileRow({
           : undefined
       }
       tabIndex={isFocused ? 0 : -1}
-      className={`${gridCols} min-h-[var(--row-h)] h-10 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
+      className={`${gridCols} min-h-[var(--row-h)] h-9 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
       onClick={(e) => {
         if (isPending) return
         onClick?.(item, e)
@@ -121,7 +115,9 @@ export function FileRow({
       onKeyDown={onKeyDown}
       data-file-id={item.id}
     >
-      <span className="text-center" role="gridcell" aria-hidden="true">{fileIcon(item)}</span>
+      <span className="flex items-center justify-center" role="gridcell" aria-hidden="true">
+        <Icon size={16} className={iconColor} strokeWidth={1.6} />
+      </span>
       <span
         className="truncate font-medium text-fg"
         role="gridcell"
