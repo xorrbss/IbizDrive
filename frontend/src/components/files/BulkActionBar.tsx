@@ -44,15 +44,17 @@ export function BulkActionBar() {
         <span className="text-[12.5px] font-semibold text-accent">{count}개 선택</span>
       </div>
       <div className="flex items-center gap-1">
-        {can.download && (
-          <button
-            type="button"
-            onClick={handleDownload}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg transition-colors"
-          >
-            다운로드
-          </button>
-        )}
+        {/* 다운로드는 생산적 액션 — 권한 없을 시 disabled + 안내 (docs/01 §14.3) */}
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={!can.download}
+          title={!can.download ? '다운로드 권한이 없습니다.' : undefined}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+        >
+          다운로드
+        </button>
+        {/* 이동/휴지통은 파괴적 — 권한 없으면 숨김 */}
         {can.move && (
           <button
             type="button"

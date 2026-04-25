@@ -1,29 +1,51 @@
 // frontend/src/hooks/usePermission.ts
-// TODO(M7 권한): docs/01 §14.2 스펙대로 useQuery + api.getEffectivePermissions()로 교체.
-// docs/03 §3 권한 매트릭스 확정 후 실제 구현 예정.
+// 설계: docs/01 §14.2 (권한 훅)
+//
+// 프론트 권한은 UX용 — 백엔드 권한 검증이 보안의 마지막 방어선 (CLAUDE.md §3 원칙 10).
+// 403 응답은 일급 에러 (M3에서 전역 처리, §11).
 
-export type Permission =
-  | 'read'
-  | 'upload'
-  | 'edit'
-  | 'delete'
-  | 'download'
-  | 'move'
-  | 'share'
-  | 'admin'
+'use client'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
+import { qk } from '@/lib/queryKeys'
+import type { Permission, PermissionFlags } from '@/types/permission'
 
-export type PermissionFlags = Record<Permission, boolean>
+const FALLBACK: PermissionFlags = {
+  read: false,
+  upload: false,
+  edit: false,
+  delete: false,
+  download: false,
+  move: false,
+  share: false,
+  admin: false,
+}
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-export function usePermission(_nodeId?: string): PermissionFlags {
+/**
+ * 노드별 effective permissions를 PermissionFlags로 변환해 반환.
+ *
+ * - nodeId 미지정 시 전역(루트) 권한 — 사이드바 "새 폴더" 등에 사용.
+ * - 로딩 중에는 모든 권한 false (FALLBACK). UI는 disabled 상태로 안전하게 시작.
+ * - staleTime 60초 — 권한 변경은 드물고, 변경 시 백엔드가 cache invalidation 신호.
+ */
+export function usePermission(nodeId?: string): PermissionFlags {
+  const { data } = useQuery({
+    queryKey: qk.effectivePermissions(nodeId),
+    queryFn: () => api.getEffectivePermissions(nodeId),
+    staleTime: 60_000,
+  })
+  if (!data) return FALLBACK
+  const set = new Set<Permission>(data)
   return {
-    read: true,
-    upload: true,
-    edit: true,
-    delete: true,
-    download: true,
-    move: true,
-    share: true,
-    admin: true,
+    read: set.has('read'),
+    upload: set.has('upload'),
+    edit: set.has('edit'),
+    delete: set.has('delete'),
+    download: set.has('download'),
+    move: set.has('move'),
+    share: set.has('share'),
+    admin: set.has('admin'),
   }
 }
+
+export type { Permission, PermissionFlags } from '@/types/permission'

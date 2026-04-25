@@ -7,7 +7,10 @@ export const qk = {
   folders: () => [...qk.all, 'folders'] as const,
   folderTree: () => [...qk.folders(), 'tree'] as const,
   folder: (id: string) => [...qk.folders(), 'detail', id] as const,
-  effectivePermissions: () => [...qk.all, 'permissions', 'effective'] as const,
+  effectivePermissions: (nodeId?: string) =>
+    [...qk.all, 'permissions', 'effective', nodeId ?? '__root__'] as const,
+  nodePermissionGrants: (nodeId: string) =>
+    [...qk.all, 'permissions', 'grants', nodeId] as const,
 
   files: () => [...qk.all, 'files'] as const,
   filesInFolder: (folderId: string, sort: SortKey, dir: 'asc' | 'desc') =>

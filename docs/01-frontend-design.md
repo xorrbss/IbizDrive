@@ -1307,7 +1307,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 5 | **업로드 (multipart + 충돌 + 실패 분류)** | 동일 이름 충돌 시 ConflictDialog, beforeunload |
 | 6 | **RightPanel (query param)** | `?file=xxx` 딥링크, Esc로 닫기 |
 | 7 | **DnD 이동** (dnd-kit, 완료 2026-04-25) | Row → FolderNode/Breadcrumb/FileRow(폴더). BulkActionBar 다이얼로그 키보드 경로. 자기/후손/같은-폴더 차단. pending 시각화 + role="status" 카운트 배지. |
-| 8 | **권한 UI + 조건부 렌더링** | 생산적=비활성, 파괴적=숨김, 403 전역 처리 |
+| 8 | **권한 UI + 조건부 렌더링** (완료 2026-04-25) | usePermission(useQuery 기반) + getEffectivePermissions/getNodePermissionGrants mock. UploadButton: upload 없으면 disabled+title(생산적). BulkActionBar: 다운로드 disabled+title(생산적), 이동/휴지통 숨김(파괴적). RightPanel '권한' 탭에 PermissionsPanel(grant 목록 + role 뱃지 + 상속 표시). 403은 M3에서 전역 처리. docs/03 §3 매트릭스 확정 후 mock 교체 필요. |
 | 9 | **휴지통 + Undo** | 5초 토스트, `/trash` 페이지 |
 | 10 | **접근성 + 키보드** (완료 2026-04-25) | Shift/Ctrl+화살표, F2 rename(다이얼로그), Delete 휴지통, `/` 전역 트리거. RenameDialog focus trap + role=alert 에러. |
 | 11 | **검색** (완료 2026-04-25) | URL `?q=` canonical, debounce 300ms, AbortSignal cancel, normalize 일치, 결과 그리드(SearchResults: 부모 폴더명 컬럼/가상화/선택/키보드/RightPanel 연동), 검색 모드 시 FileTable·StatusBar 숨김 |

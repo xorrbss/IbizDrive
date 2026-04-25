@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-04-25 — M8 완료 (권한 UI + 조건부 렌더링)
+
+### 완료
+- [M8] **types/permission.ts** — `Permission` 8종 + `PermissionFlags` + `PermissionGrant` (subjectType/subjectName/role/inherited)
+- [M8] **lib/api.ts** — `getEffectivePermissions(nodeId?)` (모든 권한 반환 mock, 60ms) + `getNodePermissionGrants(nodeId)` (3개 grant mock: 나/개발팀/김PM, 80ms). docs/03 §3 매트릭스 확정 시 본 mock 교체
+- [M8] **lib/queryKeys.ts** — `effectivePermissions(nodeId?)` 시그니처 변경(노드별) + `nodePermissionGrants(nodeId)` 추가
+- [M8] **hooks/usePermission.ts** — stub 제거, `useQuery` 기반(`staleTime: 60s`). 로딩 중엔 모든 권한 false(FALLBACK)로 안전한 disabled 시작
+- [M8] **hooks/useNodePermissionGrants.ts** — 권한 탭용 신규 훅 (`enabled: !!nodeId`, `staleTime: 30s`)
+- [M8] **UploadButton** — `usePermission(folderId)` → upload 없으면 `disabled` + `title` + `aria-label`(생산적 → 비활성)
+- [M8] **BulkActionBar** — 다운로드는 `disabled`+`title`(생산적), 이동/휴지통은 `{can.X && ...}`로 숨김(파괴적). 패턴 통일
+- [M8] **components/files/PermissionsPanel.tsx + test** — grant 목록 li (subject icon + 이름 + '상속됨' 배지 + role 칩). 로딩 skeleton + error alert + empty 상태 (3 tests)
+- [M8] **RightPanel** — 권한 탭에서 `<PermissionsPanel fileId={...} />` 마운트. 기존 PanelStub 교체
+- [M8] **BulkActionBar.test** 신규 — 권한별 가시성 3 케이스 (모두 노출 / 파괴적 숨김 / 다운로드 disabled+title) (3 tests)
+- [M8] **검증** — typecheck PASS · lint PASS · **202 tests PASS** (M16 기준 196 → +6)
+- [M8] **로드맵** — docs/01 §18 M8 행 완료 마커(2026-04-25)
+
+### 핵심 설계 결정
+- **usePermission은 useQuery 기반, 시그니처는 PermissionFlags 그대로** — 호출부(UploadButton, BulkActionBar)는 `can.upload`/`can.move` 식 그대로. 로딩 중엔 FALLBACK(전체 false)로 안전한 disabled 시작 → 깜빡임 없이 점진 활성
+- **생산적/파괴적 패턴 명문화** — 생산적(업로드/다운로드/공유): `disabled`+`title`+`aria-label`로 "왜 안 되는지" 안내. 파괴적(이동/삭제): 조건부 렌더(`{can.X && ...}`)로 숨김 — 비활성 버튼이 오히려 유인이 되는 것을 방지(docs/01 §14.3)
+- **403은 일급 에러로 M3에서 전역 처리 완료** — 본 마일스톤은 "권한 없는 액션을 시도하지 않게" UI를 제어. 보안의 마지막 방어선은 백엔드(CLAUDE.md §3 원칙 10)
+- **권한 탭은 read-only MVP** — grant 부여/회수 UX(role select, 사용자 검색, 만료 설정)는 v1.x. 현재는 누가 어떤 역할로 갖고 있는지 + 상속 여부만 표시
+- **mock은 모든 권한 부여로 시작** — 가시 동작은 stub 시절과 동일하지만 architecture가 docs/01 §14.2 스펙에 정합. 매트릭스 확정 시 nodeId별 분기만 추가
+- **`effectivePermissions(nodeId?)` 키 변경은 의도적** — 노드별 권한이 다를 수 있으므로 cache key 분리. nodeId 미지정 시 `'__root__'` 센티넬
+
+### 다음 세션 컨텍스트
+**M9 (휴지통 + Undo)**
+- Delete 키 → 5초 Undo 토스트 (현재 M10에서 `window.confirm`으로 폴백 처리됨 — 교체 필요)
+- `/trash` 라우트 + 휴지통 전용 list variant (보관일수, 자동 영구 삭제까지 D-day)
+- 영구 삭제 / 복원 — 백엔드 트랜잭션 의존(docs/02 §6.5). 일단 mock 가능
+- Toast 컨테이너 신규(없는 듯) — Sonner 또는 자체 구현 검토. 키보드 접근(undo Enter, dismiss Esc)
+
+**M12 (감사 로그 UI)**
+- `/admin/audit-logs` 라우트 + 필터/페이지네이션/CSV export
+- docs/03 §4 audit event enum 활용. 현재 `src/types/audit.ts`는 미생성
+- 도메인 우선순위에 따라 v1.x로 이연 가능
+
+**v1.x 권한 매트릭스 (백엔드 미들웨어 의존)**
+- docs/03 §3 권한 매트릭스 확정 시 `getEffectivePermissions` mock 교체
+- 그룹 vs 사용자, 상속 규칙, role hierarchy(owner > editor > viewer) 정합
+
+---
+
 ## 2026-04-25 — M16 완료 (Grid View: FileTable view 분기 + FileGrid + FileCard)
 
 ### 완료

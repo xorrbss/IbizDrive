@@ -4,6 +4,7 @@ import type { SearchFilters } from './queryKeys'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup, normalizeForSearch } from './normalize'
+import type { Permission, PermissionGrant } from '@/types/permission'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -374,5 +375,27 @@ export const api = {
   async getStorageQuota(): Promise<{ usedBytes: number; totalBytes: number }> {
     await new Promise((r) => setTimeout(r, 50))
     return { usedBytes: 65 * 1024 * 1024 * 1024, totalBytes: 100 * 1024 * 1024 * 1024 }
+  },
+
+  // M8 — 권한 (mock, docs/03 §3 매트릭스 확정 전까지 모든 권한 부여)
+  // 백엔드 연동 시 endpoint:
+  //   GET /api/permissions/effective?nodeId=<id>  → string[]
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async getEffectivePermissions(nodeId?: string): Promise<Permission[]> {
+    await new Promise((r) => setTimeout(r, 60))
+    // TODO(M_perm): nodeId별 매트릭스 적용 — docs/03 §3 확정 후
+    return ['read', 'upload', 'edit', 'delete', 'download', 'move', 'share', 'admin']
+  },
+
+  // M8 — 권한 탭 (mock). 노드별 grant 목록.
+  // 백엔드 endpoint: GET /api/permissions/grants/:nodeId → PermissionGrant[]
+  async getNodePermissionGrants(nodeId: string): Promise<PermissionGrant[]> {
+    await new Promise((r) => setTimeout(r, 80))
+    if (!nodeId) return []
+    return [
+      { id: 'g1', subjectType: 'user', subjectName: '나', role: 'owner', inherited: false },
+      { id: 'g2', subjectType: 'group', subjectName: '개발팀', role: 'editor', inherited: true },
+      { id: 'g3', subjectType: 'user', subjectName: '김PM', role: 'viewer', inherited: false },
+    ]
   },
 }

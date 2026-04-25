@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useFileDetail } from '@/hooks/useFileDetail'
+import { PermissionsPanel } from './PermissionsPanel'
 import type { FileItem } from '@/types/file'
 
 type TabKey = 'details' | 'versions' | 'activity' | 'permissions'
@@ -132,7 +133,7 @@ export function RightPanel() {
         )}
         {tab === 'versions' && <PanelStub label="버전 기록" />}
         {tab === 'activity' && <PanelStub label="활동 로그" />}
-        {tab === 'permissions' && <PanelStub label="권한 설정" />}
+        {tab === 'permissions' && fileId && <PermissionsPanel fileId={fileId} />}
       </div>
     </aside>
   )
