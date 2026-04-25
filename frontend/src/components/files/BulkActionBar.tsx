@@ -3,6 +3,7 @@ import { useSelectionStore } from '@/stores/selection'
 import { usePermission } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
+import { useMoveUiStore } from '@/stores/moveUi'
 
 export function BulkActionBar() {
   // Set 자체를 구독 (stable ref). Array.from은 render에서 변환.
@@ -15,6 +16,7 @@ export function BulkActionBar() {
   const can = usePermission()
   const { folderId } = useCurrentFolder()
   const deleteMut = useDeleteBulk()
+  const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
 
   if (count === 0) return null
 
@@ -24,8 +26,7 @@ export function BulkActionBar() {
   }
 
   const handleMove = () => {
-    // TODO(M6 DnD): 이동 다이얼로그/DnD로 전환
-    console.warn('[스텁] 이동 대상:', ids)
+    openMoveDialog(ids, folderId)
   }
 
   const handleDelete = () => {
