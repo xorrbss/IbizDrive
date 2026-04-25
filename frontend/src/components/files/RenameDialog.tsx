@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState, FormEvent } from 'react'
+import { toast } from 'sonner'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
@@ -17,7 +18,10 @@ export function RenameDialog() {
   const { folderId } = useCurrentFolder()
   const { sort, dir } = useSortParams()
   const { data: items } = useFilesInFolder(folderId, sort, dir)
-  const renameFile = useRenameFile()
+  const renameFile = useRenameFile({
+    // 성공만 토스트. 실패는 다이얼로그 inline alert로 (사용자가 입력 수정 후 재시도).
+    onSuccess: () => toast.success('이름이 변경되었습니다'),
+  })
 
   const [value, setValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)

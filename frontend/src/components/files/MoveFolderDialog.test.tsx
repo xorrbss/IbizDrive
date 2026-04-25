@@ -6,6 +6,7 @@ import { MoveFolderDialog } from './MoveFolderDialog'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { qk } from '@/lib/queryKeys'
 import { api } from '@/lib/api'
+import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 import type { FolderNode } from '@/types/folder'
 
 const tree: FolderNode = {
@@ -18,18 +19,31 @@ const tree: FolderNode = {
 }
 
 vi.mock('@/lib/api', () => ({
-  api: { moveFiles: vi.fn().mockResolvedValue({ movedIds: ['a'] }) },
+  api: {
+    moveFiles: vi.fn().mockResolvedValue({ movedIds: ['a'] }),
+    // useFolderTree refetch가 invalidations.afterFilesMoved에서 트리거되므로
+    // queryFn을 정의해줘야 한다 (없으면 default retry x 3 + backoff로 hang).
+    getFolderTree: vi.fn(),
+  },
 }))
 
 function renderWithQc(ui: ReactNode) {
-  const qc = new QueryClient()
+  const qc = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: 0 },
+      mutations: { retry: false },
+    },
+  })
   qc.setQueryData(qk.folderTree(), tree)
+  // refetch 시에도 안전하도록 mock 설정 (위 vi.mock과 별개로 런타임 구현 주입)
+  ;(api.getFolderTree as ReturnType<typeof vi.fn>).mockResolvedValue(tree)
   return render(<QueryClientProvider client={qc}>{ui}</QueryClientProvider>)
 }
 
 describe('MoveFolderDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetSonnerToastMock()
     useMoveUiStore.setState({ isMoveDialogOpen: false, moveIds: [], moveSourceFolderId: null })
   })
 
@@ -86,5 +100,39 @@ describe('MoveFolderDialog', () => {
       expect(api.moveFiles).toHaveBeenCalledWith(['file_x'], 'hr')
     })
     expect(useMoveUiStore.getState().isMoveDialogOpen).toBe(false)
+  })
+
+  it('성공 시 toast.success 호출', async () => {
+    useMoveUiStore.setState({
+      isMoveDialogOpen: true,
+      moveIds: ['file_x', 'file_y'],
+      moveSourceFolderId: 'root',
+    })
+    renderWithQc(<MoveFolderDialog />)
+    fireEvent.click(screen.getByLabelText(/인사팀/))
+    fireEvent.click(screen.getByRole('button', { name: '이동' }))
+    await waitFor(() => {
+      expect(toastSpy('success')).toHaveBeenCalledWith('2개 항목을 이동했습니다')
+    })
+  })
+
+  it('실패 시 toast.error 호출', async () => {
+    ;(api.moveFiles as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      status: 400,
+      code: 'MOVE_INTO_SELF',
+    })
+    useMoveUiStore.setState({
+      isMoveDialogOpen: true,
+      moveIds: ['file_x'],
+      moveSourceFolderId: 'root',
+    })
+    renderWithQc(<MoveFolderDialog />)
+    fireEvent.click(screen.getByLabelText(/인사팀/))
+    fireEvent.click(screen.getByRole('button', { name: '이동' }))
+    await waitFor(() => {
+      expect(toastSpy('error')).toHaveBeenCalledWith(
+        '이동에 실패했습니다. 다시 시도해 주세요.',
+      )
+    })
   })
 })

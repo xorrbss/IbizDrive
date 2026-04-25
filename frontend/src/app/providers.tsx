@@ -2,6 +2,7 @@
 import { QueryClient, QueryClientProvider, QueryCache } from '@tanstack/react-query'
 import { ReactQueryDevtools } from '@tanstack/react-query-devtools'
 import { useState } from 'react'
+import { Toaster } from 'sonner'
 import { qk } from '@/lib/queryKeys'
 
 export function Providers({ children }: { children: React.ReactNode }) {
@@ -33,6 +34,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       {children}
+      <Toaster
+        position="bottom-right"
+        richColors
+        closeButton
+        toastOptions={{ duration: 4000 }}
+      />
       <ReactQueryDevtools initialIsOpen={false} />
     </QueryClientProvider>
   )

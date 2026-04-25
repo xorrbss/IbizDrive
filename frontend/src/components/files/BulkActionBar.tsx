@@ -1,4 +1,5 @@
 'use client'
+import { toast } from 'sonner'
 import { useSelectionStore } from '@/stores/selection'
 import { usePermission } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
@@ -15,7 +16,11 @@ export function BulkActionBar() {
   const ids = Array.from(selectedIds)
   const can = usePermission()
   const { folderId } = useCurrentFolder()
-  const deleteMut = useDeleteBulk()
+  const deleteMut = useDeleteBulk({
+    onSuccess: (vars) =>
+      toast.success(`${vars.ids.length}개 항목을 휴지통으로 이동했습니다`),
+    onError: () => toast.error('삭제에 실패했습니다. 다시 시도해 주세요.'),
+  })
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
 
   if (count === 0) return null
