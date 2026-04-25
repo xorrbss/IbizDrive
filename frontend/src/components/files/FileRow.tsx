@@ -1,5 +1,9 @@
 // frontend/src/components/files/FileRow.tsx
 'use client'
+import { useDraggable } from '@dnd-kit/core'
+import { useDragPayload } from '@/hooks/useDragPayload'
+import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
+import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
 import type { FileItem } from '@/types/file'
 
 type Props = {
@@ -50,23 +54,62 @@ export function FileRow({
   onKeyDown,
   gridCols,
 }: Props) {
-  // 상태별 배경 — 디자인 토큰 기반
-  // 우선순위: pending > selected > hover
-  // focus는 focus-visible 전역 링이 담당 (globals.css)
+  const dragData = useDragPayload(item.id, item.parentId)
+  const draggable = useDraggable({
+    id: `${DRAGGABLE_ROW_PREFIX}${item.id}`,
+    data: dragData,
+    disabled: isPending,
+  })
+
+  // 폴더 행은 droppable로도 동작 (hook 호출 순서 안정화 위해 항상 호출)
+  const droppable = useFolderDroppable(
+    item.type === 'folder' ? item.id : '__not_a_target__',
+  )
+  const isFolderTarget = item.type === 'folder'
+
+  // ref 합치기 (draggable + droppable, 폴더 행만 droppable ref 바인딩)
+  const setRef = (el: HTMLElement | null) => {
+    draggable.setNodeRef(el)
+    if (isFolderTarget) droppable.setNodeRef(el)
+  }
+
+  const isDraggingThis = draggable.isDragging
+
+  // 드래그 중인 폴더 타겟 시각화
+  const dropClass =
+    isFolderTarget && droppable.isDragging
+      ? droppable.isInvalid || droppable.isSameFolder
+        ? 'opacity-50'
+        : droppable.isOver
+          ? 'bg-accent-soft ring-2 ring-accent'
+          : ''
+      : ''
+
+  // 상태별 배경 — pending > dragging > selected > hover
   const stateClass = isPending
     ? 'opacity-55 cursor-not-allowed'
-    : isSelected
-      ? 'bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
-      : 'hover:bg-surface-2 cursor-default'
+    : isDraggingThis
+      ? 'opacity-40 cursor-grabbing'
+      : isSelected
+        ? 'bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
+        : 'hover:bg-surface-2 cursor-default'
 
   return (
     <div
+      ref={setRef}
+      {...draggable.attributes}
+      {...draggable.listeners}
       role="row"
       aria-rowindex={rowIndex}
       aria-selected={isPending ? false : isSelected}
       aria-disabled={isPending || undefined}
+      aria-dropeffect={
+        isFolderTarget && droppable.isDragging && !droppable.isInvalid && !droppable.isSameFolder
+          ? 'move'
+          : undefined
+      }
       tabIndex={isFocused ? 0 : -1}
-      className={`${gridCols} min-h-[var(--row-h)] h-10 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass}`}
+      className={`${gridCols} min-h-[var(--row-h)] h-10 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
       onClick={(e) => {
         if (isPending) return
         onClick?.(item, e)
