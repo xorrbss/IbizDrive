@@ -77,6 +77,9 @@
 
 ### 4.1 감사 이벤트 타입
 
+> **클라이언트 mirror**: `frontend/src/types/audit.ts`의 `AuditEventType`이 아래 enum의 1:1 미러.
+> 새 이벤트 추가 시 양쪽 동시 갱신 (CLAUDE.md §4 계약 파일).
+
 ```ts
 type AuditEventType =
   // 파일
@@ -123,6 +126,8 @@ type AuditEventType =
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'
+  // 감사 로그 자체
+  | 'audit.exported'   // docs/04 §7.2 — CSV/JSON 내보내기 자체도 감사 기록
 ```
 
 ### 4.2 감사 레벨 정책

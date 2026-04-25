@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { SortKey } from '@/types/file'
+import type { AuditLogFilters } from '@/types/audit'
 
 /**
  * TanStack Query 캐시 키 팩토리. (docs/01 §6.1)
@@ -29,6 +30,12 @@ export const qk = {
    */
   filesListPrefix: (folderId: string) => [...qk.files(), 'list', folderId] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
+
+  // ── 감사 로그 (M12, mock) ──
+  audit: () => [...qk.all, 'audit'] as const,
+  /** 페이지/필터까지 포함된 정확한 단일 키. 필터 변경 시 자동 재요청. */
+  auditLogs: (filters: AuditLogFilters, page: number, pageSize: number) =>
+    [...qk.audit(), 'logs', filters, page, pageSize] as const,
 } as const
 
 // ─── 무효화 전략 헬퍼 ──────────────────────────────────────────────────────
