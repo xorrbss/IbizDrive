@@ -11,9 +11,11 @@ vi.mock('@/lib/api', () => ({
 }))
 
 function makeWrapper(qc: QueryClient) {
-  return ({ children }: { children: ReactNode }) => (
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
+  Wrapper.displayName = 'Wrapper'
+  return Wrapper
 }
 
 describe('useMoveBulk', () => {

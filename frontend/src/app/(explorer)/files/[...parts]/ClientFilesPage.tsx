@@ -11,6 +11,7 @@ import { RightPanel } from '@/components/files/RightPanel'
 import { FolderToolbar } from '@/components/upload/FolderToolbar'
 import { UploadQueueDock } from '@/components/upload/UploadQueueDock'
 import { UploadConflictDialog } from '@/components/upload/UploadConflictDialog'
+import { MoveFolderDialog } from '@/components/files/MoveFolderDialog'
 import { useUploadBeforeUnload } from '@/hooks/useUploadBeforeUnload'
 
 export function ClientFilesPage({ parts }: { parts: string[] }) {
@@ -54,6 +55,7 @@ export function ClientFilesPage({ parts }: { parts: string[] }) {
       <RightPanel />
       <UploadQueueDock />
       <UploadConflictDialog />
+      <MoveFolderDialog />
     </div>
   )
 }
