@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-04-26 — A1.4 `/api/auth/me` + `/api/auth/logout` (+ A1.3 SecurityContext gap fix)
+
+### 완료
+- [A1.4] **`GET /api/auth/me`** — `AuthController.me(@AuthenticationPrincipal IbizDriveUserDetails)`. 응답 shape는 `LoginResponse` 재사용 (docs/02 §7.4 line 847-868: `{user, departments, roles, effectivePermissionsCacheKey}` — login과 동일). 미인증 → `anyRequest().authenticated()` + `HttpStatusEntryPoint(401)` 자동 차단
+- [A1.4] **`POST /api/auth/logout`** — `session.invalidate()` + `SecurityContextHolder.clearContext()` + `Set-Cookie SESSION=; Max-Age=0; Path=/; HttpOnly`. 응답 204 (docs/02 §7.4 line 836-845). CSRF 미제공 → CsrfFilter 403, 미인증 → 401
+- [A1.4] **A1.3 hidden gap 수정** — Spring Security 6의 `SecurityContextHolderFilter`는 load-only (5.x의 `SecurityContextPersistenceFilter` auto-save 제거). 인증 메커니즘이 `SecurityContextRepository.saveContext`를 명시 호출해야 세션에 컨텍스트가 영속화됨. `AuthService.login`은 session attribute만 set하여 후속 `/me`가 항상 401이 되는 hidden bug. `DelegatingSecurityContextRepository` 빈(HttpSession + RequestAttribute 동시 저장) + `HttpSecurity.securityContext()` wire + `AuthService`에 `SecurityContextRepository` 주입하여 `changeSessionId()` 직후 `saveContext` 호출
+- [A1.4] **`AuthMeLogoutIntegrationTest` 5건** — `@WebMvcTest` slice. `/me` 인증/미인증, `/logout` 인증+CSRF / 인증+CSRF 미제공 / 미인증+CSRF (4 클래스, 22 테스트 PASS, 1m33s)
+- [A1.4] commit `feat(A1.4): /api/auth/me + /api/auth/logout` (ca4e309)
+
+### 핵심 결정
+- **`/me`는 `LoginResponse` 재사용 (`MeResponse` 미생성)** — docs/02 §7.4 line 847-868의 `/me` 응답 shape는 `LoginResponse`(`{user, departments, roles, effectivePermissionsCacheKey}`)와 완전 동일. 별도 DTO 생성은 YAGNI 위반 (CLAUDE.md ULTIMATE INVARIANTS 원칙 3 — 기존 구조 우선). 추후 `/me` 전용 필드 도입 시점에 분리
+- **`DelegatingSecurityContextRepository(HttpSession + RequestAttribute)`** — HttpSession은 영속, RequestAttribute는 단일 요청 캐시. 같은 요청 내 후속 필터/핸들러가 동일 컨텍스트를 일관되게 본다. `AuthService.login`이 `changeSessionId()` 직후 `saveContext(req, res)` 호출하여 새 세션에 컨텍스트 저장
+- **logout: `session.invalidate` + `clearContext` + `Cookie SESSION; Max-Age=0`** — `clearContext`는 현재 요청 thread-local 정리. `Set-Cookie`는 클라이언트 브라우저 SESSION 쿠키 즉시 만료. `anyRequest().authenticated()` 가드로 미인증→401, CsrfFilter가 CSRF 미제공→403 자동 처리
+
+### 다음 세션 컨텍스트 (A1.5)
+- **A1.5** — `AuthScenarioIntegrationTest` `@SpringBootTest` + Testcontainers Postgres 15-alpine 1건 (`disabledWithoutDocker=true`, 로컬 SKIP / CI ubuntu 실행). CSRF 발급→로그인→/me→5회 wrong PW(401×5)→6회째=423→Clock 16분 진행→재시도 성공→logout(204)→/me=401. `LoginAttemptTracker`는 `@TestConfiguration` `@Primary` 빈으로 mutable Clock 주입
+- 마일스톤 종료: `gsd-audit-milestone A1` + `progress.md` 마일스톤 블록 + commit + push + `gh pr checks` 그린
+
+---
+
 ## 2026-04-26 — A1.3 LoginController + in-memory lockout (ADR #23)
 
 ### 완료

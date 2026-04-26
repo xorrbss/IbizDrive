@@ -11,7 +11,7 @@ Last Updated: 2026-04-26
 | A1.2 SecurityConfig wiring | done (commit 10a524b) |
 | A1.3 LoginController + Lockout | done (commit 06b9238) |
 | A1.4 /me + Logout | done (commit ca4e309) |
-| A1.5 통합 시나리오 + 마일스톤 종료 | not-started |
+| A1.5 통합 시나리오 + 마일스톤 종료 | in-progress (Testcontainers 시나리오 작성 + 로컬 PASS, audit/push 대기) |
 
 ---
 
@@ -152,9 +152,9 @@ Last Updated: 2026-04-26
 
 ## A1.5 — 통합 시나리오 + 마일스톤 종료
 
-- [ ] RED: `AuthScenarioIntegrationTest` (1건 종합 시나리오)
-- [ ] GREEN: 필요 시 보강
-- [ ] `./gradlew test` PASS
+- [x] RED: `AuthScenarioIntegrationTest` (1건 종합 시나리오, `@SpringBootTest` + Testcontainers Postgres 15-alpine, mutable Clock 빈 override)
+- [x] GREEN: 필요 시 보강 — A1.0~A1.4 구현이 이미 시나리오 충족, 추가 코드 불필요
+- [x] `./gradlew test` PASS — 9 클래스, 152 tests, 4 skipped (UserRepositoryTest 3 + AuthScenarioIntegrationTest 1, 모두 Docker 미가용으로 SKIP), 0 fail
 - [ ] gsd-audit-milestone 실행
 - [ ] `progress.md` A1 마일스톤 종료 블록
 - [ ] commit `test(A1): integration scenarios`
