@@ -72,17 +72,33 @@ A2 범위 밖 (관리자 export 기능 자체가 v1.x). enum에는 추가하되 
 
 ## SESSION PROGRESS
 
-### Session 1 (2026-04-27) — 셋업
+### Session 1 (2026-04-27) — 셋업 + A2.0 + A2.1a
 
 **완료**:
 - worktree reset → origin/master(eda6f75) 정렬, backup 브랜치 push
 - 메모리 2건 갱신 (자율 루프 + 컨텍스트 한계 프로토콜)
-- dev-docs 3파일 작성 (plan/context/tasks)
-- ADR #24, #25 docs/00 §5 추가 예정 (다음 단계)
-- A2.0 RED 진입 예정 (다음 단계)
+- dev-docs 3파일 작성 (plan/context/tasks) — commit `a6076f0`
+- ADR #24, #25 docs/00 §5 추가 — commit `a6076f0`
+- A2.0 V3+V4 마이그레이션 + RED+GREEN — commit `440b0b0` ✅ CI green (24960561196)
+- A2.1a AuditService + AuditEvent + Enums (38 events, 7 targets) — commit `fd28368` ❌ CI red (24960745059)
 
-**uncommitted**: dev/active/a2-audit-log/{plan,context,tasks}.md 신규 (commit 예정)
+**TDD 상태**: A2.1a GREEN 작성됨, CI 실패 → 즉시 fix 필요
 
-**TDD 상태**: 미진입
+**❌ CI 실패 (run 24960745059)**:
+- `AuditServiceTest > record_insertsRow_withAllFields()` FAILED
+- `AuditServiceTest > record_survivesCallerRollback_viaRequiresNew()` FAILED
+- `record_systemEvent_acceptsNullActor()` 통과 (actorId=null)
+- 원인: `DataIntegrityViolationException` at `AuditServiceTest.java:90` → `Caused by: PSQLException`
+- **추정 root cause**: `actor_id UUID REFERENCES users(id)` FK 위반. 테스트가 임의 UUID를 actor_id로 INSERT하지만 `users` 테이블에 해당 row 없음. system 이벤트 테스트(actorId=null)만 통과한 것이 결정적 단서.
+- **fix 방향 (다음 세션 첫 액션)**:
+  1. `AuditServiceTest`의 `@BeforeEach` 또는 helper에서 `users` row 1건 INSERT (UUID 고정 또는 반환)
+  2. `record_insertsRow_withAllFields`/`record_survivesCallerRollback`는 그 UUID 사용
+  3. JdbcTemplate으로 직접 INSERT (JPA 의존 회피, AuditService와 동일 스타일)
+  4. 단일 commit `fix(A2.1a): actor_id FK 충족 — users row seed`
 
-**다음 액션**: ADR 2건 추가 commit → A2.0 RED `AuditLogSchemaTest` + `AuditLogAppendOnlyTest` 작성
+**uncommitted**: 없음
+
+**다음 액션**:
+1. `gh run list --branch claude/a2-audit-log --limit 2`로 24960745059 상태 재확인
+2. AuditServiceTest fix (FK seed) → commit → push → CI 재확인
+3. CI 그린 후 A2.1b RED `AuditedAspectTest` 진입
