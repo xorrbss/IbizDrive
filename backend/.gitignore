@@ -1,0 +1,13 @@
+.gradle/
+build/
+out/
+*.iml
+.idea/
+.vscode/
+.DS_Store
+
+# Spring Boot
+HELP.md
+target/
+!**/src/main/**/target/
+!**/src/test/**/target/

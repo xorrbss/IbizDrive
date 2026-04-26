@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-04-25 — Track A 큐 #4 + #5: 백엔드 scaffold + A0 NormalizeUtil + CI 게이트
+
+### 완료 (옵션 3 +α — 하이브리드 사이클)
+- [A] **backend/ Spring Boot 3.3.4 + Java 21 scaffold** — `build.gradle.kts` (Kotlin DSL, toolchain 21), `settings.gradle.kts`, `gradle.properties`, `.gitignore`. 의존성: spring-boot-starter-web/security/data-jpa/validation, **spring-session-jdbc** (Redis 아님, ADR #12), postgresql, flyway-core + flyway-database-postgresql, software.amazon.awssdk:s3:2.28.16, jackson-databind. test workingDir = `projectDir`로 fixtures 상대경로(`../docs/`) 안정화
+- [A] **`IbizDriveApplication.java`** — `@SpringBootApplication` 메인. **`HealthController`** `GET /api/health` → `{"status":"ok"}` (보안 설정 검증용)
+- [A] **`SecurityConfig` skeleton** — `CookieCsrfTokenRepository.withHttpOnlyFalse()` (XSRF-TOKEN 쿠키 ↔ X-CSRF-Token 헤더, ADR #11), `/api/health` permitAll, 그 외 authenticated, httpBasic placeholder (A1에서 form/SSO 교체)
+- [A] **`CorsConfig`** — `allowCredentials=true`, allowedOrigins from `${ibizdrive.cors.allowed-origins}`, exposed: `Tus-Resumable`/`Upload-Offset`/`Location`/`X-Request-Id`/`X-RateLimit-Remaining`. allowed: `Content-Type`/`X-CSRF-Token`/`X-Request-Id`/Tus 헤더 4종
+- [A] **`application.yml`** — Spring Session JDBC (table-name `SPRING_SESSION`, **initialize-schema: never** = Flyway가 schema 관리), datasource localhost:5432/ibizdrive, S3 → MinIO localhost:9000, multipart **disabled** (tus 사용, ADR #13), session timeout `PT8H`, cookie `http-only=true`/`secure=false (dev)`/`same-site=lax`/name=`SESSION`
+- [A] **`db/migration/V1__init.sql`** — Spring Session JDBC 스키마(`SPRING_SESSION` + `SPRING_SESSION_ATTRIBUTES`, 인덱스 IX1/IX2/IX3, ON DELETE CASCADE) + `users` stub(id UUID PK, email/display_name, password_hash nullable for SSO, deleted_at, partial unique index on `lower(email) WHERE deleted_at IS NULL`). 도메인 테이블은 V2+
+- [A] **`docker-compose.yml`** — postgres:15-alpine + minio (RELEASE.2024-10-13) + minio-init 원샷(버킷 자동 생성). **Redis 없음** (JDBC 세션 + in-process SSE). healthcheck 포함
+- [A] **A0: backend `NormalizeUtil.java`** — 7-step pipeline 완전 구현. `normalizeFileName` (1-2-3-6-7), `normalizedNameForDedup` (1-2-3-5-6-7, Locale.ROOT), `normalizeForSearch` (1-2-3-5-4-6, collapse). 제어문자 처리: NUL→throw / C0→space / DEL/C1/ZWSP(0x200B-200F)/BIDI(0x202A-202E)/WJ(0x2060)/BOM(0xFEFF) drop. 공백 통일: NBSP/U+2000-200A/202F/205F/3000→space. 검증: empty/length 255/`/`·`\\` 금지/trailing dot/예약어(CON/PRN/AUX/NUL/COM1-9/LPT1-9, base name 기준 case-insensitive). `NormalizationException` (code 필드, fixtures errorCodes 일치)
+- [A] **A0: backend `NormalizeUtilTest`** — JUnit `@TestFactory` 동적 테스트, Jackson으로 `../docs/normalize-fixtures.json` 로드(IDE/Gradle 둘 다 동작하도록 fallback 경로 3종), 38 fixtures × 3 함수 = 114 dynamic test
+- [A] **A0: frontend `src/lib/normalize.ts` 정식 작성** — backend `NormalizeUtil.java` 1:1 미러. 같은 7-step, 같은 에러 상수 6종, `NormalizationError extends Error` (code 필드)
+- [A] **A0: frontend `src/lib/normalize.test.ts`** — Vitest, `readFileSync(resolve(__dirname, '../../../docs/normalize-fixtures.json'))`로 fixtures 로드, 38×3 = **114 tests PASS** (54ms)
+- [A] **`.github/workflows/ci.yml`** — frontend(Node 20 + npm ci + typecheck/lint/test) + backend(Temurin 21 + gradle test) 두 잡. ADR #16 게이트: 어느 한쪽이든 fixtures mismatch면 머지 차단
+- [A] **검증** — frontend: typecheck PASS · lint PASS · normalize 114 tests PASS. backend: 로컬 JDK 없어 컴파일 미실행 → CI에서 검증
+
+### 핵심 구현 결정
+- **Spring Session JDBC, Redis 미도입** — 사용자 명시(ADR #12). docker-compose에서 Redis 제거, application.yml에서 `store-type: jdbc` + `initialize-schema: never` (Flyway가 권위)
+- **fixtures workingDir 처리** — Gradle test는 `workingDir = projectDir`(=`backend/`)로 고정, JUnit 테스트는 `../docs/normalize-fixtures.json` + IDE 케이스 대비 2개 fallback. 단일 진실 출처가 빌드 도구 따라 깨지지 않도록
+- **NUL은 step 2에서 throw, step 7 검증 전 차단** — fixtures `control_001` 입력 `"a\u0000b.txt"` → ERR_NUL_CHAR. 빈 문자열로 만든 뒤 ERR_EMPTY로 떨어지면 디버깅 불편
+- **JS `for...of` + `codePointAt`** — surrogate pair 안전. 공백 통일/제어문자 strip 모두 동일 패턴, Java `Character.charCount` 루프와 1:1 대응
+- **터키어 İ 케이스(`case_002`)는 JS `toLowerCase()` 기본 동작과 Java `toLowerCase(Locale.ROOT)` 결과 일치** — `i̇`(i + U+0307). fixtures가 양쪽 cross-validation으로 보장
+
+### 다음 세션 컨텍스트
+- **A1 (인증) 진입 — 수동 모드 유지** — Spring Security `UserDetailsService`, BCrypt, login form, CSRF Cookie 전달, 8h 세션, audit 이벤트(LOGIN_SUCCESS/FAIL/LOGOUT). users 테이블 V2 확장(role/locked_at/last_login_at)
+- **CI 미검증 영역** — backend Gradle test가 실제 GitHub Actions에서 통과하는지 확인 전. 첫 push 시 워크플로 실패하면 V1__init.sql/Flyway 의존성 정렬 점검 필요
+- **로컬 개발 가이드 미작성** — `docker-compose up -d postgres minio minio-init` → `cd backend && ./gradlew bootRun`. README 또는 docs/00 §6에 추가 검토
+- **A1.5 권한 매트릭스 코드화** — docs/03 §3 PermissionEnum 9종을 `com.ibizdrive.security.Permission` enum + Preset 매트릭스로 옮기고 `@PreAuthorize` SpEL helper 작성
+
+### 블로커
+- 없음. 사용자가 A1 spec 승인하면 진행
+
+---
+
 ## 2026-04-25 — Track A 큐 #3: 정규화 spec + fixtures + SSE enum + PURGE 권한
 
 ### 완료 (큐 #3 — docs only)

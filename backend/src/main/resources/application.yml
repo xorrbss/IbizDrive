@@ -1,0 +1,63 @@
+spring:
+  application:
+    name: ibizdrive-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/ibizdrive
+    username: ibizdrive
+    password: dev_password_only_change_in_real_envs
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        jdbc.time_zone: UTC
+
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    locations: classpath:db/migration
+
+  # ADR #12 + 사용자 명시: Spring Session JDBC (Redis 아님)
+  session:
+    store-type: jdbc
+    jdbc:
+      initialize-schema: never  # Flyway가 schema 관리
+      table-name: SPRING_SESSION
+    timeout: PT8H
+
+  servlet:
+    multipart:
+      enabled: false  # tus 사용 (A4)
+
+server:
+  port: 8080
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        secure: false       # dev only — staging/prod에서 true
+        same-site: lax
+        name: SESSION
+
+ibizdrive:
+  storage:
+    s3:
+      endpoint: http://localhost:9000
+      region: us-east-1
+      bucket: ibizdrive-files
+      access-key: minioadmin
+      secret-key: minioadmin
+      path-style-access: true
+  cors:
+    allowed-origins:
+      - http://localhost:3000
+
+logging:
+  level:
+    com.ibizdrive: INFO
+    org.springframework.security: INFO
