@@ -23,12 +23,15 @@ spring:
     locations: classpath:db/migration
 
   # ADR #12 + 사용자 명시: Spring Session JDBC (Redis 아님)
+  # ADR #20 — idle 30분 sliding은 본 timeout이 진실 출처 (Spring Session JDBC가
+  # 매 요청 lastAccessedTime 갱신, 30분 무활동 시 자동 invalidate).
+  # absolute 8h 한도는 SessionValidityFilter가 진실 출처 (auth/SessionValidityFilter.java, ADR #20).
   session:
     store-type: jdbc
     jdbc:
       initialize-schema: never  # Flyway가 schema 관리
       table-name: SPRING_SESSION
-    timeout: PT8H
+    timeout: PT30M
 
   servlet:
     multipart:

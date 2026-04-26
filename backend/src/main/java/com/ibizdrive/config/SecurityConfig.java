@@ -1,5 +1,6 @@
 package com.ibizdrive.config;
 
+import com.ibizdrive.auth.SessionValidityFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpStatus;
@@ -14,11 +15,13 @@ import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.context.DelegatingSecurityContextRepository;
 import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
 import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextHolderFilter;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
+import java.time.Clock;
 import java.util.Map;
 
 /**
@@ -76,10 +79,20 @@ public class SecurityConfig {
         );
     }
 
+    /**
+     * 시계 빈 — A1.6 신규. {@link SessionValidityFilter}의 absolute 만료 검증과 향후 시각 의존
+     * 컴포넌트가 공유. 운영은 {@link Clock#systemUTC()}, 테스트는 {@code @Primary}로 mutable 클럭 주입 가능.
+     */
+    @Bean
+    public Clock clock() {
+        return Clock.systemUTC();
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    CsrfTokenRepository csrfRepo,
-                                                   SecurityContextRepository securityContextRepository) throws Exception {
+                                                   SecurityContextRepository securityContextRepository,
+                                                   SessionValidityFilter sessionValidityFilter) throws Exception {
         // 평문 토큰 (XOR mask 미적용) — docs/02 §7.1 double-submit 계약과 일치.
         // Spring Security 6 default(XorCsrfTokenRequestAttributeHandler)는 BREACH 가드를 위해
         // 토큰을 XOR-masked로 변환. 우리는 cookie/header 동등 비교 단순화 위해 plain handler 채택.
@@ -91,6 +104,9 @@ public class SecurityConfig {
                 .csrfTokenRequestHandler(csrfHandler))
             .securityContext(sc -> sc.securityContextRepository(securityContextRepository))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+            // A1.6 — SecurityContext 로드 직후 absolute 만료 검사. 만료 세션의 인증 컨텍스트가
+            // 다운스트림 인가 필터에 노출되는 것 회피 (ADR #20 must-fix #1 close).
+            .addFilterAfter(sessionValidityFilter, SecurityContextHolderFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/auth/csrf").permitAll()

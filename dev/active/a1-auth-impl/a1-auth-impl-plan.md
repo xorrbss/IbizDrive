@@ -2,7 +2,7 @@
 Last Updated: 2026-04-26
 ---
 
-# A1 Auth Implementation — Plan (A1.2 ~ A1.5)
+# A1 Auth Implementation — Plan (A1.2 ~ A1.6)
 
 ## 요약
 
@@ -170,6 +170,54 @@ A1 마일스톤 종료 시점:
 **Validation gate**: `./gradlew test` PASS + `git push` + `gh pr checks 1` 그린 또는 PR 미존재 안내.
 
 **Commit**: `test(A1): integration scenarios`
+
+### A1.6 — Session Timeout Policy (TDD) [must-fix #1 close]
+
+**배경**: A1.5 audit (`a1-auth-impl-audit.md` §4 must-fix #1)에서 idle 30분 sliding + absolute 8h가 미구현으로 분류. 사용자 결정으로 (A) accepted-deviation 대신 **본 phase에서 즉시 fix** 채택.
+
+**Spec 근거**: docs/00 §5 ADR #20, docs/03 §2.6, audit §4 must-fix #1.
+
+**RED — `SessionValidityFilterTest` (단위, Mockito)**:
+1. 세션 없음 (`req.getSession(false) == null`) → 필터 pass-through (`FilterChain.doFilter` 호출, status 미변경)
+2. 세션은 있으나 `issuedAt` 속성 없음 → pass-through (인증 전 요청)
+3. `now - issuedAt < 8h` → pass-through, sliding 갱신은 Spring HttpSession이 자동 (`lastAccessedTime`은 컨테이너 관리)
+4. `now - issuedAt >= 8h` → `session.invalidate()` + `response.sendError(401)` + `FilterChain.doFilter` 미호출
+5. `Clock` 주입으로 시간 진행 검증 (8h 경계 한 틱 전/후)
+
+**GREEN — 구현**:
+- `SessionValidityFilter` (신규 `OncePerRequestFilter`):
+  - `Clock` 주입 (생성자, `@Component` + Spring이 `Clock` 빈 주입)
+  - `doFilterInternal`:
+    1. `HttpSession session = req.getSession(false)`
+    2. `session == null` → `chain.doFilter` → return
+    3. `Object issuedAtObj = session.getAttribute("issuedAt")`
+    4. `issuedAtObj == null` (또는 Long 아님) → `chain.doFilter` → return
+    5. `long age = clock.millis() - (Long) issuedAtObj`
+    6. `age >= ABSOLUTE_TTL_MS` (8h) → `session.invalidate()` + `res.sendError(401)` → return (chain 미호출)
+    7. else → `chain.doFilter`
+  - 상수: `ABSOLUTE_TTL_MS = Duration.ofHours(8).toMillis()`
+- `SecurityConfig`:
+  - `Clock` `@Bean` 추가 (운영 = `Clock.systemUTC()`)
+  - `addFilterAfter(sessionValidityFilter, SecurityContextHolderFilter.class)` — SecurityContext 로드 직후 절대 만료 검사
+- `application.yml`:
+  - `spring.session.timeout: PT8H` → `PT30M` (idle 30분, Spring Session JDBC가 자동 invalidate)
+- `AuthService.login`의 `issuedAt` 세션 attribute는 이미 set 중 (변경 불필요).
+
+**Acceptance criteria**:
+- [ ] 단위 테스트 4건 (RED #1~#4) PASS
+- [ ] 기존 152 tests 회귀 0
+- [ ] `application.yml` `spring.session.timeout` 변경 commit 포함
+- [ ] `audit.md` must-fix #1 → RESOLVED 갱신 (별도 commit, A1 close 블록)
+- [ ] `SecurityConfig`에 `Clock` `@Bean` + filter wiring 추가
+
+**설계 결정 (filter SoT)**:
+- **idle 만료** = Spring Session JDBC (`spring.session.timeout: PT30M`)가 진실 출처. `lastAccessedTime` 비교는 컨테이너가 매 요청마다 자동 처리.
+- **absolute 만료** = `SessionValidityFilter`가 진실 출처. `issuedAt` 속성 + 8h 경계.
+- yml은 idle 정책의 적용 매개. filter 없이 yml만 두면 ADR #20 absolute 한도가 강제되지 않음 (audit must-fix #1 정확 사유).
+
+**Validation gate**: `./gradlew test` PASS.
+
+**Commit**: `feat(A1.6): session timeout policy (idle 30m sliding + absolute 8h)`
 
 ## 검증 게이트 (모든 phase 공통)
 
