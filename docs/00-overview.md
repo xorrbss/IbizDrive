@@ -19,7 +19,7 @@
 ```text
 Frontend: Next.js 15 (App Router) + TypeScript + Zustand + TanStack Query v5 + dnd-kit
 Backend:  Spring Boot 3.x + Java 21 (LTS) + Gradle (Kotlin DSL)
-          Spring Data JPA + Hibernate / Spring Security 6 + Spring Session (Redis)
+          Spring Data JPA + Hibernate / Spring Security 6 + Spring Session JDBC
           tus-java-server + AWS SDK v2 (S3 multipart) / SseEmitter (MVC)
           Hibernate Envers 또는 AOP 기반 audit / Flyway
 DB:       PostgreSQL 15+
@@ -52,8 +52,9 @@ Realtime: SSE (SseEmitter, MVC 기반)
 - 변경 시: 02 문서 PR → 프론트 팀 리뷰 필수
 
 ### 3.2 권한 모델
-- 권한 enum(`read/upload/edit/delete/download/move/share/admin`)은 **03-security-compliance.md §3**이 단일 진실 출처
-- 프론트 `usePermission` 훅과 백엔드 `requirePermission` 미들웨어가 동일 enum 사용
+- 권한 enum 9종 — `READ / UPLOAD / EDIT / MOVE / DOWNLOAD / DELETE / SHARE / PERMISSION_ADMIN / PURGE` — 은 **03-security-compliance.md §3.1**이 단일 진실 출처
+- 프론트 `src/types/permission.ts`(UX 게이트, 보안 아님)와 백엔드 `@PreAuthorize`가 동일 enum 사용 — CLAUDE.md §3 원칙 12 (계약 동기화)에 따라 enum 변경 시 양쪽 동시 수정 필수
+- `PURGE`는 시스템 ROLE `ADMIN`만 보유 — 노드 admin preset에도 부여 금지 (영구 삭제 이중 안전장치)
 
 ### 3.3 정규화 함수
 - `normalizeFileName`, `normalizeForSearch` 구현은 **프론트/백엔드 동일 로직**
@@ -110,7 +111,7 @@ Spring Boot 도입(ADR #11)에 따른 백엔드 트랙. A0~A1은 수동 spec 모
 | # | 단계 | 산출물 | 의존 | 작업 모드 |
 |---|---|---|---|---|
 | **A0** | 프로젝트 셋업 + 정규화 spec | `backend/` 스캐폴딩, Gradle(Kotlin DSL), Flyway V1, `docs/normalize-fixtures.json`, `NormalizeUtil` (Java) + Vitest/JUnit 양쪽 통과, CI 게이트 | — | 수동 |
-| **A1** | 인증 | Spring Security 6 + Spring Session(Redis) + 쿠키 세션(HttpOnly+SameSite=Lax) + CSRF double-submit + `LoginController` + 로그아웃 + `SessionFilter` | A0 | 수동 |
+| **A1** | 인증 | Spring Security 6 + Spring Session JDBC + 쿠키 세션(HttpOnly+SameSite=Lax) + CSRF double-submit + `LoginController` + 로그아웃 + `SessionFilter` | A0 | 수동 |
 | **A1.5** | 권한 매트릭스 (백엔드 권위) | docs/03 §3 작성 → `@PreAuthorize` 표현식 + `PermissionService` + 단위 테스트. ADR #17 발효 | A1 | 수동→자율 검토 |
 | **A2** | 폴더/파일 GET | JPA 엔티티/리포지토리 + 트리·목록·상세 endpoint + 정렬/페이지네이션 + 권한 가드 적용 (read 권한) | A1.5 | 자율 검토 |
 | **A3** | Mutation | 생성/이름변경/이동 + `@Transactional` + `SELECT FOR UPDATE` + soft delete (`deleted_at` + UNIQUE WHERE) + 에러 코드 매핑 (docs/02 §8) | A2 | 자율 검토 |
@@ -140,12 +141,17 @@ Spring Boot 도입(ADR #11)에 따른 백엔드 트랙. A0~A1은 수동 spec 모
 | 9 | 뷰 로그 = 민감 폴더만 | 로그 폭증 방지 | 03 §4.2 |
 | 10 | 문서 분리 | v3 단일 문서 2000줄 초과, 팀 병렬화 필요 | 00 본 문서 |
 | 11 | **백엔드 = Spring Boot 3.x + Java 21** | 엔터프라이즈 보안·트랜잭션 성숙도, JPA + Flyway + Spring Security 통합 안정성. NestJS 후보 대비 정규화 함수 이중구현 비용은 ADR #16 fixtures 공유로 상쇄 | 00 §1.3, 02 §1 |
-| 12 | **인증 = 쿠키 세션 (HttpOnly + SameSite=Lax) + Spring Session(Redis)** | XSS 토큰 탈취 차단(JWT in localStorage 회피), Next.js SSR/RSC 친화. CSRF는 double-submit 토큰. 다중 인스턴스 세션 공유 위해 Redis 저장소 | 03 §1, §2 |
+| 12 | **인증 = 쿠키 세션 (HttpOnly + SameSite=Lax) + Spring Session JDBC** | XSS 토큰 탈취 차단(JWT in localStorage 회피), Next.js SSR/RSC 친화. CSRF는 double-submit 토큰. 다중 인스턴스 세션 공유는 Postgres `SPRING_SESSION` 테이블로 구현(Flyway가 schema 권위, `initialize-schema: never`). MVP 인프라 단순화 우선 — Redis 도입(세션·rate limit·캐시)은 v1.x 별도 ADR로 분리 | 03 §1, §2 |
 | 13 | **업로드 = tus-java-server (S3 multipart 위임)** | ADR #7 superseded. 표준 프로토콜 재개·체크섬 검증을 자체 구현 회피, S3 multipart는 라이브러리가 위임 처리. M5.1 useUpload 인터페이스 안정 | 01 §9, 02 §6.1 |
 | 14 | **실시간 = SSE (SseEmitter, MVC 유지)** | ADR #8 superseded. 문서 변경 알림은 단방향, WS sticky session 인프라 회피. Webflux 도입 안 함 — MVC 단일 모델 유지로 복잡도 통제 | 01 §15 |
 | 15 | **API base URL = build-time `.env.local`** | `NEXT_PUBLIC_API_BASE_URL` 빌드시 주입. dev/staging/prod 분리 필요 시점에 runtime `window.__ENV__` 주입으로 전환(deferred) | 00 §1.3 |
 | 16 | **정규화 함수 = 공유 fixtures 검증 (docs/normalize-fixtures.json)** | CLAUDE.md §3 원칙 11(프론트/백엔드 동일 로직) 보증. Vitest + JUnit 양쪽 동일 fixtures 로드, CI 게이트로 드리프트 차단 | 02 §3 |
 | 17 | **권한 매트릭스 = 백엔드 권위 (`@PreAuthorize`)** | 프론트 `usePermission`은 UX용, 보안 아님(CLAUDE.md §3 원칙 10). A3 mutation부터 즉시 활성화 — A6 후이전 금지(권한 미적용 mutation merge 방지) | 03 §3 |
+| 18 | **MVP 인증 범위 = 자체 ID/PW only** | SSO(SAML/OIDC), MFA(TOTP), remember-me, IP rate limit, 셀프 비밀번호 리셋 모두 MVP 제외. SSO는 IdP 협의·메타데이터 교환 비용 큼 → A6 또는 v1.x. MFA·셀프 reset은 이메일 인프라 필요 → A1.5 후속. rate limit은 G4 lockout이 1차 방어 → v1.x | 03 §2 |
+| 19 | **비밀번호 해싱·정책 = BCrypt(strength=12) + 최소 12자 (영·숫 각 1자, 공백 금지)** | Spring Security 기본 `BCryptPasswordEncoder`, BouncyCastle 의존성 회피. Argon2id 마이그레이션은 `DelegatingPasswordEncoder`로 추후 가능. 길이 우선 정책(OWASP), 특수문자 강제는 사용자 저항. zxcvbn/HIBP 사전 공격 방지는 v1.x | 03 §2.7 |
+| 20 | **세션 만료·잠금 = idle 30분(sliding) + absolute 8시간(max) + 5회 실패/15분 lockout (Redis 카운터)** | Spring Session `setMaxInactiveIntervalInSeconds(1800)` + 별도 issuedAt 검사로 8시간 강제. lockout은 `AuthenticationFailureBadCredentialsEvent` 리스너 → Redis `INCR loginfail:{email}` + `EXPIRE 900`. 락 해제 시도도 실패로 카운트 | 03 §2.6 |
+| 21 | **사용자 등록 = 관리자 초대 only (셀프 가입 금지)** | 사내 시스템 → 셀프 가입 부적절. MVP는 (a) Flyway 시드로 admin 1명 + (b) `POST /api/admin/users` (admin이 email/임시PW 지정)로 user 생성. 첫 로그인 시 PW 변경 강제. 초대 메일은 A1.5(이메일 인프라 도입 시) | 03 §2.8, 02 §7.12 |
+| 22 | **`/api/auth/me` 응답 = identity + role + permissionsCacheKey만 (effectivePermissions full resolve 제외)** | `{ user, departments, roles, effectivePermissionsCacheKey }`. 폴더×권한 N×M full resolve는 페이로드 폭증 → 권한은 per-resource 응답에 `currentUserPermissions: ['READ','EDIT']` 동봉(별도 endpoint 호출 X). cacheKey는 권한 변경 시 invalidate trigger | 02 §7.4, 01 §6.3 |
 
 ### 5.1 Superseded ADRs
 

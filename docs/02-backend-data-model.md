@@ -48,16 +48,27 @@ audit_log             : 삭제 불가 (append-only)
 ```sql
 CREATE TABLE users (
   id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  email            VARCHAR(255) NOT NULL UNIQUE,
-  name             VARCHAR(100) NOT NULL,
-  department_id    UUID REFERENCES departments(id),
-  role             VARCHAR(50) NOT NULL DEFAULT 'member',  -- member|admin|auditor
-  storage_quota    BIGINT NOT NULL DEFAULT 10737418240,    -- 10GB
-  storage_used     BIGINT NOT NULL DEFAULT 0,
+  email            VARCHAR(254) NOT NULL,                  -- RFC 5321 max
+  display_name     VARCHAR(100) NOT NULL,                  -- 표시용 이름 (Google/MS 컨벤션)
+  password_hash    VARCHAR(100),                           -- DelegatingPasswordEncoder 호환 ({bcrypt}/{argon2id} 프리픽스, 미래 Argon2id 마이그레이션). SSO 사용자는 NULL
+  department_id    UUID REFERENCES departments(id),        -- A2 이후 도입
+  role             VARCHAR(50) NOT NULL DEFAULT 'MEMBER',  -- MEMBER|AUDITOR|ADMIN (docs/03 §3.2.5)
+  storage_quota    BIGINT NOT NULL DEFAULT 10737418240,    -- 10GB. A4 이후 사용
+  storage_used     BIGINT NOT NULL DEFAULT 0,              -- A4 이후 사용
   is_active        BOOLEAN NOT NULL DEFAULT TRUE,
+  last_login_at    TIMESTAMPTZ,                            -- audit + 비활성 계정 식별
+  locked_at        TIMESTAMPTZ,                            -- 관리자 수동 잠금 (ADR #20). NULL이면 미잠금
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at       TIMESTAMPTZ,                            -- soft delete
+
+  CHECK (role IN ('MEMBER', 'AUDITOR', 'ADMIN'))
 );
+
+-- 이메일 unique는 lower(email) 기준 partial index — 휴지통 사용자 제외
+CREATE UNIQUE INDEX users_email_unique
+  ON users (lower(email))
+  WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_users_department ON users(department_id) WHERE is_active = TRUE;
 ```
@@ -725,7 +736,7 @@ COMMIT;
 
 ### 7.1 인증 / 공통 헤더
 
-ADR #12에 따라 인증은 **쿠키 세션 + Spring Session(Redis)** + **CSRF double-submit**.
+ADR #12에 따라 인증은 **쿠키 세션 + Spring Session JDBC** + **CSRF double-submit**.
 
 ```text
 요청 공통:
