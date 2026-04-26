@@ -1,0 +1,7 @@
+{
+  "hooks": {
+    "community": true,
+    "context_warnings": true
+  },
+  "mode": "autonomous"
+}
