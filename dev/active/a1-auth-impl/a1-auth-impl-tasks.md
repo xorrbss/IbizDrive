@@ -8,22 +8,22 @@ Last Updated: 2026-04-26
 
 | Phase | 상태 |
 |---|---|
-| A1.2 SecurityConfig wiring | in-progress |
-| A1.3 LoginController + Lockout | not-started |
-| A1.4 /me + Logout | not-started |
+| A1.2 SecurityConfig wiring | done (commit 10a524b) |
+| A1.3 LoginController + Lockout | done (commit 06b9238) |
+| A1.4 /me + Logout | in-progress |
 | A1.5 통합 시나리오 + 마일스톤 종료 | not-started |
 
 ---
 
-## A1.2 — SecurityConfig 본 wiring
+## A1.2 — SecurityConfig 본 wiring  ✅ 완료 (commit 10a524b)
 
-- [ ] RED: `SecurityIntegrationTest` 5건 작성
-- [ ] GREEN: `CsrfTokenController` 추가
-- [ ] GREEN: `SecurityConfig` 본 wiring (httpBasic 제거, 매처 분리, sessionCreationPolicy)
-- [ ] `./gradlew test` PASS
-- [ ] 자체 리뷰 (⑥)
-- [ ] commit `feat(A1.2): SecurityConfig wiring + CSRF double-submit`
-- [ ] `progress.md` A1.2 세션 블록 추가
+- [x] RED: `SecurityIntegrationTest` 5건 작성
+- [x] GREEN: `CsrfTokenController` 추가
+- [x] GREEN: `SecurityConfig` 본 wiring (httpBasic 제거, 매처 분리, sessionCreationPolicy)
+- [x] `./gradlew test` PASS
+- [x] 자체 리뷰 (⑥)
+- [x] commit `feat(A1.2): SecurityConfig wiring + CSRF double-submit`
+- [x] `progress.md` A1.2 세션 블록 추가
 
 ### A1.2 작업 전 필독
 
@@ -54,20 +54,22 @@ Last Updated: 2026-04-26
 
 ---
 
-## A1.3 — LoginController + Lockout
+## A1.3 — LoginController + Lockout  ✅ 완료 (commit 06b9238)
 
-- [ ] RED: `LoginAttemptTrackerTest` 4건 작성
-- [ ] RED: `LoginControllerIntegrationTest` 8건 작성
-- [ ] GREEN: `LoginAttemptTracker` 구현
-- [ ] GREEN: `LoginRequest`, `LoginResponse`, `ErrorResponse` DTO
-- [ ] GREEN: `AuthService.login` 구현
-- [ ] GREEN: `AuthController.login` (`POST /api/auth/login`)
-- [ ] GREEN: `User.recordLoginAt(OffsetDateTime)` 메서드 추가 (`last_login_at` setter — entity)
-- [ ] `./gradlew test` PASS
-- [ ] ADR #23 docs/00 §5에 추가
-- [ ] 자체 리뷰 (⑥)
-- [ ] commit `feat(A1.3): LoginController + in-memory lockout (ADR #23)`
-- [ ] `progress.md` A1.3 세션 블록
+- [x] RED: `LoginAttemptTrackerTest` 4건 작성
+- [x] RED: `LoginControllerIntegrationTest` 8건 작성
+- [x] GREEN: `LoginAttemptTracker` 구현 (Clock 주입, lazy expiry)
+- [x] GREEN: `LoginRequest`, `LoginResponse`, `ErrorResponse` DTO
+- [x] GREEN: `AuthService.login` 구현 (timing-safe dummy hash @PostConstruct, @Transactional)
+- [x] GREEN: `AuthController.login` (`POST /api/auth/login`)
+- [x] GREEN: `User.recordLoginAt(OffsetDateTime)` 메서드 추가
+- [x] GREEN: `AuthExceptionHandler` (RestControllerAdvice) → flat error shape
+- [x] GREEN: `InvalidCredentialsException`, `AccountLockedException`
+- [x] `./gradlew test` PASS (LoginAttemptTrackerTest 4/4 + LoginControllerIntegrationTest 8/8)
+- [x] ADR #23 docs/00 §5에 추가
+- [x] 자체 리뷰 (⑥)
+- [x] commit `feat(A1.3): LoginController + in-memory lockout (ADR #23)`
+- [x] `progress.md` A1.3 세션 블록 (다음 세션에서 처리 — 본 dev-docs-update에서 갱신)
 
 ### A1.3 작업 전 필독
 

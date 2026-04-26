@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-04-26 — A1.3 LoginController + in-memory lockout (ADR #23)
+
+### 완료
+- [A1.3] **`POST /api/auth/login`** — `AuthController` + `AuthService.login` (`@Transactional`). 성공 시 `last_login_at` UPDATE + `changeSessionId()` (session fixation 방어). 실패 시 5/15min lockout 카운트
+- [A1.3] **`LoginAttemptTracker`** — in-memory `ConcurrentHashMap<String, Attempt>`, key=lowercased email, 5회 실패 → 15분 잠금. `Clock` 주입 (테스트 시간 제어). 만료는 lazy 검증 (`isLocked` 호출 시점에 시계 기반 판정)
+- [A1.3] **timing-safe BCrypt verify** — `@PostConstruct`에서 `passwordEncoder.encode()`로 dummy hash 동적 생성. 미존재 user / `is_active=false` / `locked_at != null` 모두 dummy verify 호출 → 실제 verify와 동일 시간. 응답은 INVALID_CREDENTIALS (계정 상태 누설 금지, docs/03 §2.3 enumeration 방지)
+- [A1.3] **flat error shape** — `ErrorResponse(code, reason, retryAfterSec)` + `JsonInclude.NON_NULL`. `AuthExceptionHandler(@RestControllerAdvice)` → InvalidCredentialsException → 401, AccountLockedException → 423 + retryAfterSec. docs/02 §7.4 인증 specific 응답 (일반 envelope §7.2와 별개)
+- [A1.3] **`User.recordLoginAt(OffsetDateTime)`** entity 메서드 — `last_login_at` setter (V2 컬럼)
+- [A1.3] **`LoginAttemptTrackerTest` 4건 + `LoginControllerIntegrationTest` 8건** — 모두 PASS. @WebMvcTest slice. tracker singleton 격리는 `@BeforeEach`에서 `recordSuccess(테스트 키들)` 호출
+- [A1.3] **ADR #23 docs/00 §5 등록** — lockout backing = in-memory ConcurrentHashMap (MVP 단일 인스턴스 가정). 다중 인스턴스/Redis 도입 시 `LoginAttemptTracker` interface 교체
+
+### 핵심 결정
+- **timing-safe dummy hash 동적 생성** — 정적 상수는 형식 오류 시 BCrypt iterations 미실행 → timing leak 위험. 부팅 +200ms 수용
+- **비활성·관리자 잠금도 INVALID_CREDENTIALS로 매핑** — docs/03 §2.3 enumeration 방지. 잠금 누적은 별개로 ACCOUNT_LOCKED + retryAfterSec 노출
+- **@Transactional은 AuthService.login에 적용** — last_login_at UPDATE + (후속) audit insert 단일 단위, docs/02 §7.4 TX=REQUIRED 충족
+- **컨텍스트 9% 한계** — 본 세션은 commit만 수행. dev sync (context.md/tasks.md SESSION PROGRESS 갱신)는 다음 세션 시작 시 dev-docs-update로 처리
+
+### 다음 세션 컨텍스트 (A1.4 ~ A1.5)
+- **A1.4** — `GET /api/auth/me` (docs/02 §7.4 line 847-868: `{user, departments, roles, effectivePermissionsCacheKey}`. departments는 빈 배열 stub, kind='human' 하드코딩, roles=`[role]`, cacheKey=`userId:role:v0`) + `POST /api/auth/logout` (`session.invalidate()` + `Set-Cookie SESSION=; Max-Age=0`). 모두 `anyRequest authenticated`로 SecurityConfig 매처 변경 불필요
+- **A1.5** — Testcontainers Postgres @SpringBootTest 종합 시나리오 1건 + `gsd-audit-milestone A1` + PR 머지
+
+### 진행 정책
+- 자율 모드 유지. 사용자 큐: A1.4 종료 시점 컨텍스트 65% 초과 시 자동 pause-work, 아니면 A1.5까지 이어감
+- 다음 세션 첫 작업: dev-docs-update (이번 세션의 A1.3 SESSION PROGRESS 동기화) → A1.4 진입 (TDD RED 5건부터)
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-26 — A1.2 SecurityConfig 본 wiring (TDD, dev + Superpowers 첫 적용)
 
 ### 완료
