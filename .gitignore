@@ -7,3 +7,9 @@ dist/
 build/
 .env.local
 .DS_Store
+
+# auto-claude-loop artifacts (worktree 한정)
+.resume-marker
+.loop-complete
+auto-loop.log
+auto-claude-loop.ps1
