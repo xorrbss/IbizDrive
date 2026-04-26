@@ -10,7 +10,7 @@ Last Updated: 2026-04-26
 |---|---|
 | A1.2 SecurityConfig wiring | done (commit 10a524b) |
 | A1.3 LoginController + Lockout | done (commit 06b9238) |
-| A1.4 /me + Logout | in-progress |
+| A1.4 /me + Logout | done (commit ca4e309) |
 | A1.5 통합 시나리오 + 마일스톤 종료 | not-started |
 
 ---
@@ -109,16 +109,18 @@ Last Updated: 2026-04-26
 
 ---
 
-## A1.4 — /me + Logout
+## A1.4 — /me + Logout  ✅ 완료 (commit ca4e309)
 
-- [ ] RED: `AuthMeLogoutIntegrationTest` 5건 작성
-- [ ] GREEN: `MeResponse` DTO
-- [ ] GREEN: `AuthController.me` (`GET /api/auth/me`)
-- [ ] GREEN: `AuthController.logout` (`POST /api/auth/logout`)
-- [ ] `./gradlew test` PASS
-- [ ] 자체 리뷰 (⑥)
-- [ ] commit `feat(A1.4): /api/auth/me + logout`
-- [ ] `progress.md` A1.4 세션 블록
+- [x] RED: `AuthMeLogoutIntegrationTest` 5건 작성
+- [~] GREEN: ~~`MeResponse` DTO~~ → `LoginResponse` 재사용 (docs/02 §7.4 shape 동일, KISS)
+- [x] GREEN: `AuthController.me` (`GET /api/auth/me`) — `@AuthenticationPrincipal IbizDriveUserDetails`
+- [x] GREEN: `AuthController.logout` (`POST /api/auth/logout`) — session.invalidate + clearContext + Cookie expire
+- [x] **A1.3 hidden gap fix**: `AuthService.login`에 SecurityContextRepository.saveContext 추가 (Spring Security 6 load-only 필터)
+- [x] `SecurityConfig` SecurityContextRepository 빈 + securityContext() wire
+- [x] `./gradlew test` PASS (4 클래스, 22 테스트)
+- [x] 자체 리뷰 (⑥) — KISS/YAGNI 결정 명시 (LoginResponse 재사용)
+- [x] commit `feat(A1.4): /api/auth/me + /api/auth/logout`
+- [ ] `progress.md` A1.4 세션 블록 (다음 세션 dev-docs-update에서 처리)
 
 ### A1.4 작업 전 필독
 

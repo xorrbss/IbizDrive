@@ -8,7 +8,7 @@ Last Updated: 2026-04-26
 
 - 2026-04-26 [세션 1, 완료, commit 10a524b]: dev/active bootstrap. A1.2 SecurityConfig 본 wiring + CsrfTokenController + SecurityIntegrationTest 5건 PASS. CSRF deferred 함정(saveToken 명시 호출) 발견 + 해결.
 - 2026-04-26 [세션 2, 완료, commit 06b9238]: A1.3 LoginController + AuthService + LoginAttemptTracker (in-memory ConcurrentHashMap, ADR #23). 5/15min lockout, timing-safe (@PostConstruct dummy hash, 비활성·잠금 INVALID_CREDENTIALS 매핑), session fixation defended (changeSessionId), last_login_at 갱신. AuthExceptionHandler → flat error shape (docs/02 §7.4). LoginAttemptTrackerTest 4/4 + LoginControllerIntegrationTest 8/8 PASS. ADR #23 docs/00 §5 등록. 컨텍스트 9% 한계로 dev sync는 다음 세션 이월.
-- 2026-04-26 [세션 3, 진행]: dev-docs-update + HANDOFF cleanup. 다음은 A1.4 진입.
+- 2026-04-26 [세션 3, 완료, commits 6591d1b/730c978/ca4e309]: dev-docs-update + HANDOFF cleanup → A1.4 (/me + /logout) 구현. **A1.3 hidden gap 발견 + 수정**: Spring Security 6의 SecurityContextHolderFilter는 load-only(5.x auto-save 제거). AuthService.login이 SecurityContext를 영속화하지 않아 후속 /me는 항상 401. SecurityConfig에 DelegatingSecurityContextRepository 빈 + securityContext() wire 추가, AuthService.login에 HttpServletResponse + saveContext 명시 호출. /me는 LoginResponse 재사용 (KISS, docs/02 §7.4 shape 동일). 테스트 4 클래스 22건 PASS. 컨텍스트 71%로 A1.5 미진입, pause-work.
 
 ## Current Execution Contract
 
@@ -23,7 +23,20 @@ Last Updated: 2026-04-26
 
 ## 현재 active task
 
-**A1.4 — `GET /api/auth/me` + `POST /api/auth/logout`**
+**A1.5 — 통합 시나리오 + 마일스톤 종료**
+
+next concrete actions (다음 세션 첫 작업):
+1. `docs/progress.md` 최상단에 A1.4 세션 블록 추가 (commit ca4e309, hidden gap fix 강조, /me=LoginResponse 재사용 결정)
+2. `AuthScenarioIntegrationTest` (@SpringBootTest + Testcontainers Postgres 15) 1건 종합 시나리오 — CSRF 발급 → 로그인 → /me → 4회 실패 → 5회 실패→423 → lockout 만료 (Clock fake) → 다시 성공 → /logout → /me=401
+3. `./gradlew test` 전체 PASS
+4. `gsd-audit-milestone A1` 실행 (드리프트 0 검증)
+5. `progress.md` A1 마일스톤 종료 블록
+6. commit `test(A1): integration scenarios`
+7. `git push` + `gh pr checks` 그린 또는 PR 생성
+
+### 이전 active (A1.4) — 완료
+
+**A1.4 — `GET /api/auth/me` + `POST /api/auth/logout`** ✅ ca4e309
 
 next concrete actions:
 1. `docs/02 §7.4` (/me, /logout) + ADR #22 (`/me` 응답 최소화) 정독
