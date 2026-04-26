@@ -707,4 +707,29 @@
 
 ---
 
-## (세션 기록이 여기에 쌓입니다)
+## 2026-04-26 — A1.0 완료 (User schema + JPA) + 드리프트 정리
+
+### 완료
+- [드리프트 정리] ADR #12 Spring Session(Redis) → JDBC 정정 4곳 (docs/00 §1.3/§4.4/§5 + docs/02 §7.1) — Redis는 MVP 인프라 제외, JDBC 단일 백엔드로 통일
+- [드리프트 정리] 권한 enum 9종 (READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN/PURGE) docs/00 §3.2 ↔ docs/03 §3.1 동기화
+- [드리프트 정리] users 테이블 컬럼 정렬: V1 stub의 display_name 유지 + docs/02 §2.1 동일 컬럼명으로 정렬 + role 대문자(MEMBER/AUDITOR/ADMIN)
+- [신규 ADR] #18~#22 추가: MVP 인증 범위 / BCrypt 정책 / 세션 만료·잠금 / 관리자 초대 only / `/me` 응답 최소화
+- [docs/02 §7.4] /api/auth/login·logout·me·csrf endpoint 상세 (CSRF 헤더, side-effects, 423 ACCOUNT_LOCKED 등)
+- [docs/02 §8] 423 LOCKED → ACCOUNT_LOCKED + FILE_LOCKED 분리
+- [docs/03 §2] TBD 스캐폴딩 → 본 스펙 (시퀀스 4종, §2.6 만료·잠금, §2.7 BCrypt 정책, §2.8 관리자 초대, §2.10 audit 매트릭스)
+- [A1.0] V2 마이그레이션: users 5컬럼 추가 (role + is_active + last_login_at + locked_at + must_change_password)
+- [A1.0] User @Entity + Role enum + UserRepository (findActiveByEmail, lowercase 정규화는 caller 책임)
+- [A1.0] UserRepositoryTest (Testcontainers Postgres 15-alpine, `disabledWithoutDocker=true`로 로컬 dev pass)
+- gradle 8.14.4 → 8.10 정렬 (#4 wrapper 후속)
+
+### 다음 세션 컨텍스트
+- A1.1 (PasswordEncoder + UserDetailsService) 진입 — `BCryptPasswordEncoder(12)` 래핑한 `DelegatingPasswordEncoder` + User→UserDetails 어댑터
+- A1 잔여: A1.1 → A1.2 (SecurityConfig: CSRF double-submit + 세션 필터 + /api/auth/csrf) → A1.3 (LoginController + lockout) → A1.4 (Logout + /me)
+- PR 분기점은 A1.2 종료 시점 권장 (Security 인프라 단위)
+
+### 블로커
+- A1.3 진입 전 해결 필요: lockout 카운터 backing store 결정 (docs/03 §2.3 footnote). ADR #12에서 Redis MVP 제외 → 후보 (a) in-memory `ConcurrentHashMap` (b) DB `login_failures` 테이블 (c) v1.x Redis ADR 선결정. A1.1 작업 중 ADR로 결정.
+
+### 설계 문서 업데이트 필요
+- docs/03 §2.3/§2.6 — lockout 카운터 Redis 표기를 결정된 backing 표기로 정정 (A1.1 ADR 후)
+- docs/03 §4.1 audit enum — `user.login.success/failed/logout/session.expired/locked/unlocked` 추가 (A1.3 진입 시)
