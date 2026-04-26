@@ -46,6 +46,12 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-testcontainers")
     testImplementation("org.testcontainers:junit-jupiter")
     testImplementation("org.testcontainers:postgresql")
+
+    // TestRestTemplate underlying client — 기본 JDK HttpURLConnection은 401 응답 시
+    // streaming POST body를 재전송할 수 없어 HttpRetryException을 던진다 (JDK 알려진 함정).
+    // Apache HttpClient 5는 401을 일반 응답으로 처리하여 해당 함정을 회피.
+    // AuthScenarioIntegrationTest의 wrong-pw 401 루프 등 인증 실패 응답 검증에 필수.
+    testImplementation("org.apache.httpcomponents.client5:httpclient5")
 }
 
 tasks.withType<Test> {

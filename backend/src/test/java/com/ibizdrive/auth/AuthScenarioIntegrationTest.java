@@ -18,6 +18,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -122,6 +123,10 @@ class AuthScenarioIntegrationTest {
 
     @BeforeEach
     void seed() {
+        // JDK HttpURLConnection은 401 응답 시 streaming POST body를 재전송하지 못해
+        // HttpRetryException을 던진다. Apache HttpClient 5 기반 factory로 교체하여 회피.
+        rest.getRestTemplate().setRequestFactory(new HttpComponentsClientHttpRequestFactory());
+
         userRepository.deleteAll();
         TestClockOverride.CLOCK.reset(Instant.parse("2026-04-26T10:00:00Z"));
         userRepository.save(new User(
