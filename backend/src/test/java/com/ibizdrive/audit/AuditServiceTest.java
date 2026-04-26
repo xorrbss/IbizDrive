@@ -95,7 +95,9 @@ class AuditServiceTest {
         );
         assertEquals("file.uploaded", row.get("event_type"));
         assertEquals(actorId, row.get("actor_id"));
-        assertEquals("203.0.113.42/32", row.get("actor_ip").toString()); // INET 표현
+        // PostgreSQL inet 타입은 host 주소(/32)일 때 mask 표기를 생략한다 — "203.0.113.42".
+        // /N 표기는 명시적 CIDR 입력 시에만 보존된다.
+        assertEquals("203.0.113.42", row.get("actor_ip").toString());
         assertEquals("Mozilla/5.0 (test)", row.get("user_agent"));
         assertEquals("file", row.get("target_type"));
         assertEquals(targetId, row.get("target_id"));
