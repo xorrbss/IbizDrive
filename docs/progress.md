@@ -5,7 +5,34 @@
 
 ---
 
-## 2026-04-25 — Track A 큐 #4 + #5: 백엔드 scaffold + A0 NormalizeUtil + CI 게이트
+## 2026-04-26 — A1.2 SecurityConfig 본 wiring (TDD, dev + Superpowers 첫 적용)
+
+### 완료
+- [A1.2] **`SecurityConfig` 본 wiring** — httpBasic/formLogin/logout 모두 disable, custom AuthController(A1.3+) 자리 마련. 매처 분리: `/api/health` + `/api/auth/csrf` + `/api/auth/login` permitAll, anyRequest authenticated. `HttpStatusEntryPoint(401)` — SPA용 (redirect 대신 401, docs/03 §2.4)
+- [A1.2] **`CsrfTokenRepository` bean 추출** — `CookieCsrfTokenRepository.withHttpOnlyFalse()`. `CsrfTokenController`에서 `saveToken()` 명시 호출하여 deferred 모드 우회
+- [A1.2] **`CsrfTokenController`** (`GET /api/auth/csrf`) — permitAll, `XSRF-TOKEN` cookie + `{ csrfToken }` body 동시 반환. Spring Security 6 deferred CSRF 함정(`getToken()`만으로는 cookie 자동 발급 보장 안 됨) 해결 — `repo.saveToken(token, req, res)` 명시 호출
+- [A1.2] **`SecurityIntegrationTest` 5건** (@WebMvcTest slice, DB 무관) — getCsrf+cookie / POST without CSRF→403 / POST valid CSRF→401 / GET /me→401 / GET /health→200. **모두 PASS**
+- [A1.2] **dev/active/a1-auth-impl/{plan,context,tasks}.md** + dev/process/{session}.md (dev 스킬 첫 bootstrap)
+
+### 핵심 결정
+- **CSRF plain handler** (`CsrfTokenRequestAttributeHandler`) — XOR mask 비활성화. docs/02 §7.1 평문 토큰 계약과 일치 (cookie ↔ header 단순 비교)
+- **deferred CSRF 우회** — Spring Security 6에서 GET 응답에 cookie 자동 발급은 보장 안 됨 → controller가 `csrfRepo.saveToken()`을 명시 호출
+- **로컬 logout disable** — A1.4에서 자체 endpoint로 처리 (Spring 기본 `LogoutFilter`는 form 기반)
+- **A1.5 재정의** — HANDOFF.json의 권한 매트릭스 백엔드 권위는 별도 phase로 분리, A1.5 = 통합 시나리오 + 마일스톤 종료 (사용자 자율 결정)
+
+### 다음 세션 컨텍스트 (A1.3 ~ A1.5)
+- **A1.3** — LoginController + in-memory `LoginAttemptTracker` (5회 실패/15분 lockout, ConcurrentHashMap, Clock 주입). **ADR #23 docs/00 §5 추가 필요** (lockout backing store). timing attack 회피 (미존재 user에도 dummy BCrypt verify). `User.recordLoginAt(OffsetDateTime)` setter 추가
+- **A1.4** — `GET /me` (ADR #22 응답 — `effectivePermissionsCacheKey = "userId:role:v0"` 임시) + `POST /logout` (HttpServletRequest.session.invalidate())
+- **A1.5** — Testcontainers Postgres @SpringBootTest 종합 시나리오 1건 + gsd-audit-milestone
+
+### 진행 정책
+- 새 환경: dev(4) + Superpowers(12, TDD 강제) + GSD context-only. 트리거 경합 0
+- 자율 모드 유지 — A1.3~A1.5는 새 세션(컨텍스트 클린)에서 동일 정책으로 진입
+
+### 블로커
+- 없음. A1.3 진입 시 ADR #23만 기록하면 됨
+
+---
 
 ### 완료 (옵션 3 +α — 하이브리드 사이클)
 - [A] **backend/ Spring Boot 3.3.4 + Java 21 scaffold** — `build.gradle.kts` (Kotlin DSL, toolchain 21), `settings.gradle.kts`, `gradle.properties`, `.gitignore`. 의존성: spring-boot-starter-web/security/data-jpa/validation, **spring-session-jdbc** (Redis 아님, ADR #12), postgresql, flyway-core + flyway-database-postgresql, software.amazon.awssdk:s3:2.28.16, jackson-databind. test workingDir = `projectDir`로 fixtures 상대경로(`../docs/`) 안정화

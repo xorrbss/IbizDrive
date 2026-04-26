@@ -2,6 +2,7 @@ package com.ibizdrive.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -9,34 +10,56 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.HttpStatusEntryPoint;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
+import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
 
 import java.util.Map;
 
 /**
- * Skeleton security config. A1 milestone will replace this with full auth flow
- * (login/logout/me/csrf endpoints, session management, audit hooks).
+ * A1.2 본 wiring — Spring Security 6 + 쿠키 세션 (ADR #12) 인증 골격.
  *
- * <p>Current behavior:
+ * <p>매처 분리:
  * <ul>
- *   <li>{@code /api/health} permitted (smoke test)</li>
- *   <li>All other endpoints require authentication (placeholder; no login wired yet)</li>
- *   <li>CSRF: cookie-based double-submit (ADR #12) — XSRF-TOKEN cookie + X-CSRF-Token header</li>
- *   <li>Session: stateless until A1 wires Spring Session JDBC</li>
+ *   <li>{@code /api/health} — permitAll (smoke)</li>
+ *   <li>{@code /api/auth/csrf} — permitAll (토큰 발급, 인증 전 호출)</li>
+ *   <li>{@code /api/auth/login} — permitAll (로그인 endpoint, A1.3)</li>
+ *   <li>나머지 — authenticated (anyRequest)</li>
  * </ul>
+ *
+ * <p>CSRF: cookie-based double-submit ({@link CookieCsrfTokenRepository#withHttpOnlyFalse()}) —
+ * mutation 요청은 모두 {@code X-CSRF-Token} 헤더 + {@code XSRF-TOKEN} 쿠키 일치 필요.
+ * BREACH-protected XOR mask 비활성화 ({@code setCsrfRequestAttributeName(null)}) — docs/02 §7.1
+ * 평문 토큰 계약과 일치.
+ *
+ * <p>세션: {@link SessionCreationPolicy#IF_REQUIRED} — Spring Session JDBC가 timeout 관리
+ * (idle 30분, application.yml의 {@code spring.session.timeout=PT8H} 절대 한도. ADR #20).
+ *
+ * <p>인증 entry point: {@link HttpStatusEntryPoint} 401 — 미인증 시 redirect 대신 401
+ * (SPA 클라이언트가 401 받아 로그인 화면으로 라우팅, docs/03 §2.4).
+ *
+ * <p>{@code httpBasic} 제거 — A1.3에서 custom LoginController로 대체.
  */
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
 
+    /**
+     * CSRF token repository bean — {@link CsrfTokenController}에서 saveToken 호출에 재사용.
+     * cookie {@code XSRF-TOKEN} (HttpOnly=false, SameSite=Lax 기본) 발급 담당.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
-        var csrfRepo = CookieCsrfTokenRepository.withHttpOnlyFalse();
+    public CsrfTokenRepository csrfTokenRepository() {
+        return CookieCsrfTokenRepository.withHttpOnlyFalse();
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, CsrfTokenRepository csrfRepo) throws Exception {
+        // 평문 토큰 (XOR mask 미적용) — docs/02 §7.1 double-submit 계약과 일치.
+        // Spring Security 6 default(XorCsrfTokenRequestAttributeHandler)는 BREACH 가드를 위해
+        // 토큰을 XOR-masked로 변환. 우리는 cookie/header 동등 비교 단순화 위해 plain handler 채택.
         var csrfHandler = new CsrfTokenRequestAttributeHandler();
-        // Plain string token rather than the BREACH-protected XOR mask, keeping
-        // the contract aligned with the docs/02 §7.1 double-submit description.
-        csrfHandler.setCsrfRequestAttributeName(null);
 
         return http
             .csrf(csrf -> csrf
@@ -45,9 +68,15 @@ public class SecurityConfig {
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/api/auth/csrf").permitAll()
+                .requestMatchers("/api/auth/login").permitAll()
                 .anyRequest().authenticated())
-            // A1: replace formLogin with custom LoginController + SessionFilter
-            .httpBasic(b -> {})
+            .exceptionHandling(eh -> eh
+                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+            // formLogin·httpBasic 모두 비활성화. 자체 AuthController(A1.3)가 인증 처리.
+            .formLogin(f -> f.disable())
+            .httpBasic(b -> b.disable())
+            .logout(l -> l.disable())  // 자체 logout endpoint (A1.4)
             .build();
     }
 
