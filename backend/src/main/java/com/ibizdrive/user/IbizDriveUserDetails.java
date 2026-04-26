@@ -4,6 +4,7 @@ import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
 
+import java.io.Serializable;
 import java.util.Collection;
 import java.util.List;
 
@@ -27,7 +28,14 @@ import java.util.List;
  *
  * <p>다운스트림(예: 로그인 후 audit, last_login_at 갱신)은 {@link #getUser()}로 도메인 entity에 접근.
  */
-public class IbizDriveUserDetails implements UserDetails {
+public class IbizDriveUserDetails implements UserDetails, Serializable {
+
+    /**
+     * Spring Session JDBC 직렬화 대상 — Spring Security가 SPRING_SECURITY_CONTEXT 세션 attribute에
+     * principal로 본 인스턴스를 저장. {@link UserDetails} 자체가 {@link Serializable}을 super-interface로
+     * 갖지만 명시 선언으로 의도를 분명히 하고 serialVersionUID를 함께 고정한다.
+     */
+    private static final long serialVersionUID = 1L;
 
     private final User user;
 

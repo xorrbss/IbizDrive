@@ -7,6 +7,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
+import java.io.Serializable;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -33,7 +34,14 @@ import java.util.UUID;
  */
 @Entity
 @Table(name = "users")
-public class User {
+public class User implements Serializable {
+
+    /**
+     * Spring Session JDBC가 SecurityContext의 principal({@link IbizDriveUserDetails} → {@code User})을
+     * Java 직렬화로 SPRING_SESSION_ATTRIBUTES에 저장한다 (ADR #12 + #20). serialVersionUID를 명시하여
+     * 클래스 진화 시 직렬화 호환성을 확정한다 — 필드 추가 시에도 기존 세션이 깨지지 않도록 유지.
+     */
+    private static final long serialVersionUID = 1L;
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
