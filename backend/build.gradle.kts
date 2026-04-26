@@ -39,6 +39,13 @@ dependencies {
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.springframework.security:spring-security-test")
     testImplementation("com.fasterxml.jackson.core:jackson-databind")
+
+    // Repository 통합 테스트 — Postgres-specific schema (partial unique index, TIMESTAMPTZ)
+    // 검증 위해 Testcontainers 사용. CI(ubuntu-latest)는 Docker 가용. 로컬 Windows는
+    // Docker Desktop 필요 — 부재 시 본 테스트만 실패하고 NormalizeUtilTest 등은 무관.
+    testImplementation("org.springframework.boot:spring-boot-testcontainers")
+    testImplementation("org.testcontainers:junit-jupiter")
+    testImplementation("org.testcontainers:postgresql")
 }
 
 tasks.withType<Test> {
