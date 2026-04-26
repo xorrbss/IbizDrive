@@ -106,134 +106,197 @@
 
 ## 2. 인증 (Authentication)
 
-> **백엔드 스택 미정**: 아래 흐름은 토큰 종류·저장 위치·DB 스키마는 결정,
-> 라이브러리(NestJS Passport vs Spring Security)는 **TBD: A 트랙에서 확정**.
+> **결정 근거**: ADR #11 (Spring Boot 3.x), ADR #12 (쿠키 세션 + Spring Session JDBC + CSRF double-submit),
+> ADR #18~#22 (MVP 인증 범위·해싱·만료·사용자 등록·`/me` 응답).
+> 이전 v3 초안의 JWT access + refresh rotation 모델은 ADR #12로 폐기됨.
 
-### 2.1 인증 방식 (선택지)
+### 2.1 인증 방식 (MVP)
 
-- **1순위 (운영)**: SSO (SAML 2.0 또는 OIDC) — 사내 IdP(예: Azure AD, Google Workspace)와 페더레이션
-- **2순위 (백업/관리자)**: 자체 ID/PW + MFA(TOTP). 관리자/감사자는 MFA 필수
-- 두 경로 모두 동일 `users` 테이블을 owner로 매핑 (`users.external_id` 컬럼 — TBD: A 트랙)
+- **MVP A1**: **자체 ID/PW only** (ADR #18). 이메일 + BCrypt 해시 비밀번호.
+- **A1.5 (후속)**: 셀프 비밀번호 변경/리셋 (이메일 토큰).
+- **v1.x**: SSO (SAML 2.0 또는 OIDC, 사내 IdP 페더레이션), MFA(TOTP).
+- 사용자 출처는 단일 `users` 테이블. 향후 SSO 도입 시 `users.external_id` 컬럼 추가 예정 (마이그레이션).
+- 사용자 등록은 **관리자 초대 only** (셀프 가입 금지, ADR #21). §2.8 참조.
 
-### 2.2 토큰 / 세션 모델
+### 2.2 세션 모델 (ADR #12)
 
-| 토큰 | 저장 위치 | 만료 | 회전 | 용도 |
-|---|---|---|---|---|
-| **access token** (JWT) | 메모리 (또는 HttpOnly 쿠키) | 15분 | 짧게 발급, 재발급으로 갱신 | API 호출 인증 |
-| **refresh token** | HttpOnly + Secure + SameSite=Lax 쿠키 | 14일 | 사용 시 1회용 회전 (rotation) | access token 재발급 |
-| **sessionId** (불투명 ID) | DB `sessions` 테이블 + 쿠키 | refresh 동기 | refresh 회전 시 갱신 | audit 기록·강제 로그아웃 |
+| 항목 | 값 |
+|---|---|
+| 토큰 | **단일 불투명 sessionId** (JWT 없음, refresh 없음) |
+| 발급 | Spring Security 로그인 성공 시 `HttpServletRequest.changeSessionId()` |
+| 저장소 | **Postgres `SPRING_SESSION` 테이블** (Spring Session `JdbcIndexedSessionRepository`, Flyway V1이 schema 권위 — `initialize-schema: never`) |
+| 쿠키 | `SESSION=<id>; HttpOnly; Secure; SameSite=Lax; Path=/` |
+| CSRF | `XSRF-TOKEN` 쿠키 (HttpOnly **아님**, JS 읽기 가능) ↔ `X-CSRF-Token` 헤더 double-submit |
+| 만료 | idle 30분 (sliding) + absolute 8시간 (issuedAt 검증) — ADR #20 |
+| 강제 로그아웃 | `SessionRegistry.expireNow(sessionId)` — `SPRING_SESSION` row 즉시 DELETE |
 
-- **클레임 최소화**: JWT는 `sub`/`role`/`exp`/`iat`/`sessionId` 만. **권한 평가는 DB**.
-- **회전 전략**: refresh 1회용 — 사용 시 invalidate + 새 토큰 발급. 동시 사용 감지 시 전체 세션 무효화 (탈취 의심).
+- **JWT/refresh 없음**: 세션 검증은 `SPRING_SESSION` 테이블 lookup. 권한 평가는 DB(`PermissionService.check`).
+- **세션 attribute 최소화**: `userId`, `roles`, `issuedAt`, `permissionsCacheKey`만. effectivePermissions는 DB·캐시 별도.
+- **다중 인스턴스**: Spring Session JDBC 백엔드로 sticky session 불필요 (모든 인스턴스가 동일 Postgres 참조).
+- **로그인 시 세션 ID 회전**: session fixation 방지 (`changeSessionId()` 호출).
 
-### 2.3 시퀀스 — 로그인 (Login)
+### 2.3 시퀀스 — 로그인 (자체 ID/PW)
 
 ```text
-사용자(브라우저)         App 서버               IdP/SSO            DB
-      │                    │                     │                 │
-      │ GET /login         │                     │                 │
-      │───────────────────▶│                     │                 │
-      │ 302 → IdP          │                     │                 │
-      │◀───────────────────│                     │                 │
-      │ SSO 인증 (외부)    │                     │                 │
-      │═══════════════════════════════════════════▶                │
-      │ 302 callback?code  │                     │                 │
-      │◀═══════════════════════════════════════════                │
-      │ GET /auth/callback │                     │                 │
-      │───────────────────▶│                     │                 │
-      │                    │ POST /token (code)  │                 │
-      │                    │────────────────────▶│                 │
-      │                    │ id_token (verified) │                 │
-      │                    │◀────────────────────│                 │
-      │                    │ users.upsert(email) │                 │
-      │                    │─────────────────────────────────────▶ │
-      │                    │ sessions.insert     │                 │
-      │                    │─────────────────────────────────────▶ │
-      │                    │ audit: user.login.success             │
-      │                    │─────────────────────────────────────▶ │
-      │ 200 + Set-Cookie:  │                     │                 │
-      │   refresh, session │                     │                 │
-      │   + JSON access    │                     │                 │
-      │◀───────────────────│                     │                 │
-      │ → /files (탐색기)  │                     │                 │
+브라우저                App 서버         Redis(loginfail*)    DB / SPRING_SESSION
+   │ GET /api/auth/csrf  │                    │                  │
+   │────────────────────▶│ generate XSRF      │                  │
+   │ 200 { csrfToken }   │                    │                  │
+   │ Set-Cookie:         │                    │                  │
+   │   XSRF-TOKEN=...    │                    │                  │
+   │◀────────────────────│                    │                  │
+   │                     │                    │                  │
+   │ POST /api/auth/login│                    │                  │
+   │ X-CSRF-Token: ...   │                    │                  │
+   │ { email, password } │                    │                  │
+   │────────────────────▶│ email→lowercase    │                  │
+   │                     │ check loginfail:E  │                  │
+   │                     │───────────────────▶│                  │
+   │                     │ if count >= 5      │                  │
+   │                     │   → 423 LOCKED     │                  │
+   │                     │ users.find(email)  │                  │
+   │                     │─────────────────────────────────────▶ │
+   │                     │ BCrypt.verify(pw)  │                  │
+   │                     │ on fail:           │                  │
+   │                     │   INCR loginfail:E │                  │
+   │                     │   EXPIRE 900       │                  │
+   │                     │───────────────────▶│                  │
+   │                     │   audit: login.failed (DB)            │
+   │                     │   ─────────────────────────────────▶ │
+   │                     │ on success:        │                  │
+   │                     │   DEL loginfail:E  │                  │
+   │                     │───────────────────▶│                  │
+   │                     │   changeSessionId()│                  │
+   │                     │   session.set(...) (Spring Session)   │
+   │                     │   ─────────────────────────────────▶ │ INSERT/UPDATE SPRING_SESSION
+   │                     │   audit: login.success (DB)           │
+   │                     │   ─────────────────────────────────▶ │
+   │ 200 { user, ... }   │                    │                  │
+   │ Set-Cookie:         │                    │                  │
+   │   SESSION=newId     │                    │                  │
+   │◀────────────────────│                    │                  │
 ```
 
-**실패 분기 (login.failed):**
-- IdP 검증 실패 → `401`, audit `user.login.failed`(reason=idp_reject), 세션 미생성.
-- 자체 ID/PW 5회 실패 → 15분 락. 락 해제 시도도 실패로 카운트.
+> *Redis 컬럼은 §2.6 lockout 카운터 전용. MVP 인프라에는 Redis 미포함 — Redis 도입은 v1.x 별도 ADR로 분리(ADR #12 본문 참조). A1 구현 시 lockout 카운터의 1차 backing store를 결정해야 함 (옵션: 단일 인스턴스 한정 in-memory `ConcurrentHashMap` + idempotency 가능한 DB 카운터, 또는 Redis 선조정 ADR). 본 시퀀스는 정책상 목표 동작이며, 실제 backing은 A1 spec에서 확정.
 
-### 2.4 시퀀스 — API 호출 + Access 만료 (Refresh)
+**실패 응답 분기:**
+- 자격 증명 불일치 → `401 UNAUTHORIZED { reason: 'INVALID_CREDENTIALS' }` + `INCR loginfail:{email}` + audit `user.login.failed(reason=invalid_credentials)`
+- 5회 실패 후 → `423 ACCOUNT_LOCKED { retryAfterSec: <ttl> }` + audit `user.login.failed(reason=locked)`. 락 상태에서의 시도도 카운트 (TTL 갱신). 첫 락 진입 시 `user.locked` audit 추가 발급
+- CSRF 토큰 누락/불일치 → `403 CSRF_MISMATCH`
+
+> **에러 메시지 정책**: "이메일 없음" vs "비밀번호 불일치"를 구분하지 않음 (계정 enumeration 방지). 모두 `INVALID_CREDENTIALS`.
+
+### 2.4 시퀀스 — 세션 만료 처리 (Refresh 없음)
 
 ```text
-브라우저                App 서버              DB
-   │ GET /api/files     │                     │
-   │ (Authorization: Bearer access)           │
-   │ + Cookie: refresh, sessionId             │
-   │───────────────────▶│                     │
-   │                    │ verify(access)      │
-   │                    │   → exp 만료 (401)  │
-   │ 401 + WWW-Auth     │                     │
-   │◀───────────────────│                     │
-   │ POST /auth/refresh │                     │
-   │ (Cookie: refresh)  │                     │
-   │───────────────────▶│                     │
-   │                    │ sessions.find(sid)  │
-   │                    │ + refresh 일치 검증 │
-   │                    │────────────────────▶│
-   │                    │ refresh 회전:       │
-   │                    │  invalidate old     │
-   │                    │  insert new token   │
-   │                    │────────────────────▶│
-   │ 200 + Set-Cookie   │                     │
-   │ + new access token │                     │
-   │◀───────────────────│                     │
-   │ Retry /api/files   │                     │
-   │───────────────────▶│ ... (정상 응답)     │
+브라우저              App 서버              SPRING_SESSION (Postgres)
+   │ GET /api/files    │                     │
+   │ Cookie: SESSION=X │                     │
+   │ X-CSRF-Token: ... │                     │
+   │──────────────────▶│ session.find(X)     │
+   │                   │────────────────────▶│  SELECT FROM SPRING_SESSION
+   │                   │   ← null (만료/삭제)│
+   │                   │ OR session.found    │
+   │                   │   issuedAt + 8h     │
+   │                   │   < now → expire    │
+   │ 401 SESSION_EXPIRED                     │
+   │ Set-Cookie:       │                     │
+   │   SESSION=; Max-Age=0                   │
+   │◀──────────────────│                     │
+   │ → 로그인 화면     │                     │
 ```
 
-**탈취 의심 분기 (replay detection):**
-- 회전된(이미 사용된) refresh가 다시 들어옴 → **세션 전체 강제 종료** + audit `user.login.failed`(reason=refresh_replay) + 사용자에게 알림.
+- **Refresh 없음**: 세션 만료 = 재로그인. JWT/refresh 회전 모델 폐기 (ADR #12).
+- 프론트는 401 응답 시 `useAuth` 훅이 `/login`으로 리다이렉트 (현재 path를 `?next=` 쿼리로 보존).
+- idle 30분 sliding은 Spring Session이 자동 갱신. absolute 8시간은 `SessionAttributeFilter`에서 `issuedAt` 검증.
 
-### 2.5 시퀀스 — 로그아웃 (Logout)
+### 2.5 시퀀스 — 로그아웃
 
 ```text
-브라우저              App 서버              DB
-   │ POST /auth/logout │                     │
-   │───────────────────▶                     │
-   │                   │ sessions.delete(sid)│
-   │                   │────────────────────▶│
-   │                   │ refresh blacklist   │
-   │                   │  (남은 ttl 동안)    │
-   │                   │────────────────────▶│
+브라우저              App 서버              SPRING_SESSION (Postgres)
+   │ POST /api/auth/logout                  │
+   │ X-CSRF-Token: ... │                     │
+   │──────────────────▶│ session.invalidate()│
+   │                   │────────────────────▶│ DELETE FROM SPRING_SESSION WHERE PRIMARY_ID=X
    │                   │ audit: user.logout  │
-   │                   │────────────────────▶│
-   │ 204 + Clear-Cookie│                     │
+   │ 204               │                     │
+   │ Set-Cookie:       │                     │
+   │   SESSION=; Max-Age=0                   │
    │◀──────────────────│                     │
 ```
 
-- **logout-all** 엔드포인트는 사용자의 모든 sessionId를 일괄 삭제 (다른 기기 로그아웃).
+- **logout-all** (다른 기기 로그아웃)은 v1.x. MVP는 단일 세션만 지원.
+- 강제 종료(관리자) — `POST /api/admin/users/:id/sessions/revoke` → A4 admin endpoint.
 
-### 2.6 비활성·만료 정책
+### 2.6 만료·잠금 정책 (ADR #20)
 
-| 항목 | 값 | 비고 |
+| 항목 | 값 | 구현 |
 |---|---|---|
-| Access 만료 | 15분 | 짧게 — 노출 시 영향 최소화 |
-| Refresh 만료 | 14일 | 회전 시 만료 시점도 갱신 (롤링) |
-| 비활성 자동 로그아웃 | 30분 (SPA idle) | 클라이언트 타이머 + 다음 요청 시 만료 응답 |
-| MFA 재인증 | 24시간 (관리자) | 민감 작업(권한 변경/Legal Hold) 시 즉시 재인증 |
+| **Idle timeout (sliding)** | 30분 | Spring Session `setMaxInactiveIntervalInSeconds(1800)` |
+| **Absolute max lifetime** | 8시간 | session attribute `issuedAt` + 필터에서 `now - issuedAt > 8h` 검사, 초과 시 `invalidate()` |
+| **계정 잠금 임계값** | 5회 연속 실패 | Redis `INCR loginfail:{email}` |
+| **잠금 지속 시간** | 15분 | Redis `EXPIRE 900` (TTL). 락 상태 시도도 카운트되어 TTL 갱신 |
+| **카운터 리셋** | 로그인 성공 시 | Redis `DEL loginfail:{email}` |
 
-### 2.7 서비스 계정 (Service Account)
+- 클라이언트 idle 타이머는 도입하지 않음 (서버 401 응답으로 충분).
+- 잠금 해제는 (a) TTL 만료 자동 + (b) 관리자 수동 해제 (`POST /api/admin/users/:id/unlock`, A4).
+- MFA 재인증(민감 작업) 정책은 v1.x MFA 도입과 함께 재정의.
 
-- 배치/통합용 별도 계정. 사람과 동일 `users` 테이블이지만 `kind='service'`로 구분.
-- **세션 토큰 대신 장기 API 키** (저장 시 hash). 키 회전은 관리자 콘솔 — `admin.api_key.rotated` audit.
+### 2.7 비밀번호 정책·해싱 (ADR #19)
+
+**해싱:**
+- `BCryptPasswordEncoder(strength=12)` — Spring Security 기본.
+- DB 저장 컬럼: `users.password_hash VARCHAR(100)` — `DelegatingPasswordEncoder` 프리픽스(`{bcrypt}` ~9자 + 60자) 및 향후 `{argon2id}` 마이그레이션 여유.
+- `DelegatingPasswordEncoder` 사용: 향후 Argon2id 마이그레이션 가능 (`{bcrypt}...` / `{argon2}...` 프리픽스).
+
+**정책 (등록·변경 시 검증):**
+
+| 규칙 | 값 | 에러 코드 |
+|---|---|---|
+| 최소 길이 | 12자 | `VALIDATION_ERROR { rule: 'min_length' }` |
+| 영문자 1자 이상 | 필수 | `VALIDATION_ERROR { rule: 'missing_alpha' }` |
+| 숫자 1자 이상 | 필수 | `VALIDATION_ERROR { rule: 'missing_digit' }` |
+| 공백 문자 금지 | 필수 | `VALIDATION_ERROR { rule: 'whitespace' }` |
+| 최대 길이 | 128자 | `VALIDATION_ERROR { rule: 'max_length' }` |
+
+- **사전 공격 방지(zxcvbn/HIBP)**: 도입 안 함 (외부 의존·UX 부담) → v1.x.
+- **이메일 정규화**: `email = email.trim().toLowerCase()` (별도 로직, `NormalizeUtil.normalize()` 적용 대상 아님 — 파일/폴더명 전용).
+- **비밀번호 변경**: A1.5 — `POST /api/auth/password/change`, 현재 PW 확인 + 새 PW 정책 검증 + 모든 세션 무효화.
+
+### 2.8 사용자 등록 (ADR #21)
+
+- **셀프 가입 금지**. `POST /api/auth/register` 엔드포인트 미존재.
+- 등록 경로:
+  1. **시드 admin**: Flyway `V*__seed_admin.sql`로 초기 admin 1명 생성 (env: `ADMIN_INIT_EMAIL`, `ADMIN_INIT_PASSWORD_HASH` — 사전 BCrypt 해시). 첫 로그인 시 PW 변경 강제.
+  2. **관리자 초대**: `POST /api/admin/users` — admin이 email/이름/role/임시 PW를 지정해 user 생성. 사용자에게 임시 PW를 별도 채널로 전달 (MVP는 admin이 수동 통지). 첫 로그인 시 PW 변경 강제 (`users.must_change_password = true` 플래그).
+  3. **이메일 초대 (A1.5)**: `POST /api/admin/users` 시 임시 토큰 발급 → 이메일 링크로 사용자가 직접 초기 PW 설정. 이메일 인프라 도입 시점에 활성화.
+
+`users` 테이블 인증 관련 컬럼 (docs/02 §2.1과 동기):
+- `email VARCHAR UNIQUE NOT NULL` (lowercase 정규화)
+- `password_hash VARCHAR(72) NOT NULL`
+- `must_change_password BOOLEAN NOT NULL DEFAULT false`
+- `kind ENUM('human', 'service') NOT NULL DEFAULT 'human'`
+
+### 2.9 서비스 계정 (Service Account)
+
+- 배치/통합용 별도 계정. `users.kind='service'`로 구분.
+- **세션 쿠키 대신 장기 API 키** (저장 시 hash). 키 회전은 관리자 콘솔 — `admin.api_key.rotated` audit.
 - 모든 행위는 사람과 동일하게 audit. service account 우대 없음.
-- **TBD: A 트랙** — 키 회전 주기 정책(90일 권장).
+- **MVP 범위 외**: A4 admin 트랙에서 별도 spec. MVP A1은 human 계정만.
 
-### 2.8 인증 관련 audit 이벤트 (§4.1과 동기화)
+### 2.10 인증 관련 audit 이벤트 (§4.1과 동기화)
 
-`user.login.success` / `user.login.failed` / `user.logout` /
-`user.password.changed` / `user.mfa.enabled` /
-(추가 예정) `user.session.revoked` — TBD: A 트랙에서 §4.1에 추가.
+| 이벤트 | trigger | reason 필드 값 |
+|---|---|---|
+| `user.login.success` | 로그인 성공 | — |
+| `user.login.failed` | 로그인 실패 | `invalid_credentials` / `locked` / `csrf_mismatch` |
+| `user.logout` | 명시적 로그아웃 | — |
+| `user.session.expired` | idle/absolute timeout | `idle` / `absolute` |
+| `user.password.changed` | 비밀번호 변경 (A1.5) | — |
+| `user.locked` | 5회 실패 후 락 진입 | — |
+| `user.unlocked` | 관리자 수동 해제 (A4) | `admin_action` |
+
+> §4.1 `AuditEventType` enum에 위 이벤트 동기화 필요 (현재 `user.password.changed` / `user.mfa.enabled`만 존재). MFA는 v1.x로 연기되어 `user.mfa.enabled`는 enum 유지(미사용)하거나 v1.x 도입 시점에 추가 가능 — TBD: A1 구현 진입 시 §4.1 정리.
 
 ---
 

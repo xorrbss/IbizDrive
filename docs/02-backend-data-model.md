@@ -788,34 +788,94 @@ CSRF 정책:
 
 ### 7.4 인증 (Auth)
 
+**근거**: ADR #12 (쿠키 세션 + Spring Session JDBC), ADR #18~#22, docs/03 §2.
+
 **Guard 약어**: `permitAll` = 인증 불필요 (login/csrf), `isAuthenticated()` = 세션 검증.
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| POST | `/api/auth/login` | permitAll | REQUIRED | — | — | 400 VALIDATION_ERROR, 401 UNAUTHORIZED |
-| POST | `/api/auth/logout` | isAuthenticated | REQUIRED | — | — | — |
-| GET  | `/api/auth/me` | isAuthenticated | — | — | — | 401 |
+| POST | `/api/auth/login` | permitAll | REQUIRED (audit·loginfail 카운터) | email→lowercase | — | 400 VALIDATION_ERROR, 401 UNAUTHORIZED, 423 ACCOUNT_LOCKED, 403 CSRF_MISMATCH |
+| POST | `/api/auth/logout` | isAuthenticated | REQUIRED (audit) | — | — | 403 CSRF_MISMATCH |
+| GET  | `/api/auth/me` | isAuthenticated | — | — | — | 401 UNAUTHORIZED |
 | GET  | `/api/auth/csrf` | permitAll | — | — | — | — |
+
+> **Norm 컬럼**: 이메일은 `NormalizeUtil.normalize()` (NFC + 파일명 정규화) 적용 대상 아님. `email.trim().toLowerCase()` 별도 적용 (docs/03 §2.7).
+> **TX 컬럼**: login은 audit + loginfail Redis 카운터 부수효과 있음 → REQUIRED. logout은 session.invalidate + audit.
 
 ```text
 POST /api/auth/login
+  Headers:  X-CSRF-Token: <token>            (필수, GET /api/auth/csrf로 사전 발급)
+            Cookie: XSRF-TOKEN=<token>       (double-submit 검증)
   Request:  { email: string, password: string }
-  Response: 200 { user: UserDto, departments: DeptDto[], roles: Role[] }
-            Set-Cookie: SESSION=...; HttpOnly; Secure; SameSite=Lax
-  Errors:   401 UNAUTHORIZED ({ reason: 'INVALID_CREDENTIALS' | 'LOCKED' | 'EXPIRED' })
+  Validation:
+    - email: RFC 5322 형식, 1~254자, lowercase 정규화 후 비교
+    - password: 1~128자 (정책 검증 X — 등록·변경 시점에만 적용)
+  Response: 200 {
+              user: { id, email, name, kind, mustChangePassword },
+              departments: [{ id, name }],
+              roles: ['MEMBER' | 'AUDITOR' | 'ADMIN'][],
+              effectivePermissionsCacheKey: string
+            }
+            Set-Cookie: SESSION=<id>; HttpOnly; Secure; SameSite=Lax; Path=/
+  Side-effects:
+            - Spring Security changeSessionId() (session fixation 방지)
+            - session attribute: { userId, roles, issuedAt, permissionsCacheKey }
+            - Redis: DEL loginfail:{email}
+            - audit: user.login.success
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'email' | 'password', rule: 'format' | 'length' } }
+    401 UNAUTHORIZED      { reason: 'INVALID_CREDENTIALS' }
+                          (이메일 미존재·PW 불일치 모두 동일 응답 — 계정 enumeration 방지)
+                          Side-effects: INCR loginfail:{email}, EXPIRE 900, audit user.login.failed
+    423 ACCOUNT_LOCKED    { retryAfterSec: <ttl-seconds> }
+                          (5회 누적 실패 후. 락 상태 시도도 카운트되어 TTL 갱신)
+                          audit: user.login.failed(reason=locked) — 첫 락 진입 시만 user.locked 추가 발급
+    403 CSRF_MISMATCH     { } (CSRF 토큰 누락/불일치)
+    400 PASSWORD_CHANGE_REQUIRED  { } (mustChangePassword=true인 사용자 — A1.5에서 처리, MVP는 응답 후 클라가 변경 화면 유도. ADR #21)
 
 POST /api/auth/logout
+  Headers:  X-CSRF-Token: <token>            (필수)
+            Cookie: SESSION=<id>             (현재 세션 식별)
   Response: 204
-            Set-Cookie: SESSION=; Max-Age=0
-  Note:     Redis 세션 즉시 무효화
+            Set-Cookie: SESSION=; Max-Age=0; Path=/
+  Side-effects:
+            - HttpServletRequest.getSession().invalidate() (DELETE FROM SPRING_SESSION WHERE PRIMARY_ID=<id>)
+            - audit: user.logout
+  Errors:
+    403 CSRF_MISMATCH
 
-GET  /api/auth/me
-  Response: 200 { user, departments, roles, effectivePermissionsCacheKey }
+GET /api/auth/me
+  Headers:  Cookie: SESSION=<id>
+  Response: 200 {
+              user: {
+                id: string (UUID),
+                email: string,
+                name: string,
+                kind: 'human' | 'service',
+                mustChangePassword: boolean
+              },
+              departments: [{ id: string, name: string, path: string (LTREE) }],
+              roles: ('MEMBER' | 'AUDITOR' | 'ADMIN')[],
+              effectivePermissionsCacheKey: string
+                /* 권한 변경 시 변경됨. 프론트는 이 값을 watch하여
+                   per-resource currentUserPermissions 캐시를 invalidate
+                   (docs/01 §6.3 광역 무효화 trigger). */
+            }
+  Errors:
+    401 UNAUTHORIZED      (세션 만료/없음 — Set-Cookie: SESSION=; Max-Age=0 동반)
+                          { reason: 'SESSION_EXPIRED' | 'NO_SESSION' }
+  Note:     **effectivePermissions full resolve 미포함** (ADR #22). 권한은 per-resource 응답
+            (예: GET /api/folders/:id 응답에 currentUserPermissions: ['READ', 'EDIT'] 동봉).
 
-GET  /api/auth/csrf
+GET /api/auth/csrf
   Response: 200 { csrfToken: string }
-            Set-Cookie: XSRF-TOKEN=<token>; SameSite=Lax  (HttpOnly 아님)
+            Set-Cookie: XSRF-TOKEN=<token>; SameSite=Lax; Path=/  (HttpOnly **아님** — JS 읽기 가능)
+  Note:     Spring Security CookieCsrfTokenRepository.withHttpOnlyFalse() 기본 동작.
+            mutation 요청 전 클라가 1회 호출 → XSRF-TOKEN 쿠키 → JS가 읽어
+            X-CSRF-Token 헤더로 전송 (double-submit).
 ```
+
+**관련 audit 이벤트** (docs/03 §2.10): `user.login.success` / `user.login.failed` / `user.logout` / `user.session.expired` / `user.locked` / `user.unlocked` / `user.password.changed` (A1.5).
 
 ### 7.5 폴더 (Folders)
 
@@ -1130,7 +1190,8 @@ GET /api/sse/files?folderIds=fld_a,fld_b
 | 413 | QUOTA_EXCEEDED | 스토리지 할당량 초과 | 관리자 문의 안내 |
 | 413 | FILE_TOO_LARGE | 단일 파일 크기 초과 | 경고 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | 금지된 확장자 | 경고 |
-| 423 | LOCKED | 파일 잠김 (v1.x, pessimistic) | 잠금 해제 안내 |
+| 423 | ACCOUNT_LOCKED | 로그인 5회 실패 누적 → 15분 락 (docs/03 §2.6) | `retryAfterSec` 표시 + 시간 후 재시도 안내 |
+| 423 | FILE_LOCKED | 파일 잠김 (v1.x, pessimistic) | 잠금 해제 안내 |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |
