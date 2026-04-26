@@ -152,6 +152,7 @@ Spring Boot 도입(ADR #11)에 따른 백엔드 트랙. A0~A1은 수동 spec 모
 | 20 | **세션 만료·잠금 = idle 30분(sliding) + absolute 8시간(max) + 5회 실패/15분 lockout (Redis 카운터)** | Spring Session `setMaxInactiveIntervalInSeconds(1800)` + 별도 issuedAt 검사로 8시간 강제. lockout은 `AuthenticationFailureBadCredentialsEvent` 리스너 → Redis `INCR loginfail:{email}` + `EXPIRE 900`. 락 해제 시도도 실패로 카운트 | 03 §2.6 |
 | 21 | **사용자 등록 = 관리자 초대 only (셀프 가입 금지)** | 사내 시스템 → 셀프 가입 부적절. MVP는 (a) Flyway 시드로 admin 1명 + (b) `POST /api/admin/users` (admin이 email/임시PW 지정)로 user 생성. 첫 로그인 시 PW 변경 강제. 초대 메일은 A1.5(이메일 인프라 도입 시) | 03 §2.8, 02 §7.12 |
 | 22 | **`/api/auth/me` 응답 = identity + role + permissionsCacheKey만 (effectivePermissions full resolve 제외)** | `{ user, departments, roles, effectivePermissionsCacheKey }`. 폴더×권한 N×M full resolve는 페이로드 폭증 → 권한은 per-resource 응답에 `currentUserPermissions: ['READ','EDIT']` 동봉(별도 endpoint 호출 X). cacheKey는 권한 변경 시 invalidate trigger | 02 §7.4, 01 §6.3 |
+| 23 | **MVP lockout 카운터 backing store = in-memory `ConcurrentHashMap`** | ADR #20의 "Redis 카운터" 결정을 MVP 한정으로 정정 (ADR #12 본문이 Redis 도입을 v1.x로 분리). `LoginAttemptTracker`가 lowercased email → (count, lockedUntil) 매핑. 5회/15분 lockout, 만료는 lazy 평가 (cleanup 스레드 미운영). 단일 인스턴스 가정 — 다중 인스턴스/Redis 도입 시 본 클래스 인터페이스를 추출하여 교체. 프로세스 재시작 시 카운터 휘발은 의도된 동작 (재시작 후 재시도 허용). | 03 §2.6, A1.3 |
 
 ### 5.1 Superseded ADRs
 

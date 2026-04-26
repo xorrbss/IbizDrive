@@ -143,4 +143,12 @@ public class User {
     public boolean isDeleted() {
         return deletedAt != null;
     }
+
+    /**
+     * 로그인 성공 시 호출 — {@code last_login_at} 컬럼 갱신.
+     * 호출자는 동일 트랜잭션 내에서 {@link UserRepository#save}로 flush 책임을 진다.
+     */
+    public void recordLoginAt(OffsetDateTime at) {
+        this.lastLoginAt = at;
+    }
 }
