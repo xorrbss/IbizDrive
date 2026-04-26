@@ -1,13 +1,18 @@
 'use client'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
-import { qk } from '@/lib/queryKeys'
+import { invalidations } from '@/lib/queryKeys'
 import { useSelectionStore } from '@/stores/selection'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 
 type Vars = { ids: string[]; folderIdAtStart: string }
 
-export function useDeleteBulk() {
+type Options = {
+  onSuccess?: (vars: Vars) => void
+  onError?: (err: unknown, vars: Vars) => void
+}
+
+export function useDeleteBulk(options: Options = {}) {
   const qc = useQueryClient()
   const markPending = useSelectionStore((s) => s.markPending)
   const unmarkPending = useSelectionStore((s) => s.unmarkPending)
@@ -22,21 +27,19 @@ export function useDeleteBulk() {
       markPending(ids)
     },
 
-    onSuccess: async (_data, { ids, folderIdAtStart }: Vars) => {
-      await qc.invalidateQueries({
-        queryKey: [...qk.files(), 'list', folderIdAtStart],
-      })
-      unmarkPending(ids)
+    onSuccess: async (_data, vars: Vars) => {
+      await invalidations.afterDelete(qc, { folderId: vars.folderIdAtStart })
+      unmarkPending(vars.ids)
       clear()
+      options.onSuccess?.(vars)
     },
 
-    onError: (_err, { ids, folderIdAtStart }: Vars) => {
-      unmarkPending(ids)
-      if (folderIdAtStart === currentFolderId) {
-        selectAll(ids)
+    onError: (err, vars: Vars) => {
+      unmarkPending(vars.ids)
+      if (vars.folderIdAtStart === currentFolderId) {
+        selectAll(vars.ids)
       }
-      // TODO(M5): 토스트 에러 알림
-      console.warn('deleteBulk 실패', { ids, folderIdAtStart })
+      options.onError?.(err, vars)
     },
   })
 }

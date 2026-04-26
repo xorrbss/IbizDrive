@@ -1,5 +1,6 @@
 'use client'
 import { useState } from 'react'
+import { toast } from 'sonner'
 import {
   DndContext,
   DragOverlay,
@@ -20,7 +21,10 @@ import { parseFolderDroppableId, type MoveDragData } from './types'
  */
 export function DndProvider({ children }: { children: React.ReactNode }) {
   const [activeData, setActiveData] = useState<MoveDragData | null>(null)
-  const moveBulk = useMoveBulk()
+  const moveBulk = useMoveBulk({
+    onSuccess: (vars) => toast.success(`${vars.ids.length}개 항목을 이동했습니다`),
+    onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
+  })
 
   const sensors = useSensors(
     useSensor(PointerSensor, {

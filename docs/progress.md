@@ -5,6 +5,405 @@
 
 ---
 
+## 2026-04-26 — 🏁 A1 마일스톤 종료 (Backend Authentication)
+
+### 범위
+A1.0 (User schema + JPA) → A1.1 (PasswordEncoder + DbUserDetailsService) → A1.2 (SecurityConfig 본 wiring + CSRF) → A1.3 (LoginController + in-memory lockout) → A1.4 (`/me` + `/logout` + SecurityContext gap fix) → A1.5 (통합 시나리오 + dev-docs 기반 audit) → **A1.6 (session timeout 정책 — must-fix #1 close)**.
+
+### 회고
+- **commits**: 7개 (308c041 / 0dd2d65 / 10a524b / 06b9238 / ca4e309 / c34e640 / A1.6 신규)
+- **테스트**: **156 tests** (152 pass + 4 Docker SKIP, 0 fail) — 6 클래스 (`SecurityIntegrationTest` 5 / `LoginAttemptTrackerTest` 4 / `LoginControllerIntegrationTest` 8 / `AuthMeLogoutIntegrationTest` 5 / `AuthScenarioIntegrationTest` 1 / `SessionValidityFilterTest` 4) + slice + repository (152 합산)
+- **production 클래스**: 16 (auth/ 7 + auth/dto/ 2 + config/ 1 + user/ 4 + common/error/ 2)
+- **endpoint 4종**: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `GET /api/auth/csrf` (docs/02 §7.4 매트릭스 충족)
+- **ADR 등록**: #19 (BCrypt strength=12 + DelegatingPasswordEncoder), #20 (idle 30m sliding + absolute 8h + 5/15min lockout), #22 (`/me` shape — identity + role + permissionsCacheKey), #23 (in-memory lockout backing — MVP 단일 인스턴스). #20은 A1.6에서 full pass.
+- **hidden gap fix 1건**: Spring Security 6 `SecurityContextHolderFilter` load-only 동작으로 `AuthService.login`의 명시 `saveContext` 누락 (A1.4 ca4e309에서 수정)
+- **must-fix → resolved 1건**: must-fix #1 (세션 timeout 정책) — A1.6에서 `SessionValidityFilter` + `application.yml PT30M`로 close
+
+### 잔여 accepted-deviation 3건 (후속 phase 추적)
+| # | 항목 | 추적 phase |
+|---|---|---|
+| 1 | `audit_log` emission 미구현 — A1 plan에서 명시 deferred (`AuthService.login` 주석 `// (후속) audit insert`) | **A2** (audit + 권한 매트릭스 backbone) |
+| 2 | `400 PASSWORD_CHANGE_REQUIRED` 분기 미구현 (현재 `mustChangePassword=true` flag만 응답에 포함) — ADR #21 | PW change endpoint phase (미배정) |
+| 3 | `AuthScenarioIntegrationTest` 로컬 SKIP — Windows Docker 미가용. CI ubuntu-latest에서 실행 | PR push 후 `gh pr checks 1` 그린 = close 게이트 |
+
+### 다음 마일스톤 안내 (A2)
+- **A2 — Audit log backbone + 권한 매트릭스**:
+  - `audit_log` 테이블 + append-only constraint (REVOKE UPDATE/DELETE — docs/03 §4 + CLAUDE.md §3 원칙 8)
+  - `AuthService.login`의 `// (후속) audit insert`를 실제 emission으로 채움
+  - `@PreAuthorize` + `PermissionService` (HANDOFF의 권한 매트릭스 백엔드 권위)
+  - `effectivePermissionsCacheKey` 단순 문자열(`userId:role:v0`) → 권한 변경 trigger 기반 hash로 교체
+- A2 진입 전 본 PR(#1) 머지 + master 동기화
+
+---
+
+## 2026-04-26 — A1.6 Session Timeout Policy (must-fix #1 close, TDD)
+
+### 완료
+- [A1.6] **`SessionValidityFilter`** — `OncePerRequestFilter`, `Clock` 주입(`Clock systemUTC` `@Bean` 신규). `req.getSession(false)` → 세션 부재면 pass-through. `issuedAt` attribute 부재(또는 Long 아님)면 pass-through (인증 전 요청). `(clock.millis() - issuedAt) >= 8h(ABSOLUTE_TTL_MS)` → `session.invalidate()` + `res.sendError(401)` + chain 차단.
+- [A1.6] **`SecurityConfig` 변경** — `Clock` `@Bean`(systemUTC) + `addFilterAfter(sessionValidityFilter, SecurityContextHolderFilter.class)`. SecurityContext 로드 직후 absolute 만료 검사 → 만료 세션의 인증 컨텍스트가 다운스트림 인가 필터에 노출되는 것 회피.
+- [A1.6] **`application.yml`** — `spring.session.timeout: PT8H` → `PT30M` (idle 진실 출처). 주석으로 분담 명시 (idle=Spring Session JDBC, absolute=SessionValidityFilter).
+- [A1.6] **`SessionValidityFilterTest` 4건** — 단위 (Mockito + mutable `Clock`):
+  1. 세션 없음 → pass-through, 응답 미터치
+  2. 세션 있고 `issuedAt` 없음 → pass-through, invalidate 호출 안 됨
+  3. 7h59m59s 경과 → pass-through, invalidate 호출 안 됨
+  4. 정확히 8h 경과 → invalidate(1) + sendError(401) + chain 미호출
+- [A1.6] **회귀** — 152 → **156 tests**, 0 fail, 0 err, 4 Docker SKIP 동일
+
+### 핵심 결정 (filter SoT 정책)
+- **idle 만료 진실 출처 = `application.yml` `spring.session.timeout: PT30M`** — Spring Session JDBC가 매 요청마다 `lastAccessedTime`을 갱신, 30분 무활동 시 자동 invalidate. 컨테이너 레벨에서 sliding 처리 → 별도 코드 불필요 (KISS).
+- **absolute 만료 진실 출처 = `SessionValidityFilter`** — `AuthService.login`이 이미 set 중인 `issuedAt`(epoch millis) attribute + 8h 경계. yml만으로는 ADR #20 absolute 한도 강제 불가 → 본 필터가 must-fix #1의 정확 사유 close.
+- **Clock 주입** — production은 `Clock.systemUTC()` `@Bean`, 테스트는 mutable `Clock`을 단위 테스트에서 직접 주입(필터 단독 생성). `@SpringBootTest` 통합 추가 안 함 — 8h 경계를 SpringBootTest로 검증하면 비용만 큼 (단위 4건으로 logic full coverage).
+- **`OncePerRequestFilter` + `addFilterAfter(SecurityContextHolderFilter)` 위치** — SecurityContext 로드 직후, 인가 필터 이전. 만료 세션의 `Authentication`이 컨트롤러까지 도달하지 않음.
+
+### 변경 파일
+- `backend/src/main/java/com/ibizdrive/auth/SessionValidityFilter.java` (신규)
+- `backend/src/main/java/com/ibizdrive/config/SecurityConfig.java` (Clock @Bean + filter wire + SecurityContextHolderFilter import)
+- `backend/src/main/resources/application.yml` (timeout PT8H → PT30M + 주석)
+- `backend/src/test/java/com/ibizdrive/auth/SessionValidityFilterTest.java` (신규)
+- `dev/active/a1-auth-impl/a1-auth-impl-plan.md` (A1.6 phase 추가)
+- `dev/active/a1-auth-impl/a1-auth-impl-audit.md` (must-fix #1 RESOLVED 갱신, 통계 +4 tests)
+
+### 블로커
+- 없음
+
+### 다음 세션 컨텍스트
+- A1 마일스톤 종료 commit (`chore(A1): close milestone`) + PR body draft 사용자 확인 → push → CI 그린 확인 → A2 진입
+
+---
+
+## 2026-04-26 — A1.5 통합 시나리오 + 마일스톤 audit
+
+### 완료
+- [A1.5] **`AuthScenarioIntegrationTest`** — `@SpringBootTest` + Testcontainers Postgres 15-alpine. 9-step 종합 시나리오: CSRF 발급 → 로그인(200) → `/me`(200) → 4회 wrong PW(401×4) → 5회째(401)+카운터 5 → 6회째(423) → mutable Clock 16분 진행 → 재시도 성공(200, lockout TTL 만료 lazy 해제) → logout(204) → 로그아웃 후 `/me`(401). `disabledWithoutDocker=true` (로컬 Windows SKIP / CI ubuntu 실행). `LoginAttemptTracker`를 `@TestConfiguration` `@Primary` 빈으로 mutable Clock 주입 — 운영 빈 영향 0.
+- [A1.5] **회귀** — `./gradlew test` 152 tests (148 pass + 4 Docker SKIP, 0 fail). commit `c34e640`
+- [A1.5] **dev-docs 기반 수동 audit** — `gsd-audit-milestone` 스킬은 GSD `.planning/ROADMAP.md` + `phases/*/VERIFICATION.md` 구조 전제. 본 프로젝트는 dev-docs(Superpowers) 구조 → 스킬 강행 시 모든 step fail. 사용자 승인으로 plan 목표 상태(line 30~38)를 DoD source로 채택, audit 산출물 `dev/active/a1-auth-impl/a1-auth-impl-audit.md` 작성.
+- [A1.5] **audit 결과** — DoD 5/7 pass + must-fix #1 (세션 timeout 정책 미구현) + accepted-deviation 3건. ADR #19/22/23 ✅ / #20 partial. 사용자 결정 (B): A1.6에서 즉시 fix → A1.6에서 #20 full pass + must-fix #1 RESOLVED.
+
+### 핵심 결정
+- **dev-docs 기반 수동 audit** — `.planning/` GSD 구조 부재로 `gsd-audit-milestone` / `gsd-sdk` 호출 불가. CLAUDE.md ULTIMATE INVARIANT #10 ("중단 및 보고")에 따라 강행 대신 dev-docs 구조에 맞춘 수동 audit 채택. audit 산출물 위치 = `dev/active/a1-auth-impl/a1-auth-impl-audit.md` (plan/context/tasks와 동일 디렉토리, 마일스톤 archive 시 함께 이동).
+- **anti-pattern 기록** — HANDOFF의 `next_action`을 검증 없이 그대로 실행하는 패턴 (이전 HANDOFF가 작성한 `gsd-audit-milestone A1`이 본 프로젝트에서 fail). resume 후 next_action 첫 단계는 도구/구조 가용성 검증부터 (CLAUDE.md #10).
+
+### 블로커
+- 없음 (must-fix #1은 사용자 결정으로 A1.6 즉시 fix 채택 → A1.6에서 close)
+
+### 다음 세션 컨텍스트 (A1.6)
+- 사용자 결정 (B) — must-fix #1 즉시 fix. SessionValidityFilter RED+GREEN+회귀 + audit.md must-fix #1 RESOLVED 갱신.
+
+---
+
+## 2026-04-26 — A1.4 `/api/auth/me` + `/api/auth/logout` (+ A1.3 SecurityContext gap fix)
+
+### 완료
+- [A1.4] **`GET /api/auth/me`** — `AuthController.me(@AuthenticationPrincipal IbizDriveUserDetails)`. 응답 shape는 `LoginResponse` 재사용 (docs/02 §7.4 line 847-868: `{user, departments, roles, effectivePermissionsCacheKey}` — login과 동일). 미인증 → `anyRequest().authenticated()` + `HttpStatusEntryPoint(401)` 자동 차단
+- [A1.4] **`POST /api/auth/logout`** — `session.invalidate()` + `SecurityContextHolder.clearContext()` + `Set-Cookie SESSION=; Max-Age=0; Path=/; HttpOnly`. 응답 204 (docs/02 §7.4 line 836-845). CSRF 미제공 → CsrfFilter 403, 미인증 → 401
+- [A1.4] **A1.3 hidden gap 수정** — Spring Security 6의 `SecurityContextHolderFilter`는 load-only (5.x의 `SecurityContextPersistenceFilter` auto-save 제거). 인증 메커니즘이 `SecurityContextRepository.saveContext`를 명시 호출해야 세션에 컨텍스트가 영속화됨. `AuthService.login`은 session attribute만 set하여 후속 `/me`가 항상 401이 되는 hidden bug. `DelegatingSecurityContextRepository` 빈(HttpSession + RequestAttribute 동시 저장) + `HttpSecurity.securityContext()` wire + `AuthService`에 `SecurityContextRepository` 주입하여 `changeSessionId()` 직후 `saveContext` 호출
+- [A1.4] **`AuthMeLogoutIntegrationTest` 5건** — `@WebMvcTest` slice. `/me` 인증/미인증, `/logout` 인증+CSRF / 인증+CSRF 미제공 / 미인증+CSRF (4 클래스, 22 테스트 PASS, 1m33s)
+- [A1.4] commit `feat(A1.4): /api/auth/me + /api/auth/logout` (ca4e309)
+
+### 핵심 결정
+- **`/me`는 `LoginResponse` 재사용 (`MeResponse` 미생성)** — docs/02 §7.4 line 847-868의 `/me` 응답 shape는 `LoginResponse`(`{user, departments, roles, effectivePermissionsCacheKey}`)와 완전 동일. 별도 DTO 생성은 YAGNI 위반 (CLAUDE.md ULTIMATE INVARIANTS 원칙 3 — 기존 구조 우선). 추후 `/me` 전용 필드 도입 시점에 분리
+- **`DelegatingSecurityContextRepository(HttpSession + RequestAttribute)`** — HttpSession은 영속, RequestAttribute는 단일 요청 캐시. 같은 요청 내 후속 필터/핸들러가 동일 컨텍스트를 일관되게 본다. `AuthService.login`이 `changeSessionId()` 직후 `saveContext(req, res)` 호출하여 새 세션에 컨텍스트 저장
+- **logout: `session.invalidate` + `clearContext` + `Cookie SESSION; Max-Age=0`** — `clearContext`는 현재 요청 thread-local 정리. `Set-Cookie`는 클라이언트 브라우저 SESSION 쿠키 즉시 만료. `anyRequest().authenticated()` 가드로 미인증→401, CsrfFilter가 CSRF 미제공→403 자동 처리
+
+### 다음 세션 컨텍스트 (A1.5)
+- **A1.5** — `AuthScenarioIntegrationTest` `@SpringBootTest` + Testcontainers Postgres 15-alpine 1건 (`disabledWithoutDocker=true`, 로컬 SKIP / CI ubuntu 실행). CSRF 발급→로그인→/me→5회 wrong PW(401×5)→6회째=423→Clock 16분 진행→재시도 성공→logout(204)→/me=401. `LoginAttemptTracker`는 `@TestConfiguration` `@Primary` 빈으로 mutable Clock 주입
+- 마일스톤 종료: `gsd-audit-milestone A1` + `progress.md` 마일스톤 블록 + commit + push + `gh pr checks` 그린
+
+---
+
+## 2026-04-26 — A1.3 LoginController + in-memory lockout (ADR #23)
+
+### 완료
+- [A1.3] **`POST /api/auth/login`** — `AuthController` + `AuthService.login` (`@Transactional`). 성공 시 `last_login_at` UPDATE + `changeSessionId()` (session fixation 방어). 실패 시 5/15min lockout 카운트
+- [A1.3] **`LoginAttemptTracker`** — in-memory `ConcurrentHashMap<String, Attempt>`, key=lowercased email, 5회 실패 → 15분 잠금. `Clock` 주입 (테스트 시간 제어). 만료는 lazy 검증 (`isLocked` 호출 시점에 시계 기반 판정)
+- [A1.3] **timing-safe BCrypt verify** — `@PostConstruct`에서 `passwordEncoder.encode()`로 dummy hash 동적 생성. 미존재 user / `is_active=false` / `locked_at != null` 모두 dummy verify 호출 → 실제 verify와 동일 시간. 응답은 INVALID_CREDENTIALS (계정 상태 누설 금지, docs/03 §2.3 enumeration 방지)
+- [A1.3] **flat error shape** — `ErrorResponse(code, reason, retryAfterSec)` + `JsonInclude.NON_NULL`. `AuthExceptionHandler(@RestControllerAdvice)` → InvalidCredentialsException → 401, AccountLockedException → 423 + retryAfterSec. docs/02 §7.4 인증 specific 응답 (일반 envelope §7.2와 별개)
+- [A1.3] **`User.recordLoginAt(OffsetDateTime)`** entity 메서드 — `last_login_at` setter (V2 컬럼)
+- [A1.3] **`LoginAttemptTrackerTest` 4건 + `LoginControllerIntegrationTest` 8건** — 모두 PASS. @WebMvcTest slice. tracker singleton 격리는 `@BeforeEach`에서 `recordSuccess(테스트 키들)` 호출
+- [A1.3] **ADR #23 docs/00 §5 등록** — lockout backing = in-memory ConcurrentHashMap (MVP 단일 인스턴스 가정). 다중 인스턴스/Redis 도입 시 `LoginAttemptTracker` interface 교체
+
+### 핵심 결정
+- **timing-safe dummy hash 동적 생성** — 정적 상수는 형식 오류 시 BCrypt iterations 미실행 → timing leak 위험. 부팅 +200ms 수용
+- **비활성·관리자 잠금도 INVALID_CREDENTIALS로 매핑** — docs/03 §2.3 enumeration 방지. 잠금 누적은 별개로 ACCOUNT_LOCKED + retryAfterSec 노출
+- **@Transactional은 AuthService.login에 적용** — last_login_at UPDATE + (후속) audit insert 단일 단위, docs/02 §7.4 TX=REQUIRED 충족
+- **컨텍스트 9% 한계** — 본 세션은 commit만 수행. dev sync (context.md/tasks.md SESSION PROGRESS 갱신)는 다음 세션 시작 시 dev-docs-update로 처리
+
+### 다음 세션 컨텍스트 (A1.4 ~ A1.5)
+- **A1.4** — `GET /api/auth/me` (docs/02 §7.4 line 847-868: `{user, departments, roles, effectivePermissionsCacheKey}`. departments는 빈 배열 stub, kind='human' 하드코딩, roles=`[role]`, cacheKey=`userId:role:v0`) + `POST /api/auth/logout` (`session.invalidate()` + `Set-Cookie SESSION=; Max-Age=0`). 모두 `anyRequest authenticated`로 SecurityConfig 매처 변경 불필요
+- **A1.5** — Testcontainers Postgres @SpringBootTest 종합 시나리오 1건 + `gsd-audit-milestone A1` + PR 머지
+
+### 진행 정책
+- 자율 모드 유지. 사용자 큐: A1.4 종료 시점 컨텍스트 65% 초과 시 자동 pause-work, 아니면 A1.5까지 이어감
+- 다음 세션 첫 작업: dev-docs-update (이번 세션의 A1.3 SESSION PROGRESS 동기화) → A1.4 진입 (TDD RED 5건부터)
+
+### 블로커
+- 없음
+
+---
+
+## 2026-04-26 — A1.2 SecurityConfig 본 wiring (TDD, dev + Superpowers 첫 적용)
+
+### 완료
+- [A1.2] **`SecurityConfig` 본 wiring** — httpBasic/formLogin/logout 모두 disable, custom AuthController(A1.3+) 자리 마련. 매처 분리: `/api/health` + `/api/auth/csrf` + `/api/auth/login` permitAll, anyRequest authenticated. `HttpStatusEntryPoint(401)` — SPA용 (redirect 대신 401, docs/03 §2.4)
+- [A1.2] **`CsrfTokenRepository` bean 추출** — `CookieCsrfTokenRepository.withHttpOnlyFalse()`. `CsrfTokenController`에서 `saveToken()` 명시 호출하여 deferred 모드 우회
+- [A1.2] **`CsrfTokenController`** (`GET /api/auth/csrf`) — permitAll, `XSRF-TOKEN` cookie + `{ csrfToken }` body 동시 반환. Spring Security 6 deferred CSRF 함정(`getToken()`만으로는 cookie 자동 발급 보장 안 됨) 해결 — `repo.saveToken(token, req, res)` 명시 호출
+- [A1.2] **`SecurityIntegrationTest` 5건** (@WebMvcTest slice, DB 무관) — getCsrf+cookie / POST without CSRF→403 / POST valid CSRF→401 / GET /me→401 / GET /health→200. **모두 PASS**
+- [A1.2] **dev/active/a1-auth-impl/{plan,context,tasks}.md** + dev/process/{session}.md (dev 스킬 첫 bootstrap)
+
+### 핵심 결정
+- **CSRF plain handler** (`CsrfTokenRequestAttributeHandler`) — XOR mask 비활성화. docs/02 §7.1 평문 토큰 계약과 일치 (cookie ↔ header 단순 비교)
+- **deferred CSRF 우회** — Spring Security 6에서 GET 응답에 cookie 자동 발급은 보장 안 됨 → controller가 `csrfRepo.saveToken()`을 명시 호출
+- **로컬 logout disable** — A1.4에서 자체 endpoint로 처리 (Spring 기본 `LogoutFilter`는 form 기반)
+- **A1.5 재정의** — HANDOFF.json의 권한 매트릭스 백엔드 권위는 별도 phase로 분리, A1.5 = 통합 시나리오 + 마일스톤 종료 (사용자 자율 결정)
+
+### 다음 세션 컨텍스트 (A1.3 ~ A1.5)
+- **A1.3** — LoginController + in-memory `LoginAttemptTracker` (5회 실패/15분 lockout, ConcurrentHashMap, Clock 주입). **ADR #23 docs/00 §5 추가 필요** (lockout backing store). timing attack 회피 (미존재 user에도 dummy BCrypt verify). `User.recordLoginAt(OffsetDateTime)` setter 추가
+- **A1.4** — `GET /me` (ADR #22 응답 — `effectivePermissionsCacheKey = "userId:role:v0"` 임시) + `POST /logout` (HttpServletRequest.session.invalidate())
+- **A1.5** — Testcontainers Postgres @SpringBootTest 종합 시나리오 1건 + gsd-audit-milestone
+
+### 진행 정책
+- 새 환경: dev(4) + Superpowers(12, TDD 강제) + GSD context-only. 트리거 경합 0
+- 자율 모드 유지 — A1.3~A1.5는 새 세션(컨텍스트 클린)에서 동일 정책으로 진입
+
+### 블로커
+- 없음. A1.3 진입 시 ADR #23만 기록하면 됨
+
+---
+
+### 완료 (옵션 3 +α — 하이브리드 사이클)
+- [A] **backend/ Spring Boot 3.3.4 + Java 21 scaffold** — `build.gradle.kts` (Kotlin DSL, toolchain 21), `settings.gradle.kts`, `gradle.properties`, `.gitignore`. 의존성: spring-boot-starter-web/security/data-jpa/validation, **spring-session-jdbc** (Redis 아님, ADR #12), postgresql, flyway-core + flyway-database-postgresql, software.amazon.awssdk:s3:2.28.16, jackson-databind. test workingDir = `projectDir`로 fixtures 상대경로(`../docs/`) 안정화
+- [A] **`IbizDriveApplication.java`** — `@SpringBootApplication` 메인. **`HealthController`** `GET /api/health` → `{"status":"ok"}` (보안 설정 검증용)
+- [A] **`SecurityConfig` skeleton** — `CookieCsrfTokenRepository.withHttpOnlyFalse()` (XSRF-TOKEN 쿠키 ↔ X-CSRF-Token 헤더, ADR #11), `/api/health` permitAll, 그 외 authenticated, httpBasic placeholder (A1에서 form/SSO 교체)
+- [A] **`CorsConfig`** — `allowCredentials=true`, allowedOrigins from `${ibizdrive.cors.allowed-origins}`, exposed: `Tus-Resumable`/`Upload-Offset`/`Location`/`X-Request-Id`/`X-RateLimit-Remaining`. allowed: `Content-Type`/`X-CSRF-Token`/`X-Request-Id`/Tus 헤더 4종
+- [A] **`application.yml`** — Spring Session JDBC (table-name `SPRING_SESSION`, **initialize-schema: never** = Flyway가 schema 관리), datasource localhost:5432/ibizdrive, S3 → MinIO localhost:9000, multipart **disabled** (tus 사용, ADR #13), session timeout `PT8H`, cookie `http-only=true`/`secure=false (dev)`/`same-site=lax`/name=`SESSION`
+- [A] **`db/migration/V1__init.sql`** — Spring Session JDBC 스키마(`SPRING_SESSION` + `SPRING_SESSION_ATTRIBUTES`, 인덱스 IX1/IX2/IX3, ON DELETE CASCADE) + `users` stub(id UUID PK, email/display_name, password_hash nullable for SSO, deleted_at, partial unique index on `lower(email) WHERE deleted_at IS NULL`). 도메인 테이블은 V2+
+- [A] **`docker-compose.yml`** — postgres:15-alpine + minio (RELEASE.2024-10-13) + minio-init 원샷(버킷 자동 생성). **Redis 없음** (JDBC 세션 + in-process SSE). healthcheck 포함
+- [A] **A0: backend `NormalizeUtil.java`** — 7-step pipeline 완전 구현. `normalizeFileName` (1-2-3-6-7), `normalizedNameForDedup` (1-2-3-5-6-7, Locale.ROOT), `normalizeForSearch` (1-2-3-5-4-6, collapse). 제어문자 처리: NUL→throw / C0→space / DEL/C1/ZWSP(0x200B-200F)/BIDI(0x202A-202E)/WJ(0x2060)/BOM(0xFEFF) drop. 공백 통일: NBSP/U+2000-200A/202F/205F/3000→space. 검증: empty/length 255/`/`·`\\` 금지/trailing dot/예약어(CON/PRN/AUX/NUL/COM1-9/LPT1-9, base name 기준 case-insensitive). `NormalizationException` (code 필드, fixtures errorCodes 일치)
+- [A] **A0: backend `NormalizeUtilTest`** — JUnit `@TestFactory` 동적 테스트, Jackson으로 `../docs/normalize-fixtures.json` 로드(IDE/Gradle 둘 다 동작하도록 fallback 경로 3종), 38 fixtures × 3 함수 = 114 dynamic test
+- [A] **A0: frontend `src/lib/normalize.ts` 정식 작성** — backend `NormalizeUtil.java` 1:1 미러. 같은 7-step, 같은 에러 상수 6종, `NormalizationError extends Error` (code 필드)
+- [A] **A0: frontend `src/lib/normalize.test.ts`** — Vitest, `readFileSync(resolve(__dirname, '../../../docs/normalize-fixtures.json'))`로 fixtures 로드, 38×3 = **114 tests PASS** (54ms)
+- [A] **`.github/workflows/ci.yml`** — frontend(Node 20 + npm ci + typecheck/lint/test) + backend(Temurin 21 + gradle test) 두 잡. ADR #16 게이트: 어느 한쪽이든 fixtures mismatch면 머지 차단
+- [A] **검증** — frontend: typecheck PASS · lint PASS · normalize 114 tests PASS. backend: 로컬 JDK 없어 컴파일 미실행 → CI에서 검증
+
+### 핵심 구현 결정
+- **Spring Session JDBC, Redis 미도입** — 사용자 명시(ADR #12). docker-compose에서 Redis 제거, application.yml에서 `store-type: jdbc` + `initialize-schema: never` (Flyway가 권위)
+- **fixtures workingDir 처리** — Gradle test는 `workingDir = projectDir`(=`backend/`)로 고정, JUnit 테스트는 `../docs/normalize-fixtures.json` + IDE 케이스 대비 2개 fallback. 단일 진실 출처가 빌드 도구 따라 깨지지 않도록
+- **NUL은 step 2에서 throw, step 7 검증 전 차단** — fixtures `control_001` 입력 `"a\u0000b.txt"` → ERR_NUL_CHAR. 빈 문자열로 만든 뒤 ERR_EMPTY로 떨어지면 디버깅 불편
+- **JS `for...of` + `codePointAt`** — surrogate pair 안전. 공백 통일/제어문자 strip 모두 동일 패턴, Java `Character.charCount` 루프와 1:1 대응
+- **터키어 İ 케이스(`case_002`)는 JS `toLowerCase()` 기본 동작과 Java `toLowerCase(Locale.ROOT)` 결과 일치** — `i̇`(i + U+0307). fixtures가 양쪽 cross-validation으로 보장
+
+### 다음 세션 컨텍스트
+- **A1 (인증) 진입 — 수동 모드 유지** — Spring Security `UserDetailsService`, BCrypt, login form, CSRF Cookie 전달, 8h 세션, audit 이벤트(LOGIN_SUCCESS/FAIL/LOGOUT). users 테이블 V2 확장(role/locked_at/last_login_at)
+- **CI 미검증 영역** — backend Gradle test가 실제 GitHub Actions에서 통과하는지 확인 전. 첫 push 시 워크플로 실패하면 V1__init.sql/Flyway 의존성 정렬 점검 필요
+- **로컬 개발 가이드 미작성** — `docker-compose up -d postgres minio minio-init` → `cd backend && ./gradlew bootRun`. README 또는 docs/00 §6에 추가 검토
+- **A1.5 권한 매트릭스 코드화** — docs/03 §3 PermissionEnum 9종을 `com.ibizdrive.security.Permission` enum + Preset 매트릭스로 옮기고 `@PreAuthorize` SpEL helper 작성
+
+### 블로커
+- 없음. 사용자가 A1 spec 승인하면 진행
+
+---
+
+## 2026-04-25 — Track A 큐 #3: 정규화 spec + fixtures + SSE enum + PURGE 권한
+
+### 완료 (큐 #3 — docs only)
+- [A] **docs/00 §5 ADR 7건 추가** (#11~#17): Spring Boot, 쿠키 세션, tus-java-server, SSE, .env build-time, 정규화 fixtures 공유, 권한 매트릭스 백엔드 권위. ADR #7/#8은 §5.1 Superseded 섹션에 standard ADR 패턴으로 보존
+- [A] **docs/00 §1.3 스택 갱신** — TBD → Spring Boot 3.x + Java 21 + 부속 스택 명시
+- [A] **docs/00 §4.4 백엔드 마일스톤(A0~A7) 신설** — A6→A1.5 흡수, M5.1→A4 흡수, M12→A4 후반 통합
+- [A] **docs/02 §7 endpoint 매트릭스 전면 재작성** — Auth/Folders/Files/Upload(tus)/Search/Shares/Permissions/Trash/Admin/SSE 그룹화. Guard(@PreAuthorize)/TX(REQUIRED + FOR UPDATE)/Norm(NormalizeUtil 적용 지점)/SoftDel(WHERE deleted_at)/Errors 5개 컬럼. tus finalize 7-step TX 상세 명시. 인증 헤더 JWT → 쿠키 세션 + CSRF double-submit 갱신
+- [A] **docs/02 §3 정규화 spec 정식 명세화** — 7-step pipeline (NFC → 제어문자 strip → 공백 통일 → collapse → lowercase → trim → validate). 함수 분리표(filename/dedup/search), 단계별 제어문자 표(NUL/C0-C1/ZWSP/BIDI/BOM), 길이/금지문자/예약어/trailing dot 검증 규칙
+- [A] **docs/normalize-fixtures.json 신규** (38 케이스): nfc(4) / whitespace(8) / control(4) / case(3) / extension(2) / forbidden(3) / reserved(4) / length(3) / dot(2) / unicode(3) / search(2). errorCodes enum 6종. Vitest+JUnit 양쪽 검증 게이트 (CLAUDE.md §3 원칙 11)
+- [A] **docs/01 §15 SSE 본문 재작성** — ADR #14에 의해 폴링 폐기, MVP부터 SSE. SseEventType enum 16종(FILE 7 / FOLDER 6 / PERMISSION 3), useRealtimeSync 훅 구현, 이벤트→queryKeys 무효화 매트릭스, 연결 정책(자동 재연결/heartbeat/다중 폴더 구독)
+- [A] **docs/02 §7.13.1 SSE enum 동기화** — FOLDER_UPDATED 분리(RENAMED), PERMISSION_GRANTED/REVOKED 추가, FILE_VERSION_CREATED/FOLDER_PURGED 신설
+- [A] **docs/03 §3 권한 매트릭스 정식 명세화** — 권한 enum 9종(READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN/**PURGE**), Preset×권한 매트릭스, 시스템 ROLE(MEMBER/AUDITOR/ADMIN), 권한 상속(deny 우선 재귀 CTE), `@PreAuthorize` 패턴 예시, 403 응답 포맷
+- [A] **검증** — 코드 변경 없음 → typecheck PASS · lint PASS · 190 tests PASS (회귀 없음)
+
+### 핵심 설계 결정
+- **PURGE는 ROLE ADMIN 전용** — 노드 admin preset에도 부여하지 않음. 노드 단위 권한 위임이 영구 삭제로 번지지 않도록 이중 안전장치
+- **fixtures 단일 진실 출처** — `docs/normalize-fixtures.json`을 frontend(Vitest) + backend(JUnit) 양쪽이 로드, CI 게이트로 드리프트 차단. 38 케이스로 NFC/공백/제어/대소문자/예약어/길이/다국어 커버
+- **터키어 İ는 Locale.ROOT lowercase** — `i̇`(i + U+0307 combining dot above) 결과. JS `toLowerCase()`와 Java `toLowerCase(Locale.ROOT)` 동일 동작 (fixtures `case_002`)
+- **SSE 낙관적 setQueriesData 안 씀** — race 회피, 단일 무효화 경로(`invalidateQueries`)로 일관 처리
+- **FILE_MOVED는 source+target 양쪽 fan-out** — `scope.folderIds` 배열에 두 폴더 ID 동시 포함, 클라가 양쪽 모두 무효화
+
+### 다음 세션 컨텍스트
+- **사용자 결정 대기** — 옵션 1: 로컬 인프라(docker-compose + JDK 21) → #4~#12 자율 / 옵션 2: 백엔드 팀 인계 / 옵션 3: 하이브리드(#4 scaffold만)
+- **fixtures 누락 영역** — 현재 38 케이스에서 다루지 않은 영역: combining mark RTL 텍스트 시퀀스, surrogate pair, 일본어 가나/탁점 분리. 백엔드 구현 단계(A0)에서 NormalizeUtil 작성하며 추가 케이스 발견 시 fixtures 확장
+- **A0 진입 시 검증** — `frontend/src/lib/normalize.ts` 신규 작성 + 기존 fixtures 로드 테스트. 현 frontend는 `normalizeFileName` 등이 별도 라이브러리에 없음 (mock backend가 모든 정규화 처리) — A0에서 분리 필요
+
+### 블로커
+- 없음 (큐 #4 진입은 사용자 결정 게이트)
+
+---
+
+## 2026-04-25 — Track H: docs/03 §1·§2 보강 (위협 모델 + 인증 흐름)
+
+### 완료
+- [H] **docs/03 §1 위협 모델** — Assets 표(A1~A7), Trust Boundary 다이어그램, **STRIDE 매트릭스**(Spoofing/Tampering/Repudiation/Info Disclosure/DoS/Elevation 카테고리별 자산·위협·완화책 표), 잔여 위험(out of scope) 명시
+- [H] **docs/03 §2 인증** — 인증 방식(SSO/자체+MFA), 토큰 모델(access/refresh/sessionId 표), **시퀀스 다이어그램 3종**(로그인 SSO 콜백 / Access 만료+Refresh 회전 / 로그아웃), 비활성 정책 표, 서비스 계정 정책, audit 이벤트 동기화 메모
+- [H] 백엔드 스택 미정 부분은 **"TBD: A 트랙에서 확정"** 으로 명시 (RateLimiter 구현체 / NestJS vs Spring / users.external_id / API 키 회전 주기)
+- [H] **검증** — 코드 변경 없음 → typecheck PASS · lint PASS · 190 tests PASS (회귀 없음 확인)
+
+### 핵심 설계 결정
+- **클레임 최소화** — JWT는 sub/role/exp/iat/sessionId만, 권한 평가는 항상 DB. 토큰 단독 신뢰 금지(Spoofing 완화)
+- **Refresh 1회용 회전 + replay 감지** — 이미 사용된 refresh가 다시 들어오면 세션 전체 강제 종료 + audit
+- **app role과 audit role 분리** — DB 레벨 REVOKE UPDATE/DELETE on audit_log (CLAUDE.md §3 원칙 8과 일치)
+- **STRIDE를 표 중심으로 정리** — 자산 ID(A1~A7) 참조 가능, 향후 §3 권한 매트릭스/§4 감사 정책에서 cross-link 용이
+
+### 다음 세션 컨텍스트
+- **A 트랙 (백엔드 합류)** — TBD 항목 채우기: NestJS or Spring 결정 → users.external_id 매핑 / RateLimiter 구현체 / API 키 회전 정책 / sessions 테이블 스키마
+- **§3 권한 매트릭스** — 본 위협 모델의 "프론트 권한 우회"·"권한 상속 버그" 위협을 실제 엔드포인트×권한 매트릭스로 매핑 (현재 §3.1 preset만 존재)
+- **§4 감사 정책 보강** — `user.session.revoked` 이벤트 추가 + audit_level=strict 폴더 정의 가이드
+
+### 블로커
+- 없음 (A 트랙 합류 전까지는 TBD 표기로 지연 가능)
+
+---
+
+## 2026-04-25 — Track G: BulkActionBar "이름 변경" 버튼
+
+### 완료
+- [G] **BulkActionBar 이름 변경 버튼** — 단일 선택 시만 활성, 클릭 시 F2와 동일한 `openRename(id, name)` 호출
+- [G] **단일 항목 name lookup** — `useFilesInFolder(folderId, sort, dir)` 캐시에서 단일 선택 항목의 이름 조회. `useSortParams`로 현재 정렬 키 사용 → FileTable과 동일 캐시 슬롯 hit
+- [G] **disabled UX** — 다중 선택 시 disabled + `title="단일 선택 시 사용 가능"` tooltip + aria-disabled
+- [G] **테스트 4건 신규** — 단일 활성+다이얼로그 오픈 / 다중 비활성+tooltip / cache miss 비활성 / 폴더 단일 활성 (정책)
+- [G] **검증** — typecheck PASS · lint PASS · 190 tests PASS (186→+4)
+
+### 핵심 설계 결정
+- **정책: count===1 활성, 폴더/파일 구분 없음** — RenameDialog와 백엔드(`api.renameFile`/`renameFile.test`)가 양쪽을 모두 지원하므로 BulkActionBar에서 추가로 막을 이유 없음. 추후 권한 모델(03 §3) 확정 시 `usePermission().edit` 게이트 외 추가 분기 필요 여부 재검토
+- **Cache miss 시 안전 비활성** — items=undefined(로딩 중)일 때 `singleItem`이 없으면 disabled로 폴백. 로딩 끝나면 자동으로 활성화
+- **`can.edit` 게이트만 사용** — 권한 없는 사용자에게는 버튼 자체 미노출 (BulkActionBar 다른 액션과 동일 패턴)
+
+### 다음 세션 컨텍스트
+- **권한 매트릭스(03 §3) 확정 후** — `can.edit` semantic 재검토 (folder rename은 `move` 권한? `edit`?)
+- **Rename 외 단일 액션 추가 시** — 같은 패턴(`useFilesInFolder` lookup + count===1 게이트)으로 확장. 다수 단일 액션이면 `useSelectedSingleItem()` 헬퍼 추출 검토
+
+### 블로커
+- 없음
+
+---
+
+## 2026-04-25 — Track F: 다크 모드 토글 (TopBar Sun/Moon)
+
+### 완료
+- [F] **lib/theme.ts** — `THEME_STORAGE_KEY`/`getStoredTheme`/`getSystemTheme`/`getInitialTheme`/`applyTheme`/`persistTheme`. SSR 안전(window/document 가드), localStorage 에러 swallow (11 tests)
+- [F] **hooks/useTheme** — mount effect로 SSR 동기화, toggle/setTheme/theme 반환
+- [F] **components/topbar/ThemeToggle** — `lucide-react` Sun/Moon 아이콘, button + aria-pressed + aria-label, 키보드(Enter/Space) 동작 (5 tests)
+- [F] **components/topbar/TopBar** — main 상단 banner, 우측 정렬에 ThemeToggle
+- [F] **(explorer)/layout** — TopBar 마운트
+- [F] **app/layout** — FOUC 방지 inline script (hydration 전 동기 [data-theme] 적용)
+- [F] **`lucide-react` 추가** — frontend/package.json dependencies
+- [F] **검증** — typecheck PASS · lint PASS · 186 tests PASS (170→+16)
+
+### 핵심 설계 결정
+- **`[data-theme="dark"]` on `<html>`** — globals.css가 이미 :root와 [data-theme="dark"]를 정의해 둠. JS는 attribute 토글만 담당
+- **localStorage 우선 + prefers-color-scheme fallback** — 사용자가 한 번이라도 토글하면 그 선택을 영속, 그 전까지는 시스템 설정 따라감
+- **FOUC 방지 inline script** — Next.js App Router는 RSC 첫 페인트 시점에 React 마운트 전 단계가 있음. `<head>`의 `dangerouslySetInnerHTML` 동기 스크립트로 해결 (theme.ts 로직과 동일 규칙 inline 복제)
+- **role=switch 대신 button + aria-pressed** — eslint jsx-a11y 가 role=switch에 aria-checked 요구. button + aria-pressed가 토글 패턴에서 더 보편 (WAI-ARIA Button pattern)
+- **lucide-react 도입** — 기존 의존성에 아이콘 라이브러리 없었음. 향후 다른 곳에서도 활용 가능
+
+### 다음 세션 컨텍스트
+- **시스템 prefers-color-scheme 변화 감지 미구현** — 사용자가 OS에서 라이트→다크 전환 시 자동 동기화 X. 필요 시 `matchMedia.addEventListener('change', ...)`를 useTheme에 추가
+- **다크 모드 시각 검수 필요** — globals.css의 [data-theme="dark"] 토큰이 실제 컴포넌트(FileTable/Breadcrumb/UploadOverlay 등)에서 의도대로 보이는지 e2e 또는 수동 QA 필요
+- **/admin 페이지에도 TopBar 적용?** — 현재는 (explorer)/layout만. admin/layout.tsx는 별도 헤더 — 통일 시 공용 컴포넌트로 승격 검토
+
+### 블로커
+- 없음
+
+---
+
+## 2026-04-25 — Track D: e2e Playwright 도입
+
+### 완료
+- [M_e2e] **@playwright/test 도입** + `playwright.config.ts` (chromium만, webServer 자동 기동, baseURL 3000, retries CI=2)
+- [M_e2e] **e2e/routing.e2e.ts** — / → /files 리다이렉트 / 사이드바·breadcrumb / FolderTree 클릭 → URL+breadcrumb 갱신 / `/` 키 → app:focus-search 디스패치 (4 specs)
+- [M_e2e] **e2e/move.e2e.ts** — BulkActionBar 이동 다이얼로그 → 대상 선택 → 토스트 / source 폴더 disabled (2 specs)
+- [M_e2e] **e2e/trash.e2e.ts** — BulkActionBar 휴지통으로 → 토스트 + bar 사라짐 (1 spec)
+- [M_e2e] **e2e/tsconfig.json** — main tsconfig에서 e2e/ 제외 + Playwright types 별도 설정
+- [M_e2e] **package.json** — `test:e2e`, `test:e2e:ui` 스크립트 추가
+- [M_e2e] **.gitignore** — playwright-report / test-results / playwright/.cache
+
+### 핵심 설계 결정
+- **chromium only (v1.0)** — 키바인딩/DnD 안정성 우선, firefox/webkit은 프로덕션 안정화 후
+- **DnD 시나리오 → 다이얼로그 경로로 대체** — dnd-kit PointerSensor activationConstraint(distance:5px) + Playwright mouse 시퀀싱이 flaky. DnD 통합은 후속 (E2E_dnd_followup) — `page.mouse.move`를 50ms 단위 다단계 + `force: true` 필요
+- **검색 input UI 미구현** — '/' 키 디스패치까지만 검증. 검색 input 도입 (M_search) 후 input.focus 검증 추가
+- **휴지통 Undo 미구현** — soft delete + 토스트만. 복원 흐름은 M_trash 후속
+
+### 다음 세션 컨텍스트
+- **브라우저 미설치** — 첫 실행 전 `npx playwright install chromium` 필요. CI 통합 시 `actions/setup-node` 후 install step 추가
+- **CI 통합은 후속** — `.github/workflows/e2e.yml`에서 webServer reuseExistingServer:false + retries 2
+- **mock 데이터 기반** — MOCK_FILES/MOCK_TREE를 변경하면 e2e 셀렉터(영업팀/인사팀/내 드라이브) 동기화 필요
+- **vitest 단위 테스트와 분리** — testMatch는 `*.e2e.ts`, vitest는 `*.test.ts(x)` — 충돌 없음
+
+### 블로커
+- 검색 input UI / 휴지통 Undo 미구현 — 시나리오 부분 적용. 후속 마일스톤에서 보강 예정
+
+---
+
+## 2026-04-25 — Track B: M12 감사 로그 페이지 (mock)
+
+### 완료
+- [M12] **types/audit.ts** — `AuditEventType` (docs/03 §4.1 mirror, audit.exported 포함) + `AuditLogEntry` + `AuditLogFilters` + `AuditLogPage`
+- [M12] **api.getAuditLogs** — filters/page/pageSize → 정렬(occurredAt desc) + 60-entry mock 데이터 (6 tests)
+- [M12] **lib/auditCsv.ts** — RFC 4180 quoting + `toAuditCsvBlob` (UTF-8 BOM, text/csv MIME) (6 tests)
+- [M12] **hooks/useAuditLogs** — useQuery wrapper, queryKey에 filters/page 포함 → 자동 재요청 (2 tests)
+- [M12] **/admin/audit/logs** — Filters + Table + Pagination + CSV export 페이지 (docs/04 §7)
+- [M12] **components/audit** — AuditFilters (4 tests), AuditTable (6 tests, aria-rowcount/rowindex 포함), AuditPagination
+- [M12] **/admin/layout.tsx** — 관리자 헤더 (감사 로그 링크)
+- [M12] **docs/03 §4.1** — 클라이언트 mirror 표시 + audit.exported 추가
+- [M12] **검증** — typecheck PASS · lint PASS · 170 tests PASS (M10 기준 146 → +24 신규)
+
+### 핵심 설계 결정
+- **mock 우선, 백엔드 분리 (A 트랙)** — getAuditLogs는 클라이언트 mock. 실제 연결 시 audit.exported 서버 기록 필요 (docs/04 §7.2)
+- **CSV는 현재 페이지만 export (mock)** — 백엔드 연결 후 전체 필터 결과 서버 스트리밍으로 교체
+- **필터 변경 시 자동 setPage(1)** — UX 일관성. 페이지네이션 키에 filters 포함되어 자동 refetch
+- **UTF-8 BOM Blob** — Excel에서 한글 깨짐 방지. BOM 자체는 toAuditCsv 결과에 prefix
+- **resourceType=null 허용** — 시스템 이벤트(system.backup.completed) 처리. UI는 `[type]` 또는 dash로 표시
+- **즉시 반영 폼 (Apply 버튼 없음)** — onChange로 즉시 부모 setState. 디바운스는 actorQuery 입력 압박 시 부모에서 추가
+
+### 다음 세션 컨텍스트
+- **백엔드 연결 (A 트랙)** — `api.getAuditLogs`를 fetch로 교체 + `audit.exported` 서버 기록 추가
+- **상세 뷰 (docs/04 §7.3)** — before/after diff 표시 + 같은 세션 이벤트 연결은 v1.x
+- **IP/리소스 필터 (docs/04 §7.1)** — mock 범위 외. 백엔드 연결 후 UI 추가
+- **권한 체크** — 감사 로그 접근은 admin role 필수. ProtectedRoute는 §3 권한 매트릭스 작성 후
+- **/admin 다른 페이지** — dashboard / users / departments 등 docs/04 §2 라우트 v1.x
+
+### 블로커
+- 없음
+
+---
+
+## 2026-04-25 — Track C: 회고/리팩토링 (sonner 분리 + 무효화 헬퍼 + mock 공통화)
+
+### 완료
+- [C-1] **sonner 도입** — providers.tsx `<Toaster position="bottom-right" richColors />`
+- [C-1] **hooks 토스트 분리** — `useDeleteBulk`/`useMoveBulk`/`useRenameFile`은 결과만 반환, 토스트는 호출부 (`Options.onSuccess/onError`)
+- [C-1] **호출부 마이그레이션** — BulkActionBar / MoveFolderDialog / DndProvider / RenameDialog 모두 hook-level 콜백으로 토스트 호출
+- [C-2] **lib/queryKeys.ts invalidations** — `afterFilesMoved` / `afterRename` / `afterDelete` 헬퍼. 무효화 매트릭스를 한 곳으로 집결 (3 hooks가 같은 룰 공유)
+- [C-2] **filesListPrefix(folderId)** — sort/dir 변종 전체 prefix 매칭용 키 추가 (직접 단일 read는 filesInFolder)
+- [C-3] **test/setup.ts** — sonner 글로벌 vi.mock (Toaster=null + toast methods=vi.fn)
+- [C-3] **test/mocks/sonner.ts** — `toastSpy(method)` / `resetSonnerToastMock()` 공통 헬퍼
+- [C-3] **호출부 테스트 갱신** — MoveFolderDialog.test (toast success/error 추가) / RenameDialog.test (toast success + inline-error-no-toast)
+- [C] **검증** — typecheck PASS · lint PASS · 146 tests PASS
+
+### 핵심 설계 결정
+- **hook-level Options 패턴** — 호출부가 매번 mutate options을 넘기지 않고 hook 호출 시점에 콜백 등록. mutation 완료 시 컴포넌트가 mount되어 있어야 콜백이 발화 (TanStack Query v5의 onSuccess는 observer 기반)
+- **MoveFolderDialog `close()` 즉시 호출** — ClientFilesPage에서 항상 mount되므로 다이얼로그가 isOpen=false로 null 반환해도 hook은 살아있음 → 콜백 발화 보장
+- **RenameDialog는 onSuccess만 hook-level** — 실패는 inline alert(setError)로 다이얼로그 유지가 UX 우선
+- **vi.mock 글로벌 setup** — vi.mock 팩토리는 호이스트되어 import된 심볼 참조 불가 → setup.ts에서 inline 팩토리로 처리. 헬퍼는 vi.mocked(toast)로 사후 접근
+
+### v1.x 후속 (이번 스코프 제외)
+- **ApiError 타입화** — `unknown` throws → 구조화 타입 (status/code/details)
+- **vi.hoisted 표준화** — 일부 테스트의 vi.mock 패턴 통일
+- **useStorageQuota env-driven** — quota 표시 컴포넌트의 환경변수 readout
+
+### 다음 세션 컨텍스트
+- **mutation hooks 추가 시 invalidations 헬퍼 재사용** — 새 패턴 발생 시 헬퍼에 추가
+- **ApiError 타입은 백엔드 연결 (A 트랙) 시 필수** — 현재 mock은 `{ status, code }` plain object를 throw
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-04-25 — M10 완료 (고급 키보드 + 접근성 마무리)
 
 ### 완료
@@ -471,4 +870,29 @@
 
 ---
 
-## (세션 기록이 여기에 쌓입니다)
+## 2026-04-26 — A1.0 완료 (User schema + JPA) + 드리프트 정리
+
+### 완료
+- [드리프트 정리] ADR #12 Spring Session(Redis) → JDBC 정정 4곳 (docs/00 §1.3/§4.4/§5 + docs/02 §7.1) — Redis는 MVP 인프라 제외, JDBC 단일 백엔드로 통일
+- [드리프트 정리] 권한 enum 9종 (READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN/PURGE) docs/00 §3.2 ↔ docs/03 §3.1 동기화
+- [드리프트 정리] users 테이블 컬럼 정렬: V1 stub의 display_name 유지 + docs/02 §2.1 동일 컬럼명으로 정렬 + role 대문자(MEMBER/AUDITOR/ADMIN)
+- [신규 ADR] #18~#22 추가: MVP 인증 범위 / BCrypt 정책 / 세션 만료·잠금 / 관리자 초대 only / `/me` 응답 최소화
+- [docs/02 §7.4] /api/auth/login·logout·me·csrf endpoint 상세 (CSRF 헤더, side-effects, 423 ACCOUNT_LOCKED 등)
+- [docs/02 §8] 423 LOCKED → ACCOUNT_LOCKED + FILE_LOCKED 분리
+- [docs/03 §2] TBD 스캐폴딩 → 본 스펙 (시퀀스 4종, §2.6 만료·잠금, §2.7 BCrypt 정책, §2.8 관리자 초대, §2.10 audit 매트릭스)
+- [A1.0] V2 마이그레이션: users 5컬럼 추가 (role + is_active + last_login_at + locked_at + must_change_password)
+- [A1.0] User @Entity + Role enum + UserRepository (findActiveByEmail, lowercase 정규화는 caller 책임)
+- [A1.0] UserRepositoryTest (Testcontainers Postgres 15-alpine, `disabledWithoutDocker=true`로 로컬 dev pass)
+- gradle 8.14.4 → 8.10 정렬 (#4 wrapper 후속)
+
+### 다음 세션 컨텍스트
+- A1.1 (PasswordEncoder + UserDetailsService) 진입 — `BCryptPasswordEncoder(12)` 래핑한 `DelegatingPasswordEncoder` + User→UserDetails 어댑터
+- A1 잔여: A1.1 → A1.2 (SecurityConfig: CSRF double-submit + 세션 필터 + /api/auth/csrf) → A1.3 (LoginController + lockout) → A1.4 (Logout + /me)
+- PR 분기점은 A1.2 종료 시점 권장 (Security 인프라 단위)
+
+### 블로커
+- A1.3 진입 전 해결 필요: lockout 카운터 backing store 결정 (docs/03 §2.3 footnote). ADR #12에서 Redis MVP 제외 → 후보 (a) in-memory `ConcurrentHashMap` (b) DB `login_failures` 테이블 (c) v1.x Redis ADR 선결정. A1.1 작업 중 ADR로 결정.
+
+### 설계 문서 업데이트 필요
+- docs/03 §2.3/§2.6 — lockout 카운터 Redis 표기를 결정된 backing 표기로 정정 (A1.1 ADR 후)
+- docs/03 §4.1 audit enum — `user.login.success/failed/logout/session.expired/locked/unlocked` 추가 (A1.3 진입 시)

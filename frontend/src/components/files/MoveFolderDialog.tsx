@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useFolderTree } from '@/hooks/useFolderTree'
 import { useMoveBulk } from '@/hooks/useMoveBulk'
@@ -12,7 +13,12 @@ export function MoveFolderDialog() {
   const sourceFolderId = useMoveUiStore((s) => s.moveSourceFolderId)
   const close = useMoveUiStore((s) => s.closeMoveDialog)
   const { data: tree } = useFolderTree()
-  const moveBulk = useMoveBulk()
+  const moveBulk = useMoveBulk({
+    // hook-level 콜백 — 다이얼로그가 mount된 동안 호출되어야 sonner 토스트가 보장됨.
+    // 따라서 close()는 mutate options.onSettled에 두어 mutation 완료 후로 미룸.
+    onSuccess: (vars) => toast.success(`${vars.ids.length}개 항목을 이동했습니다`),
+    onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
+  })
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -34,6 +40,9 @@ export function MoveFolderDialog() {
     if (!selectedTargetId || !sourceFolderId) return
     if (selectedTargetId === sourceFolderId) return
     moveBulk.mutate({ ids, sourceFolderId, targetFolderId: selectedTargetId })
+    // close() 즉시 호출 — 다이얼로그가 ClientFilesPage에서 항상 mount되어 있고
+    // 단지 isOpen 분기로 null/JSX만 바꾸므로 useMoveBulk hook은 살아있다.
+    // 따라서 hook-level onSuccess/onError 콜백은 mutation 완료 시 정상 실행됨.
     close()
   }
 

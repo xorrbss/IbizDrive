@@ -8,6 +8,7 @@ import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useSortParams } from '@/hooks/useSortParams'
 import { api } from '@/lib/api'
+import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 
 vi.mock('@/lib/api', () => ({
   api: { renameFile: vi.fn() },
@@ -57,6 +58,7 @@ function renderDialog() {
 describe('RenameDialog', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetSonnerToastMock()
     useRenameUiStore.setState({
       isOpen: false,
       targetId: null,
@@ -161,5 +163,45 @@ describe('RenameDialog', () => {
     renderDialog()
     const btn = screen.getByRole('button', { name: '확인' }) as HTMLButtonElement
     expect(btn.disabled).toBe(true)
+  })
+
+  it('성공 시 toast.success 호출', async () => {
+    useRenameUiStore.setState({
+      isOpen: true,
+      targetId: 'file_x',
+      targetName: 'old.txt',
+      error: null,
+    })
+    ;(api.renameFile as ReturnType<typeof vi.fn>).mockResolvedValue({
+      ...MOCK_ITEM,
+      name: 'new.txt',
+    })
+    renderDialog()
+    const input = screen.getByLabelText(/새 이름/) as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'new.txt' } })
+    fireEvent.submit(input.closest('form')!)
+    await waitFor(() => {
+      expect(toastSpy('success')).toHaveBeenCalledWith('이름이 변경되었습니다')
+    })
+  })
+
+  it('실패 시 toast 호출 X (다이얼로그 inline 에러로 대체)', async () => {
+    useRenameUiStore.setState({
+      isOpen: true,
+      targetId: 'file_x',
+      targetName: 'old.txt',
+      error: null,
+    })
+    ;(api.renameFile as ReturnType<typeof vi.fn>).mockRejectedValueOnce({
+      code: 'RENAME_CONFLICT',
+    })
+    renderDialog()
+    const input = screen.getByLabelText(/새 이름/) as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'new.txt' } })
+    fireEvent.submit(input.closest('form')!)
+    await waitFor(() => {
+      expect(useRenameUiStore.getState().error).toBeTruthy()
+    })
+    expect(toastSpy('error')).not.toHaveBeenCalled()
   })
 })

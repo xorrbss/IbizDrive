@@ -1,0 +1,66 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-04-26T23:30:00Z",
+  "context": "dev-docs",
+  "phase": "A1 (closed) — push gate blocked",
+  "phase_dir": "dev/active/a1-auth-impl/",
+  "task": "A1 close push: gh pr checks 1 그린 게이트",
+  "status": "paused_ci_fail",
+  "branch": "claude/vigilant-darwin-4017f5",
+  "ahead_of_master": 27,
+  "completed_tasks": [
+    {"id": "A1.0~A1.5", "name": "auth backbone + audit", "status": "done"},
+    {"id": "A1.6", "name": "SessionValidityFilter + yml PT30M", "status": "done", "commit": "4aa372c"},
+    {"id": "A1-close", "name": "audit RESOLVED + progress + plan + HANDOFF/.continue-here 삭제", "status": "done", "commit": "80a40e2"},
+    {"id": "PR-edit", "name": "gh pr edit 1 — title 'feat: M1~M16 + A1 backend auth' + body prepend A1 섹션", "status": "done"},
+    {"id": "push", "name": "git push -u origin claude/vigilant-darwin-4017f5 (8edbefe..80a40e2)", "status": "done"}
+  ],
+  "remaining_tasks": [
+    {"id": "fix-gradlew-execbit", "name": "git update-index --chmod=+x backend/gradlew + commit", "status": "blocked_on_session"},
+    {"id": "verify-ci", "name": "force-push 또는 신규 commit push → gh pr checks 1 --watch", "status": "not_started"},
+    {"id": "deviation-3-close", "name": "AuthScenarioIntegrationTest CI ubuntu에서 실제 실행되어 PASS 확인 (Testcontainers)", "status": "not_started"}
+  ],
+  "blockers": [
+    {
+      "id": "ci-gradlew-perm",
+      "description": "CI backend (junit) job 실패: `./gradlew: Permission denied` (exit 126). Windows에서 commit된 gradlew의 실행 비트(0755) 누락. Linux runner가 `./gradlew test --no-daemon` 호출 시 즉시 실패 (10초 내).",
+      "evidence": "https://github.com/xorrbss/IbizDrive/actions/runs/24956173267/job/73074697584 — exit 126, line 1 'Permission denied'",
+      "fix": "git update-index --chmod=+x backend/gradlew && git commit -m 'fix(ci): gradlew exec bit for linux runner' && git push",
+      "estimated_cost": "5분 + CI watch ~3분"
+    }
+  ],
+  "human_actions_pending": [],
+  "decisions": [
+    {
+      "decision": "사용자 정책 — CI 실패 시 인라인 fix 금지, 즉시 pause-work",
+      "rationale": "본 세션 컨텍스트 68%, 잔여 작업 + watch 토큰 부족. fix 자체는 1줄이지만 push + watch + 잠재적 후속 fail 처리에 새 세션 권장.",
+      "phase": "A1-close-push"
+    }
+  ],
+  "uncommitted_files": [],
+  "frontend_check_pending": "frontend (vitest) 양 run 모두 PASS 확인됨 (1m8s/1m13s) — 본 PR의 frontend 영향 0",
+  "next_session_single_goal": "CI 그린 → A1 PR #1 완전 close. A2 진입 금지 (별도 세션).",
+  "next_session_protocol": [
+    "1. git update-index --chmod=+x backend/gradlew",
+    "2. git diff --cached → mode 100644 → 100755 확인",
+    "3. git commit -m 'fix(ci): gradlew exec bit for linux runner (chmod +x)'",
+    "4. git push",
+    "5. gh pr checks 1 --watch → backend (junit) 그린 확인",
+    "6. CI 실패 시: 로그 출력만, 즉시 pause-work. **두 번째 인라인 fix 금지** (사용자 명시 정책)",
+    "7. CI 그린 시: pause-work 또는 종료. **A2 진입 금지** (같은 세션에서 X)"
+  ],
+  "a2_entry_guidance_for_session_after_next": {
+    "rationale": "A2 (audit_log backbone)는 신규 마일스톤. plan/research/spec 풀세트 필요. GSD plan-phase는 무거움. A1 close 직후 흐름과 분리해야 A2 spec에 집중 가능. 캐시 효율 — A1 컨텍스트는 더 이상 필요 없음, 새 세션에서 깨끗하게 시작.",
+    "entry_command": "/clear → (선택) /gsd-resume-work → /gsd-plan-phase A2",
+    "preflight_reading": "docs/00-overview.md §5 ADR #19/20/22/23 (A1에서 결정된 4건) 한 번 다시 읽기 — A2 범위 결정에 영향",
+    "a2_scope_open_questions": [
+      "audit_log emission 위치 — 애플리케이션 (`AuthService` 등) vs DB trigger vs 양쪽 hybrid",
+      "audit_log retention 정책 — TTL? 파티셔닝? cold storage 이관?",
+      "append-only 강제 — REVOKE UPDATE/DELETE on audit_log (CLAUDE.md §3 원칙 8) — 정합성 검증 (Flyway에서 grant 처리, hibernate ddl-auto=validate와 충돌 여부)",
+      "권한 매트릭스 — `@PreAuthorize` + `PermissionService` (HANDOFF earlier 권한 매트릭스 백엔드 권위 분리 phase)와 A2 audit_log를 한 마일스톤으로 묶을지, 별도 phase로 분리할지"
+    ],
+    "base_branch_decision_pending": "A1 PR #1 머지 후 base branch — master 그대로 vs `develop` 신설. A2 시작 시 결정."
+  },
+  "next_action": "/clear → /gsd-resume-work → next_session_protocol 1~7 그대로 실행. **A2 진입 금지** — A2는 후속 세션에서 a2_entry_guidance_for_session_after_next 따라 진입.",
+  "context_notes": "본 세션 = 4be2eac 이후 (audit complete pause-work에서 resume). resume 후 사용자 결정 (B) — must-fix #1 즉시 fix 채택. A1.6 phase 추가 (plan), RED+GREEN+회귀(156 tests, +4) 완료, audit RESOLVED, progress 3 블록(A1.5/A1.6/close), 2 commit 분리 (4aa372c/80a40e2), HANDOFF/.continue-here 정리. PR #1 edit 후 push 성공, but CI backend 즉시 fail. frontend는 PASS. 본 fail은 코드 결함이 아닌 Windows→Linux 파일 모드 마이그레이션 누락 — 이번 세션 신규 코드와 무관 (이전 commits에서도 같은 문제였을 가능성 높지만 이전 push가 없었다면 미발견)."
+}
