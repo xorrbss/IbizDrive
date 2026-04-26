@@ -1,42 +1,43 @@
 {
   "version": "1.0",
-  "timestamp": "2026-04-26T20:10:00Z",
+  "timestamp": "2026-04-26T20:50:00Z",
   "context": "default",
   "phase": "A1",
   "phase_name": "Backend Authentication (Spring Security 6 + Spring Session JDBC)",
   "phase_dir": "backend/src/main/java/com/ibizdrive",
   "plan": "dev/active/a1-auth-impl/",
-  "task": "A1.5",
-  "total_tasks": 5,
+  "task": "A1.5 (audit + milestone close)",
+  "total_tasks": 7,
   "status": "paused",
   "branch": "claude/vigilant-darwin-4017f5",
-  "ahead_of_master": 21,
+  "ahead_of_master": 23,
   "completed_tasks": [
     {"id": "A1.0", "name": "User schema + JPA + UserRepository", "status": "done", "commit": "308c041"},
     {"id": "A1.1", "name": "PasswordEncoder + DbUserDetailsService", "status": "done", "commit": "0dd2d65"},
     {"id": "A1.2", "name": "SecurityConfig wiring + CSRF double-submit", "status": "done", "commit": "10a524b"},
     {"id": "A1.3", "name": "LoginController + AuthService + LoginAttemptTracker (ADR #23)", "status": "done", "commit": "06b9238"},
-    {"id": "A1.4", "name": "GET /api/auth/me + POST /api/auth/logout (+ A1.3 SecurityContext gap fix)", "status": "done", "commit": "ca4e309"}
+    {"id": "A1.4", "name": "GET /api/auth/me + POST /api/auth/logout (+ A1.3 SecurityContext gap fix)", "status": "done", "commit": "ca4e309"},
+    {"id": "A1.5-step1", "name": "docs/progress.md A1.4 세션 블록 추가", "status": "done", "commit": "c34e640"},
+    {"id": "A1.5-step2", "name": "AuthScenarioIntegrationTest @SpringBootTest + Testcontainers (9-step 시나리오)", "status": "done", "commit": "c34e640"},
+    {"id": "A1.5-step3", "name": "./gradlew test PASS — 152 tests, 4 skipped (Docker), 0 fail", "status": "done", "commit": "c34e640"}
   ],
   "remaining_tasks": [
-    {"id": "A1.5", "name": "통합 시나리오 (@SpringBootTest + Testcontainers) + 마일스톤 종료 (gsd-audit-milestone)", "status": "not_started"}
+    {"id": "A1.5-step4", "name": "gsd-audit-milestone A1 — 드리프트 0 검증", "status": "not_started"},
+    {"id": "A1.5-step5", "name": "docs/progress.md A1 마일스톤 종료 블록 + A2 안내", "status": "not_started"},
+    {"id": "A1.5-step6", "name": "commit `docs(A1): milestone close` (audit 결과 + 마일스톤 블록)", "status": "not_started"},
+    {"id": "A1.5-step7", "name": "git push -u origin + gh pr checks 1 (CI 그린 확인) — 기존 PR #1 업데이트", "status": "not_started"}
   ],
   "blockers": [],
-  "human_actions_pending": [
-    "다음 세션 첫 작업: docs/progress.md 최상단에 A1.4 세션 블록 추가 (commit ca4e309). 본 세션은 컨텍스트 71% 한계로 progress.md 갱신 미수행. 본 HANDOFF의 decisions 필드를 그대로 옮기면 됨."
-  ],
+  "human_actions_pending": [],
   "decisions": [
-    {"decision": "/me는 LoginResponse 재사용 (MeResponse DTO 미생성)", "rationale": "docs/02 §7.4 line 847-868의 /me 응답 shape는 LoginResponse(`{user, departments, roles, effectivePermissionsCacheKey}`)와 완전 동일. 별도 DTO 생성은 YAGNI 위반 (CLAUDE.md ULTIMATE INVARIANTS §3 원칙 3 — 기존 구조 우선). 추후 /me 전용 필드 도입 시 분리.", "phase": "A1.4"},
-    {"decision": "A1.3 hidden gap 수정: SecurityContext 명시 영속화", "rationale": "Spring Security 6의 SecurityContextHolderFilter는 load-only (5.x의 SecurityContextPersistenceFilter auto-save 제거). 인증 메커니즘이 SecurityContextRepository.saveContext를 명시 호출해야 세션에 컨텍스트 영속화. A1.3 AuthService.login은 session attribute만 set하여 후속 /me는 항상 401이 되는 hidden bug. A1.4가 이를 fix.", "phase": "A1.4"},
-    {"decision": "DelegatingSecurityContextRepository 빈 + HttpSecurity.securityContext() wire", "rationale": "HttpSession (영속) + RequestAttribute (단일 요청 캐시) 동시 저장. AuthService에 SecurityContextRepository 주입하여 changeSessionId() 직후 새 세션에 saveContext.", "phase": "A1.4"},
-    {"decision": "logout: session.invalidate + SecurityContextHolder.clearContext + Cookie SESSION Max-Age=0", "rationale": "docs/02 §7.4 line 836-845. clearContext는 현재 요청 thread-local 정리. Set-Cookie는 클라이언트 브라우저 SESSION 쿠키 즉시 만료. anyRequest().authenticated() 가드로 미인증→401, CsrfFilter가 no-CSRF→403 자동 처리.", "phase": "A1.4"}
+    {"decision": "A1.5 RED+GREEN을 단일 commit (c34e640)으로 묶음 (test + docs + dev sync)", "rationale": "A1.0~A1.4는 이미 시나리오 충족 — 추가 production 코드 0. 통합 테스트 자체가 회귀 가드이므로 test/docs/dev sync를 atomically commit. 다음 세션은 audit + 마일스톤 종료 블록 + push만 수행하면 됨.", "phase": "A1.5"},
+    {"decision": "LoginAttemptTracker production no-arg @Component 유지, @TestConfiguration @Primary 빈으로 mutable Clock 빈 override", "rationale": "production은 Clock.systemUTC() 기본값. 테스트만 시간 진행 제어. AuthService @Autowired는 @Primary 빈을 받아 동일 인터페이스로 동작. spring.main.allow-bean-definition-overriding 불필요.", "phase": "A1.5"},
+    {"decision": "wrong PW × 5 → 모두 401 (5번째에 lockout 진입), 6번째에 423", "rationale": "LoginAttemptTracker.recordFailure는 5번째 호출에서 count=5 + lockedUntil 세팅하지만, 5번째 시도 시작 시점의 isLocked 검사는 false (count=4) → 401 반환. 6번째 시도가 isLocked=true → 423. LoginControllerIntegrationTest §4 패턴과 동일.", "phase": "A1.5"},
+    {"decision": "TestRestTemplate cookie 수동 thread (Set-Cookie 추출 + Cookie 헤더 재전송)", "rationale": "TestRestTemplate은 SimpleClientHttpRequestFactory 기반 — cookie jar 없음. extractCookie 헬퍼로 SESSION + XSRF-TOKEN을 단계마다 명시 thread. CSRF는 헤더(X-XSRF-TOKEN) + 쿠키(XSRF-TOKEN) double-submit.", "phase": "A1.5"}
   ],
   "uncommitted_files": [
-    "dev/active/a1-auth-impl/a1-auth-impl-context.md (A1.4 SESSION PROGRESS + active=A1.5 갱신)",
-    "dev/active/a1-auth-impl/a1-auth-impl-tasks.md (A1.4 체크박스 [x])",
-    ".planning/HANDOFF.json (본 파일)",
-    "dev/process/20260426-194500-a1-4.md (다음 commit에서 삭제)"
+    ".planning/HANDOFF.json (본 파일 — 다음 세션이 resume 후 삭제)"
   ],
-  "next_action": "A1.5 진입 — 새 세션(/clear → /gsd-resume-work)에서 (1) docs/progress.md 최상단에 A1.4 세션 블록 추가 (2) AuthScenarioIntegrationTest @SpringBootTest 1건 (Testcontainers Postgres 15-alpine, disabledWithoutDocker=true) — CSRF→login→/me→4실패→5실패=423→Clock 진행→재시도 성공→logout→/me=401 (3) ./gradlew test 전체 PASS (4) gsd-audit-milestone A1 (5) progress.md 마일스톤 종료 블록 (6) commit `test(A1): integration scenarios` (7) git push + gh pr checks.",
-  "context_notes": "A1.4 commit ca4e309 완료. 작업 트리 = HANDOFF + dev/active 2개 + dev/process 1개 미커밋. branch ahead-of-master 21. 본 세션 4 테스트 클래스 (LoginAttemptTrackerTest 4 + LoginControllerIntegrationTest 8 + SecurityIntegrationTest 5 + AuthMeLogoutIntegrationTest 5) = 22건 로컬 ./gradlew test 1m33s PASS. A1.5의 @SpringBootTest는 Testcontainers Docker 필요 — 로컬 Windows는 disabledWithoutDocker=true로 SKIP, CI ubuntu-latest에서 실행. SecurityIntegrationTest 패턴(@WebMvcTest slice)와 다름에 주의. AuthScenarioIntegrationTest는 실제 HttpSession/Cookie 흐름 검증 필요 — TestRestTemplate or MockMvc(SpringBoot 통합 모드) 사용."
+  "next_action": "A1.5 마일스톤 종료 — 새 세션(/clear → /gsd-resume-work)에서 (4) `gsd-audit-milestone A1` 실행 → 드리프트 0 검증. (5) `docs/progress.md` 최상단에 A1 마일스톤 종료 블록 추가 (전체 5 phase 회고: 23 테스트(slice 22 + scenario 1), ADR #19/20/22/23, hidden gap fix, 핵심 결정). A2 안내 (다음 마일스톤: backend 권한 매트릭스 + 감사 로그 backbone). (6) commit `docs(A1): milestone close — A1.0~A1.5 wrap`. (7) `git push -u origin claude/vigilant-darwin-4017f5` + `gh pr checks 1` — 기존 PR #1 OPEN, 본 backend 변경은 누적. CI ubuntu에서 AuthScenarioIntegrationTest 실제 실행되어야 PASS 확인.",
+  "context_notes": "세션 4 commit c34e640. 작업 트리 = HANDOFF만 미커밋. branch ahead-of-master 23. 본 세션 사용자 지시: '4번(audit) 진입 시점에 컨텍스트 70% 넘으면 4~7만 새 세션으로 분리' — 컨텍스트 65% 도달로 audit 진입 전 split. AuthScenarioIntegrationTest는 로컬 Docker 미가용으로 SKIP, CI ubuntu에서 실제 실행. PR #1은 backend 외 광범위 변경 포함 — A1 분리 PR은 검토 필요(현재 단일 PR 누적). dev/process/20260426-203000-a1-5.md는 commit 후 삭제 완료."
 }
