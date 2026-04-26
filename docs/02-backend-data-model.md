@@ -237,18 +237,18 @@ CREATE INDEX idx_shares_active ON shares(shared_by) WHERE revoked_at IS NULL;
 ```sql
 CREATE TABLE audit_log (
   id             BIGSERIAL PRIMARY KEY,
-  timestamp      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  occurred_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),  -- PostgreSQL keyword `timestamp` 회피 + frontend `occurredAt` 정합 (A2.0)
   actor_id       UUID REFERENCES users(id),
   actor_ip       INET,
   user_agent     TEXT,
   event_type     VARCHAR(50) NOT NULL,
-  target_type    VARCHAR(20) NOT NULL,              -- file|folder|user|permission|share
+  target_type    VARCHAR(20) NOT NULL,              -- file|folder|user|permission|share|system|audit
   target_id      UUID,
   before_state   JSONB,
   after_state    JSONB,
   metadata       JSONB,                             -- 추가 컨텍스트
 
-  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system'))
+  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit'))
 );
 
 -- 🔑 append-only 강제: DB 사용자 권한으로 UPDATE/DELETE 차단
@@ -258,10 +258,10 @@ GRANT INSERT, SELECT ON audit_log TO app_user;
 -- 파티셔닝 (월별)
 -- CREATE TABLE audit_log_2026_01 PARTITION OF audit_log FOR VALUES FROM ('2026-01-01') TO ('2026-02-01');
 
-CREATE INDEX idx_audit_timestamp ON audit_log(timestamp DESC);
-CREATE INDEX idx_audit_actor ON audit_log(actor_id, timestamp DESC);
-CREATE INDEX idx_audit_target ON audit_log(target_type, target_id, timestamp DESC);
-CREATE INDEX idx_audit_event ON audit_log(event_type, timestamp DESC);
+CREATE INDEX idx_audit_occurred_at ON audit_log(occurred_at DESC);
+CREATE INDEX idx_audit_actor       ON audit_log(actor_id, occurred_at DESC);
+CREATE INDEX idx_audit_target      ON audit_log(target_type, target_id, occurred_at DESC);
+CREATE INDEX idx_audit_event       ON audit_log(event_type, occurred_at DESC);
 ```
 
 ### 2.9 upload_sessions (v1.x tus용, MVP는 선택)
