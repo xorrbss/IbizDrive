@@ -27,7 +27,7 @@ Last Updated: 2026-04-27
 - [x] GREEN: `AuditTargetType` enum (7 values, V3 CHECK와 1:1)
 - [x] GREEN: `AuditService.record(AuditEvent)` JdbcTemplate INSERT + `?::jsonb`/`?::inet` 캐스트 + `@Transactional(REQUIRES_NEW)`
 - [x] commit: `feat(A2.1a): AuditService + AuditEvent + Enums (38 events, 7 targets)` (`fd28368`, push 완료)
-- [-] CI 그린 확인 — ❌ run 24960745059 실패. FK 위반 (actor_id → users.id). 다음 세션 fix 필요 (context.md SESSION PROGRESS §❌ CI 실패 참조)
+- [x] CI 그린 확인 — run 24961391600 ✅ (FK 가시성 + inet 표기 2건 fix, commits `1196e11`, `cf0be93`)
 
 ## A2.1b — @Audited AOP + WebRequestContextHolder (다음 사이클)
 

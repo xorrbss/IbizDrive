@@ -72,33 +72,44 @@ A2 범위 밖 (관리자 export 기능 자체가 v1.x). enum에는 추가하되 
 
 ## SESSION PROGRESS
 
-### Session 1 (2026-04-27) — 셋업 + A2.0 + A2.1a
+### Session 1 (2026-04-27) — 셋업 + A2.0 + A2.1a (CI red 종료)
 
 **완료**:
 - worktree reset → origin/master(eda6f75) 정렬, backup 브랜치 push
 - 메모리 2건 갱신 (자율 루프 + 컨텍스트 한계 프로토콜)
-- dev-docs 3파일 작성 (plan/context/tasks) — commit `a6076f0`
-- ADR #24, #25 docs/00 §5 추가 — commit `a6076f0`
-- A2.0 V3+V4 마이그레이션 + RED+GREEN — commit `440b0b0` ✅ CI green (24960561196)
-- A2.1a AuditService + AuditEvent + Enums (38 events, 7 targets) — commit `fd28368` ❌ CI red (24960745059)
+- dev-docs 3파일 작성 — commit `a6076f0`
+- ADR #24, #25 — commit `a6076f0`
+- A2.0 V3+V4 + RED+GREEN — commit `440b0b0` ✅ CI 24960561196
+- A2.1a AuditService + Enums — commit `fd28368` ❌ CI 24960745059
+- handoff snapshot — commit `344afa6`
 
-**TDD 상태**: A2.1a GREEN 작성됨, CI 실패 → 즉시 fix 필요
+### Session 2 (2026-04-27) — A2.1a fix (CI green)
 
-**❌ CI 실패 (run 24960745059)**:
-- `AuditServiceTest > record_insertsRow_withAllFields()` FAILED
-- `AuditServiceTest > record_survivesCallerRollback_viaRequiresNew()` FAILED
-- `record_systemEvent_acceptsNullActor()` 통과 (actorId=null)
-- 원인: `DataIntegrityViolationException` at `AuditServiceTest.java:90` → `Caused by: PSQLException`
-- **추정 root cause**: `actor_id UUID REFERENCES users(id)` FK 위반. 테스트가 임의 UUID를 actor_id로 INSERT하지만 `users` 테이블에 해당 row 없음. system 이벤트 테스트(actorId=null)만 통과한 것이 결정적 단서.
-- **fix 방향 (다음 세션 첫 액션)**:
-  1. `AuditServiceTest`의 `@BeforeEach` 또는 helper에서 `users` row 1건 INSERT (UUID 고정 또는 반환)
-  2. `record_insertsRow_withAllFields`/`record_survivesCallerRollback`는 그 UUID 사용
-  3. JdbcTemplate으로 직접 INSERT (JPA 의존 회피, AuditService와 동일 스타일)
-  4. 단일 commit `fix(A2.1a): actor_id FK 충족 — users row seed`
+**완료**:
+- 메모리 추가 (Context savings protocol — 능동 절약 13규칙)
+- A2.1a CI 실패 분석 → root cause 재정의:
+  - 1차 진단(이전 세션): "users row seed 부재" → **틀림**. 테스트에 이미 seedUser 존재.
+  - 실제 원인: `@DataJpaTest` outer 트랜잭션 안의 INSERT는 commit 전 → `AuditService.record()`의
+    `@Transactional(REQUIRES_NEW)`가 잡는 별도 connection에서 row 미가시 → FK 23503 위반.
+  - 부수 원인: `actor_ip` assertion이 `"203.0.113.42/32"` 기대 → PostgreSQL inet 타입은 host
+    주소(/32)일 때 mask 생략 → 실제 `"203.0.113.42"`. CIDR 표기는 명시 입력 시에만 보존.
+- fix 1: `seedUser` body를 `TransactionTemplate(REQUIRES_NEW)`로 즉시 commit — commit `1196e11`
+- fix 2: inet assertion 교정 — commit `cf0be93`
+- CI run 24961391600 ✅ green (170 tests, 0 failed)
 
-**uncommitted**: 없음
+**TDD 상태**: A2.1a GREEN 통과. A2.1b RED 진입 가능.
+
+**uncommitted**: 없음. dev/process/a2-audit-log-s2.md는 작업 종료 시 삭제 예정.
 
 **다음 액션**:
-1. `gh run list --branch claude/a2-audit-log --limit 2`로 24960745059 상태 재확인
-2. AuditServiceTest fix (FK seed) → commit → push → CI 재확인
-3. CI 그린 후 A2.1b RED `AuditedAspectTest` 진입
+1. A2.1b RED — `AuditedAspectTest` 작성:
+   - `@Audited` 메서드 정상 종료 → `record()` 호출 1회 (Mockito spy)
+   - 메서드 throw → `record()` 호출 0회
+   - SpEL target ID 추출 (`#fileId`, `#result.id`)
+2. A2.1b GREEN — `@Audited` annotation, `AuditedAspect`, `WebRequestContextHolder`
+3. commit `feat(A2.1b): @Audited AOP + WebRequestContext` → CI 확인
+
+**learnings (다음 작업에 적용)**:
+- `@DataJpaTest` + `REQUIRES_NEW` 조합은 항상 visibility 함정. seed는 별도 트랜잭션에서 commit.
+- inet/cidr/macaddr 같은 PostgreSQL native 타입의 텍스트 표현은 실제 값 SELECT로 검증할 것
+  (가정 금지). 비슷한 함정: jsonb whitespace, timestamptz timezone 표기.
