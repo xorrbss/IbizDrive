@@ -1,7 +1,7 @@
 ---
-Last Updated: 2026-04-26
-Status: gaps_found (1 must-fix, 3 accepted-deviation)
-Conclusion: A1 마일스톤 종료 가능 — must-fix #1을 사용자 승인으로 accepted-deviation 전환 시
+Last Updated: 2026-04-26 (must-fix #1 RESOLVED via A1.6)
+Status: resolved (must-fix 0, 3 accepted-deviation 추적 중)
+Conclusion: A1 마일스톤 종료 가능
 ---
 
 # A1 Auth Implementation — Milestone Audit
@@ -24,7 +24,7 @@ Conclusion: A1 마일스톤 종료 가능 — must-fix #1을 사용자 승인으
 | 1 | 인증 4 endpoint (`POST /login`, `POST /logout`, `GET /me`, `GET /csrf`) 완전 작동 | ✅ pass | `AuthController` (login/me/logout), `CsrfTokenController` (csrf). 5+8+4+1=18 통합 테스트 PASS |
 | 2 | 5회 실패 → 15분 lockout (in-memory `ConcurrentHashMap`) 작동, 성공 시 reset | ✅ pass | `LoginAttemptTracker` (LOCKOUT_THRESHOLD=5, LOCKOUT_TTL=15min, lazy expiry, `recordSuccess` reset). 4 단위 + 8 통합 테스트 PASS |
 | 3 | CSRF double-submit 강제 (mutation endpoint 모두) | ✅ pass | `SecurityConfig` `CookieCsrfTokenRepository.withHttpOnlyFalse()` + plain `CsrfTokenRequestAttributeHandler`. `SecurityIntegrationTest` POST without CSRF → 403 검증 |
-| 4 | **세션 정책: idle 30분 sliding + absolute 8시간 (Spring Session JDBC 백엔드)** | ⚠ **must-fix #1** | `application.yml` `spring.session.timeout: PT8H` — idle=8h. 30분 idle 미구현, 8시간 absolute 강제 (`SessionAttributeFilter`) 미구현. `issuedAt`은 set만 하고 검증 없음 |
+| 4 | **세션 정책: idle 30분 sliding + absolute 8시간 (Spring Session JDBC 백엔드)** | ✅ pass (A1.6 RESOLVED) | `application.yml` `spring.session.timeout: PT30M` (idle 진실 출처). `SessionValidityFilter` (`auth/SessionValidityFilter.java`)가 absolute 8h 강제 — `issuedAt` 비교 후 만료 시 invalidate+401. SecurityConfig에서 SecurityContextHolderFilter 직후 wire. 단위 4건 PASS |
 | 5 | `gradle test` 전체 PASS (단위 + Testcontainers 통합) | ✅ pass | 9 클래스, 152 tests, 4 skipped (Docker), 0 fail. `./gradlew test` UP-TO-DATE 재확인 |
 | 6 | progress.md A1 종료 블록 작성, gsd-audit-milestone 통과 | ⏳ in-progress | A1.2/A1.3/A1.4 세션 블록 존재. A1.5 + 마일스톤 종료 블록은 본 audit 직후 추가 (task #6 대상) |
 | 7 | CI 그린 + master ahead-of N 상태로 PR 후보 commit 정렬 | ⏳ pending | branch ahead 23, PR #1 OPEN. `gh pr checks 1`은 push 후 검증 (task #8 대상) |
@@ -34,7 +34,7 @@ Conclusion: A1 마일스톤 종료 가능 — must-fix #1을 사용자 승인으
 | ADR | 결정 | 코드 매핑 | 결과 |
 |---|---|---|---|
 | #19 | BCrypt strength=12 + `{bcrypt}` prefix + DelegatingPasswordEncoder | `SecurityConfig.passwordEncoder()` `new BCryptPasswordEncoder(12)` + DelegatingPasswordEncoder("bcrypt", ...) | ✅ pass |
-| #20 | idle 30min sliding + absolute 8h + 5/15min lockout | lockout ✅ / 세션 정책 ⚠ (DoD #4와 동일 — must-fix #1로 추적) | partial |
+| #20 | idle 30min sliding + absolute 8h + 5/15min lockout | lockout ✅ / idle (yml=PT30M) ✅ / absolute (SessionValidityFilter) ✅ | ✅ pass (A1.6) |
 | #22 | `/me` = identity + role + permissionsCacheKey만 (effectivePermissions full resolve 제외) | `LoginResponse.from` (`{user, departments=[], roles=[role], effectivePermissionsCacheKey=userId:role:v0}`). `/me`가 동일 shape 재사용 | ✅ pass |
 | #23 | MVP lockout = in-memory ConcurrentHashMap + lazy expiry + 단일 인스턴스 가정 | `LoginAttemptTracker` ConcurrentHashMap, `Clock` 주입, `recordFailure` 내 lazy expiry | ✅ pass |
 
@@ -54,7 +54,18 @@ Conclusion: A1 마일스톤 종료 가능 — must-fix #1을 사용자 승인으
 
 ### must-fix (마일스톤 종료 전 해결 또는 accepted-deviation 명시 승인 필요)
 
-#### must-fix #1 — 세션 timeout 정책 미구현 (ADR #20 + plan DoD #4)
+#### must-fix #1 — 세션 timeout 정책 미구현 (ADR #20 + plan DoD #4) — **RESOLVED (A1.6)**
+
+**해결 요약** (2026-04-26 후속):
+- 사용자 결정: (B) 즉시 fix — 별도 phase A1.6으로 분리하여 본 세션 내 처리
+- 신규 production: `backend/src/main/java/com/ibizdrive/auth/SessionValidityFilter.java` (`OncePerRequestFilter`, Clock 주입, ABSOLUTE_TTL=8h)
+- `SecurityConfig`: `Clock` `@Bean`(systemUTC) + `addFilterAfter(sessionValidityFilter, SecurityContextHolderFilter.class)` wire
+- `application.yml`: `spring.session.timeout: PT8H` → `PT30M` (idle 진실 출처)
+- 신규 테스트: `SessionValidityFilterTest` (단위 4건 — 세션 부재 / issuedAt 부재 / TTL 미만 / TTL 도달) PASS
+- 회귀: 152 → 156 tests (delta +4, 0 fail, 0 err, 4 Docker SKIP 동일)
+- commit: `feat(A1.6): session timeout policy (idle 30m sliding + absolute 8h)` — 4aa372c
+
+**원본 audit 분석 (참고용 보존)**:
 
 | | |
 |---|---|
@@ -99,15 +110,16 @@ Conclusion: A1 마일스톤 종료 가능 — must-fix #1을 사용자 승인으
 
 ## 5. 결론
 
-- **마일스톤 종료 가능 여부**: must-fix #1을 (A) accepted-deviation 또는 (B) 즉시 fix 중 하나로 처리하면 종료 가능.
-- **권고**: (A) — `must-fix #1`은 보안 정책 완화로 분류되지만 기능 영향이 없고, A2 진입 전 별도 phase (A1.6: SessionValidityFilter)로 추적 가능. A1 마일스톤은 "auth wiring + lockout"이 본질이며, 세션 timeout 강제는 분리해도 의존성 충돌 없음.
-- **채택 시 다음 액션**: progress.md A1 마일스톤 종료 블록에 본 deviation 명시 → A1.6 phase를 a1-auth-impl-plan.md에 후속 추가 또는 신규 dev-docs로 분리 → A2 진입 전 처리.
+- **마일스톤 종료 가능 여부**: ✅ 종료 가능. must-fix #1은 A1.6 phase에서 RESOLVED (사용자 결정 (B) — 본 세션 즉시 fix). 잔여는 accepted-deviation 3건뿐, 모두 후속 phase로 추적.
+- **A1 최종 상태**: DoD 7/7 pass (단, #6/#7은 본 commit 시점에 in-progress — A1.5 종료 commit + push 후 close).
+- **다음 액션**: progress.md A1.5 + A1.6 세션 블록 + A1 마일스톤 종료 블록 작성 → commit `chore(A1): close milestone` → PR body draft → 사용자 승인 → push → CI 그린 확인.
 
-## 6. 통계
+## 6. 통계 (A1.6 반영)
 
-- A1 commits (master..HEAD A1 관련): **6개** (308c041 / 0dd2d65 / 10a524b / 06b9238 / ca4e309 / c34e640)
-- 테스트: **152 tests** (148 pass + 4 skipped Docker, 0 fail)
-- A1 신규 production 클래스: **15** (auth/ 6 + auth/dto/ 2 + config/ 1 + user/ 4 + common/error/ 2)
-- A1 신규 테스트 클래스: **5** (`SecurityIntegrationTest`, `LoginAttemptTrackerTest`, `LoginControllerIntegrationTest`, `AuthMeLogoutIntegrationTest`, `AuthScenarioIntegrationTest`)
-- ADR 등록: **#19/20/22/23** (모두 docs/00 §5 본문)
+- A1 commits (master..HEAD A1 관련): **7개** (308c041 / 0dd2d65 / 10a524b / 06b9238 / ca4e309 / c34e640 / **4aa372c**)
+- 테스트: **156 tests** (152 pass + 4 skipped Docker, 0 fail) — A1.6에서 +4
+- A1 신규 production 클래스: **16** (auth/ 7 [SessionValidityFilter +1] + auth/dto/ 2 + config/ 1 + user/ 4 + common/error/ 2)
+- A1 신규 테스트 클래스: **6** (`SecurityIntegrationTest`, `LoginAttemptTrackerTest`, `LoginControllerIntegrationTest`, `AuthMeLogoutIntegrationTest`, `AuthScenarioIntegrationTest`, **`SessionValidityFilterTest`**)
+- ADR 등록: **#19/20/22/23** (모두 docs/00 §5 본문) — #20은 A1.6에서 full pass
 - 발견 hidden gap fix: **1** (Spring Security 6 SecurityContext save 누락 — A1.4 commit ca4e309에서 수정)
+- audit 결과 must-fix → resolved transition: **1** (must-fix #1, A1.6에서 SessionValidityFilter + yml PT30M로 close)

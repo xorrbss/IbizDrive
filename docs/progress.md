@@ -5,6 +5,92 @@
 
 ---
 
+## 2026-04-26 — 🏁 A1 마일스톤 종료 (Backend Authentication)
+
+### 범위
+A1.0 (User schema + JPA) → A1.1 (PasswordEncoder + DbUserDetailsService) → A1.2 (SecurityConfig 본 wiring + CSRF) → A1.3 (LoginController + in-memory lockout) → A1.4 (`/me` + `/logout` + SecurityContext gap fix) → A1.5 (통합 시나리오 + dev-docs 기반 audit) → **A1.6 (session timeout 정책 — must-fix #1 close)**.
+
+### 회고
+- **commits**: 7개 (308c041 / 0dd2d65 / 10a524b / 06b9238 / ca4e309 / c34e640 / A1.6 신규)
+- **테스트**: **156 tests** (152 pass + 4 Docker SKIP, 0 fail) — 6 클래스 (`SecurityIntegrationTest` 5 / `LoginAttemptTrackerTest` 4 / `LoginControllerIntegrationTest` 8 / `AuthMeLogoutIntegrationTest` 5 / `AuthScenarioIntegrationTest` 1 / `SessionValidityFilterTest` 4) + slice + repository (152 합산)
+- **production 클래스**: 16 (auth/ 7 + auth/dto/ 2 + config/ 1 + user/ 4 + common/error/ 2)
+- **endpoint 4종**: `POST /api/auth/login`, `POST /api/auth/logout`, `GET /api/auth/me`, `GET /api/auth/csrf` (docs/02 §7.4 매트릭스 충족)
+- **ADR 등록**: #19 (BCrypt strength=12 + DelegatingPasswordEncoder), #20 (idle 30m sliding + absolute 8h + 5/15min lockout), #22 (`/me` shape — identity + role + permissionsCacheKey), #23 (in-memory lockout backing — MVP 단일 인스턴스). #20은 A1.6에서 full pass.
+- **hidden gap fix 1건**: Spring Security 6 `SecurityContextHolderFilter` load-only 동작으로 `AuthService.login`의 명시 `saveContext` 누락 (A1.4 ca4e309에서 수정)
+- **must-fix → resolved 1건**: must-fix #1 (세션 timeout 정책) — A1.6에서 `SessionValidityFilter` + `application.yml PT30M`로 close
+
+### 잔여 accepted-deviation 3건 (후속 phase 추적)
+| # | 항목 | 추적 phase |
+|---|---|---|
+| 1 | `audit_log` emission 미구현 — A1 plan에서 명시 deferred (`AuthService.login` 주석 `// (후속) audit insert`) | **A2** (audit + 권한 매트릭스 backbone) |
+| 2 | `400 PASSWORD_CHANGE_REQUIRED` 분기 미구현 (현재 `mustChangePassword=true` flag만 응답에 포함) — ADR #21 | PW change endpoint phase (미배정) |
+| 3 | `AuthScenarioIntegrationTest` 로컬 SKIP — Windows Docker 미가용. CI ubuntu-latest에서 실행 | PR push 후 `gh pr checks 1` 그린 = close 게이트 |
+
+### 다음 마일스톤 안내 (A2)
+- **A2 — Audit log backbone + 권한 매트릭스**:
+  - `audit_log` 테이블 + append-only constraint (REVOKE UPDATE/DELETE — docs/03 §4 + CLAUDE.md §3 원칙 8)
+  - `AuthService.login`의 `// (후속) audit insert`를 실제 emission으로 채움
+  - `@PreAuthorize` + `PermissionService` (HANDOFF의 권한 매트릭스 백엔드 권위)
+  - `effectivePermissionsCacheKey` 단순 문자열(`userId:role:v0`) → 권한 변경 trigger 기반 hash로 교체
+- A2 진입 전 본 PR(#1) 머지 + master 동기화
+
+---
+
+## 2026-04-26 — A1.6 Session Timeout Policy (must-fix #1 close, TDD)
+
+### 완료
+- [A1.6] **`SessionValidityFilter`** — `OncePerRequestFilter`, `Clock` 주입(`Clock systemUTC` `@Bean` 신규). `req.getSession(false)` → 세션 부재면 pass-through. `issuedAt` attribute 부재(또는 Long 아님)면 pass-through (인증 전 요청). `(clock.millis() - issuedAt) >= 8h(ABSOLUTE_TTL_MS)` → `session.invalidate()` + `res.sendError(401)` + chain 차단.
+- [A1.6] **`SecurityConfig` 변경** — `Clock` `@Bean`(systemUTC) + `addFilterAfter(sessionValidityFilter, SecurityContextHolderFilter.class)`. SecurityContext 로드 직후 absolute 만료 검사 → 만료 세션의 인증 컨텍스트가 다운스트림 인가 필터에 노출되는 것 회피.
+- [A1.6] **`application.yml`** — `spring.session.timeout: PT8H` → `PT30M` (idle 진실 출처). 주석으로 분담 명시 (idle=Spring Session JDBC, absolute=SessionValidityFilter).
+- [A1.6] **`SessionValidityFilterTest` 4건** — 단위 (Mockito + mutable `Clock`):
+  1. 세션 없음 → pass-through, 응답 미터치
+  2. 세션 있고 `issuedAt` 없음 → pass-through, invalidate 호출 안 됨
+  3. 7h59m59s 경과 → pass-through, invalidate 호출 안 됨
+  4. 정확히 8h 경과 → invalidate(1) + sendError(401) + chain 미호출
+- [A1.6] **회귀** — 152 → **156 tests**, 0 fail, 0 err, 4 Docker SKIP 동일
+
+### 핵심 결정 (filter SoT 정책)
+- **idle 만료 진실 출처 = `application.yml` `spring.session.timeout: PT30M`** — Spring Session JDBC가 매 요청마다 `lastAccessedTime`을 갱신, 30분 무활동 시 자동 invalidate. 컨테이너 레벨에서 sliding 처리 → 별도 코드 불필요 (KISS).
+- **absolute 만료 진실 출처 = `SessionValidityFilter`** — `AuthService.login`이 이미 set 중인 `issuedAt`(epoch millis) attribute + 8h 경계. yml만으로는 ADR #20 absolute 한도 강제 불가 → 본 필터가 must-fix #1의 정확 사유 close.
+- **Clock 주입** — production은 `Clock.systemUTC()` `@Bean`, 테스트는 mutable `Clock`을 단위 테스트에서 직접 주입(필터 단독 생성). `@SpringBootTest` 통합 추가 안 함 — 8h 경계를 SpringBootTest로 검증하면 비용만 큼 (단위 4건으로 logic full coverage).
+- **`OncePerRequestFilter` + `addFilterAfter(SecurityContextHolderFilter)` 위치** — SecurityContext 로드 직후, 인가 필터 이전. 만료 세션의 `Authentication`이 컨트롤러까지 도달하지 않음.
+
+### 변경 파일
+- `backend/src/main/java/com/ibizdrive/auth/SessionValidityFilter.java` (신규)
+- `backend/src/main/java/com/ibizdrive/config/SecurityConfig.java` (Clock @Bean + filter wire + SecurityContextHolderFilter import)
+- `backend/src/main/resources/application.yml` (timeout PT8H → PT30M + 주석)
+- `backend/src/test/java/com/ibizdrive/auth/SessionValidityFilterTest.java` (신규)
+- `dev/active/a1-auth-impl/a1-auth-impl-plan.md` (A1.6 phase 추가)
+- `dev/active/a1-auth-impl/a1-auth-impl-audit.md` (must-fix #1 RESOLVED 갱신, 통계 +4 tests)
+
+### 블로커
+- 없음
+
+### 다음 세션 컨텍스트
+- A1 마일스톤 종료 commit (`chore(A1): close milestone`) + PR body draft 사용자 확인 → push → CI 그린 확인 → A2 진입
+
+---
+
+## 2026-04-26 — A1.5 통합 시나리오 + 마일스톤 audit
+
+### 완료
+- [A1.5] **`AuthScenarioIntegrationTest`** — `@SpringBootTest` + Testcontainers Postgres 15-alpine. 9-step 종합 시나리오: CSRF 발급 → 로그인(200) → `/me`(200) → 4회 wrong PW(401×4) → 5회째(401)+카운터 5 → 6회째(423) → mutable Clock 16분 진행 → 재시도 성공(200, lockout TTL 만료 lazy 해제) → logout(204) → 로그아웃 후 `/me`(401). `disabledWithoutDocker=true` (로컬 Windows SKIP / CI ubuntu 실행). `LoginAttemptTracker`를 `@TestConfiguration` `@Primary` 빈으로 mutable Clock 주입 — 운영 빈 영향 0.
+- [A1.5] **회귀** — `./gradlew test` 152 tests (148 pass + 4 Docker SKIP, 0 fail). commit `c34e640`
+- [A1.5] **dev-docs 기반 수동 audit** — `gsd-audit-milestone` 스킬은 GSD `.planning/ROADMAP.md` + `phases/*/VERIFICATION.md` 구조 전제. 본 프로젝트는 dev-docs(Superpowers) 구조 → 스킬 강행 시 모든 step fail. 사용자 승인으로 plan 목표 상태(line 30~38)를 DoD source로 채택, audit 산출물 `dev/active/a1-auth-impl/a1-auth-impl-audit.md` 작성.
+- [A1.5] **audit 결과** — DoD 5/7 pass + must-fix #1 (세션 timeout 정책 미구현) + accepted-deviation 3건. ADR #19/22/23 ✅ / #20 partial. 사용자 결정 (B): A1.6에서 즉시 fix → A1.6에서 #20 full pass + must-fix #1 RESOLVED.
+
+### 핵심 결정
+- **dev-docs 기반 수동 audit** — `.planning/` GSD 구조 부재로 `gsd-audit-milestone` / `gsd-sdk` 호출 불가. CLAUDE.md ULTIMATE INVARIANT #10 ("중단 및 보고")에 따라 강행 대신 dev-docs 구조에 맞춘 수동 audit 채택. audit 산출물 위치 = `dev/active/a1-auth-impl/a1-auth-impl-audit.md` (plan/context/tasks와 동일 디렉토리, 마일스톤 archive 시 함께 이동).
+- **anti-pattern 기록** — HANDOFF의 `next_action`을 검증 없이 그대로 실행하는 패턴 (이전 HANDOFF가 작성한 `gsd-audit-milestone A1`이 본 프로젝트에서 fail). resume 후 next_action 첫 단계는 도구/구조 가용성 검증부터 (CLAUDE.md #10).
+
+### 블로커
+- 없음 (must-fix #1은 사용자 결정으로 A1.6 즉시 fix 채택 → A1.6에서 close)
+
+### 다음 세션 컨텍스트 (A1.6)
+- 사용자 결정 (B) — must-fix #1 즉시 fix. SessionValidityFilter RED+GREEN+회귀 + audit.md must-fix #1 RESOLVED 갱신.
+
+---
+
 ## 2026-04-26 — A1.4 `/api/auth/me` + `/api/auth/logout` (+ A1.3 SecurityContext gap fix)
 
 ### 완료
