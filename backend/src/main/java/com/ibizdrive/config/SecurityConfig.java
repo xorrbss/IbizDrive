@@ -11,6 +11,10 @@ import org.springframework.security.crypto.password.DelegatingPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.HttpStatusEntryPoint;
+import org.springframework.security.web.context.DelegatingSecurityContextRepository;
+import org.springframework.security.web.context.HttpSessionSecurityContextRepository;
+import org.springframework.security.web.context.RequestAttributeSecurityContextRepository;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CookieCsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRepository;
 import org.springframework.security.web.csrf.CsrfTokenRequestAttributeHandler;
@@ -54,8 +58,28 @@ public class SecurityConfig {
         return CookieCsrfTokenRepository.withHttpOnlyFalse();
     }
 
+    /**
+     * SecurityContext 저장소 — Spring Security 6의 {@code SecurityContextHolderFilter}는
+     * load만 수행하고 save는 인증 메커니즘이 명시적으로 호출해야 한다 (5.x의 자동 save 제거).
+     * custom {@code AuthService.login}이 인증 성공 시 {@link SecurityContextRepository#saveContext}
+     * 를 호출하여 새 sessionId 기반의 HttpSession에 컨텍스트를 영속화한다.
+     *
+     * <p>{@link DelegatingSecurityContextRepository}는 HttpSession (영속) +
+     * RequestAttribute (단일 요청 캐시)에 동시 저장하여 같은 요청 내 후속 필터/핸들러가
+     * 동일 컨텍스트를 일관되게 본다.
+     */
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, CsrfTokenRepository csrfRepo) throws Exception {
+    public SecurityContextRepository securityContextRepository() {
+        return new DelegatingSecurityContextRepository(
+            new HttpSessionSecurityContextRepository(),
+            new RequestAttributeSecurityContextRepository()
+        );
+    }
+
+    @Bean
+    public SecurityFilterChain securityFilterChain(HttpSecurity http,
+                                                   CsrfTokenRepository csrfRepo,
+                                                   SecurityContextRepository securityContextRepository) throws Exception {
         // 평문 토큰 (XOR mask 미적용) — docs/02 §7.1 double-submit 계약과 일치.
         // Spring Security 6 default(XorCsrfTokenRequestAttributeHandler)는 BREACH 가드를 위해
         // 토큰을 XOR-masked로 변환. 우리는 cookie/header 동등 비교 단순화 위해 plain handler 채택.
@@ -65,6 +89,7 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 .csrfTokenRepository(csrfRepo)
                 .csrfTokenRequestHandler(csrfHandler))
+            .securityContext(sc -> sc.securityContextRepository(securityContextRepository))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health").permitAll()

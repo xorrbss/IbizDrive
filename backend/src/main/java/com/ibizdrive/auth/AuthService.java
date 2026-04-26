@@ -1,12 +1,19 @@
 package com.ibizdrive.auth;
 
 import com.ibizdrive.auth.dto.LoginResponse;
+import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
 import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -38,6 +45,7 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final LoginAttemptTracker tracker;
+    private final SecurityContextRepository securityContextRepository;
 
     /**
      * timing attack 회피용 dummy BCrypt 해시 — 미존재/비활성 user에도 동일 시간 소비.
@@ -49,10 +57,12 @@ public class AuthService {
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
-                       LoginAttemptTracker tracker) {
+                       LoginAttemptTracker tracker,
+                       SecurityContextRepository securityContextRepository) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.tracker = tracker;
+        this.securityContextRepository = securityContextRepository;
     }
 
     @PostConstruct
@@ -61,7 +71,7 @@ public class AuthService {
     }
 
     @Transactional
-    public LoginResponse login(String emailRaw, String rawPassword, HttpServletRequest req) {
+    public LoginResponse login(String emailRaw, String rawPassword, HttpServletRequest req, HttpServletResponse res) {
         String email = (emailRaw == null ? "" : emailRaw.trim()).toLowerCase(Locale.ROOT);
 
         if (tracker.isLocked(email)) {
@@ -102,6 +112,16 @@ public class AuthService {
         // 기존 세션이 없으면 먼저 생성 후 changeSessionId() 호출.
         req.getSession(true);
         req.changeSessionId();
+
+        // SecurityContext 영속화 (Spring Security 6 — auto-save 미지원, 명시 필요).
+        // 새 sessionId 발급 후 호출하여 새 세션에 컨텍스트가 저장되도록 한다.
+        IbizDriveUserDetails principal = new IbizDriveUserDetails(user);
+        Authentication auth = UsernamePasswordAuthenticationToken.authenticated(
+            principal, null, principal.getAuthorities());
+        SecurityContext context = SecurityContextHolder.createEmptyContext();
+        context.setAuthentication(auth);
+        SecurityContextHolder.setContext(context);
+        securityContextRepository.saveContext(context, req, res);
 
         HttpSession session = req.getSession();
         session.setAttribute("userId", user.getId().toString());
