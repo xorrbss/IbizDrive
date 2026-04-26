@@ -27,7 +27,7 @@ A2 PR 머지 시점에 다음이 모두 true:
 
 1. `audit_log` 테이블 존재 (docs/02 §2.8 스키마 동치) + 4개 인덱스
 2. `app_user` DB role은 `INSERT/SELECT only`, `UPDATE/DELETE` 시도는 `42501` (insufficient_privilege) — 통합 테스트로 증명
-3. `AuditEventType` Java enum 41+1=42개 값, frontend `types/audit.ts`와 1:1 일치 (CI lint 또는 fixtures 검증)
+3. `AuditEventType` Java enum 38개 값, frontend `types/audit.ts`와 1:1 일치 (CI lint 또는 fixtures 검증)
 4. `AuditService.record(event)` 단일 진입점 + `@Audited` AOP + Spring Security event listener 하이브리드
 5. AuthService 코드 수정 0줄 — listener만 신규 (A1 침투 0)
 6. `GET /api/admin/audit?...` endpoint: ADMIN/AUDITOR 전체, MEMBER는 `actor_id=self`만 (`@PreAuthorize`)
@@ -62,7 +62,7 @@ A2 PR 머지 시점에 다음이 모두 true:
 
 **GREEN**:
 - `AuditEvent` record (Java 21 record): eventType, actorId, actorIp, userAgent, targetType, targetId, beforeState, afterState, metadata
-- `AuditEventType` enum (42 values, frontend 동기화)
+- `AuditEventType` enum (38 values, frontend 동기화)
 - `AuditTargetType` enum
 - `AuditService` (record + repo)
 - `AuditLogRepository` (JPA, INSERT only가 아닌 read도 허용 — 4번 결정 read API용)

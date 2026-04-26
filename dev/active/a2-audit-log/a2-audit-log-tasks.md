@@ -17,22 +17,27 @@ Last Updated: 2026-04-27
 - [ ] GREEN: docs/02 §2.8 본문 `target_type` CHECK에 `audit` 추가 (frontend 동기)
 - [ ] commit: `feat(A2.0): audit_log V3+V4 마이그레이션 + ADR #24~25`
 
-## A2.1 — Emission 인프라
+## A2.1a — AuditEvent + Enums + AuditService (REQUIRES_NEW 검증)
 
-- [ ] RED: `AuditServiceTest` — `record(AuditEvent)` → audit_log row 검증 (모든 컬럼)
+- [x] RED: `AuditServiceTest` — `record(AuditEvent)` → audit_log row 검증 (모든 컬럼)
+- [x] RED: `AuditServiceTest` — system 이벤트(actor null) 정상 INSERT
+- [x] RED: `AuditServiceTest` — REQUIRES_NEW: 호출자 트랜잭션 rollback해도 audit row 보존
+- [x] GREEN: `AuditEvent` record (Java 21, eventType/targetType NOT NULL 검증)
+- [x] GREEN: `AuditEventType` enum (38 values, FE 1:1 동기, @JsonValue/@JsonCreator wire 변환)
+- [x] GREEN: `AuditTargetType` enum (7 values, V3 CHECK와 1:1)
+- [x] GREEN: `AuditService.record(AuditEvent)` JdbcTemplate INSERT + `?::jsonb`/`?::inet` 캐스트 + `@Transactional(REQUIRES_NEW)`
+- [ ] commit: `feat(A2.1a): AuditService + AuditEvent + Enums (38 events, 7 targets)`
+- [ ] CI 그린 확인 후 push
+
+## A2.1b — @Audited AOP + WebRequestContextHolder (다음 사이클)
+
 - [ ] RED: `AuditedAspectTest` — `@Audited` 메서드 정상 종료 → record 호출 1회
 - [ ] RED: `AuditedAspectTest` — 메서드 throw → record 호출 0회
-- [ ] RED: `AuditedAspectTest` — REQUIRES_NEW 트랜잭션 검증 (비즈니스 트랜잭션 rollback해도 audit row 보존)
-- [ ] GREEN: `AuditEvent` record (Java 21)
-- [ ] GREEN: `AuditEventType` enum (42 values, frontend 동기)
-- [ ] GREEN: `AuditTargetType` enum (7 values, frontend 동기)
-- [ ] GREEN: `AuditLog` JPA entity (id, occurredAt, eventType, actorId, actorIp, userAgent, targetType, targetId, beforeState, afterState, metadata)
-- [ ] GREEN: `AuditLogRepository` (read 가능, write는 `AuditService` 통해서만)
-- [ ] GREEN: `AuditService.record(AuditEvent)` (`@Transactional(propagation=REQUIRES_NEW)`)
+- [ ] RED: `AuditedAspectTest` — SpEL target ID 추출 (`#fileId`, `#result.id`)
 - [ ] GREEN: `@Audited` annotation (event, target SpEL)
 - [ ] GREEN: `AuditedAspect` (`@AfterReturning`, SpEL evaluator)
 - [ ] GREEN: `WebRequestContextHolder` (IP/UA from RequestAttributes)
-- [ ] commit: `feat(A2.1): AuditService + @Audited AOP + WebRequestContext`
+- [ ] commit: `feat(A2.1b): @Audited AOP + WebRequestContext`
 
 ## A2.2 — Append-only 검증
 

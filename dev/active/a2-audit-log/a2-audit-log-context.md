@@ -22,7 +22,7 @@ Last Updated: 2026-04-27
 - **docs/02 §9.4**: 월별 파티셔닝, INSERT-only 부하, read replica
 - **docs/03 §4.1**: 41개 이벤트 타입 + frontend 추가 1건(`audit.exported`) = 42개
 - **docs/03 §4.4**: 불변성 강제 — application role과 admin role 분리
-- **frontend/src/types/audit.ts**: 백엔드 enum 작성 시 1:1 대조 reference
+- **frontend/src/types/audit.ts**: 백엔드 enum 작성 시 1:1 대조 reference. 정확히 38 값 (file 8 / version 3 / folder 6 / permission 3 / share 3 / user 5 / admin 7 / system 2 / audit 1)
 - **frontend/src/lib/api.audit.test.ts**: A2.3 read API 계약 (1-indexed page, occurredAt DESC, inclusive 날짜, 부분 actorName)
 
 ## A1 교훈 (처음부터 적용)
