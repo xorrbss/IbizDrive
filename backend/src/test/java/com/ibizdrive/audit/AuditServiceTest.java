@@ -11,6 +11,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
@@ -160,12 +161,27 @@ class AuditServiceTest {
         return c == null ? 0 : c;
     }
 
+    /**
+     * users row를 별도 트랜잭션(REQUIRES_NEW)에서 즉시 commit한다.
+     *
+     * <p>이유: {@code @DataJpaTest}는 각 테스트를 outer tx로 감싸 rollback한다. 그러나
+     * {@link AuditService#record(AuditEvent)}는 {@code @Transactional(REQUIRES_NEW)}로
+     * 별도 connection을 잡는다. seedUser를 outer tx 안에서 INSERT하면 commit 전이라
+     * REQUIRES_NEW 쪽 connection은 그 row를 볼 수 없고 {@code actor_id → users.id} FK가
+     * 위반된다 (PSQLException, SQLState 23503).
+     *
+     * <p>해결: seedUser도 REQUIRES_NEW로 즉시 commit. 컨테이너는 클래스 단위 lifecycle이라
+     * 잔여 row가 누적되지만 각 테스트가 다른 email을 쓰고, audit_log 검증은 event_type 또는
+     * before/after delta 기반이라 격리에 문제없음.
+     */
     private UUID seedUser(String email) {
         UUID id = UUID.randomUUID();
-        jdbc.update(
+        TransactionTemplate tt = new TransactionTemplate(txManager);
+        tt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        tt.executeWithoutResult(status -> jdbc.update(
             "INSERT INTO users(id, email, display_name, password_hash) VALUES (?, ?, ?, ?)",
             id, email, "Test " + email, "{bcrypt}$dummy$"
-        );
+        ));
         return id;
     }
 }
