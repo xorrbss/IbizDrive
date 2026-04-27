@@ -62,4 +62,12 @@ tasks.withType<Test> {
     // fixtures는 repo root의 docs/normalize-fixtures.json을 직접 로드
     // (단일 진실 출처, ADR #16). 작업 디렉토리는 backend/ 가정.
     workingDir = projectDir
+    // CI에서 실패 시 expected/actual + stacktrace 전체를 콘솔에 출력 — 로컬-CI 환차 디버깅용
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
 }
