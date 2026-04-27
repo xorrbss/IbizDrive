@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-28 (A2.5 E2E CI green)
+Last Updated: 2026-04-28 (A2.6 fetch 교체 완료, A2.7 closure 대기)
 ---
 
 # A2 Audit Log — Tasks
@@ -80,13 +80,14 @@ Last Updated: 2026-04-28 (A2.5 E2E CI green)
 
 ## A2.6 — Frontend fetch 교체
 
-- [ ] `api.getAuditLogs` 본문 `MOCK_AUDIT_LOGS` 분기 제거, fetch 호출
-- [ ] `MOCK_AUDIT_LOGS`, `MOCK_ACTORS`, `makeAuditLogs()` 블록 제거 (api.ts 주석 명시 따라)
-- [ ] `api.audit.test.ts` — 기존 MSW 또는 `vi.fn(global.fetch)` 모킹으로 전환, 모든 케이스 PASS 유지
-- [ ] dev seed (Flyway repeatable 또는 별도 SQL) — audit_log 60건 (mock 분포 모방)
-- [ ] `frontend/e2e/audit.e2e.ts` 신규 — admin 로그인 → /admin/audit/logs → 필터/페이지 동작
-- [ ] `auditCsv.ts` export 이벤트 self-emit 정책 결정 (deferred — enum만 유지)
-- [ ] commit: `feat(A2.6): frontend audit mock → real fetch`
+- [x] `api.getAuditLogs` 본문 `MOCK_AUDIT_LOGS` 분기 제거, fetch 호출
+- [x] `MOCK_AUDIT_LOGS`, `MOCK_ACTORS`, `makeAuditLogs()` 블록 제거 (api.ts 주석 명시 따라)
+- [x] `api.audit.test.ts` — `vi.stubGlobal('fetch', ...)` 모킹으로 전환, 7 케이스 PASS (305/305 전체 그린)
+- [x] `next.config.ts`: dev rewrite `/api/:path*` → `BACKEND_URL` (localhost:8080) — same-origin 쿠키 전송
+- [-] dev seed (Flyway repeatable 또는 별도 SQL) — **deferred**: 프로파일 분리 + CommandLineRunner 필요. 백엔드 구동 후 수동 SQL or A3에서 admin 페이지로 시드. CI/회귀 영향 0
+- [-] `frontend/e2e/audit.e2e.ts` — **deferred**: admin 로그인 UI(A 트랙 미구현)에 의존. A1 frontend 인증 페이지 + admin 라우팅이 선행되어야 의미 있음
+- [x] `auditCsv.ts` export 이벤트 self-emit 정책 결정 — deferred로 확정 (enum 유지, runtime emission은 v1.x)
+- [x] commit: `feat(A2.6): frontend audit mock → real fetch` (`36896a8`, CI 25023235347 ✅)
 
 ## A2.7 — 종료 정리
 

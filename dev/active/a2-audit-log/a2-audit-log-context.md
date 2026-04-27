@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-28 (A2.5 CI green, A2.6 next)
+Last Updated: 2026-04-28 (A2.6 fetch 교체 완료, A2.7 closure 대기)
 ---
 
 # A2 Audit Log — Context
@@ -268,3 +268,27 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 - audit_log cleanup은 Testcontainers의 postgres 슈퍼유저 권한 사용 (V4 REVOKE는 app_user role 한정)
 - metadata 검증은 JSONB `->>` 연산자 (`metadata->>'reason' = '...'`) — 텍스트 매칭 대비 공백/직렬화 변동에 안전
 - AuditQueryE2ETest는 controller test와 service test 둘 다 검증 못 한 "실제 권한 분기 + JSON 직렬화 + Spring Session 쿠키 흐름"을 한 번에 회귀 가드
+
+### Session 7 (2026-04-28) — A2.6 frontend mock → real fetch
+
+**완료**:
+- `api.getAuditLogs`: mock 분기 + 60-row generator 완전 제거 → `fetch('/api/admin/audit?...', { credentials: 'include' })` 직접 호출
+- 응답 매핑: 백엔드 `actorId/actorName: null`(시스템 이벤트, 미존재 사용자) → 프론트 `'system'` 폴백 (TS 계약 nullable 아님)
+- 비-OK 응답: `Error & { status }` throw → providers.tsx의 `QueryCache.onError` 401/403 분기 호환
+- `api.audit.test.ts` 재작성: `vi.stubGlobal('fetch', vi.fn())` 7 케이스 — URL 직렬화/credentials/필터 4종/null 폴백/401·403 status surface
+- `next.config.ts` rewrite: dev에서 `/api/:path*` → `BACKEND_URL` (default `http://localhost:8080`) — same-origin SPRING_SESSION 쿠키 작동
+- 검증: `pnpm vitest run src/lib/api.audit.test.ts` 7 PASS, 전체 305/305 PASS, typecheck + lint clean
+- CI run 25023235347 ✅ 2m4s, 커밋 `36896a8`
+
+**Deferred (A2 외부)**:
+- dev seed (60건): 프로파일 분리 + CommandLineRunner 필요. CI/회귀 영향 0이라 닫힘 게이트 외로 분리
+- `frontend/e2e/audit.e2e.ts`: admin 로그인 UI 의존. A1 frontend 인증 + admin 라우팅이 선행 필요. 별도 트랙 (A 또는 M-suffix)에서 작업
+- auditCsv self-emit: 정책 deferred 확정 (enum만 유지, v1.x)
+
+**TDD 상태**: A2.6 GREEN. 백엔드 emission(A2.4) → query(A2.3) → frontend fetch(A2.6) end-to-end 계약 닫힘.
+
+**다음 액션 (A2.7 closure)**:
+1. docs/progress.md A2 종료 블록 (한 세션 한 블록)
+2. self code-review (변경 diff 전체 적대적 점검 — listener 침투 0, 42501 enforcement, append-only, 권한 분기)
+3. `gh pr create master ← claude/a2-audit-log` (PR description: 변경 요약, 테스트 증명, DoD 10항목 체크)
+4. **게이트 유지** — `gh pr merge`는 사용자 승인 후
