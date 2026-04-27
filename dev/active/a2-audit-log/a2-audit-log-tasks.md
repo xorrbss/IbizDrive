@@ -70,12 +70,12 @@ Last Updated: 2026-04-28
 
 ## A2.5 — 통합 테스트
 
-- [ ] `AuthAuditE2ETest` (`@SpringBootTest` + Testcontainers + HttpClient5)
+- [x] `AuthAuditE2ETest` (`@SpringBootTest` + Testcontainers + HttpClient5)
   - 정상 로그인 → audit_log에 `user.login.success` 1건, actor_id 매칭
   - 잘못된 PW 5회 → `user.login.failed` 5건, 5번째는 metadata.reason 변경 가능 (lockout)
   - 로그아웃 → `user.logout` 1건
-- [ ] `AuditQueryE2ETest` — 위 시나리오 후 ADMIN으로 `/api/admin/audit?eventType=user.login.failed` 호출 → 5건
-- [ ] `Serializable` 검증 — `IbizDriveUserDetails`에 신규 필드 추가 안 했음을 명시 (회귀 방지)
+- [x] `AuditQueryE2ETest` — 위 시나리오 후 ADMIN으로 `/api/admin/audit?eventType=user.login.failed` 호출 → 5건
+- [x] `Serializable` 검증 — `IbizDriveUserDetails`에 신규 필드 추가 안 했음을 명시 (회귀 방지)
 - [ ] commit: `test(A2.5): full E2E auth → audit_log persistence`
 
 ## A2.6 — Frontend fetch 교체

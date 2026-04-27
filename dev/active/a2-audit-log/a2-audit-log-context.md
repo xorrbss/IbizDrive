@@ -225,3 +225,39 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 - `LogoutSuccessEvent`는 `org.springframework.security.authentication.event` 패키지 (web 아님 — jar 검증)
 - `AbstractAuthenticationFailureEvent` 단일 핸들러로 BadCredentials/Locked 통합 처리 (instanceof 분기)
 - metadata는 String으로 직접 조립(`{"reason":"..."}`) — KISS, ObjectMapper 부담 최소화 (1키만)
+
+### Session 6 (2026-04-28) — A2.5 E2E 통합 테스트
+
+**완료**:
+- `AuthAuditE2ETest` (5 tests, `@SpringBootTest` + Testcontainers + HttpClient5):
+  - 정상 로그인 → `user.login.success` 1건 (actor_id/IP/UA 채워짐)
+  - wrong-PW 단일 → `user.login.failed` + metadata.reason='bad-password' (JSONB `->>` 연산자로 검증)
+  - 미존재 사용자 → `user.login.failed` + actor_id NULL + reason='user-not-found'
+  - 5회 wrong-PW + 6번째 lockout → `user.login.failed` 6건 (5 bad-password + 1 locked)
+  - 로그아웃 → `user.logout` 1건 (actor_id 매칭)
+- `AuditQueryE2ETest` (3 tests):
+  - ADMIN scope: 5회 wrong-PW 후 `/api/admin/audit?eventType=user.login.failed` → total=5, entries[].actorId 모두 member
+  - MEMBER scope=self: 같은 시나리오에서 다른 MEMBER 2건은 제외 → 자신 3건만
+  - 익명 → 401
+- Serializable 회귀 가드: `IbizDriveUserDetails` 단일 필드(`User user`) + `serialVersionUID = 1L` 변경 0
+- 로컬 `./gradlew test` BUILD SUCCESSFUL (1m54s)
+
+**TDD 상태**: A2.5 GREEN 통과. emission(A2.4) → query(A2.3) end-to-end 검증 완료.
+다음 사이클: A2.6 — frontend mock fetch 교체.
+
+**uncommitted**: 모든 변경 + dev/process/a2-audit-log-s6.md (commit 후 삭제).
+
+**다음 액션 (A2.6)**:
+1. `api.getAuditLogs` 본문 `MOCK_AUDIT_LOGS` 분기 제거, fetch 호출
+2. `MOCK_AUDIT_LOGS`, `MOCK_ACTORS`, `makeAuditLogs()` 블록 제거
+3. `api.audit.test.ts` MSW 또는 `vi.fn(global.fetch)` 모킹으로 전환
+4. dev seed (audit_log 60건)
+5. `frontend/e2e/audit.e2e.ts` 신규
+6. commit `feat(A2.6): frontend audit mock → real fetch`
+
+**A2.5 설계 결정 노트**:
+- LoginAttemptTracker 생성자가 package-private이라 `com.ibizdrive.audit` 패키지에서 직접 override 불가
+  → 테스트별 unique email로 카운터 누적 회피 (TestInfo.getTestMethod().getName() 활용)
+- audit_log cleanup은 Testcontainers의 postgres 슈퍼유저 권한 사용 (V4 REVOKE는 app_user role 한정)
+- metadata 검증은 JSONB `->>` 연산자 (`metadata->>'reason' = '...'`) — 텍스트 매칭 대비 공백/직렬화 변동에 안전
+- AuditQueryE2ETest는 controller test와 service test 둘 다 검증 못 한 "실제 권한 분기 + JSON 직렬화 + Spring Session 쿠키 흐름"을 한 번에 회귀 가드
