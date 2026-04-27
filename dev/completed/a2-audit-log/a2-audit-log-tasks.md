@@ -1,5 +1,6 @@
 ---
-Last Updated: 2026-04-28 (A2.7 closure 진행 — progress.md + self-review fix + PR 생성)
+Last Updated: 2026-04-28 (CLOSED — 전 항목 완료, PR #2 squash merged)
+Status: ✅ CLOSED
 ---
 
 # A2 Audit Log — Tasks
@@ -41,9 +42,9 @@ Last Updated: 2026-04-28 (A2.7 closure 진행 — progress.md + self-review fix 
 
 ## A2.2 — Append-only 검증
 
-- [ ] A2.0 RED 테스트들이 실제 GREEN 통과 확인
-- [ ] Testcontainers fixture에 `app_user` role 자동 생성 확인 (V4가 처리)
-- [ ] CI 그린
+- [x] A2.0 RED 테스트들이 실제 GREEN 통과 확인 (CI 24960561196 ✅, 후속 run에서도 그린 유지)
+- [x] Testcontainers fixture에 `app_user` role 자동 생성 확인 (V4가 처리)
+- [x] CI 그린
 
 ## A2.3 — Read API + 권한
 
@@ -92,9 +93,9 @@ Last Updated: 2026-04-28 (A2.7 closure 진행 — progress.md + self-review fix 
 ## A2.7 — 종료 정리
 
 - [x] docs/progress.md A2 종료 블록 (DoD 10/10, ADR/잔여 deferred 5건)
-- [x] self code-review (적대적) — 1 결함 발견 + fix
-- [x] gh pr create → master (PR description: 변경 요약 + 테스트 증명 + DoD 10항목)
-- [ ] (게이트 유지) `gh pr merge` — 사용자 승인 후만
+- [x] self code-review (적대적) — 1 결함 발견 + fix (`f3c7a4a`)
+- [x] gh pr create → master (PR #2)
+- [x] `gh pr merge` (Session 9, 사용자 승인 후 squash merged → master `dd372d7`, CI 25024916976 ✅)
 
 ## 신규 발견 task (작업 중 추가)
 

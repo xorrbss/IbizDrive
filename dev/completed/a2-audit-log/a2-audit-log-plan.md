@@ -1,10 +1,34 @@
 ---
-Last Updated: 2026-04-27
+Last Updated: 2026-04-28 (CLOSED — PR #2 squash merged dd372d7, A2 마일스톤 종료)
+Status: ✅ CLOSED
 ---
 
 # A2 Audit Log Backbone — Plan
 
-## 요약
+## 종료 요약 (2026-04-28)
+
+**DoD 10/10 충족**:
+1. ✅ audit_log + 4 인덱스 (V3 마이그레이션, `AuditLogSchemaTest`)
+2. ✅ `42501` append-only (V4 REVOKE, `AuditLogAppendOnlyTest` UPDATE/DELETE/TRUNCATE)
+3. ✅ enum 38 + ts mirror 1:1
+4. ✅ `AuditService.record()` + `@Audited` AOP + listener 하이브리드
+5. ✅ AuthService 비즈니스 로직 0줄 침투 (publish 5 + LogoutEvent publish + constructor 1줄만)
+6. ✅ ADMIN/AUDITOR 전체, MEMBER scope=self
+7. ✅ frontend `api.audit.test.ts` 7 PASS
+8. ✅ ADR #24/#25 등록
+9. ✅ CI 그린 (run 25024916976, master dd372d7)
+10. ✅ backup 브랜치 보존 (`backup/pre-reset-20260427-0036`)
+
+**Hidden gap accepted-deviation 2건** (구현 중 발견 → 본 phase 미해결, 후속 추적):
+
+| # | 항목 | 후속 |
+|---|---|---|
+| 1 | `actorIp`가 `HttpServletRequest.getRemoteAddr()` 그대로 — proxy/LB 뒤에서 LB IP 기록. `X-Forwarded-For` 미처리 | v1.x (운영 환경 진입 전 `ForwardedHeaderFilter` 도입) |
+| 2 | `actorQuery` LIKE 검색의 `%`/`_` 미이스케이프 — 검색 broaden (security 영향 0, UX 매칭 변질) | v1.x (literal 이스케이프 또는 ILIKE + REGEX 도입 시) |
+
+## 원본 plan (참고용 보존)
+
+`audit_log` 테이블 + AOP/Event 기반 emission + DB 레벨 append-only 강제 + read API + 기존 frontend mock(M12) → 실 fetch 교체. 트랙 종료 조건: docs/03 §4 감사 정책의 backbone이 코드로 구현되고, A1 인증 이벤트 4종(`user.login.success/failed/logout`, `user.password.changed`)이 실제 emit·persist되며, append-only가 RED 테스트(`42501`)로 증명됨.
 
 `audit_log` 테이블 + AOP/Event 기반 emission + DB 레벨 append-only 강제 + read API + 기존 frontend mock(M12) → 실 fetch 교체. 트랙 종료 조건: docs/03 §4 감사 정책의 backbone이 코드로 구현되고, A1 인증 이벤트 4종(`user.login.success/failed/logout`, `user.password.changed`)이 실제 emit·persist되며, append-only가 RED 테스트(`42501`)로 증명됨.
 
