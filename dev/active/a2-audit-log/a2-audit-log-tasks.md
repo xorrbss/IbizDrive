@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-28
+Last Updated: 2026-04-28 (A2.5 E2E CI green)
 ---
 
 # A2 Audit Log — Tasks
@@ -76,7 +76,7 @@ Last Updated: 2026-04-28
   - 로그아웃 → `user.logout` 1건
 - [x] `AuditQueryE2ETest` — 위 시나리오 후 ADMIN으로 `/api/admin/audit?eventType=user.login.failed` 호출 → 5건
 - [x] `Serializable` 검증 — `IbizDriveUserDetails`에 신규 필드 추가 안 했음을 명시 (회귀 방지)
-- [ ] commit: `test(A2.5): full E2E auth → audit_log persistence`
+- [x] commit: `test(A2.5): full E2E auth → audit_log persistence` (`14cec52` → `b8cc4f2` fix, CI 25022602059 ✅ — RFC 5321 64-char local-part 회피)
 
 ## A2.6 — Frontend fetch 교체
 

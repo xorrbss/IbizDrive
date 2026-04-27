@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-28
+Last Updated: 2026-04-28 (A2.5 CI green, A2.6 next)
 ---
 
 # A2 Audit Log — Context
@@ -245,7 +245,14 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 **TDD 상태**: A2.5 GREEN 통과. emission(A2.4) → query(A2.3) end-to-end 검증 완료.
 다음 사이클: A2.6 — frontend mock fetch 교체.
 
-**uncommitted**: 모든 변경 + dev/process/a2-audit-log-s6.md (commit 후 삭제).
+**커밋**: `14cec52` (E2E 본체) → `3fd8c57` (CI 진단 .as 설명) → `f1ab7a6` (Gradle testLogging FULL) → `b8cc4f2` (RFC 5321 64-char fix). CI run 25022602059 ✅.
+
+**CI 부트스트랩 회고 (locally pass / CI fail 디버깅)**:
+1. 1차 실패: 3개 테스트 status assertion만 fail. 원인 unsurface — `--log-failed`는 라인번호만 출력
+2. 2차 진단: AssertJ `.as("body=%s", body)` 추가 → 여전히 메시지 미출력 (Gradle testLogging 기본은 stacktrace만)
+3. 3차 진단: `testLogging.exceptionFormat = FULL` 추가 → 비로소 `expected: 401 / but was: 400 / body={code=VALIDATION_ERROR, field=email, rule=Email}` 출력
+4. 진짜 원인: 메서드명 suffix가 RFC 5321 local-part 64자 한도 초과. CI Hibernate Validator strict, 로컬은 lenient (버전/플래그 차이로 가설). 짧은 UUID prefix(8자)로 회피
+5. 부산물: testLogging FULL 설정은 영구 유지 — 향후 CI-only 회귀 디버깅에 도움
 
 **다음 액션 (A2.6)**:
 1. `api.getAuditLogs` 본문 `MOCK_AUDIT_LOGS` 분기 제거, fetch 호출
@@ -257,7 +264,7 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 
 **A2.5 설계 결정 노트**:
 - LoginAttemptTracker 생성자가 package-private이라 `com.ibizdrive.audit` 패키지에서 직접 override 불가
-  → 테스트별 unique email로 카운터 누적 회피 (TestInfo.getTestMethod().getName() 활용)
+  → 테스트별 unique email로 카운터 누적 회피 (UUID 8자 prefix — RFC 5321 64자 회피 후속)
 - audit_log cleanup은 Testcontainers의 postgres 슈퍼유저 권한 사용 (V4 REVOKE는 app_user role 한정)
 - metadata 검증은 JSONB `->>` 연산자 (`metadata->>'reason' = '...'`) — 텍스트 매칭 대비 공백/직렬화 변동에 안전
 - AuditQueryE2ETest는 controller test와 service test 둘 다 검증 못 한 "실제 권한 분기 + JSON 직렬화 + Spring Session 쿠키 흐름"을 한 번에 회귀 가드
