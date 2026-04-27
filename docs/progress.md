@@ -5,6 +5,55 @@
 
 ---
 
+## 2026-04-28 — 🏁 A2 마일스톤 종료 (Audit Log Backbone)
+
+### 범위
+A2.0 (V3 audit_log 스키마 + V4 REVOKE) → A2.1a (AuditService + Enums + REQUIRES_NEW) → A2.1b (`@Audited` AOP + WebRequestContextHolder) → A2.2 (append-only 강제 검증, A2.0과 통합) → A2.3 (`GET /api/admin/audit` + role-based scope) → A2.4 (A1 인증 이벤트 emission via `ApplicationEventPublisher` + listener) → A2.5 (E2E 통합 — auth → audit_log → query) → A2.6 (frontend mock → real fetch).
+
+### 회고
+- **commits**: 20개 (a6076f0 dev-docs/ADR → 440b0b0 V3+V4 → fd28368/1196e11/cf0be93 A2.1a + fix → a0f9f7e A2.1b → 2fdad2d A2.3 → 7aaea19 A2.4 → 14cec52/3fd8c57/f1ab7a6/b8cc4f2 A2.5 + CI 부트스트랩 → 36896a8 A2.6 → 진행 doc 5건). diff vs origin/master: +3,372 / -131, 36 파일.
+- **테스트**: backend +9 클래스 (`AuditLogSchemaTest`, `AuditLogAppendOnlyTest`, `AuditServiceTest`, `AuditedAspectTest`, `AuthAuditListenerTest`, `AuditQueryControllerTest`, `AuditQueryServiceTest`, `AuthAuditE2ETest`, `AuditQueryE2ETest`) — 단위/슬라이스/E2E 모두 그린. frontend `api.audit.test.ts` 7 케이스로 재작성 후 305/305 PASS.
+- **production 클래스**: 13 (audit/ 11 + audit/dto/ 2). `AuditEvent`/`AuditEventType`(38) /`AuditTargetType`(7)/`AuditService`/`AuditQueryController`/`AuditQueryFilters`/`AuditQueryService`/`Audited`/`AuditedAspect`/`AuthAuditListener`/`WebRequestContextHolder` + `AuditLogEntryDto`/`AuditLogPageDto`.
+- **마이그레이션 2종**: `V3__audit_log.sql` (스키마 + `target_type` CHECK 7값 + 인덱스 4개), `V4__audit_log_revoke.sql` (`app_user` role 생성 idempotent + REVOKE UPDATE/DELETE + GRANT INSERT/SELECT).
+- **endpoint 1종**: `GET /api/admin/audit?fromDate&toDate&actorQuery&eventType&page&pageSize` — ADMIN/AUDITOR 전체, MEMBER scope=self, 익명 401 (service 단일 분기, controller `isAuthenticated()`).
+- **ADR 등록**: **#24** (AOP `@Audited` + Spring Security `ApplicationEvent` 하이브리드 — `publishEvent(...)` 호출은 cross-cutting 신호로 침투 허용, 비즈니스 로직 0줄), **#25** (DB role 분리 + REVOKE UPDATE/DELETE → `42501`로 append-only 증명).
+- **frontend 통합**: `api.getAuditLogs` mock 분기 + 60-row generator 완전 제거 → `fetch('/api/admin/audit?...', { credentials: 'include' })`. `next.config.ts` rewrite로 dev에서 same-origin 쿠키 흐름. wire shape는 M12 mock 표면과 1:1 동치.
+- **DoD 10/10 충족**: (1) audit_log + 4 인덱스 ✅ (2) `42501` 증명 (`AuditLogAppendOnlyTest`) ✅ (3) Java enum 38값 = ts mirror 1:1 ✅ (4) `AuditService.record()` 단일 진입점 + AOP + listener 하이브리드 ✅ (5) AuthService 비즈니스 로직 0줄 변경 (publish 4지점만 추가, ADR #24 갱신) ✅ (6) role 기반 scope 분기 ✅ (7) `api.audit.test.ts` 7 케이스 PASS ✅ (8) ADR #24/#25 docs/00 §5 등록 ✅ (9) `gradle test` + `pnpm test` CI 그린 (run 25023235347) ✅ (10) backup 브랜치 `backup/pre-reset-20260427-0036` 보존 ✅.
+
+### 핵심 결정 (트랙 5+1, 확정)
+1. emission 위치 = AOP `@Audited`(`@AfterReturning`) + Spring Security `ApplicationEventPublisher` 하이브리드 — annotation grep 가능, 트랜잭션 롤백 자동 처리, AuthService 침투는 publish 호출만 (ADR #24)
+2. 보존 3년 + Legal Hold 무기한 — docs/03 §4.3 명시값 채택, 월별 파티셔닝은 v1.x로 deferred (단일 테이블 MVP)
+3. append-only 강제 = DB role 분리 (`app_user` INSERT/SELECT only) + REVOKE — `42501` SQLState로 RED 증명 (ADR #25)
+4. read 권한 = `Role` enum 재사용. ADMIN/AUDITOR 전체, MEMBER `actor_id=self` — A3 권한 시스템 비의존
+5. enum 단일 진실 = 백엔드, ts는 mirror — CI lint는 후속(MVP는 수동 동기 + frontend `audit.test.ts` 계약으로 회귀 가드)
+6. frontend는 `api.getAuditLogs`만 fetch 교체 — UI/테스트 변경 0, M12 표면 보존
+
+### 잔여 accepted-deviation 5건 (후속 phase 추적)
+| # | 항목 | 추적 phase |
+|---|---|---|
+| 1 | 월별 파티셔닝 자동화 (현재 단일 테이블, 파티션 SQL 함수만 docs/02 §9.4 주석 보존) | v1.x |
+| 2 | 콜드 스토리지 아카이빙 cron | v1.x |
+| 3 | `audit.exported` runtime emission (CSV export endpoint 자체가 v1.x — enum만 정의) | v1.x |
+| 4 | `file.viewed` emission (`audit_level=strict` 폴더 도입 필요 → 폴더 테이블 부재) | A4 |
+| 5 | `user.password.changed` (PW 변경 endpoint 자체가 v1.x) | v1.x |
+| 6 | dev seed 60건 + `frontend/e2e/audit.e2e.ts` (admin 로그인 UI 의존) | A1 frontend 인증 + admin 라우팅 선행 |
+
+### 핵심 함정 회고
+- **REQUIRES_NEW + `@DataJpaTest` visibility**: 외부 트랜잭션 commit 전 INSERT는 별도 connection에서 미가시 → FK 23503 위반. 해결: seed를 `TransactionTemplate(REQUIRES_NEW)`로 즉시 commit (A2.1a `1196e11`)
+- **PostgreSQL inet 호스트 표기**: `203.0.113.42/32` 입력 → `/32` mask 자동 생략. 가정 금지, 실제 SELECT로 검증 (`cf0be93`)
+- **CI testLogging 기본 격차**: 로컬 lenient / CI strict (Hibernate Validator email RFC 5321 64자 local-part). `testLogging.exceptionFormat = FULL` 영구 적용으로 향후 회귀 디버깅 도움 (`f1ab7a6` → `b8cc4f2`)
+- **AuthService 표준 이벤트 부재**: custom flow(`AuthenticationManager` 미사용)라 자동 publish 없음. Option D = `publishEvent(...)` 호출 명시 추가 + ADR #24 갱신본 (cross-cutting 신호, 비즈니스 로직 0줄)
+
+### 다음 마일스톤 안내
+- **A3 — 권한 매트릭스 + `PermissionService`**:
+  - `@PreAuthorize` + 권한 시스템 백엔드 권위 (HANDOFF 미정의)
+  - `effectivePermissionsCacheKey` 단순 문자열 → 권한 변경 trigger 기반 hash로 교체
+  - `permission.granted/revoked/changed` audit 이벤트 emit 시점 (현재 enum만)
+- **A4 — 폴더/파일 도메인 + `audit_level=strict` (file.viewed)**
+- A3 진입 전 본 PR(#tbd) 머지 + master 동기화
+
+---
+
 ## 2026-04-26 — 🏁 A1 마일스톤 종료 (Backend Authentication)
 
 ### 범위

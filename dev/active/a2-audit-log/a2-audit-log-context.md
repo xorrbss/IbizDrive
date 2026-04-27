@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-28 (A2.6 fetch 교체 완료, A2.7 closure 대기)
+Last Updated: 2026-04-28 (Session 8 — A2.7 closure: progress.md + self-review fix + PR open)
 ---
 
 # A2 Audit Log — Context
@@ -292,3 +292,31 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 2. self code-review (변경 diff 전체 적대적 점검 — listener 침투 0, 42501 enforcement, append-only, 권한 분기)
 3. `gh pr create master ← claude/a2-audit-log` (PR description: 변경 요약, 테스트 증명, DoD 10항목 체크)
 4. **게이트 유지** — `gh pr merge`는 사용자 승인 후
+
+### Session 8 (2026-04-28) — A2.7 closure (PR open)
+
+**완료**:
+- progress.md A2 마일스톤 종료 블록 추가 (최상단, A1 closure 대비 등치) — DoD 10/10, ADR #24/#25, 트랙결정 5+1, 잔여 deferred 6건, 핵심 함정 4건 회고 (REQUIRES_NEW visibility / inet host / CI testLogging / Option D), A3/A4 안내
+- 자체 코드리뷰 (적대적): 6 영역 점검
+  - ✅ AuthService 비즈니스 로직 0줄 변경 (publish 5 + LogoutEvent publish 1지점 + constructor 1줄만 추가)
+  - ✅ LoginAttemptTracker.java 0 diff (`git diff` 0 lines)
+  - ✅ V4 idempotent + REVOKE/GRANT 정책 명확
+  - ✅ AuditLogAppendOnlyTest — UPDATE/DELETE/TRUNCATE 모두 `42501` 검증
+  - ✅ role 분기 service 단일 진입점, controller `isAuthenticated()`만
+  - ❌ → ✅ **결함 1건 발견 + fix**: `AuthAuditListener`가 `AuditService.record()` 예외를 swallow 안 함.
+    ADR #24 ("실패 시 ERROR 로그, 비즈니스 흐름 보호")와 `AuditedAspect` 정책에 비대칭. DB 일시 장애 시 인증 흐름이 500으로 떨어질 수 있음.
+    **fix**: `safeRecord()` 헬퍼 도입(try/catch + log.error), 3개 핸들러에 적용. 6번째 단위 테스트(`record_failure_is_swallowed_so_auth_flow_is_not_broken`) 추가.
+- 로컬 `./gradlew test` BUILD SUCCESSFUL (50s, AuthAuditListenerTest 6 PASS)
+
+**TDD 상태**: A2 backbone GREEN 종료. listener fix는 RED→GREEN 1 cycle 추가.
+
+**A2.7 설계 결정 노트**:
+- listener의 `safeRecord` 위치 = listener 내부 (vs AuditService 내부 swallow): `AuditedAspect`도 동일 위치(aspect 내부)에서 swallow하므로 호출처 책임 패턴 통일. AuditService.record 자체는 throw 유지 (호출자가 정책 결정).
+- swallow 정책의 명시적 ADR 등록은 불필요 — ADR #24 본문이 이미 "ERROR 로그 + alert" 명시. 본 세션은 그 계약을 listener에도 일관 적용한 것.
+- LIKE 검색의 `%`/`_` 이스케이프, JSON 메타데이터 ObjectMapper 전환은 함정/주의 §5에 등록되어 있고 KISS 결정으로 유지. v1.x에서 재검토.
+
+**다음 액션**:
+1. commit `chore(A2): closure — progress 종료 블록 + listener swallow fix + tasks/context sync`
+2. push → CI 그린 확인 (이전 패턴: ~2분)
+3. gh pr create master ← claude/a2-audit-log (DoD 체크리스트 본문)
+4. **gate** — 사용자 PR 검토 → 머지 승인 후만 `gh pr merge`

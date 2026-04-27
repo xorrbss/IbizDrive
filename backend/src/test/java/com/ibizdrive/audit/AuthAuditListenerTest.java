@@ -24,6 +24,8 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -105,6 +107,25 @@ class AuthAuditListenerTest {
         AuditEvent ev = cap.getValue();
         assertThat(ev.eventType()).isEqualTo(AuditEventType.USER_LOGIN_FAILED);
         assertThat(ev.metadata()).contains("\"reason\":\"locked\"");
+    }
+
+    @Test
+    void record_failure_is_swallowed_so_auth_flow_is_not_broken() {
+        // ADR #24: audit emission 실패가 publishEvent 호출자(AuthService.login/AuthController.logout)로
+        // 전파되어 인증 흐름을 500으로 떨어뜨리면 안 된다. AuditedAspect와 동일한 swallow 정책.
+        UUID id = UUID.randomUUID();
+        IbizDriveUserDetails uds = new IbizDriveUserDetails(userOf(id, "alice@example.com"));
+        Authentication auth = UsernamePasswordAuthenticationToken.authenticated(uds, null, uds.getAuthorities());
+        doThrow(new RuntimeException("audit DB down")).when(auditService).record(org.mockito.ArgumentMatchers.any());
+
+        assertThatCode(() -> listener.onSuccess(new AuthenticationSuccessEvent(auth)))
+            .doesNotThrowAnyException();
+        assertThatCode(() -> listener.onLogout(new LogoutSuccessEvent(auth)))
+            .doesNotThrowAnyException();
+        assertThatCode(() -> listener.onFailure(new AuthenticationFailureBadCredentialsEvent(
+            UsernamePasswordAuthenticationToken.unauthenticated("ghost@example.com", ""),
+            new BadCredentialsException("user-not-found"))))
+            .doesNotThrowAnyException();
     }
 
     @Test

@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-28 (A2.6 fetch 교체 완료, A2.7 closure 대기)
+Last Updated: 2026-04-28 (A2.7 closure 진행 — progress.md + self-review fix + PR 생성)
 ---
 
 # A2 Audit Log — Tasks
@@ -66,7 +66,7 @@ Last Updated: 2026-04-28 (A2.6 fetch 교체 완료, A2.7 closure 대기)
 - [x] RED: `git diff` 검증 — `LoginAttemptTracker.java` 변경 0줄, `AuthService.java`/`AuthController.java`는 `publishEvent(...)` 호출 + 생성자 인자만 추가(비즈니스 로직 0줄, ADR #24 갱신)
 - [x] GREEN: `AuthAuditListener` (`@EventListener`)
 - [x] GREEN: failed 이벤트의 actorId 추출 (event.getAuthentication().getName() → email → users.id 조회 또는 null)
-- [ ] commit: `feat(A2.4): A1 auth events → audit_log (listener only, AuthService 침투 0)`
+- [x] commit: `feat(A2.4): A1 auth events → audit_log (listener only, AuthService 침투 0)` (`7aaea19`)
 
 ## A2.5 — 통합 테스트
 
@@ -91,12 +91,13 @@ Last Updated: 2026-04-28 (A2.6 fetch 교체 완료, A2.7 closure 대기)
 
 ## A2.7 — 종료 정리
 
-- [ ] docs/progress.md A2 종료 블록
-- [ ] code-review (`superpowers:requesting-code-review`)
-- [ ] gh pr create → master
-- [ ] PR description: 변경 요약, 테스트 증명(42501 + listener 침투 0), DoD 10항목 체크
-- [ ] (게이트 유지) `gh pr merge` — 사용자 승인
+- [x] docs/progress.md A2 종료 블록 (DoD 10/10, ADR/잔여 deferred 5건)
+- [x] self code-review (적대적) — 1 결함 발견 + fix
+- [x] gh pr create → master (PR description: 변경 요약 + 테스트 증명 + DoD 10항목)
+- [ ] (게이트 유지) `gh pr merge` — 사용자 승인 후만
 
 ## 신규 발견 task (작업 중 추가)
 
-(empty)
+- [x] **A2.7 self-review fix**: `AuthAuditListener`가 `AuditService.record()` 예외를 swallow하지 않아
+      ADR #24 ("실패 시 ERROR 로그, 비즈니스 흐름 보호")를 위반 — `AuditedAspect`와 비대칭. listener에 `safeRecord()`
+      도입 + ERROR 로그 + 6번째 단위 테스트(swallow 검증) 추가. backend `./gradlew test` BUILD SUCCESSFUL.

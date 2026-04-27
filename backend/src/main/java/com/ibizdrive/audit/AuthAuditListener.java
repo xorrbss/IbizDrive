@@ -2,6 +2,8 @@ package com.ibizdrive.audit;
 
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.security.authentication.event.AbstractAuthenticationFailureEvent;
 import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
@@ -28,6 +30,8 @@ import java.util.UUID;
 @Component
 public class AuthAuditListener {
 
+    private static final Logger log = LoggerFactory.getLogger(AuthAuditListener.class);
+
     private final AuditService auditService;
     private final UserRepository userRepository;
 
@@ -40,7 +44,7 @@ public class AuthAuditListener {
     public void onSuccess(AuthenticationSuccessEvent event) {
         Authentication auth = event.getAuthentication();
         UUID actorId = resolveActorId(auth);
-        auditService.record(new AuditEvent(
+        safeRecord(AuditEventType.USER_LOGIN_SUCCESS, new AuditEvent(
             AuditEventType.USER_LOGIN_SUCCESS,
             actorId,
             WebRequestContextHolder.currentIp(),
@@ -59,7 +63,7 @@ public class AuthAuditListener {
         String email = nameOf(event.getAuthentication());
         UUID actorId = lookupUserId(email);
         String metadata = "{\"reason\":\"" + reason + "\"}";
-        auditService.record(new AuditEvent(
+        safeRecord(AuditEventType.USER_LOGIN_FAILED, new AuditEvent(
             AuditEventType.USER_LOGIN_FAILED,
             actorId,
             WebRequestContextHolder.currentIp(),
@@ -75,7 +79,7 @@ public class AuthAuditListener {
     @EventListener
     public void onLogout(LogoutSuccessEvent event) {
         UUID actorId = resolveActorId(event.getAuthentication());
-        auditService.record(new AuditEvent(
+        safeRecord(AuditEventType.USER_LOGOUT, new AuditEvent(
             AuditEventType.USER_LOGOUT,
             actorId,
             WebRequestContextHolder.currentIp(),
@@ -86,6 +90,19 @@ public class AuthAuditListener {
             null,
             null
         ));
+    }
+
+    /**
+     * audit_log INSERT 실패가 인증 흐름(publishEvent 호출자)으로 전파되지 않도록 swallow.
+     * ADR #24: "실패 시 ERROR 로그 + Sentry/CloudWatch alert (MVP는 로그만)". {@link AuditedAspect}와
+     * 동일 정책 — 비즈니스 결과가 audit emission 실패로 손상되면 안 된다.
+     */
+    private void safeRecord(AuditEventType type, AuditEvent event) {
+        try {
+            auditService.record(event);
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event={}", type, ex);
+        }
     }
 
     /**
