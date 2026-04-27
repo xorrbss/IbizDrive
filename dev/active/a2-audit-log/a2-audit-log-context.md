@@ -169,8 +169,9 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 - docs/02 §7.12: `/api/admin/audit-logs` → `/api/admin/audit`, guard `isAuthenticated()` (MEMBER scope=self)
 - 로컬 검증: controller test PASS (Docker 불필요). service test는 CI에서 Docker 가용 시 실행
   (`@Testcontainers(disabledWithoutDocker = true)`)
+- commit `2fdad2d` push, CI run 24984269565 ✅ green (backend 1m34s, frontend 1m8s)
 
-**TDD 상태**: A2.3 GREEN 통과 (controller slice 로컬 검증). service test는 CI 결과로 확정.
+**TDD 상태**: A2.3 GREEN 통과 — controller + service 모두 CI에서 검증 완료.
 다음 사이클: A2.4 — A1 인증 이벤트 emission (Listener), AuthService 침투 0 강제.
 
 **uncommitted**: 모든 변경 + dev/process/a2-audit-log-s4.md (commit 후 삭제).

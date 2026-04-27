@@ -55,7 +55,7 @@ Last Updated: 2026-04-27
 - [x] GREEN: DTO `AuditLogPageDto`, `AuditLogEntryDto` (frontend 동치)
 - [x] GREEN: service 레벨 role 분기 (MEMBER는 actor_id=self 강제). controller는 `isAuthenticated()`만
 - [x] GREEN: docs/02 §7.12 audit endpoint 표 갱신 (`/api/admin/audit-logs` → `/api/admin/audit`, guard 변경)
-- [-] commit: `feat(A2.3): GET /api/admin/audit + role-based scope` — 진행중
+- [x] commit: `feat(A2.3): GET /api/admin/audit + role-based scope` (`2fdad2d`, CI 24984269565 ✅)
 
 ## A2.4 — A1 인증 이벤트 emission
 
