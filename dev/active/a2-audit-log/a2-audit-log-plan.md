@@ -15,7 +15,7 @@ Last Updated: 2026-04-27
 | V1, V2 마이그레이션 (Spring Session, users) | ✅ A0~A1에서 완료 |
 | `audit_log` 테이블 / 마이그레이션 | ❌ — A2.0에서 V3 신설 |
 | `Role` enum (`MEMBER`/`AUDITOR`/`ADMIN`) | ✅ V2에 도입됨 — read 권한 분기에 재사용 |
-| AuthService / Spring Security event publishing | ✅ 표준 `AuthenticationSuccessEvent` 등 발행 중 — listener만 추가하면 됨 |
+| AuthService / Spring Security event publishing | ⚠️ AuthService는 표준 `AuthenticationManager`를 안 씀(custom flow) → 표준 이벤트 자동 발행 ❌. A2.4에서 `ApplicationEventPublisher` 명시 publish 추가 (ADR #24 갱신, 비즈니스 로직 0줄 유지) |
 | `frontend/src/types/audit.ts` (mirror, 41 events + `audit.exported`) | ✅ M12에서 완성 — 백엔드 enum이 이를 따라가야 함 |
 | `api.getAuditLogs` mock (60 rows, FakeXHR) | ✅ M12 mock — A2.6에서 fetch 교체 |
 | `frontend/src/components/audit/*` (Table, Filters, Pagination) | ✅ UI 완성 — 변경 없음, 계약 표면만 유지 |
@@ -29,7 +29,7 @@ A2 PR 머지 시점에 다음이 모두 true:
 2. `app_user` DB role은 `INSERT/SELECT only`, `UPDATE/DELETE` 시도는 `42501` (insufficient_privilege) — 통합 테스트로 증명
 3. `AuditEventType` Java enum 38개 값, frontend `types/audit.ts`와 1:1 일치 (CI lint 또는 fixtures 검증)
 4. `AuditService.record(event)` 단일 진입점 + `@Audited` AOP + Spring Security event listener 하이브리드
-5. AuthService 코드 수정 0줄 — listener만 신규 (A1 침투 0)
+5. AuthService 비즈니스 로직(검증·예외·세션·last_login_at) 0줄 변경. `ApplicationEventPublisher.publishEvent(...)` 호출만 4지점 추가 — ADR #24 갱신본 기준 cross-cutting 신호로 허용
 6. `GET /api/admin/audit?...` endpoint: ADMIN/AUDITOR 전체, MEMBER는 `actor_id=self`만 (`@PreAuthorize`)
 7. `api.getAuditLogs` mock → fetch 교체 후 기존 `api.audit.test.ts` 모두 PASS (계약 동일성 보증)
 8. ADR #24 (emission 위치), #25 (DB role 분리) docs/00 §5 추가

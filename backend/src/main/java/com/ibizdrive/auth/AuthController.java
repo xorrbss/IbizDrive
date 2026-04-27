@@ -8,9 +8,12 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.http.HttpStatus;
+import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.authentication.event.LogoutSuccessEvent;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -35,9 +38,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final ApplicationEventPublisher eventPublisher;
 
-    public AuthController(AuthService authService) {
+    public AuthController(AuthService authService, ApplicationEventPublisher eventPublisher) {
         this.authService = authService;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostMapping("/login")
@@ -72,11 +77,16 @@ public class AuthController {
     @PostMapping("/logout")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void logout(HttpServletRequest req, HttpServletResponse res) {
+        // ADR #24 — invalidate 전에 Authentication 캡처 후 표준 LogoutSuccessEvent publish.
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
         HttpSession session = req.getSession(false);
         if (session != null) {
             session.invalidate();
         }
         SecurityContextHolder.clearContext();
+        if (auth != null && auth.isAuthenticated()) {
+            eventPublisher.publishEvent(new LogoutSuccessEvent(auth));
+        }
 
         // 클라이언트 쿠키 만료 — application.yml의 server.servlet.session.cookie.name=SESSION 일치.
         // Max-Age=0 + Path=/로 즉시 만료. HttpOnly/SameSite는 만료 쿠키엔 의미 없으나 일관성 유지.

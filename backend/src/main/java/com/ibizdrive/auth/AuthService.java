@@ -8,7 +8,13 @@ import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.authentication.event.AuthenticationFailureBadCredentialsEvent;
+import org.springframework.security.authentication.event.AuthenticationFailureLockedEvent;
+import org.springframework.security.authentication.event.AuthenticationSuccessEvent;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -46,6 +52,7 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final LoginAttemptTracker tracker;
     private final SecurityContextRepository securityContextRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * timing attack 회피용 dummy BCrypt 해시 — 미존재/비활성 user에도 동일 시간 소비.
@@ -58,11 +65,13 @@ public class AuthService {
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        LoginAttemptTracker tracker,
-                       SecurityContextRepository securityContextRepository) {
+                       SecurityContextRepository securityContextRepository,
+                       ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.tracker = tracker;
         this.securityContextRepository = securityContextRepository;
+        this.eventPublisher = eventPublisher;
     }
 
     @PostConstruct
@@ -75,6 +84,10 @@ public class AuthService {
         String email = (emailRaw == null ? "" : emailRaw.trim()).toLowerCase(Locale.ROOT);
 
         if (tracker.isLocked(email)) {
+            // ADR #24 — cross-cutting 신호로 Spring Security 표준 이벤트 publish (AuthAuditListener 구독).
+            Authentication failedAuth = UsernamePasswordAuthenticationToken.unauthenticated(email, "");
+            eventPublisher.publishEvent(new AuthenticationFailureLockedEvent(
+                failedAuth, new LockedException("locked")));
             throw new AccountLockedException(tracker.getRetryAfterSeconds(email));
         }
 
@@ -84,6 +97,9 @@ public class AuthService {
             // timing-safe — 미존재 사용자도 BCrypt 한 번 돌린다 (결과 무시).
             passwordEncoder.matches(rawPassword == null ? "" : rawPassword, dummyHash);
             tracker.recordFailure(email);
+            Authentication failedAuth = UsernamePasswordAuthenticationToken.unauthenticated(email, "");
+            eventPublisher.publishEvent(new AuthenticationFailureBadCredentialsEvent(
+                failedAuth, new BadCredentialsException("user-not-found")));
             throw new InvalidCredentialsException();
         }
 
@@ -94,12 +110,18 @@ public class AuthService {
             // PW 검증은 건너뛰지 말고 dummy로 시간 균등화 — 비활성 vs 미존재 구분 회피
             passwordEncoder.matches(rawPassword == null ? "" : rawPassword, dummyHash);
             tracker.recordFailure(email);
+            Authentication failedAuth = UsernamePasswordAuthenticationToken.unauthenticated(email, "");
+            eventPublisher.publishEvent(new AuthenticationFailureBadCredentialsEvent(
+                failedAuth, new BadCredentialsException("inactive-or-locked")));
             throw new InvalidCredentialsException();
         }
 
         if (user.getPasswordHash() == null
                 || !passwordEncoder.matches(rawPassword == null ? "" : rawPassword, user.getPasswordHash())) {
             tracker.recordFailure(email);
+            Authentication failedAuth = UsernamePasswordAuthenticationToken.unauthenticated(email, "");
+            eventPublisher.publishEvent(new AuthenticationFailureBadCredentialsEvent(
+                failedAuth, new BadCredentialsException("bad-password")));
             throw new InvalidCredentialsException();
         }
 
@@ -128,6 +150,9 @@ public class AuthService {
         session.setAttribute("issuedAt", System.currentTimeMillis());
         session.setAttribute("permissionsCacheKey",
             user.getId() + ":" + user.getRole().name() + ":v0");
+
+        // ADR #24 — 표준 success 이벤트 발행 (AuthAuditListener가 audit_log INSERT).
+        eventPublisher.publishEvent(new AuthenticationSuccessEvent(auth));
 
         return LoginResponse.from(user);
     }

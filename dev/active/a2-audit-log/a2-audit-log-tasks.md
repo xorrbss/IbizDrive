@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-27
+Last Updated: 2026-04-28
 ---
 
 # A2 Audit Log — Tasks
@@ -59,13 +59,13 @@ Last Updated: 2026-04-27
 
 ## A2.4 — A1 인증 이벤트 emission
 
-- [ ] RED: `AuthAuditListenerTest` — `AuthenticationSuccessEvent` → `user.login.success` row + actorId/IP/UA 검증
-- [ ] RED: `BadCredentialsEvent` → `user.login.failed` + metadata.reason
-- [ ] RED: `AuthenticationFailureLockedEvent` → `user.login.failed` + metadata.reason='locked'
-- [ ] RED: `LogoutSuccessEvent` → `user.logout`
-- [ ] RED: `git diff` 검증 — `AuthService.java`, `LoginAttemptTracker.java`, `AuthController.java` 변경 0줄 (침투 0)
-- [ ] GREEN: `AuthAuditListener` (`@EventListener`)
-- [ ] GREEN: failed 이벤트의 actorId 추출 (event.getAuthentication().getName() → email → users.id 조회 또는 null)
+- [x] RED: `AuthAuditListenerTest` — `AuthenticationSuccessEvent` → `user.login.success` row + actorId/IP/UA 검증
+- [x] RED: `BadCredentialsEvent` → `user.login.failed` + metadata.reason
+- [x] RED: `AuthenticationFailureLockedEvent` → `user.login.failed` + metadata.reason='locked'
+- [x] RED: `LogoutSuccessEvent` → `user.logout`
+- [x] RED: `git diff` 검증 — `LoginAttemptTracker.java` 변경 0줄, `AuthService.java`/`AuthController.java`는 `publishEvent(...)` 호출 + 생성자 인자만 추가(비즈니스 로직 0줄, ADR #24 갱신)
+- [x] GREEN: `AuthAuditListener` (`@EventListener`)
+- [x] GREEN: failed 이벤트의 actorId 추출 (event.getAuthentication().getName() → email → users.id 조회 또는 null)
 - [ ] commit: `feat(A2.4): A1 auth events → audit_log (listener only, AuthService 침투 0)`
 
 ## A2.5 — 통합 테스트

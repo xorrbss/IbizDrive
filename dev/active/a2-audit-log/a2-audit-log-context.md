@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-27
+Last Updated: 2026-04-28
 ---
 
 # A2 Audit Log — Context
@@ -188,3 +188,40 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
 - 권한 분기는 service 단일 진입점 (controller `@PreAuthorize` 미사용) — 트랙결정 #4가 service 책임
 - `@WebMvcTest` slice는 Mockito ArgumentCaptor로 service 호출 인자 검증 (실제 SQL은 별도 통합 테스트)
 - Testcontainers 분리 (`disabledWithoutDocker`) → 로컬 빠른 피드백 + CI 정확도 양립
+
+### Session 5 (2026-04-28) — A2.4 인증 이벤트 listener (option D)
+
+**구조 발견 (blocker → resolved)**:
+- 초기 plan은 "AuthService가 표준 Spring Security 이벤트를 자동 publish 중" 가정 → grep 결과 미존재.
+  AuthService는 `AuthenticationManager.authenticate()` 미사용 (custom flow), 표준 이벤트 자동 발행 ❌.
+- 사용자 결정: **Option D** = AuthService/AuthController에 `publishEvent(...)` 호출만 명시 추가
+  + ADR #24 갱신 (cross-cutting 신호로 침투 허용, 비즈니스 로직 0줄 유지)
+
+**완료**:
+- ADR #24 본문 갱신 (docs/00 §5): publish 호출은 cross-cutting 신호로 침투 허용 명시
+- A2.4 plan/tasks 업데이트 (publishEvent 4지점 + listener)
+- `AuthService.java`: `ApplicationEventPublisher` 필드 + 생성자 추가 + 5 publish (locked, user-not-found,
+  inactive-or-locked, bad-password, success). 비즈니스 로직 0줄 변경 (검증/예외/세션/last_login_at 동일)
+- `AuthController.logout`: `LogoutSuccessEvent` publish (invalidate 전 Authentication 캡처)
+- `AuthAuditListener` (`@Component` + 3 `@EventListener`): success/failure(abstract)/logout 처리
+  - actorId 추출: principal `IbizDriveUserDetails` 우선, fallback은 email → users.id lookup (없으면 null)
+  - reason metadata: locked → "locked", BadCredentials → 예외 메시지 그대로
+    (`user-not-found` / `inactive-or-locked` / `bad-password`)
+  - IP/UA: `WebRequestContextHolder` 정적 호출 (요청 스레드 동일)
+- `AuthAuditListenerTest` (`@ExtendWith(MockitoExtension)`): 5 케이스 — success principal actor,
+  bad-creds with reason, unknown user null actor, locked reason, logout principal actor
+- `LoginAttemptTracker.java` 변경 0줄 (`git diff` empty 확인)
+- AuthService/AuthController diff: 추가 +37 / 삭제 -2 (constructor signature 1줄). 비즈니스 로직 보존
+- 로컬 `./gradlew test` BUILD SUCCESSFUL (1m20s)
+
+**TDD 상태**: A2.4 GREEN 통과 (단위 테스트). 통합 검증은 A2.5 E2E에서 실제 publish→listener→DB INSERT 확인.
+
+**다음 액션 (A2.5)**:
+1. `AuthAuditE2ETest` (`@SpringBootTest` + Testcontainers + HttpClient5)
+2. `AuditQueryE2ETest` — 위 시나리오 후 `/api/admin/audit?eventType=user.login.failed`
+3. Serializable 회귀 검증
+
+**A2.4 설계 결정 노트**:
+- `LogoutSuccessEvent`는 `org.springframework.security.authentication.event` 패키지 (web 아님 — jar 검증)
+- `AbstractAuthenticationFailureEvent` 단일 핸들러로 BadCredentials/Locked 통합 처리 (instanceof 분기)
+- metadata는 String으로 직접 조립(`{"reason":"..."}`) — KISS, ObjectMapper 부담 최소화 (1키만)
