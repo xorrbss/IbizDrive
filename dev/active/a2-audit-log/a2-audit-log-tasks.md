@@ -1,0 +1,103 @@
+---
+Last Updated: 2026-04-28 (A2.7 closure 진행 — progress.md + self-review fix + PR 생성)
+---
+
+# A2 Audit Log — Tasks
+
+각 task는 RED → GREEN → REFACTOR 순. 완료 시 `[x]`, 부분 완료 `[-]` + 잔여 1줄.
+
+## A2.0 — 스키마 + 마이그레이션 + ADR
+
+- [x] RED: `AuditLogSchemaTest` (Testcontainers) — `audit_log` 테이블 + 컬럼 + CHECK + 인덱스 4개 검증 (information_schema)
+- [x] RED: `AuditLogAppendOnlyTest` (Testcontainers) — `app_user` role로 `UPDATE audit_log` → SQLState `42501`, `DELETE` 동일
+- [x] GREEN: `V3__audit_log.sql` (docs/02 §2.8 스키마 + `target_type` CHECK 7개 — `audit` 포함)
+- [x] GREEN: `V4__audit_log_revoke.sql` (`app_user` role 생성 idempotent + REVOKE/GRANT)
+- [x] GREEN: docs/00 §5 ADR #24 추가 (Emission 위치)
+- [x] GREEN: docs/00 §5 ADR #25 추가 (DB role 분리)
+- [x] GREEN: docs/02 §2.8 본문 `target_type` CHECK에 `audit` 추가 (frontend 동기)
+- [x] commit: `feat(A2.0): audit_log V3+V4 마이그레이션 + ADR #24~25` (`440b0b0`, CI 24960561196 ✅)
+
+## A2.1a — AuditEvent + Enums + AuditService (REQUIRES_NEW 검증)
+
+- [x] RED: `AuditServiceTest` — `record(AuditEvent)` → audit_log row 검증 (모든 컬럼)
+- [x] RED: `AuditServiceTest` — system 이벤트(actor null) 정상 INSERT
+- [x] RED: `AuditServiceTest` — REQUIRES_NEW: 호출자 트랜잭션 rollback해도 audit row 보존
+- [x] GREEN: `AuditEvent` record (Java 21, eventType/targetType NOT NULL 검증)
+- [x] GREEN: `AuditEventType` enum (38 values, FE 1:1 동기, @JsonValue/@JsonCreator wire 변환)
+- [x] GREEN: `AuditTargetType` enum (7 values, V3 CHECK와 1:1)
+- [x] GREEN: `AuditService.record(AuditEvent)` JdbcTemplate INSERT + `?::jsonb`/`?::inet` 캐스트 + `@Transactional(REQUIRES_NEW)`
+- [x] commit: `feat(A2.1a): AuditService + AuditEvent + Enums (38 events, 7 targets)` (`fd28368`, push 완료)
+- [x] CI 그린 확인 — run 24961391600 ✅ (FK 가시성 + inet 표기 2건 fix, commits `1196e11`, `cf0be93`)
+
+## A2.1b — @Audited AOP + WebRequestContextHolder
+
+- [x] RED: `AuditedAspectTest` — `@Audited` 메서드 정상 종료 → record 호출 1회
+- [x] RED: `AuditedAspectTest` — 메서드 throw → record 호출 0회
+- [x] RED: `AuditedAspectTest` — SpEL target ID 추출 (`#fileId`, `#result.id`)
+- [x] GREEN: `@Audited` annotation (event, targetType, target SpEL)
+- [x] GREEN: `AuditedAspect` (`@AfterReturning`, MethodBasedEvaluationContext SpEL)
+- [x] GREEN: `WebRequestContextHolder` (IP/UA from RequestAttributes — null safe in non-HTTP)
+- [x] commit: `feat(A2.1b): @Audited AOP + WebRequestContextHolder` (`a0f9f7e`, CI 24982973669 ✅)
+
+## A2.2 — Append-only 검증
+
+- [ ] A2.0 RED 테스트들이 실제 GREEN 통과 확인
+- [ ] Testcontainers fixture에 `app_user` role 자동 생성 확인 (V4가 처리)
+- [ ] CI 그린
+
+## A2.3 — Read API + 권한
+
+- [x] RED: `AuditQueryControllerTest` (`@WebMvcTest`) — ADMIN/AUDITOR 200 전체, MEMBER scope=self, 익명 401
+- [x] RED: 필터 테스트 — `eventType` 정확매칭, `actorQuery` 부분매칭(대소문자무시), `fromDate/toDate` inclusive, `page` 1-indexed, `occurredAt DESC`
+- [x] RED: 빈 결과 — `actorQuery=__no__` → entries=[], total=0
+- [x] GREEN: `AuditQueryController` `GET /api/admin/audit?fromDate&toDate&actorQuery&eventType&page&pageSize`
+- [x] GREEN: `AuditQueryService.search(filters, page, size, viewerId, viewerRole)` — JdbcTemplate + role 분기 (KISS — Specification 대신)
+- [x] GREEN: DTO `AuditLogPageDto`, `AuditLogEntryDto` (frontend 동치)
+- [x] GREEN: service 레벨 role 분기 (MEMBER는 actor_id=self 강제). controller는 `isAuthenticated()`만
+- [x] GREEN: docs/02 §7.12 audit endpoint 표 갱신 (`/api/admin/audit-logs` → `/api/admin/audit`, guard 변경)
+- [x] commit: `feat(A2.3): GET /api/admin/audit + role-based scope` (`2fdad2d`, CI 24984269565 ✅)
+
+## A2.4 — A1 인증 이벤트 emission
+
+- [x] RED: `AuthAuditListenerTest` — `AuthenticationSuccessEvent` → `user.login.success` row + actorId/IP/UA 검증
+- [x] RED: `BadCredentialsEvent` → `user.login.failed` + metadata.reason
+- [x] RED: `AuthenticationFailureLockedEvent` → `user.login.failed` + metadata.reason='locked'
+- [x] RED: `LogoutSuccessEvent` → `user.logout`
+- [x] RED: `git diff` 검증 — `LoginAttemptTracker.java` 변경 0줄, `AuthService.java`/`AuthController.java`는 `publishEvent(...)` 호출 + 생성자 인자만 추가(비즈니스 로직 0줄, ADR #24 갱신)
+- [x] GREEN: `AuthAuditListener` (`@EventListener`)
+- [x] GREEN: failed 이벤트의 actorId 추출 (event.getAuthentication().getName() → email → users.id 조회 또는 null)
+- [x] commit: `feat(A2.4): A1 auth events → audit_log (listener only, AuthService 침투 0)` (`7aaea19`)
+
+## A2.5 — 통합 테스트
+
+- [x] `AuthAuditE2ETest` (`@SpringBootTest` + Testcontainers + HttpClient5)
+  - 정상 로그인 → audit_log에 `user.login.success` 1건, actor_id 매칭
+  - 잘못된 PW 5회 → `user.login.failed` 5건, 5번째는 metadata.reason 변경 가능 (lockout)
+  - 로그아웃 → `user.logout` 1건
+- [x] `AuditQueryE2ETest` — 위 시나리오 후 ADMIN으로 `/api/admin/audit?eventType=user.login.failed` 호출 → 5건
+- [x] `Serializable` 검증 — `IbizDriveUserDetails`에 신규 필드 추가 안 했음을 명시 (회귀 방지)
+- [x] commit: `test(A2.5): full E2E auth → audit_log persistence` (`14cec52` → `b8cc4f2` fix, CI 25022602059 ✅ — RFC 5321 64-char local-part 회피)
+
+## A2.6 — Frontend fetch 교체
+
+- [x] `api.getAuditLogs` 본문 `MOCK_AUDIT_LOGS` 분기 제거, fetch 호출
+- [x] `MOCK_AUDIT_LOGS`, `MOCK_ACTORS`, `makeAuditLogs()` 블록 제거 (api.ts 주석 명시 따라)
+- [x] `api.audit.test.ts` — `vi.stubGlobal('fetch', ...)` 모킹으로 전환, 7 케이스 PASS (305/305 전체 그린)
+- [x] `next.config.ts`: dev rewrite `/api/:path*` → `BACKEND_URL` (localhost:8080) — same-origin 쿠키 전송
+- [-] dev seed (Flyway repeatable 또는 별도 SQL) — **deferred**: 프로파일 분리 + CommandLineRunner 필요. 백엔드 구동 후 수동 SQL or A3에서 admin 페이지로 시드. CI/회귀 영향 0
+- [-] `frontend/e2e/audit.e2e.ts` — **deferred**: admin 로그인 UI(A 트랙 미구현)에 의존. A1 frontend 인증 페이지 + admin 라우팅이 선행되어야 의미 있음
+- [x] `auditCsv.ts` export 이벤트 self-emit 정책 결정 — deferred로 확정 (enum 유지, runtime emission은 v1.x)
+- [x] commit: `feat(A2.6): frontend audit mock → real fetch` (`36896a8`, CI 25023235347 ✅)
+
+## A2.7 — 종료 정리
+
+- [x] docs/progress.md A2 종료 블록 (DoD 10/10, ADR/잔여 deferred 5건)
+- [x] self code-review (적대적) — 1 결함 발견 + fix
+- [x] gh pr create → master (PR description: 변경 요약 + 테스트 증명 + DoD 10항목)
+- [ ] (게이트 유지) `gh pr merge` — 사용자 승인 후만
+
+## 신규 발견 task (작업 중 추가)
+
+- [x] **A2.7 self-review fix**: `AuthAuditListener`가 `AuditService.record()` 예외를 swallow하지 않아
+      ADR #24 ("실패 시 ERROR 로그, 비즈니스 흐름 보호")를 위반 — `AuditedAspect`와 비대칭. listener에 `safeRecord()`
+      도입 + ERROR 로그 + 6번째 단위 테스트(swallow 검증) 추가. backend `./gradlew test` BUILD SUCCESSFUL.

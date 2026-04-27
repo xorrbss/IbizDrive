@@ -1,0 +1,322 @@
+---
+Last Updated: 2026-04-28 (Session 8 — A2.7 closure: progress.md + self-review fix + PR open)
+---
+
+# A2 Audit Log — Context
+
+## 트랙 결정 5+1 (확정)
+
+| # | 결정 | 근거 요약 |
+|---|---|---|
+| 1 | AOP `@Audited` + Security Event listener 하이브리드 | AuthService 침투 0, 어노테이션으로 grep 가능, 트랜잭션 롤백 자동 처리. ADR #24 |
+| 2 | 보존 3년 + Legal Hold 무기한 + 월별 파티션 (MVP 단일) | docs/03 §4.3 명시값 채택, ADR 신규 등록 불필요 |
+| 3 | DB role 분리 + REVOKE UPDATE/DELETE + RED 42501 | docs/02 §2.8 SQL 그대로, app_user/audit_admin/db_superuser 3 role. ADR #25 |
+| 4 | role 기반 read (`ADMIN`/`AUDITOR` 전체, `MEMBER` self) | A1 V2 Role enum 재사용, A3 권한 시스템 비의존 |
+| 5 | 백엔드 enum = 단일 진실, ts mirror | docs/00 §3.4 계약점 그대로, MVP는 수동 + CI lint |
+| 6 | frontend mock → fetch 교체 (api.getAuditLogs only) | UI/테스트 변경 0, M12 표면 보존 |
+
+## 핵심 참조
+
+- **docs/00 §5 ADR**: #18 (MVP 인증 범위), #20 (lockout/세션) — 인증 이벤트 5종 명세 근거
+- **docs/02 §2.8**: audit_log 스키마 + REVOKE 정책 (코드로 구현 대상)
+- **docs/02 §9.4**: 월별 파티셔닝, INSERT-only 부하, read replica
+- **docs/03 §4.1**: 41개 이벤트 타입 + frontend 추가 1건(`audit.exported`) = 42개
+- **docs/03 §4.4**: 불변성 강제 — application role과 admin role 분리
+- **frontend/src/types/audit.ts**: 백엔드 enum 작성 시 1:1 대조 reference. 정확히 38 값 (file 8 / version 3 / folder 6 / permission 3 / share 3 / user 5 / admin 7 / system 2 / audit 1)
+- **frontend/src/lib/api.audit.test.ts**: A2.3 read API 계약 (1-indexed page, occurredAt DESC, inclusive 날짜, 부분 actorName)
+
+## A1 교훈 (처음부터 적용)
+
+1. **`@WebMvcTest` 슬라이스 선제** — 로딩 빠름, 권한·JSON 검증에 충분. 진짜 통합은 `@SpringBootTest` 1~2개만.
+2. **`TestRestTemplate` + HttpClient5** — JDK HttpURLConnection은 401 응답 후 streaming POST body 재전송 불가 (A1 682a34c). 본 트랙은 read-only API라 영향 적지만 통합 테스트에서 401 검증 시 적용.
+3. **Spring Session JDBC 영향 entity는 처음부터 `Serializable`** — A1 967b0bc 교훈. AuditLog는 Spring Session에 안 들어가지만 사용자 컨텍스트(`IbizDriveUserDetails`)가 attribute에 저장됨 → 이 클래스에 추가 필드 시 직렬화 호환성 검증.
+4. **CORS @ConfigurationProperties** — A1 42dcd3e. 본 트랙에서 CORS 변경 없음 (read API는 동일 origin 가정). 변경 시 `CorsProperties` 재검증.
+5. **Testcontainers 의존성** — Docker Desktop 필요. CI는 ubuntu-latest로 그린. 로컬 Windows에서 Docker 부재 시 `@SpringBootTest` 통합만 skip되고 `@WebMvcTest`는 동작.
+
+## 함정/주의
+
+### 1. `target_type` CHECK 제약과 frontend `AuditResourceType` 불일치
+docs/02 §2.8 CHECK = `('file', 'folder', 'user', 'permission', 'share', 'system')` (6개). frontend `AuditResourceType`은 `audit` 추가(7개). **V3에서 CHECK도 7개로 넓힘** — `audit.exported` 이벤트가 self-reference. 마이그레이션 + docs/02 §2.8 동기 갱신.
+
+### 2. AOP + 트랜잭션 경계
+`@Audited`가 `@AfterReturning`이라 비즈니스 트랜잭션이 커밋된 후에 audit row가 insert됨 → 비즈니스 성공이지만 audit insert 실패하는 순간 발생 가능. 처리:
+- audit insert는 별도 `REQUIRES_NEW` 트랜잭션
+- 실패 시 ERROR 로그 + Sentry/CloudWatch alert (MVP는 로그만)
+- 데이터 무결성 vs 가용성 트레이드오프 — 보안팀 합의 필요시 `@Around` + 동일 트랜잭션으로 변경
+
+### 3. Frontend mock의 `id: string` vs DB `id: BIGSERIAL`
+프론트는 string ID 가정, 백엔드는 BIGSERIAL. A2.3에서 응답 직렬화 시 `Long.toString()`. ts 타입 변경 없음.
+
+### 4. `actorIp` IPv6
+`HttpServletRequest.getRemoteAddr()`는 reverse proxy 뒤에서 lb IP 반환 → `X-Forwarded-For` 우선 처리. Spring `ForwardedHeaderFilter` 활용 검토. MVP는 `getRemoteAddr()` 그대로, A2.5 통합 테스트에서 실제 IP 검증 후 보강.
+
+### 5. `audit.exported` 이벤트 emit 시점
+A2 범위 밖 (관리자 export 기능 자체가 v1.x). enum에는 추가하되 emit 코드는 작성 안 함. frontend `auditCsv.ts`(이미 mock에 존재)가 A2.6에서 어떻게 처리되는지 확인 필요 — export 시 frontend가 `record()` 별도 호출 또는 endpoint가 자동 emit. **임시 결정**: csv export endpoint 자체가 v1.x → 본 트랙은 enum 정의만.
+
+## 롤백 경로
+
+- **backup branch**: `backup/pre-reset-20260427-0036` (origin push 완료)
+- **backup hash**: `132170ed15b2d8e07b7dd6b7de7033942047c84e` (reset 직전 a2 브랜치)
+- **rollback 명령**:
+  ```bash
+  git fetch origin
+  git reset --hard origin/backup/pre-reset-20260427-0036
+  ```
+- **무엇을 잃지 않음**: backup의 코드 변경분은 origin/master(`eda6f75`) squash에 모두 포함됨. backup은 commit message granularity 보존용.
+
+## 외부 의존
+
+- **PostgreSQL `42501`** — REVOKE 동작 검증의 표준 SQLState. `org.postgresql.util.PSQLException.getSQLState()`로 추출.
+- **Testcontainers PostgreSQL** — V3, V4 마이그레이션이 적용되는지 확인하기 위해 fresh container.
+- **Spring Security event publishing** — `AuthenticationSuccessEvent`, `AbstractAuthenticationFailureEvent`, `LogoutSuccessEvent`. Spring Boot autoconfig가 자동 등록.
+
+## SESSION PROGRESS
+
+### Session 1 (2026-04-27) — 셋업 + A2.0 + A2.1a (CI red 종료)
+
+**완료**:
+- worktree reset → origin/master(eda6f75) 정렬, backup 브랜치 push
+- 메모리 2건 갱신 (자율 루프 + 컨텍스트 한계 프로토콜)
+- dev-docs 3파일 작성 — commit `a6076f0`
+- ADR #24, #25 — commit `a6076f0`
+- A2.0 V3+V4 + RED+GREEN — commit `440b0b0` ✅ CI 24960561196
+- A2.1a AuditService + Enums — commit `fd28368` ❌ CI 24960745059
+- handoff snapshot — commit `344afa6`
+
+### Session 2 (2026-04-27) — A2.1a fix (CI green)
+
+**완료**:
+- 메모리 추가 (Context savings protocol — 능동 절약 13규칙)
+- A2.1a CI 실패 분석 → root cause 재정의:
+  - 1차 진단(이전 세션): "users row seed 부재" → **틀림**. 테스트에 이미 seedUser 존재.
+  - 실제 원인: `@DataJpaTest` outer 트랜잭션 안의 INSERT는 commit 전 → `AuditService.record()`의
+    `@Transactional(REQUIRES_NEW)`가 잡는 별도 connection에서 row 미가시 → FK 23503 위반.
+  - 부수 원인: `actor_ip` assertion이 `"203.0.113.42/32"` 기대 → PostgreSQL inet 타입은 host
+    주소(/32)일 때 mask 생략 → 실제 `"203.0.113.42"`. CIDR 표기는 명시 입력 시에만 보존.
+- fix 1: `seedUser` body를 `TransactionTemplate(REQUIRES_NEW)`로 즉시 commit — commit `1196e11`
+- fix 2: inet assertion 교정 — commit `cf0be93`
+- CI run 24961391600 ✅ green (170 tests, 0 failed)
+
+**TDD 상태**: A2.1a GREEN 통과. A2.1b RED 진입 가능.
+
+**uncommitted**: 없음. dev/process/a2-audit-log-s2.md는 작업 종료 시 삭제 예정.
+
+**다음 액션**:
+1. A2.1b RED — `AuditedAspectTest` 작성:
+   - `@Audited` 메서드 정상 종료 → `record()` 호출 1회 (Mockito spy)
+   - 메서드 throw → `record()` 호출 0회
+   - SpEL target ID 추출 (`#fileId`, `#result.id`)
+2. A2.1b GREEN — `@Audited` annotation, `AuditedAspect`, `WebRequestContextHolder`
+3. commit `feat(A2.1b): @Audited AOP + WebRequestContext` → CI 확인
+
+**learnings (다음 작업에 적용)**:
+- `@DataJpaTest` + `REQUIRES_NEW` 조합은 항상 visibility 함정. seed는 별도 트랜잭션에서 commit.
+- inet/cidr/macaddr 같은 PostgreSQL native 타입의 텍스트 표현은 실제 값 SELECT로 검증할 것
+  (가정 금지). 비슷한 함정: jsonb whitespace, timestamptz timezone 표기.
+
+### Session 3 (2026-04-27) — A2.1b @Audited AOP (CI green)
+
+**완료**:
+- `Audited` annotation (event/targetType/target SpEL)
+- `AuditedAspect` — `@AfterReturning("@annotation(audited)")` + `MethodBasedEvaluationContext`
+  - 메서드 정상 종료 → `AuditService.record()` 호출
+  - throw → 호출 안 됨 (성공한 액션만 기록)
+  - audit 실패는 ERROR 로그 swallow (비즈니스 결과 보호, REQUIRES_NEW로 트랜잭션 격리)
+- `WebRequestContextHolder` — `RequestContextHolder`에서 IP/UA 추출, 비-HTTP 컨텍스트는 null
+- `AuditedAspectTest` — `AspectJProxyFactory` + Mockito mock으로 단위 검증 (3 cases all pass)
+- spring-boot-starter-aop 의존성 추가
+- A2.0 tasks 체크박스 정리 (440b0b0 commit 반영)
+- commit `a0f9f7e` push, CI run 24982973669 ✅ green
+
+**TDD 상태**: A2.1b GREEN 통과. 다음 사이클: A2.3 read API + 권한 (Spec 4번 결정).
+A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필요 (또는 단순 verification만).
+
+**uncommitted**: 없음. dev/process/a2-audit-log-s3.md는 작업 종료 시 삭제 예정.
+
+**다음 액션 (A2.3)**:
+1. RED: `AuditQueryControllerTest` (`@WebMvcTest`) — 권한 매트릭스 (ADMIN/AUDITOR/MEMBER/익명)
+2. RED: 필터 테스트 — eventType/actorQuery/fromDate/toDate/page/pageSize, frontend api.audit.test.ts 1:1 계약
+3. GREEN: `AuditQueryController`, `AuditQueryService`, DTOs (`AuditLogPageDto`, `AuditLogEntryDto`)
+4. commit `feat(A2.3): GET /api/admin/audit + role-based scope`
+
+**A2.1b 설계 노트**:
+- `@AfterReturning`만 부착 — `@AfterThrowing` 의도적으로 생략. 정책 = "성공한 액션만 기록".
+- `MethodBasedEvaluationContext` 사용 → 인자 이름(`#fileId`)과 `#result` 양쪽 자동 노출.
+  ParameterNameDiscoverer 필요 — `DefaultParameterNameDiscoverer`(JDK 8+ -parameters 또는 디버그 정보)로 충분.
+- 단위 테스트가 `AspectJProxyFactory` 기반이라 Spring 컨텍스트 부팅 없이 빠르게 돈다 (수 초 이내).
+  통합 테스트 (실제 SecurityContext + WebRequestContext)는 A2.4/A2.5에서 listener+E2E 시 함께 검증.
+
+### Session 4 (2026-04-27) — A2.3 Read API + 권한 매트릭스
+
+**완료**:
+- `AuditQueryFilters` (record): fromDate/toDate/actorQuery/eventType nullable
+- `AuditLogEntryDto`, `AuditLogPageDto` (records, frontend `AuditLogEntry`/`Page`와 wire 동치)
+  - `id: String` (BIGSERIAL → string), UUID 직렬화, `OffsetDateTime` ISO 8601, JSONB → `Map`
+- `AuditQueryService.search(filters, page, pageSize, viewerId, viewerRole)`:
+  - JdbcTemplate + 동적 WHERE (Specification 대신 KISS — 6개 필터 한정)
+  - MEMBER scope 강제 (`actor_id = ?`), ADMIN/AUDITOR 전체
+  - 날짜: `fromDate >= 자정 UTC`, `toDate < 다음날 자정 UTC` (inclusive 양 끝)
+  - actorQuery: `LOWER(display_name) LIKE %q%` (CI 부분매칭)
+  - 정렬: `occurred_at DESC, id DESC`, page 1-indexed, pageSize 1..200 클램프
+  - metadata: `::text` SELECT → ObjectMapper로 `Map<String, Object>` 역직렬화 (실패 시 빈 맵 폴백)
+- `AuditQueryController` `GET /api/admin/audit?fromDate&toDate&actorQuery&eventType&page&pageSize`
+  - 빈 문자열 필터 → null 정규화 (프론트 `'' = 전체` 시그니처)
+  - `@AuthenticationPrincipal IbizDriveUserDetails` → `getUser().getId()/getRole()`
+- `AuditQueryControllerTest` (`@WebMvcTest`): 8 케이스 — 익명 401, ADMIN/AUDITOR/MEMBER scope 인자 캡처,
+  default page=1/size=20, custom params 통과, blank → null, JSON shape (frontend `AuditLogEntry` 1:1)
+- `AuditQueryServiceTest` (`@DataJpaTest` + Testcontainers): 9 케이스 — 권한 3종, DESC 정렬, eventType,
+  actorQuery CI partial, 날짜 inclusive, 1-indexed pagination, 빈 결과
+- docs/02 §7.12: `/api/admin/audit-logs` → `/api/admin/audit`, guard `isAuthenticated()` (MEMBER scope=self)
+- 로컬 검증: controller test PASS (Docker 불필요). service test는 CI에서 Docker 가용 시 실행
+  (`@Testcontainers(disabledWithoutDocker = true)`)
+- commit `2fdad2d` push, CI run 24984269565 ✅ green (backend 1m34s, frontend 1m8s)
+
+**TDD 상태**: A2.3 GREEN 통과 — controller + service 모두 CI에서 검증 완료.
+다음 사이클: A2.4 — A1 인증 이벤트 emission (Listener), AuthService 침투 0 강제.
+
+**uncommitted**: 모든 변경 + dev/process/a2-audit-log-s4.md (commit 후 삭제).
+
+**다음 액션 (A2.4)**:
+1. RED: `AuthAuditListenerTest` — `AuthenticationSuccessEvent`, `BadCredentialsEvent`,
+   `AuthenticationFailureLockedEvent`, `LogoutSuccessEvent` → 각각 audit_log row 검증
+2. RED: `git diff` — `AuthService.java`, `LoginAttemptTracker.java`, `AuthController.java` 변경 0줄
+3. GREEN: `AuthAuditListener` (`@EventListener`) — actor 추출 (success는 principal, failed는 email→users.id lookup)
+4. commit `feat(A2.4): A1 auth events → audit_log (listener only)`
+
+**A2.3 설계 결정 노트**:
+- `JpaSpecification` 대신 JdbcTemplate 동적 WHERE — write 경로(AuditService)와 스택 통일 + KISS
+- 권한 분기는 service 단일 진입점 (controller `@PreAuthorize` 미사용) — 트랙결정 #4가 service 책임
+- `@WebMvcTest` slice는 Mockito ArgumentCaptor로 service 호출 인자 검증 (실제 SQL은 별도 통합 테스트)
+- Testcontainers 분리 (`disabledWithoutDocker`) → 로컬 빠른 피드백 + CI 정확도 양립
+
+### Session 5 (2026-04-28) — A2.4 인증 이벤트 listener (option D)
+
+**구조 발견 (blocker → resolved)**:
+- 초기 plan은 "AuthService가 표준 Spring Security 이벤트를 자동 publish 중" 가정 → grep 결과 미존재.
+  AuthService는 `AuthenticationManager.authenticate()` 미사용 (custom flow), 표준 이벤트 자동 발행 ❌.
+- 사용자 결정: **Option D** = AuthService/AuthController에 `publishEvent(...)` 호출만 명시 추가
+  + ADR #24 갱신 (cross-cutting 신호로 침투 허용, 비즈니스 로직 0줄 유지)
+
+**완료**:
+- ADR #24 본문 갱신 (docs/00 §5): publish 호출은 cross-cutting 신호로 침투 허용 명시
+- A2.4 plan/tasks 업데이트 (publishEvent 4지점 + listener)
+- `AuthService.java`: `ApplicationEventPublisher` 필드 + 생성자 추가 + 5 publish (locked, user-not-found,
+  inactive-or-locked, bad-password, success). 비즈니스 로직 0줄 변경 (검증/예외/세션/last_login_at 동일)
+- `AuthController.logout`: `LogoutSuccessEvent` publish (invalidate 전 Authentication 캡처)
+- `AuthAuditListener` (`@Component` + 3 `@EventListener`): success/failure(abstract)/logout 처리
+  - actorId 추출: principal `IbizDriveUserDetails` 우선, fallback은 email → users.id lookup (없으면 null)
+  - reason metadata: locked → "locked", BadCredentials → 예외 메시지 그대로
+    (`user-not-found` / `inactive-or-locked` / `bad-password`)
+  - IP/UA: `WebRequestContextHolder` 정적 호출 (요청 스레드 동일)
+- `AuthAuditListenerTest` (`@ExtendWith(MockitoExtension)`): 5 케이스 — success principal actor,
+  bad-creds with reason, unknown user null actor, locked reason, logout principal actor
+- `LoginAttemptTracker.java` 변경 0줄 (`git diff` empty 확인)
+- AuthService/AuthController diff: 추가 +37 / 삭제 -2 (constructor signature 1줄). 비즈니스 로직 보존
+- 로컬 `./gradlew test` BUILD SUCCESSFUL (1m20s)
+
+**TDD 상태**: A2.4 GREEN 통과 (단위 테스트). 통합 검증은 A2.5 E2E에서 실제 publish→listener→DB INSERT 확인.
+
+**다음 액션 (A2.5)**:
+1. `AuthAuditE2ETest` (`@SpringBootTest` + Testcontainers + HttpClient5)
+2. `AuditQueryE2ETest` — 위 시나리오 후 `/api/admin/audit?eventType=user.login.failed`
+3. Serializable 회귀 검증
+
+**A2.4 설계 결정 노트**:
+- `LogoutSuccessEvent`는 `org.springframework.security.authentication.event` 패키지 (web 아님 — jar 검증)
+- `AbstractAuthenticationFailureEvent` 단일 핸들러로 BadCredentials/Locked 통합 처리 (instanceof 분기)
+- metadata는 String으로 직접 조립(`{"reason":"..."}`) — KISS, ObjectMapper 부담 최소화 (1키만)
+
+### Session 6 (2026-04-28) — A2.5 E2E 통합 테스트
+
+**완료**:
+- `AuthAuditE2ETest` (5 tests, `@SpringBootTest` + Testcontainers + HttpClient5):
+  - 정상 로그인 → `user.login.success` 1건 (actor_id/IP/UA 채워짐)
+  - wrong-PW 단일 → `user.login.failed` + metadata.reason='bad-password' (JSONB `->>` 연산자로 검증)
+  - 미존재 사용자 → `user.login.failed` + actor_id NULL + reason='user-not-found'
+  - 5회 wrong-PW + 6번째 lockout → `user.login.failed` 6건 (5 bad-password + 1 locked)
+  - 로그아웃 → `user.logout` 1건 (actor_id 매칭)
+- `AuditQueryE2ETest` (3 tests):
+  - ADMIN scope: 5회 wrong-PW 후 `/api/admin/audit?eventType=user.login.failed` → total=5, entries[].actorId 모두 member
+  - MEMBER scope=self: 같은 시나리오에서 다른 MEMBER 2건은 제외 → 자신 3건만
+  - 익명 → 401
+- Serializable 회귀 가드: `IbizDriveUserDetails` 단일 필드(`User user`) + `serialVersionUID = 1L` 변경 0
+- 로컬 `./gradlew test` BUILD SUCCESSFUL (1m54s)
+
+**TDD 상태**: A2.5 GREEN 통과. emission(A2.4) → query(A2.3) end-to-end 검증 완료.
+다음 사이클: A2.6 — frontend mock fetch 교체.
+
+**커밋**: `14cec52` (E2E 본체) → `3fd8c57` (CI 진단 .as 설명) → `f1ab7a6` (Gradle testLogging FULL) → `b8cc4f2` (RFC 5321 64-char fix). CI run 25022602059 ✅.
+
+**CI 부트스트랩 회고 (locally pass / CI fail 디버깅)**:
+1. 1차 실패: 3개 테스트 status assertion만 fail. 원인 unsurface — `--log-failed`는 라인번호만 출력
+2. 2차 진단: AssertJ `.as("body=%s", body)` 추가 → 여전히 메시지 미출력 (Gradle testLogging 기본은 stacktrace만)
+3. 3차 진단: `testLogging.exceptionFormat = FULL` 추가 → 비로소 `expected: 401 / but was: 400 / body={code=VALIDATION_ERROR, field=email, rule=Email}` 출력
+4. 진짜 원인: 메서드명 suffix가 RFC 5321 local-part 64자 한도 초과. CI Hibernate Validator strict, 로컬은 lenient (버전/플래그 차이로 가설). 짧은 UUID prefix(8자)로 회피
+5. 부산물: testLogging FULL 설정은 영구 유지 — 향후 CI-only 회귀 디버깅에 도움
+
+**다음 액션 (A2.6)**:
+1. `api.getAuditLogs` 본문 `MOCK_AUDIT_LOGS` 분기 제거, fetch 호출
+2. `MOCK_AUDIT_LOGS`, `MOCK_ACTORS`, `makeAuditLogs()` 블록 제거
+3. `api.audit.test.ts` MSW 또는 `vi.fn(global.fetch)` 모킹으로 전환
+4. dev seed (audit_log 60건)
+5. `frontend/e2e/audit.e2e.ts` 신규
+6. commit `feat(A2.6): frontend audit mock → real fetch`
+
+**A2.5 설계 결정 노트**:
+- LoginAttemptTracker 생성자가 package-private이라 `com.ibizdrive.audit` 패키지에서 직접 override 불가
+  → 테스트별 unique email로 카운터 누적 회피 (UUID 8자 prefix — RFC 5321 64자 회피 후속)
+- audit_log cleanup은 Testcontainers의 postgres 슈퍼유저 권한 사용 (V4 REVOKE는 app_user role 한정)
+- metadata 검증은 JSONB `->>` 연산자 (`metadata->>'reason' = '...'`) — 텍스트 매칭 대비 공백/직렬화 변동에 안전
+- AuditQueryE2ETest는 controller test와 service test 둘 다 검증 못 한 "실제 권한 분기 + JSON 직렬화 + Spring Session 쿠키 흐름"을 한 번에 회귀 가드
+
+### Session 7 (2026-04-28) — A2.6 frontend mock → real fetch
+
+**완료**:
+- `api.getAuditLogs`: mock 분기 + 60-row generator 완전 제거 → `fetch('/api/admin/audit?...', { credentials: 'include' })` 직접 호출
+- 응답 매핑: 백엔드 `actorId/actorName: null`(시스템 이벤트, 미존재 사용자) → 프론트 `'system'` 폴백 (TS 계약 nullable 아님)
+- 비-OK 응답: `Error & { status }` throw → providers.tsx의 `QueryCache.onError` 401/403 분기 호환
+- `api.audit.test.ts` 재작성: `vi.stubGlobal('fetch', vi.fn())` 7 케이스 — URL 직렬화/credentials/필터 4종/null 폴백/401·403 status surface
+- `next.config.ts` rewrite: dev에서 `/api/:path*` → `BACKEND_URL` (default `http://localhost:8080`) — same-origin SPRING_SESSION 쿠키 작동
+- 검증: `pnpm vitest run src/lib/api.audit.test.ts` 7 PASS, 전체 305/305 PASS, typecheck + lint clean
+- CI run 25023235347 ✅ 2m4s, 커밋 `36896a8`
+
+**Deferred (A2 외부)**:
+- dev seed (60건): 프로파일 분리 + CommandLineRunner 필요. CI/회귀 영향 0이라 닫힘 게이트 외로 분리
+- `frontend/e2e/audit.e2e.ts`: admin 로그인 UI 의존. A1 frontend 인증 + admin 라우팅이 선행 필요. 별도 트랙 (A 또는 M-suffix)에서 작업
+- auditCsv self-emit: 정책 deferred 확정 (enum만 유지, v1.x)
+
+**TDD 상태**: A2.6 GREEN. 백엔드 emission(A2.4) → query(A2.3) → frontend fetch(A2.6) end-to-end 계약 닫힘.
+
+**다음 액션 (A2.7 closure)**:
+1. docs/progress.md A2 종료 블록 (한 세션 한 블록)
+2. self code-review (변경 diff 전체 적대적 점검 — listener 침투 0, 42501 enforcement, append-only, 권한 분기)
+3. `gh pr create master ← claude/a2-audit-log` (PR description: 변경 요약, 테스트 증명, DoD 10항목 체크)
+4. **게이트 유지** — `gh pr merge`는 사용자 승인 후
+
+### Session 8 (2026-04-28) — A2.7 closure (PR open)
+
+**완료**:
+- progress.md A2 마일스톤 종료 블록 추가 (최상단, A1 closure 대비 등치) — DoD 10/10, ADR #24/#25, 트랙결정 5+1, 잔여 deferred 6건, 핵심 함정 4건 회고 (REQUIRES_NEW visibility / inet host / CI testLogging / Option D), A3/A4 안내
+- 자체 코드리뷰 (적대적): 6 영역 점검
+  - ✅ AuthService 비즈니스 로직 0줄 변경 (publish 5 + LogoutEvent publish 1지점 + constructor 1줄만 추가)
+  - ✅ LoginAttemptTracker.java 0 diff (`git diff` 0 lines)
+  - ✅ V4 idempotent + REVOKE/GRANT 정책 명확
+  - ✅ AuditLogAppendOnlyTest — UPDATE/DELETE/TRUNCATE 모두 `42501` 검증
+  - ✅ role 분기 service 단일 진입점, controller `isAuthenticated()`만
+  - ❌ → ✅ **결함 1건 발견 + fix**: `AuthAuditListener`가 `AuditService.record()` 예외를 swallow 안 함.
+    ADR #24 ("실패 시 ERROR 로그, 비즈니스 흐름 보호")와 `AuditedAspect` 정책에 비대칭. DB 일시 장애 시 인증 흐름이 500으로 떨어질 수 있음.
+    **fix**: `safeRecord()` 헬퍼 도입(try/catch + log.error), 3개 핸들러에 적용. 6번째 단위 테스트(`record_failure_is_swallowed_so_auth_flow_is_not_broken`) 추가.
+- 로컬 `./gradlew test` BUILD SUCCESSFUL (50s, AuthAuditListenerTest 6 PASS)
+
+**TDD 상태**: A2 backbone GREEN 종료. listener fix는 RED→GREEN 1 cycle 추가.
+
+**A2.7 설계 결정 노트**:
+- listener의 `safeRecord` 위치 = listener 내부 (vs AuditService 내부 swallow): `AuditedAspect`도 동일 위치(aspect 내부)에서 swallow하므로 호출처 책임 패턴 통일. AuditService.record 자체는 throw 유지 (호출자가 정책 결정).
+- swallow 정책의 명시적 ADR 등록은 불필요 — ADR #24 본문이 이미 "ERROR 로그 + alert" 명시. 본 세션은 그 계약을 listener에도 일관 적용한 것.
+- LIKE 검색의 `%`/`_` 이스케이프, JSON 메타데이터 ObjectMapper 전환은 함정/주의 §5에 등록되어 있고 KISS 결정으로 유지. v1.x에서 재검토.
+
+**다음 액션**:
+1. commit `chore(A2): closure — progress 종료 블록 + listener swallow fix + tasks/context sync`
+2. push → CI 그린 확인 (이전 패턴: ~2분)
+3. gh pr create master ← claude/a2-audit-log (DoD 체크리스트 본문)
+4. **gate** — 사용자 PR 검토 → 머지 승인 후만 `gh pr merge`

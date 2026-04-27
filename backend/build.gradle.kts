@@ -23,6 +23,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // AOP — A2.1b @Audited annotation processing (ADR #24).
+    // SpringBoot autoconfig가 @EnableAspectJAutoProxy를 활성화 → @Aspect 빈이 자동 등록.
+    implementation("org.springframework.boot:spring-boot-starter-aop")
 
     // Spring Session (JDBC, ADR #12 + 사용자 명시)
     implementation("org.springframework.session:spring-session-jdbc")
@@ -59,4 +62,12 @@ tasks.withType<Test> {
     // fixtures는 repo root의 docs/normalize-fixtures.json을 직접 로드
     // (단일 진실 출처, ADR #16). 작업 디렉토리는 backend/ 가정.
     workingDir = projectDir
+    // CI에서 실패 시 expected/actual + stacktrace 전체를 콘솔에 출력 — 로컬-CI 환차 디버깅용
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+        showExceptions = true
+        showCauses = true
+        showStackTraces = true
+    }
 }

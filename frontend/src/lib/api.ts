@@ -349,98 +349,61 @@ export const api = {
     page = 1,
     pageSize = 20,
   ): Promise<AuditLogPage> {
-    await new Promise((r) => setTimeout(r, 120))
-    let rows = MOCK_AUDIT_LOGS
-
-    if (filters.fromDate) {
-      const from = filters.fromDate // YYYY-MM-DD inclusive 시작
-      rows = rows.filter((r) => r.occurredAt.slice(0, 10) >= from)
-    }
-    if (filters.toDate) {
-      const to = filters.toDate // YYYY-MM-DD inclusive 끝 (그날 23:59까지)
-      rows = rows.filter((r) => r.occurredAt.slice(0, 10) <= to)
-    }
+    // A2.6 — 백엔드 GET /api/admin/audit 직접 호출 (ADR #24, docs/02 §7.12).
+    // 동일 origin 가정: prod는 reverse proxy, dev는 next.config rewrites로 8080 backend 포워딩.
+    // 세션 쿠키(SPRING_SESSION) 전송을 위해 credentials: 'include'.
+    const params = new URLSearchParams()
+    if (filters.fromDate) params.set('fromDate', filters.fromDate)
+    if (filters.toDate) params.set('toDate', filters.toDate)
     if (filters.actorQuery && filters.actorQuery.trim()) {
-      const q = filters.actorQuery.trim().toLowerCase()
-      rows = rows.filter((r) => r.actorName.toLowerCase().includes(q))
+      params.set('actorQuery', filters.actorQuery.trim())
     }
-    if (filters.eventType) {
-      rows = rows.filter((r) => r.eventType === filters.eventType)
-    }
+    if (filters.eventType) params.set('eventType', filters.eventType)
+    params.set('page', String(page))
+    params.set('pageSize', String(pageSize))
 
-    // 신규순 정렬 (occurredAt desc).
-    const sorted = [...rows].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-    const total = sorted.length
-    const start = (page - 1) * pageSize
-    const entries = sorted.slice(start, start + pageSize)
-    return { entries, total, page, pageSize }
+    const res = await fetch(`/api/admin/audit?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      // QueryCache.onError가 status로 401/403 분기 — 동일 형태 유지
+      const err = new Error(`audit fetch failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const raw = (await res.json()) as {
+      entries: Array<{
+        id: string
+        occurredAt: string
+        eventType: AuditLogEntry['eventType']
+        actorId: string | null
+        actorName: string | null
+        resourceType: AuditLogEntry['resourceType']
+        resourceId: string | null
+        resourceName: string | null
+        ip: string | null
+        metadata: Record<string, unknown> | null
+      }>
+      total: number
+      page: number
+      pageSize: number
+    }
+    // 백엔드 actorId/actorName은 null 가능(시스템 이벤트, 미존재 사용자) → 프론트 string 계약 폴백.
+    const entries: AuditLogEntry[] = raw.entries.map((e) => ({
+      id: e.id,
+      occurredAt: e.occurredAt,
+      eventType: e.eventType,
+      actorId: e.actorId ?? 'system',
+      actorName: e.actorName ?? 'system',
+      resourceType: e.resourceType,
+      resourceId: e.resourceId,
+      resourceName: e.resourceName,
+      ip: e.ip,
+      metadata: e.metadata,
+    }))
+    return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   },
 }
 
-// ─── 감사 로그 mock 데이터 ─────────────────────────────────────────────────
-// 페이지네이션/필터 동작 검증용 다양성 확보를 위해 60개 정도 생성.
-// 실제 백엔드 연결(A 트랙) 시 이 블록 제거 + getAuditLogs를 fetch로 교체.
-
-const MOCK_ACTORS: ReadonlyArray<{ id: string; name: string }> = [
-  { id: 'user_kim', name: '김영수' },
-  { id: 'user_lee', name: '이지은' },
-  { id: 'user_park', name: '박준형' },
-  { id: 'user_admin', name: '관리자' },
-  { id: 'user_choi', name: '최민지' },
-] as const
-
-function makeAuditLogs(): AuditLogEntry[] {
-  const entries: AuditLogEntry[] = []
-  // 2026-04-25 기준 과거 21일 분포.
-  const baseDay = new Date('2026-04-25T00:00:00Z')
-  const seed: Array<Pick<AuditLogEntry, 'eventType' | 'resourceType' | 'resourceName'>> = [
-    { eventType: 'file.uploaded', resourceType: 'file', resourceName: '제안서_2026.pdf' },
-    { eventType: 'file.downloaded', resourceType: 'file', resourceName: '계약서_A사.pdf' },
-    { eventType: 'file.renamed', resourceType: 'file', resourceName: '회의록_0415.docx' },
-    { eventType: 'file.moved', resourceType: 'file', resourceName: '예산안.xlsx' },
-    { eventType: 'file.deleted', resourceType: 'file', resourceName: '임시파일.tmp' },
-    { eventType: 'file.restored', resourceType: 'file', resourceName: '임시파일.tmp' },
-    { eventType: 'folder.created', resourceType: 'folder', resourceName: '신규프로젝트' },
-    { eventType: 'folder.renamed', resourceType: 'folder', resourceName: '계약서' },
-    { eventType: 'folder.audit_level_changed', resourceType: 'folder', resourceName: '인사기밀' },
-    { eventType: 'permission.granted', resourceType: 'permission', resourceName: '영업팀:edit' },
-    { eventType: 'permission.revoked', resourceType: 'permission', resourceName: '계약서:download' },
-    { eventType: 'share.created', resourceType: 'share', resourceName: '제안서_2026.pdf' },
-    { eventType: 'share.expired', resourceType: 'share', resourceName: '예산안.xlsx' },
-    { eventType: 'user.login.success', resourceType: 'user', resourceName: null },
-    { eventType: 'user.login.failed', resourceType: 'user', resourceName: null },
-    { eventType: 'admin.user.created', resourceType: 'user', resourceName: '신규사용자' },
-    { eventType: 'admin.legal_hold.placed', resourceType: 'folder', resourceName: '소송준비_2026' },
-    { eventType: 'system.backup.completed', resourceType: 'system', resourceName: null },
-    { eventType: 'audit.exported', resourceType: 'audit', resourceName: 'audit_logs_2026-04-24.csv' },
-    { eventType: 'version.restored', resourceType: 'file', resourceName: '계약서_A사.pdf' },
-  ]
-
-  for (let i = 0; i < 60; i++) {
-    const seedItem = seed[i % seed.length]
-    const actor = MOCK_ACTORS[i % MOCK_ACTORS.length]
-    const dayOffset = Math.floor(i / 3) // 0~19일 분포
-    const hour = (i * 7) % 24
-    const minute = (i * 13) % 60
-    const t = new Date(baseDay.getTime() - dayOffset * 86400_000)
-    t.setUTCHours(hour, minute, 0, 0)
-    const isSystem = seedItem.resourceType === 'system'
-    entries.push({
-      id: `audit_${String(i).padStart(4, '0')}`,
-      occurredAt: t.toISOString(),
-      eventType: seedItem.eventType,
-      actorId: isSystem ? 'system' : actor.id,
-      actorName: isSystem ? 'system' : actor.name,
-      resourceType: seedItem.resourceType,
-      resourceId: seedItem.resourceType ? `res_${i}` : null,
-      resourceName: seedItem.resourceName,
-      ip: isSystem ? null : `10.0.${(i % 4) + 1}.${(i * 11) % 250 + 1}`,
-      metadata: seedItem.eventType === 'file.renamed'
-        ? { before: '회의록.docx', after: seedItem.resourceName }
-        : null,
-    })
-  }
-  return entries
-}
-
-const MOCK_AUDIT_LOGS: AuditLogEntry[] = makeAuditLogs()
