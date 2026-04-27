@@ -23,6 +23,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
+    // AOP — A2.1b @Audited annotation processing (ADR #24).
+    // SpringBoot autoconfig가 @EnableAspectJAutoProxy를 활성화 → @Aspect 빈이 자동 등록.
+    implementation("org.springframework.boot:spring-boot-starter-aop")
 
     // Spring Session (JDBC, ADR #12 + 사용자 명시)
     implementation("org.springframework.session:spring-session-jdbc")

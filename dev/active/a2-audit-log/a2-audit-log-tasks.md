@@ -8,14 +8,14 @@ Last Updated: 2026-04-27
 
 ## A2.0 — 스키마 + 마이그레이션 + ADR
 
-- [ ] RED: `AuditLogSchemaTest` (Testcontainers) — `audit_log` 테이블 + 컬럼 + CHECK + 인덱스 4개 검증 (information_schema)
-- [ ] RED: `AuditLogAppendOnlyTest` (Testcontainers) — `app_user` role로 `UPDATE audit_log` → SQLState `42501`, `DELETE` 동일
-- [ ] GREEN: `V3__audit_log.sql` (docs/02 §2.8 스키마 + `target_type` CHECK 7개 — `audit` 포함)
-- [ ] GREEN: `V4__audit_log_revoke.sql` (`app_user` role 생성 idempotent + REVOKE/GRANT)
-- [ ] GREEN: docs/00 §5 ADR #24 추가 (Emission 위치)
-- [ ] GREEN: docs/00 §5 ADR #25 추가 (DB role 분리)
-- [ ] GREEN: docs/02 §2.8 본문 `target_type` CHECK에 `audit` 추가 (frontend 동기)
-- [ ] commit: `feat(A2.0): audit_log V3+V4 마이그레이션 + ADR #24~25`
+- [x] RED: `AuditLogSchemaTest` (Testcontainers) — `audit_log` 테이블 + 컬럼 + CHECK + 인덱스 4개 검증 (information_schema)
+- [x] RED: `AuditLogAppendOnlyTest` (Testcontainers) — `app_user` role로 `UPDATE audit_log` → SQLState `42501`, `DELETE` 동일
+- [x] GREEN: `V3__audit_log.sql` (docs/02 §2.8 스키마 + `target_type` CHECK 7개 — `audit` 포함)
+- [x] GREEN: `V4__audit_log_revoke.sql` (`app_user` role 생성 idempotent + REVOKE/GRANT)
+- [x] GREEN: docs/00 §5 ADR #24 추가 (Emission 위치)
+- [x] GREEN: docs/00 §5 ADR #25 추가 (DB role 분리)
+- [x] GREEN: docs/02 §2.8 본문 `target_type` CHECK에 `audit` 추가 (frontend 동기)
+- [x] commit: `feat(A2.0): audit_log V3+V4 마이그레이션 + ADR #24~25` (`440b0b0`, CI 24960561196 ✅)
 
 ## A2.1a — AuditEvent + Enums + AuditService (REQUIRES_NEW 검증)
 
