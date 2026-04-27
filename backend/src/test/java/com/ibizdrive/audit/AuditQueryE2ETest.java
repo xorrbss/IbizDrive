@@ -100,7 +100,9 @@ class AuditQueryE2ETest {
         for (int i = 0; i < 5; i++) {
             ResponseEntity<Map> r = postJson("/api/auth/login",
                 Map.of("email", memberEmail, "password", "wrong-" + i), memberCsrf);
-            assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+            assertThat(r.getStatusCode())
+                .as("wrong-pw iter=%d body=%s", i, r.getBody())
+                .isEqualTo(HttpStatus.UNAUTHORIZED);
         }
 
         // 사전 가드 — DB에 5건 들어 있는지

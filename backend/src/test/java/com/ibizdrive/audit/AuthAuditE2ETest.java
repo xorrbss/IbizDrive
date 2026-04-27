@@ -95,7 +95,9 @@ class AuthAuditE2ETest {
 
         ResponseEntity<Map> loginRes = postJson("/api/auth/login",
             Map.of("email", email, "password", PW), csrf);
-        assertThat(loginRes.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(loginRes.getStatusCode())
+            .as("login response (body=%s)", loginRes.getBody())
+            .isEqualTo(HttpStatus.OK);
 
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT event_type, actor_id, actor_ip::text AS actor_ip, user_agent, target_type, target_id " +
@@ -116,7 +118,9 @@ class AuthAuditE2ETest {
 
         ResponseEntity<Map> r = postJson("/api/auth/login",
             Map.of("email", email, "password", "wrong-pw"), csrf);
-        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.UNAUTHORIZED);
+        assertThat(r.getStatusCode())
+            .as("wrong-pw response (body=%s)", r.getBody())
+            .isEqualTo(HttpStatus.UNAUTHORIZED);
 
         List<Map<String, Object>> rows = jdbc.queryForList(
             "SELECT actor_id, metadata->>'reason' AS reason " +
