@@ -76,13 +76,15 @@ class AuthAuditE2ETest {
     private UUID userId;
 
     @BeforeEach
-    void seed(org.junit.jupiter.api.TestInfo info) {
+    void seed() {
         rest.getRestTemplate().setRequestFactory(new HttpComponentsClientHttpRequestFactory());
         // Postgres 슈퍼유저 권한으로 정리 — V4 REVOKE는 app_user role에만 적용되므로 테스트 정리 가능.
         jdbc.update("DELETE FROM audit_log");
         userRepository.deleteAll();
         userId = UUID.randomUUID();
-        email = "audit-e2e-" + info.getTestMethod().get().getName() + "@example.com";
+        // 짧은 UUID prefix로 unique email 보장 — RFC 5321 local-part 64자 제한을 회피하기 위해
+        // method 이름 대신 UUID 8자만 사용. (CI Hibernate Validator strict로 64자 초과 시 400 응답)
+        email = "e2e-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
         userRepository.save(new User(
             userId, email, "Audit E2E", passwordEncoder.encode(PW),
             Role.MEMBER, true, false, OffsetDateTime.now()

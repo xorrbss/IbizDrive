@@ -73,20 +73,24 @@ class AuditQueryE2ETest {
     private UUID adminId;
 
     @BeforeEach
-    void seed(org.junit.jupiter.api.TestInfo info) {
+    void seed() {
         rest.getRestTemplate().setRequestFactory(new HttpComponentsClientHttpRequestFactory());
         jdbc.update("DELETE FROM audit_log");
         userRepository.deleteAll();
 
+        // 짧은 UUID prefix로 unique email 보장 — RFC 5321 local-part 64자 제한 회피
+        // (CI Hibernate Validator strict로 64자 초과 시 400 VALIDATION_ERROR)
+        String suffix = UUID.randomUUID().toString().substring(0, 8);
+
         memberId = UUID.randomUUID();
-        memberEmail = "member-" + info.getTestMethod().get().getName() + "@example.com";
+        memberEmail = "m-" + suffix + "@example.com";
         userRepository.save(new User(
             memberId, memberEmail, "Audit Member", passwordEncoder.encode(PW),
             Role.MEMBER, true, false, OffsetDateTime.now()
         ));
 
         adminId = UUID.randomUUID();
-        adminEmail = "admin-" + info.getTestMethod().get().getName() + "@example.com";
+        adminEmail = "a-" + suffix + "@example.com";
         userRepository.save(new User(
             adminId, adminEmail, "Audit Admin", passwordEncoder.encode(PW),
             Role.ADMIN, true, false, OffsetDateTime.now()
