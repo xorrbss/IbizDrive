@@ -1089,7 +1089,7 @@ DELETE /api/trash/:id  (영구 삭제, 관리자)
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| GET | `/api/admin/audit-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | (audit_log 자체에 deleted_at 없음) | 403 |
+| GET | `/api/admin/audit` | `isAuthenticated()` (ADMIN/AUDITOR 전체, MEMBER `actor_id=self` — A2.3 트랙결정 #4) | — | — | (audit_log 자체에 deleted_at 없음) | 401 |
 | GET | `/api/admin/download-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |

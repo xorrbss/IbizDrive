@@ -145,3 +145,45 @@ A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필
   ParameterNameDiscoverer 필요 — `DefaultParameterNameDiscoverer`(JDK 8+ -parameters 또는 디버그 정보)로 충분.
 - 단위 테스트가 `AspectJProxyFactory` 기반이라 Spring 컨텍스트 부팅 없이 빠르게 돈다 (수 초 이내).
   통합 테스트 (실제 SecurityContext + WebRequestContext)는 A2.4/A2.5에서 listener+E2E 시 함께 검증.
+
+### Session 4 (2026-04-27) — A2.3 Read API + 권한 매트릭스
+
+**완료**:
+- `AuditQueryFilters` (record): fromDate/toDate/actorQuery/eventType nullable
+- `AuditLogEntryDto`, `AuditLogPageDto` (records, frontend `AuditLogEntry`/`Page`와 wire 동치)
+  - `id: String` (BIGSERIAL → string), UUID 직렬화, `OffsetDateTime` ISO 8601, JSONB → `Map`
+- `AuditQueryService.search(filters, page, pageSize, viewerId, viewerRole)`:
+  - JdbcTemplate + 동적 WHERE (Specification 대신 KISS — 6개 필터 한정)
+  - MEMBER scope 강제 (`actor_id = ?`), ADMIN/AUDITOR 전체
+  - 날짜: `fromDate >= 자정 UTC`, `toDate < 다음날 자정 UTC` (inclusive 양 끝)
+  - actorQuery: `LOWER(display_name) LIKE %q%` (CI 부분매칭)
+  - 정렬: `occurred_at DESC, id DESC`, page 1-indexed, pageSize 1..200 클램프
+  - metadata: `::text` SELECT → ObjectMapper로 `Map<String, Object>` 역직렬화 (실패 시 빈 맵 폴백)
+- `AuditQueryController` `GET /api/admin/audit?fromDate&toDate&actorQuery&eventType&page&pageSize`
+  - 빈 문자열 필터 → null 정규화 (프론트 `'' = 전체` 시그니처)
+  - `@AuthenticationPrincipal IbizDriveUserDetails` → `getUser().getId()/getRole()`
+- `AuditQueryControllerTest` (`@WebMvcTest`): 8 케이스 — 익명 401, ADMIN/AUDITOR/MEMBER scope 인자 캡처,
+  default page=1/size=20, custom params 통과, blank → null, JSON shape (frontend `AuditLogEntry` 1:1)
+- `AuditQueryServiceTest` (`@DataJpaTest` + Testcontainers): 9 케이스 — 권한 3종, DESC 정렬, eventType,
+  actorQuery CI partial, 날짜 inclusive, 1-indexed pagination, 빈 결과
+- docs/02 §7.12: `/api/admin/audit-logs` → `/api/admin/audit`, guard `isAuthenticated()` (MEMBER scope=self)
+- 로컬 검증: controller test PASS (Docker 불필요). service test는 CI에서 Docker 가용 시 실행
+  (`@Testcontainers(disabledWithoutDocker = true)`)
+
+**TDD 상태**: A2.3 GREEN 통과 (controller slice 로컬 검증). service test는 CI 결과로 확정.
+다음 사이클: A2.4 — A1 인증 이벤트 emission (Listener), AuthService 침투 0 강제.
+
+**uncommitted**: 모든 변경 + dev/process/a2-audit-log-s4.md (commit 후 삭제).
+
+**다음 액션 (A2.4)**:
+1. RED: `AuthAuditListenerTest` — `AuthenticationSuccessEvent`, `BadCredentialsEvent`,
+   `AuthenticationFailureLockedEvent`, `LogoutSuccessEvent` → 각각 audit_log row 검증
+2. RED: `git diff` — `AuthService.java`, `LoginAttemptTracker.java`, `AuthController.java` 변경 0줄
+3. GREEN: `AuthAuditListener` (`@EventListener`) — actor 추출 (success는 principal, failed는 email→users.id lookup)
+4. commit `feat(A2.4): A1 auth events → audit_log (listener only)`
+
+**A2.3 설계 결정 노트**:
+- `JpaSpecification` 대신 JdbcTemplate 동적 WHERE — write 경로(AuditService)와 스택 통일 + KISS
+- 권한 분기는 service 단일 진입점 (controller `@PreAuthorize` 미사용) — 트랙결정 #4가 service 책임
+- `@WebMvcTest` slice는 Mockito ArgumentCaptor로 service 호출 인자 검증 (실제 SQL은 별도 통합 테스트)
+- Testcontainers 분리 (`disabledWithoutDocker`) → 로컬 빠른 피드백 + CI 정확도 양립

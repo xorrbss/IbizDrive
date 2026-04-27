@@ -47,15 +47,15 @@ Last Updated: 2026-04-27
 
 ## A2.3 — Read API + 권한
 
-- [ ] RED: `AuditQueryControllerTest` (`@WebMvcTest`) — ADMIN/AUDITOR 200 전체, MEMBER scope=self, 익명 401
-- [ ] RED: 필터 테스트 — `eventType` 정확매칭, `actorQuery` 부분매칭(대소문자무시), `fromDate/toDate` inclusive, `page` 1-indexed, `occurredAt DESC`
-- [ ] RED: 빈 결과 — `actorQuery=__no__` → entries=[], total=0
-- [ ] GREEN: `AuditQueryController` `GET /api/admin/audit?fromDate&toDate&actorQuery&eventType&page&pageSize`
-- [ ] GREEN: `AuditQueryService.search(filters, page, size, principal)` — Specification + role 분기
-- [ ] GREEN: DTO `AuditLogPageDto`, `AuditLogEntryDto` (frontend 동치)
-- [ ] GREEN: `@PreAuthorize` 또는 service 레벨 분기 (MEMBER는 actor_id=self 강제)
-- [ ] GREEN: docs/02 §7.3 audit endpoint 표 갱신
-- [ ] commit: `feat(A2.3): GET /api/admin/audit + role-based scope`
+- [x] RED: `AuditQueryControllerTest` (`@WebMvcTest`) — ADMIN/AUDITOR 200 전체, MEMBER scope=self, 익명 401
+- [x] RED: 필터 테스트 — `eventType` 정확매칭, `actorQuery` 부분매칭(대소문자무시), `fromDate/toDate` inclusive, `page` 1-indexed, `occurredAt DESC`
+- [x] RED: 빈 결과 — `actorQuery=__no__` → entries=[], total=0
+- [x] GREEN: `AuditQueryController` `GET /api/admin/audit?fromDate&toDate&actorQuery&eventType&page&pageSize`
+- [x] GREEN: `AuditQueryService.search(filters, page, size, viewerId, viewerRole)` — JdbcTemplate + role 분기 (KISS — Specification 대신)
+- [x] GREEN: DTO `AuditLogPageDto`, `AuditLogEntryDto` (frontend 동치)
+- [x] GREEN: service 레벨 role 분기 (MEMBER는 actor_id=self 강제). controller는 `isAuthenticated()`만
+- [x] GREEN: docs/02 §7.12 audit endpoint 표 갱신 (`/api/admin/audit-logs` → `/api/admin/audit`, guard 변경)
+- [-] commit: `feat(A2.3): GET /api/admin/audit + role-based scope` — 진행중
 
 ## A2.4 — A1 인증 이벤트 emission
 
