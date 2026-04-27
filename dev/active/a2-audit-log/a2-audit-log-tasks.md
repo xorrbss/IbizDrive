@@ -29,15 +29,15 @@ Last Updated: 2026-04-27
 - [x] commit: `feat(A2.1a): AuditService + AuditEvent + Enums (38 events, 7 targets)` (`fd28368`, push 완료)
 - [x] CI 그린 확인 — run 24961391600 ✅ (FK 가시성 + inet 표기 2건 fix, commits `1196e11`, `cf0be93`)
 
-## A2.1b — @Audited AOP + WebRequestContextHolder (다음 사이클)
+## A2.1b — @Audited AOP + WebRequestContextHolder
 
-- [ ] RED: `AuditedAspectTest` — `@Audited` 메서드 정상 종료 → record 호출 1회
-- [ ] RED: `AuditedAspectTest` — 메서드 throw → record 호출 0회
-- [ ] RED: `AuditedAspectTest` — SpEL target ID 추출 (`#fileId`, `#result.id`)
-- [ ] GREEN: `@Audited` annotation (event, target SpEL)
-- [ ] GREEN: `AuditedAspect` (`@AfterReturning`, SpEL evaluator)
-- [ ] GREEN: `WebRequestContextHolder` (IP/UA from RequestAttributes)
-- [ ] commit: `feat(A2.1b): @Audited AOP + WebRequestContext`
+- [x] RED: `AuditedAspectTest` — `@Audited` 메서드 정상 종료 → record 호출 1회
+- [x] RED: `AuditedAspectTest` — 메서드 throw → record 호출 0회
+- [x] RED: `AuditedAspectTest` — SpEL target ID 추출 (`#fileId`, `#result.id`)
+- [x] GREEN: `@Audited` annotation (event, targetType, target SpEL)
+- [x] GREEN: `AuditedAspect` (`@AfterReturning`, MethodBasedEvaluationContext SpEL)
+- [x] GREEN: `WebRequestContextHolder` (IP/UA from RequestAttributes — null safe in non-HTTP)
+- [x] commit: `feat(A2.1b): @Audited AOP + WebRequestContextHolder` (`a0f9f7e`, CI 24982973669 ✅)
 
 ## A2.2 — Append-only 검증
 

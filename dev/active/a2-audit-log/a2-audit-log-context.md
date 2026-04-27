@@ -113,3 +113,35 @@ A2 범위 밖 (관리자 export 기능 자체가 v1.x). enum에는 추가하되 
 - `@DataJpaTest` + `REQUIRES_NEW` 조합은 항상 visibility 함정. seed는 별도 트랜잭션에서 commit.
 - inet/cidr/macaddr 같은 PostgreSQL native 타입의 텍스트 표현은 실제 값 SELECT로 검증할 것
   (가정 금지). 비슷한 함정: jsonb whitespace, timestamptz timezone 표기.
+
+### Session 3 (2026-04-27) — A2.1b @Audited AOP (CI green)
+
+**완료**:
+- `Audited` annotation (event/targetType/target SpEL)
+- `AuditedAspect` — `@AfterReturning("@annotation(audited)")` + `MethodBasedEvaluationContext`
+  - 메서드 정상 종료 → `AuditService.record()` 호출
+  - throw → 호출 안 됨 (성공한 액션만 기록)
+  - audit 실패는 ERROR 로그 swallow (비즈니스 결과 보호, REQUIRES_NEW로 트랜잭션 격리)
+- `WebRequestContextHolder` — `RequestContextHolder`에서 IP/UA 추출, 비-HTTP 컨텍스트는 null
+- `AuditedAspectTest` — `AspectJProxyFactory` + Mockito mock으로 단위 검증 (3 cases all pass)
+- spring-boot-starter-aop 의존성 추가
+- A2.0 tasks 체크박스 정리 (440b0b0 commit 반영)
+- commit `a0f9f7e` push, CI run 24982973669 ✅ green
+
+**TDD 상태**: A2.1b GREEN 통과. 다음 사이클: A2.3 read API + 권한 (Spec 4번 결정).
+A2.2는 A2.0에서 이미 RED→GREEN 통과했으므로 별도 사이클 불필요 (또는 단순 verification만).
+
+**uncommitted**: 없음. dev/process/a2-audit-log-s3.md는 작업 종료 시 삭제 예정.
+
+**다음 액션 (A2.3)**:
+1. RED: `AuditQueryControllerTest` (`@WebMvcTest`) — 권한 매트릭스 (ADMIN/AUDITOR/MEMBER/익명)
+2. RED: 필터 테스트 — eventType/actorQuery/fromDate/toDate/page/pageSize, frontend api.audit.test.ts 1:1 계약
+3. GREEN: `AuditQueryController`, `AuditQueryService`, DTOs (`AuditLogPageDto`, `AuditLogEntryDto`)
+4. commit `feat(A2.3): GET /api/admin/audit + role-based scope`
+
+**A2.1b 설계 노트**:
+- `@AfterReturning`만 부착 — `@AfterThrowing` 의도적으로 생략. 정책 = "성공한 액션만 기록".
+- `MethodBasedEvaluationContext` 사용 → 인자 이름(`#fileId`)과 `#result` 양쪽 자동 노출.
+  ParameterNameDiscoverer 필요 — `DefaultParameterNameDiscoverer`(JDK 8+ -parameters 또는 디버그 정보)로 충분.
+- 단위 테스트가 `AspectJProxyFactory` 기반이라 Spring 컨텍스트 부팅 없이 빠르게 돈다 (수 초 이내).
+  통합 테스트 (실제 SecurityContext + WebRequestContext)는 A2.4/A2.5에서 listener+E2E 시 함께 검증.
