@@ -11,5 +11,10 @@ build/
 # auto-claude-loop artifacts (worktree 한정)
 .resume-marker
 .loop-complete
+.heartbeat
 auto-loop.log
+auto-loop.log*
 auto-claude-loop.ps1
+auto-claude-loop.ps1.v*.bak
+*.bak
+*.bak.*
