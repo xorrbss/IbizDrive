@@ -43,7 +43,7 @@ A3.0 (docs/03 §3 정합화 + ADR #26) → A3.1 (`Permission`/`Preset` enum + fr
 7. ✅ `effectivePermissionsCacheKey` SHA-256 hex prefix 16자 — deterministic + collision-free (`PermissionCacheKeyServiceTest` 7 케이스)
 8. ✅ `permission.changed` emission policy + 실 emit (`PermissionAuditListenerTest` 2 + `RoleChangeE2ETest` 2). granted/revoked는 ADR #26로 A4 이월 명시
 9. ✅ `@SpringBootTest` E2E 매트릭스 (ADMIN/AUDITOR/MEMBER × READ/EDIT/PURGE) + role change scenario
-10. ⏳ `gradle test` + `pnpm test` 로컬 GREEN — CI 그린은 PR #3에서 최종 확정
+10. ✅ `gradle test` + `pnpm test` 로컬 GREEN + PR #5 CI 그린 최종 확정 (run `25075778972`: backend junit + frontend vitest 둘 다 SUCCESS, commit `8ecff7d`)
 11. ✅ ADR #26 docs/00 §5에 등록 (`ff5156c`)
 
 ### 다음 단계 — A4 진입점
