@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-29 (BOOTSTRAP — 단계 3 사용자 plan 리뷰 게이트 대기)
-Status: 🟡 active — A3.0 진입 대기
+Last Updated: 2026-04-29 (게이트 2 — A3.1~A3.4 GREEN, 사용자 보고 대기)
+Status: 🟡 active — 게이트 2 OK 대기 후 A3.5 진입
 ---
 
 # A3 — Tasks
@@ -11,12 +11,12 @@ Status: 🟡 active — A3.0 진입 대기
 
 | Phase | 상태 |
 |---|---|
-| A3.0 docs/03 §3 정합화 + ADR #26 | ⏳ 대기 (사용자 게이트 통과 후) |
-| A3.1 Permission/Preset enum + frontend mirror | ⏳ |
-| A3.2 PermissionService + Evaluator + 403 핸들러 | ⏳ |
-| A3.3 effectivePermissionsCacheKey hash 교체 | ⏳ |
-| A3.4 permission.changed (role 변경) emission | ⏳ |
-| A3.5 통합 E2E (Testcontainers) | ⏳ |
+| A3.0 docs/03 §3 정합화 + ADR #26 | ✅ (ff5156c + aec7b74) |
+| A3.1 Permission/Preset enum + frontend mirror | ✅ (4458feb) |
+| A3.2 PermissionService + Evaluator + 403 핸들러 | ✅ (게이트 2 commit) |
+| A3.3 effectivePermissionsCacheKey hash 교체 | ✅ (게이트 2 commit) |
+| A3.4 permission.changed (role 변경) emission | ✅ (게이트 2 commit) |
+| A3.5 통합 E2E (Testcontainers) | ⏳ 게이트 2 OK 대기 |
 | A3.6 closure (PR + archive) | ⏳ |
 
 ---

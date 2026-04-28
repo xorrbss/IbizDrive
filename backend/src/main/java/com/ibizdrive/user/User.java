@@ -159,4 +159,16 @@ public class User implements Serializable {
     public void recordLoginAt(OffsetDateTime at) {
         this.lastLoginAt = at;
     }
+
+    /**
+     * ROLE 변경 — A3.4. {@link com.ibizdrive.permission.PermissionService#changeRole}가 호출하고
+     * 동일 트랜잭션 내에서 {@link UserRepository#save}로 flush 한다.
+     * 감사 emission은 {@link com.ibizdrive.permission.RoleChangedEvent} publish로 분리된다 (ADR #24).
+     */
+    public void changeRoleTo(Role newRole) {
+        if (newRole == null) {
+            throw new IllegalArgumentException("newRole must not be null");
+        }
+        this.role = newRole;
+    }
 }

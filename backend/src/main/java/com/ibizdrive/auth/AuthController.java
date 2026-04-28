@@ -2,7 +2,9 @@ package com.ibizdrive.auth;
 
 import com.ibizdrive.auth.dto.LoginRequest;
 import com.ibizdrive.auth.dto.LoginResponse;
+import com.ibizdrive.permission.PermissionCacheKeyService;
 import com.ibizdrive.user.IbizDriveUserDetails;
+import com.ibizdrive.user.User;
 import jakarta.servlet.http.Cookie;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -39,10 +41,14 @@ public class AuthController {
 
     private final AuthService authService;
     private final ApplicationEventPublisher eventPublisher;
+    private final PermissionCacheKeyService permissionCacheKeyService;
 
-    public AuthController(AuthService authService, ApplicationEventPublisher eventPublisher) {
+    public AuthController(AuthService authService,
+                          ApplicationEventPublisher eventPublisher,
+                          PermissionCacheKeyService permissionCacheKeyService) {
         this.authService = authService;
         this.eventPublisher = eventPublisher;
+        this.permissionCacheKeyService = permissionCacheKeyService;
     }
 
     @PostMapping("/login")
@@ -64,7 +70,9 @@ public class AuthController {
      */
     @GetMapping("/me")
     public LoginResponse me(@AuthenticationPrincipal IbizDriveUserDetails principal) {
-        return LoginResponse.from(principal.getUser());
+        User u = principal.getUser();
+        String cacheKey = permissionCacheKeyService.computeKey(u.getId(), u.getRole());
+        return LoginResponse.from(u, cacheKey);
     }
 
     /**

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibizdrive.common.error.AuthExceptionHandler;
 import com.ibizdrive.common.health.HealthController;
 import com.ibizdrive.config.SecurityConfig;
+import com.ibizdrive.permission.PermissionCacheKeyService;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -50,7 +51,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 실제 session(Spring Session JDBC) 동작은 A1.5 시나리오 테스트(@SpringBootTest)에서 검증.
  */
 @WebMvcTest(controllers = {AuthController.class, CsrfTokenController.class, HealthController.class})
-@Import({SecurityConfig.class, AuthService.class, LoginAttemptTracker.class, AuthExceptionHandler.class})
+@Import({SecurityConfig.class, AuthService.class, LoginAttemptTracker.class, AuthExceptionHandler.class, PermissionCacheKeyService.class})
 class LoginControllerIntegrationTest {
 
     @Autowired

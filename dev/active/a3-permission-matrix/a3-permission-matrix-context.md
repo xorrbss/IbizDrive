@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-29 (BOOTSTRAP — 단계 3 사용자 plan 리뷰 게이트 진입)
-Status: 🟡 active — 사용자 OK 대기
+Last Updated: 2026-04-29 (게이트 2 진입 — A3.1~A3.4 GREEN, 사용자 보고 대기)
+Status: 🟡 active — 게이트 2 사용자 OK 대기
 ---
 
 # A3 — Context (재개 진입점)
@@ -10,11 +10,16 @@ Status: 🟡 active — 사용자 OK 대기
 | 단계 | 상태 | 산출물 |
 |---|---|---|
 | 1. A1 archive | ✅ | `3b9a73e chore(A3): closure — A1 dev-docs active→completed archive` |
-| 2. A3 dev-docs bootstrap | ✅ | `dev/active/a3-permission-matrix/{plan,context,tasks}.md` (본 세션) |
-| 3. **사용자 plan 리뷰 게이트** | 🟡 **대기 중** | — |
-| 4. A3.0 docs/03 §3 정합화 + ADR #26 | ⏳ | — |
-| 5. A3.1~A3.5 구현 | ⏳ | — |
-| 6. A3.6 closure (PR + archive) | ⏳ | — |
+| 2. A3 dev-docs bootstrap | ✅ | `dev/active/a3-permission-matrix/{plan,context,tasks}.md` |
+| 3. 사용자 plan 리뷰 게이트 | ✅ | GO (2026-04-29) |
+| 4. A3.0 docs/03 §3 정합화 + ADR #26 | ✅ | 2-commit 분할 (bootstrap + ADR / docs alignment + placeholder) |
+| 5. **게이트 1 (A3.0 직후)** | ✅ | GO (b: 분리 커밋, 게이트 2까지 자율) |
+| 6. A3.1 enum/preset + frontend mirror | ✅ | Permission(9) + Preset(5) + PRESET_PERMISSIONS — 11 FE + 15 BE 단위 테스트 |
+| 7. A3.2 PermissionService + Evaluator + 403 envelope | ✅ | `PermissionEvaluatorIntegrationTest` 10/10 + `GlobalExceptionHandler` (`PERMISSION_DENIED`) |
+| 8. A3.3 effectivePermissionsCacheKey hash | ✅ | `PermissionCacheKeyService` (SHA-256 hex prefix 16자) + 7 unit tests + LoginResponse/AuthService/AuthController 배선 |
+| 9. A3.4 permission.changed audit emission | ✅ | `RoleChangedEvent` + `PermissionAuditListener` + `PermissionService.changeRole` (4 + 2 unit tests) |
+| 10. **게이트 2 (A3.1~A3.4 후)** | 🟡 **사용자 보고 대기** | backend 248 tests / frontend 316 tests, 0 failures |
+| 11. A3.5~A3.6 closure (E2E + PR + archive) | ⏳ | — |
 
 ## Current Execution Contract
 
@@ -29,7 +34,7 @@ Status: 🟡 active — 사용자 OK 대기
 
 ## 현재 active task
 
-**A3.0 진입 대기** — 사용자 plan 리뷰 게이트 (단계 3) 통과 후 A3.0 시작.
+**게이트 2 보고** — A3.1~A3.4 GREEN, 사용자 OK 대기 후 A3.5(E2E) 진입.
 
 ## 다음 세션 읽기 순서
 
@@ -77,22 +82,18 @@ Status: 🟡 active — 사용자 OK 대기
 cd C:\project\IbizDrive\.claude\worktrees\a3-permission-matrix
 
 # 2. 상태 확인
-git status            # clean (dev/active/a3-permission-matrix/ 3파일 + dev/process/ untracked)
-git log --oneline -3  # HEAD = 3b9a73e
+git status            # 게이트 2 — A3.1~A3.4 변경 stage 대기
+backend % ./gradlew test  # 248 tests, 0 failures
+frontend % pnpm test       # 316 tests, 0 failures
 
-# 3. 사용자 게이트 통과 후 A3.0 진입 (no-code phase)
-#    - docs/03-security-compliance.md line 4 "스켈레톤" 표기 제거
-#    - CLAUDE.md §2 라우팅 + §4 계약 파일 표에서 "(예정)" 제거
-#    - docs/00-overview.md §5에 ADR #26 추가
-#    - frontend/src/types/permission.ts placeholder 신설 (빈 export)
-
-# 4. A3.1 RED 진입 (PermissionEnumTest, PresetMappingTest)
+# 3. 게이트 2 OK 후 A3.5 E2E 진입
+#    - RoleChangeE2E: ADMIN→MEMBER 변경 후 다음 요청 403 + audit 1건 (full SpringBootTest + Testcontainers)
+#    - 권한 매트릭스 전체 E2E: ADMIN/AUDITOR/MEMBER × hasPermission READ/EDIT/PURGE
 ```
 
-## 게이트 보고 형식 (단계 3 일시정지 진입 시 사용자에게 보고할 항목)
+## 게이트 2 보고 형식
 
-- 단위 분할: A3.0~A3.6 (7 phase)
-- acceptance: phase별 게이트 6 항목 (plan §"acceptance criteria")
-- 추정 commit 수: 7~9 (phase당 1~2 commit, A3.0 1 commit, A3.6 closure 별도)
-- 위험·의존성: R1~R6 (plan §"리스크와 완화 전략")
-- accepted-deviation 후보: `permission.granted/revoked` emission A4 이월 (R3) — ADR #26으로 명시 예정
+- backend 248 tests / frontend 316 tests, 0 failures (게이트 1 대비 +13 BE / +0 FE)
+- A3.1 (enum + frontend mirror), A3.2 (Service+Evaluator+403), A3.3 (cache key hash), A3.4 (permission.changed) 완료
+- accepted-deviation: `permission.granted/revoked` emission은 A4 (resource-level grant endpoint 도입 시점)
+- 다음 phase: A3.5 E2E (full SpringBootTest), A3.6 closure (PR + archive)

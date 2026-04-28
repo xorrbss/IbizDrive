@@ -1,6 +1,7 @@
 package com.ibizdrive.auth;
 
 import com.ibizdrive.auth.dto.LoginResponse;
+import com.ibizdrive.permission.PermissionCacheKeyService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
@@ -53,6 +54,7 @@ public class AuthService {
     private final LoginAttemptTracker tracker;
     private final SecurityContextRepository securityContextRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final PermissionCacheKeyService permissionCacheKeyService;
 
     /**
      * timing attack 회피용 dummy BCrypt 해시 — 미존재/비활성 user에도 동일 시간 소비.
@@ -66,12 +68,14 @@ public class AuthService {
                        PasswordEncoder passwordEncoder,
                        LoginAttemptTracker tracker,
                        SecurityContextRepository securityContextRepository,
-                       ApplicationEventPublisher eventPublisher) {
+                       ApplicationEventPublisher eventPublisher,
+                       PermissionCacheKeyService permissionCacheKeyService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.tracker = tracker;
         this.securityContextRepository = securityContextRepository;
         this.eventPublisher = eventPublisher;
+        this.permissionCacheKeyService = permissionCacheKeyService;
     }
 
     @PostConstruct
@@ -145,15 +149,16 @@ public class AuthService {
         SecurityContextHolder.setContext(context);
         securityContextRepository.saveContext(context, req, res);
 
+        String cacheKey = permissionCacheKeyService.computeKey(user.getId(), user.getRole());
+
         HttpSession session = req.getSession();
         session.setAttribute("userId", user.getId().toString());
         session.setAttribute("issuedAt", System.currentTimeMillis());
-        session.setAttribute("permissionsCacheKey",
-            user.getId() + ":" + user.getRole().name() + ":v0");
+        session.setAttribute("permissionsCacheKey", cacheKey);
 
         // ADR #24 — 표준 success 이벤트 발행 (AuthAuditListener가 audit_log INSERT).
         eventPublisher.publishEvent(new AuthenticationSuccessEvent(auth));
 
-        return LoginResponse.from(user);
+        return LoginResponse.from(user, cacheKey);
     }
 }

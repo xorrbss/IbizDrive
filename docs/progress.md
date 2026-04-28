@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-04-29 — A3.2~A3.4 (게이트 2)
+
+### 완료
+- **A3.2** PermissionService + IbizDrivePermissionEvaluator + 403 envelope
+  - `PermissionService.check(userId, role, resource, resourceId, permission)` user-level MVP (ADMIN=ALL, AUDITOR=READ, MEMBER=∅)
+  - `IbizDrivePermissionEvaluator implements PermissionEvaluator` — Spring Security `@PreAuthorize("hasPermission(#id,'folder','READ')")` SpEL hook
+  - `MethodSecurityConfig` (`@EnableMethodSecurity` + `DefaultMethodSecurityExpressionHandler` 빈에 evaluator 주입)
+  - `PermissionDenyContext` (ThreadLocal) — evaluator deny 판정 시 required/have set을 1회 consume 형식으로 ExceptionHandler에 전달
+  - `ApiError` (docs/02 §7.2 envelope) + `GlobalExceptionHandler.handleAccessDenied` → 403 `PERMISSION_DENIED` + `details.required`/`details.have`
+  - `TestPermissionController` (`src/test/java`) + `PermissionEvaluatorIntegrationTest` 10 케이스 (ADMIN/AUDITOR/MEMBER × READ/EDIT/PURGE + 익명 401)
+- **A3.3** effectivePermissionsCacheKey hash 교체
+  - `PermissionCacheKeyService.computeKey(userId, role)` — SHA-256 hex prefix 16자 (lowercase), 입력 `<userId>:<ROLE>:v1` (`MATRIX_VERSION` bump → 일괄 invalidate hook). 7 unit tests
+  - `LoginResponse.from(User, String cacheKey)`로 시그니처 변경, `AuthService.login` / `AuthController.me`에 service 주입 + 사전 산출 키 사용 (session attribute도 동일 키)
+  - `AuthMeLogoutIntegrationTest` plaintext assertion → `[0-9a-f]{16}` regex로 교체
+- **A3.4** permission.changed audit emission
+  - `RoleChangedEvent(actorId, targetUserId, from, to)` record (publish는 트랜잭션 커밋 직전)
+  - `PermissionAuditListener` — `@EventListener` for RoleChangedEvent → `AuditEventType.PERMISSION_CHANGED` row + `before`/`after` JSON `{"role":"..."}` (REQUIRES_NEW 보존, swallow + ERROR 로그)
+  - `PermissionService.changeRole(targetUserId, newRole, actorId)` (`@Transactional`) — user.role 갱신 + repository.save + event publish, 같은 role no-op
+  - `User.changeRoleTo(Role)` 도메인 mutator
+  - 4 unit (`PermissionServiceChangeRoleTest`) + 2 unit (`PermissionAuditListenerTest`) + `PermissionServiceTest` constructor 적응
+
+### 검증
+- backend `./gradlew test`: **248 tests, 0 failures, 100% successful** (게이트 1 235 → +13)
+- frontend `pnpm test`: **316 tests, 0 failures**
+
+### accepted-deviation
+- `permission.granted` / `permission.revoked` emission은 A4 (resource-level grant endpoint 도입 시점). 본 phase는 `permission.changed`만 실 emit (ADR #26)
+
+### 다음 단계 (게이트 2 OK 대기 → A3.5)
+- A3.5 E2E: ADMIN→MEMBER 변경 후 다음 요청 403 + audit `permission.changed` 1건 (full SpringBootTest + Testcontainers)
+- 권한 매트릭스 전체 E2E: ADMIN/AUDITOR/MEMBER × hasPermission READ/EDIT/PURGE
+
+---
+
 ## 2026-04-29 — A3.0 docs 정합 + ADR #26 (no-code phase)
 
 ### 완료
