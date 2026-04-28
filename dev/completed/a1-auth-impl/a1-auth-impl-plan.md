@@ -1,10 +1,31 @@
 ---
-Last Updated: 2026-04-26
+Last Updated: 2026-04-28 (CLOSED — PR #1 squash merged eda6f75, A1 마일스톤 종료)
+Status: ✅ CLOSED
 ---
 
-# A1 Auth Implementation — Plan (A1.2 ~ A1.6)
+# A1 Auth Implementation — Plan (A1.2 ~ A1.6) (CLOSED)
 
-## 요약
+## 종료 요약 (2026-04-28)
+
+**DoD 7/7 충족** (audit `a1-auth-impl-audit.md` §1):
+1. ✅ 인증 4 endpoint (`POST /login`, `POST /logout`, `GET /me`, `GET /csrf`)
+2. ✅ 5/15min in-memory lockout + lazy expiry
+3. ✅ CSRF double-submit 강제 (`CookieCsrfTokenRepository.withHttpOnlyFalse()`)
+4. ✅ idle 30m sliding (Spring Session JDBC `PT30M`) + absolute 8h (`SessionValidityFilter`)
+5. ✅ `gradle test` 152/156 PASS, 4 Docker SKIP, 0 fail
+6. ✅ `progress.md` 2026-04-26 A1 마일스톤 종료 블록 + ADR #19/#20/#22/#23
+7. ✅ CI 그린 (PR #1 squash merged `eda6f75`, master 동기화 완료)
+
+**Accepted-deviation 3건** (후속 phase 추적 — `progress.md` 71-76):
+| # | 항목 | 후속 |
+|---|---|---|
+| 1 | `audit_log` emission 미구현 — `// (후속) audit insert` 주석 보존 | A2 (closed 2026-04-28) |
+| 2 | `400 PASSWORD_CHANGE_REQUIRED` 분기 미구현 (flag만 응답에 포함, ADR #21) | PW change endpoint phase (미배정) |
+| 3 | `AuthScenarioIntegrationTest` 로컬 SKIP — Windows Docker 미가용. CI ubuntu-latest에서 실행 | PR #1 머지로 close |
+
+회고 단일 진실 출처: `docs/progress.md` 2026-04-26 A1 마일스톤 종료 블록 (line 57~84).
+
+## 원본 plan (참고용 보존)
 
 Spring Security 6 + Spring Session JDBC 기반 자체 ID/PW 인증을 A1.2~A1.5 단위로 본 wiring한다. 현재 A1.0(스키마/JPA), A1.1(PasswordEncoder + DbUserDetailsService) 완료. 이번 작업은 SecurityConfig 본 wiring → LoginController + lockout → /me + logout → 통합 시나리오 + 마일스톤 종료까지.
 

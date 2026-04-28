@@ -3,6 +3,7 @@ package com.ibizdrive.auth;
 import com.ibizdrive.common.error.AuthExceptionHandler;
 import com.ibizdrive.common.health.HealthController;
 import com.ibizdrive.config.SecurityConfig;
+import com.ibizdrive.permission.PermissionCacheKeyService;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -44,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 실제 세션 invalidate + cookie 만료 end-to-end는 A1.5 시나리오 테스트(@SpringBootTest)에서 검증.
  */
 @WebMvcTest(controllers = {AuthController.class, CsrfTokenController.class, HealthController.class})
-@Import({SecurityConfig.class, AuthService.class, LoginAttemptTracker.class, AuthExceptionHandler.class})
+@Import({SecurityConfig.class, AuthService.class, LoginAttemptTracker.class, AuthExceptionHandler.class, PermissionCacheKeyService.class})
 class AuthMeLogoutIntegrationTest {
 
     @Autowired
@@ -84,8 +85,9 @@ class AuthMeLogoutIntegrationTest {
             .andExpect(jsonPath("$.user.mustChangePassword").value(false))
             .andExpect(jsonPath("$.departments").isArray())
             .andExpect(jsonPath("$.roles[0]").value("MEMBER"))
+            // ADR #26 — A3.3부터 SHA-256 hex prefix 16자 (PermissionCacheKeyService).
             .andExpect(jsonPath("$.effectivePermissionsCacheKey")
-                .value("11111111-1111-1111-1111-111111111111:MEMBER:v0"));
+                .value(org.hamcrest.Matchers.matchesRegex("[0-9a-f]{16}")));
     }
 
     @Test
