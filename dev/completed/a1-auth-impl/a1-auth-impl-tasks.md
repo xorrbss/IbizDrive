@@ -1,17 +1,19 @@
 ---
-Last Updated: 2026-04-26
+Last Updated: 2026-04-28 (CLOSED — PR #1 squash merged eda6f75)
+Status: ✅ CLOSED
 ---
 
-# A1 Auth Implementation — Tasks
+# A1 Auth Implementation — Tasks (CLOSED)
 
 ## Phase 상태
 
 | Phase | 상태 |
 |---|---|
-| A1.2 SecurityConfig wiring | done (commit 10a524b) |
-| A1.3 LoginController + Lockout | done (commit 06b9238) |
-| A1.4 /me + Logout | done (commit ca4e309) |
-| A1.5 통합 시나리오 + 마일스톤 종료 | in-progress (Testcontainers 시나리오 작성 + 로컬 PASS, audit/push 대기) |
+| A1.2 SecurityConfig wiring | ✅ done (commit 10a524b) |
+| A1.3 LoginController + Lockout | ✅ done (commit 06b9238) |
+| A1.4 /me + Logout | ✅ done (commit ca4e309) |
+| A1.5 통합 시나리오 + 마일스톤 종료 | ✅ done (commit c34e640, audit, progress.md A1 종료 블록) |
+| A1.6 Session timeout policy (must-fix #1) | ✅ done (PR #1 squash merge eda6f75) |
 
 ---
 
@@ -120,7 +122,7 @@ Last Updated: 2026-04-26
 - [x] `./gradlew test` PASS (4 클래스, 22 테스트)
 - [x] 자체 리뷰 (⑥) — KISS/YAGNI 결정 명시 (LoginResponse 재사용)
 - [x] commit `feat(A1.4): /api/auth/me + /api/auth/logout`
-- [ ] `progress.md` A1.4 세션 블록 (다음 세션 dev-docs-update에서 처리)
+- [x] `progress.md` A1.4 세션 블록 (다음 세션 dev-docs-update에서 처리 → progress.md 2026-04-26 A1.4 블록)
 
 ### A1.4 작업 전 필독
 
@@ -155,10 +157,10 @@ Last Updated: 2026-04-26
 - [x] RED: `AuthScenarioIntegrationTest` (1건 종합 시나리오, `@SpringBootTest` + Testcontainers Postgres 15-alpine, mutable Clock 빈 override)
 - [x] GREEN: 필요 시 보강 — A1.0~A1.4 구현이 이미 시나리오 충족, 추가 코드 불필요
 - [x] `./gradlew test` PASS — 9 클래스, 152 tests, 4 skipped (UserRepositoryTest 3 + AuthScenarioIntegrationTest 1, 모두 Docker 미가용으로 SKIP), 0 fail
-- [ ] gsd-audit-milestone 실행
-- [ ] `progress.md` A1 마일스톤 종료 블록
-- [ ] commit `test(A1): integration scenarios`
-- [ ] `git push` + `gh pr checks 1` (CI 그린 확인)
+- [x] gsd-audit-milestone 실행 (수동 dev-docs 기반 audit, `a1-auth-impl-audit.md`)
+- [x] `progress.md` A1 마일스톤 종료 블록 (2026-04-26 line 57~84)
+- [x] commit `test(A1): integration scenarios` (commit c34e640)
+- [x] `git push` + `gh pr checks 1` (PR #1 squash merge eda6f75로 CI 그린 close 확인)
 
 ### A1.5 작업 전 필독
 
