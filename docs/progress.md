@@ -5,6 +5,55 @@
 
 ---
 
+## 2026-04-29 — 🏁 A3 마일스톤 종료 (Permission Matrix + PermissionService)
+
+### 범위
+A3.0 (docs/03 §3 정합화 + ADR #26) → A3.1 (`Permission`/`Preset` enum + frontend 1:1 mirror) → A3.2 (`PermissionService` + `IbizDrivePermissionEvaluator` + 403 envelope) → A3.3 (`effectivePermissionsCacheKey` 정적값 → SHA-256 hex prefix 16자) → A3.4 (`permission.changed` audit emission via `RoleChangedEvent` + listener) → A3.5 (full `@SpringBootTest` + Testcontainers E2E — 매트릭스 + role change).
+
+### 회고
+- **commits**: 8개 (`ff5156c` dev-docs/ADR #26 → `aec7b74` docs/03 §3 표기 정합 + `permission.ts` placeholder → `4458feb` A3.1 enum + frontend mirror → `e1083e4` A3.2~A3.4 backbone (cache key hash + permission.changed) → `ccd766d` A3.5 E2E + closure 2건). diff vs origin/master 예상: backend +production 7파일 / +test 9파일, frontend +1파일.
+- **테스트**: backend +6 단위 클래스 (`PermissionEnumTest`, `PresetMappingTest`, `PermissionServiceTest`, `PermissionServiceChangeRoleTest`, `PermissionCacheKeyServiceTest`, `PermissionAuditListenerTest`) + 1 슬라이스 (`PermissionEvaluatorIntegrationTest` 13 케이스) + 2 E2E (`PermissionEndpointE2ETest` 11 + `RoleChangeE2ETest` 2). 게이트 1 235 → 게이트 2 248 → A3.5 261 (총 +26). frontend 305 → 316 (`permission.test.ts` 11 케이스).
+- **production 클래스**: 7 (permission/ 6 + common/error/ 1). `Permission`(9 values) / `Preset`(5 values + `permissions()`) / `PermissionService`(check + changeRole) / `IbizDrivePermissionEvaluator` / `PermissionCacheKeyService` / `PermissionDenyContext` / `RoleChangedEvent` / `MethodSecurityConfig` / `GlobalExceptionHandler.handleAccessDenied` (`PERMISSION_DENIED` envelope).
+- **마이그레이션**: 0 — A3는 user-level (Role 기반) MVP, `permissions` 테이블 미도입 (resource-level은 A4 의존).
+- **endpoint 신규**: 0 production (권한 grant/revoke endpoint는 file/folder 도메인 의존 → A4 이월). 기존 `/api/auth/login` + `/api/auth/me` 응답의 `effectivePermissionsCacheKey`만 hash로 wire 변경 (shape 동일, 값만 hex).
+- **ADR 등록**: **#26** (`PermissionEvaluator` MVP 범위 — user-level만, resource-level 평가는 A4에서 evaluator 내부만 교체, SpEL 호출 시그니처 `hasPermission(#id, 'folder', 'READ')`는 docs/02 §7.10 그대로 채택, `permission.granted/revoked` emit도 A4 이월, `effectivePermissionsCacheKey`는 SHA-256 hex prefix 16자 — A1 deviation #2 해소).
+- **frontend 통합**: `frontend/src/types/permission.ts` 신설 (1:1 mirror). 사용처는 UX 게이트 한정 (보안 boundary 아님 — CLAUDE.md §3 원칙 10). `effectivePermissionsCacheKey` 응답 shape 동일 — opaque token으로만 사용.
+
+### 핵심 결정 (트랙 5+1, 확정)
+1. user-level (Role 기반) MVP — `permissions` 테이블 + 재귀 CTE 상속 평가는 A4 이월. SpEL 호출 시그니처는 docs/02 §7.10 그대로 동결 (ADR #26)
+2. PURGE 가드 = `hasRole('ADMIN')` — `Preset.admin`이 PURGE를 의도적으로 제외해 `hasPermission` 경로로는 어떤 role도 통과 불가 (docs/03 §3.2 line 333). 회귀 가드는 `PermissionEndpointE2ETest`의 `/purge` 매트릭스로 락
+3. cacheKey = SHA-256 hex prefix 16자 — 입력 `<userId>:<ROLE>:v1` (`MATRIX_VERSION` bump → 일괄 invalidate hook). frontend는 opaque token으로만 사용 — 역파싱 금지 보장으로 매트릭스 변경 안전 (ADR #26)
+4. emission = `RoleChangedEvent` + `PermissionAuditListener` (ADR #24 동형 — `AuthAuditListener` 패턴 1:1 채택). `AuditService.record`의 REQUIRES_NEW로 audit 무결성 (ADR #25 보존)
+5. 403 envelope = `{ error: { code: 'PERMISSION_DENIED', message, details: { required, have } } }` — `PermissionDenyContext` (ThreadLocal) 1회 consume으로 evaluator → exception handler 정보 전달 (docs/03 §3.6)
+6. enum 단일 진실 = 백엔드, frontend는 mirror — A2 패턴 동일
+
+### accepted-deviation (A4 이월)
+- `permission.granted` / `permission.revoked` emission — resource-level grant endpoint (POST/DELETE `/api/:resource/:id/permissions`)는 file/folder 도메인 부재로 A4. 본 phase는 `permission.changed`(role 변경)만 실 emit. enum 자체는 A2에서 등록 완료 (ADR #26)
+- LTREE 부서 계층 + `includeDescendants` 평가 — 부서 모델 자체가 A1.5 후속 (A4)
+- 권한 상속 재귀 CTE (docs/03 §3.4) — folder tree 부재 (A4)
+- `effectivePermissions` resource-level 캐시 store — A3는 user-level hash key만, 실제 캐시 store는 v1.x
+
+### DoD 11/11
+1. ✅ docs/03 §3.1~§3.6 표기 정합 + 본문이 docs/02 §7 Guard 컬럼과 1:1 일치 (`aec7b74`)
+2. ✅ `Permission` enum 9 values (`PermissionEnumTest`)
+3. ✅ `Preset` enum 5 values + preset→permission set §3.2 표 동치 (`PresetMappingTest`)
+4. ✅ `frontend/src/types/permission.ts` 1:1 mirror (`permission.test.ts` 11 케이스)
+5. ✅ `PermissionService.check` 단일 진입점 + `IbizDrivePermissionEvaluator` SpEL hook (`PermissionEvaluatorIntegrationTest` 13 + `PermissionEndpointE2ETest` 11)
+6. ✅ user-level MVP 평가 정책 (ADMIN=all, AUDITOR=READ, MEMBER=∅, PURGE는 hasRole(ADMIN) 가드)
+7. ✅ `effectivePermissionsCacheKey` SHA-256 hex prefix 16자 — deterministic + collision-free (`PermissionCacheKeyServiceTest` 7 케이스)
+8. ✅ `permission.changed` emission policy + 실 emit (`PermissionAuditListenerTest` 2 + `RoleChangeE2ETest` 2). granted/revoked는 ADR #26로 A4 이월 명시
+9. ✅ `@SpringBootTest` E2E 매트릭스 (ADMIN/AUDITOR/MEMBER × READ/EDIT/PURGE) + role change scenario
+10. ⏳ `gradle test` + `pnpm test` 로컬 GREEN — CI 그린은 PR #3에서 최종 확정
+11. ✅ ADR #26 docs/00 §5에 등록 (`ff5156c`)
+
+### 다음 단계 — A4 진입점
+- 폴더/파일 도메인 (`folders`, `files`, `permissions` 테이블 + UNIQUE 제약 + LTREE)
+- POST/DELETE `/api/:resource/:id/permissions` endpoint → `permission.granted/revoked` 실 emit 호출처
+- `IbizDrivePermissionEvaluator` 내부 교체 — resource-level grant + 재귀 CTE 상속 평가 (SpEL 호출 시그니처는 보존)
+- `effectivePermissions` resource-level 캐시 store (v1.x 후보)
+
+---
+
 ## 2026-04-29 — A3.2~A3.4 (게이트 2)
 
 ### 완료

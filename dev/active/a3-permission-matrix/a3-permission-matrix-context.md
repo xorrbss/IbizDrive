@@ -1,9 +1,9 @@
 ---
-Last Updated: 2026-04-29 (게이트 2 진입 — A3.1~A3.4 GREEN, 사용자 보고 대기)
-Status: 🟡 active — 게이트 2 사용자 OK 대기
+Last Updated: 2026-04-29 (🏁 CLOSURE — A3 마일스톤 종료)
+Status: ✅ closed — 모든 phase GREEN, archive 진행 중
 ---
 
-# A3 — Context (재개 진입점)
+# A3 — Context (closure 마커)
 
 ## SESSION PROGRESS
 
@@ -12,14 +12,15 @@ Status: 🟡 active — 게이트 2 사용자 OK 대기
 | 1. A1 archive | ✅ | `3b9a73e chore(A3): closure — A1 dev-docs active→completed archive` |
 | 2. A3 dev-docs bootstrap | ✅ | `dev/active/a3-permission-matrix/{plan,context,tasks}.md` |
 | 3. 사용자 plan 리뷰 게이트 | ✅ | GO (2026-04-29) |
-| 4. A3.0 docs/03 §3 정합화 + ADR #26 | ✅ | 2-commit 분할 (bootstrap + ADR / docs alignment + placeholder) |
+| 4. A3.0 docs/03 §3 정합화 + ADR #26 | ✅ | `ff5156c` + `aec7b74` |
 | 5. **게이트 1 (A3.0 직후)** | ✅ | GO (b: 분리 커밋, 게이트 2까지 자율) |
-| 6. A3.1 enum/preset + frontend mirror | ✅ | Permission(9) + Preset(5) + PRESET_PERMISSIONS — 11 FE + 15 BE 단위 테스트 |
-| 7. A3.2 PermissionService + Evaluator + 403 envelope | ✅ | `PermissionEvaluatorIntegrationTest` 10/10 + `GlobalExceptionHandler` (`PERMISSION_DENIED`) |
-| 8. A3.3 effectivePermissionsCacheKey hash | ✅ | `PermissionCacheKeyService` (SHA-256 hex prefix 16자) + 7 unit tests + LoginResponse/AuthService/AuthController 배선 |
-| 9. A3.4 permission.changed audit emission | ✅ | `RoleChangedEvent` + `PermissionAuditListener` + `PermissionService.changeRole` (4 + 2 unit tests) |
-| 10. **게이트 2 (A3.1~A3.4 후)** | 🟡 **사용자 보고 대기** | backend 248 tests / frontend 316 tests, 0 failures |
-| 11. A3.5~A3.6 closure (E2E + PR + archive) | ⏳ | — |
+| 6. A3.1 enum/preset + frontend mirror | ✅ | `4458feb` — Permission(9) + Preset(5) + PRESET_PERMISSIONS |
+| 7. A3.2 PermissionService + Evaluator + 403 envelope | ✅ | `e1083e4` — `PermissionEvaluatorIntegrationTest` 13/13 + `GlobalExceptionHandler` |
+| 8. A3.3 effectivePermissionsCacheKey hash | ✅ | `e1083e4` — `PermissionCacheKeyService` SHA-256 hex 16자 + 7 unit tests |
+| 9. A3.4 permission.changed audit emission | ✅ | `e1083e4` — `RoleChangedEvent` + `PermissionAuditListener` + `changeRole` |
+| 10. **게이트 2 (A3.1~A3.4 후)** | ✅ | GO — backend 248 / frontend 316, 0 failures |
+| 11. A3.5 E2E (full SpringBootTest) | ✅ | `ccd766d` — `PermissionEndpointE2ETest` 11 + `RoleChangeE2ETest` 2 |
+| 12. A3.6 closure (progress.md + PR + archive) | 🏁 | DoD 10/11 로컬 GREEN, #10은 CI 그린에서 최종 |
 
 ## Current Execution Contract
 
@@ -34,7 +35,33 @@ Status: 🟡 active — 게이트 2 사용자 OK 대기
 
 ## 현재 active task
 
-**게이트 2 보고** — A3.1~A3.4 GREEN, 사용자 OK 대기 후 A3.5(E2E) 진입.
+**🏁 closure** — 모든 phase GREEN. PR #3 생성 + master 머지 후 본 디렉터리는 `dev/completed/a3-permission-matrix/`로 archive.
+
+## 게이트 3 보고
+
+- **A3 전체 commits** (8개):
+  1. `ff5156c` docs(A3): bootstrap dev-docs + ADR #26
+  2. `aec7b74` docs(A3.0): docs/03 §3 표기 정합 + permission.ts placeholder
+  3. `4458feb` feat(A3.1): Permission/Preset enum + frontend 1:1 mirror
+  4. `e1083e4` feat(A3.2-A3.4): permission backbone + cache key hash + permission.changed audit
+  5. `ccd766d` test(A3.5): full @SpringBootTest E2E for permission matrix + role change
+  6. closure (progress.md + dev-docs sync) — 본 commit
+  7. archive (active→completed) — closure 직후
+- **테스트**: backend 261 / frontend 316, 0 failures (게이트 2 248 → +13 신규 E2E)
+- **DoD 11/11**: 10 ✅ 로컬, #10은 CI 그린에서 최종 확정
+- **accepted-deviation (A4 이월)**: `permission.granted/revoked` emission, LTREE 부서 계층, 권한 상속 재귀 CTE, resource-level 캐시 store
+
+## A4 진입점 (다음 마일스톤 안내 초안)
+
+- **범위**: 폴더/파일 도메인 + resource-level 권한 시스템
+- **핵심 산출물**:
+  1. `folders` + `files` 테이블 + LTREE/UNIQUE 제약 (CLAUDE.md §3 원칙 6 — DB 제약이 진실)
+  2. `permissions` 테이블 (subject_type/subject_id × resource_type/resource_id × allow/deny)
+  3. POST/DELETE `/api/:resource/:id/permissions` endpoint → `permission.granted`/`permission.revoked` 실 emit 호출처
+  4. `IbizDrivePermissionEvaluator` 내부 교체 — resource-level grant + 재귀 CTE 상속 평가 (SpEL 호출 시그니처는 보존)
+  5. `effectivePermissions` resource-level 캐시 store (v1.x 후보)
+- **A3로부터 보존**: `Permission`/`Preset` enum, `PermissionService.check` 시그니처, 403 envelope, `effectivePermissionsCacheKey` 산출 로직
+- **의존성 메모**: 부서 모델 (A1.5 후속) 도입 시점에 LTREE 평가 진입 — 둘은 같은 트랙으로 묶거나 부서 모델을 A4.0으로 분리 가능
 
 ## 다음 세션 읽기 순서
 

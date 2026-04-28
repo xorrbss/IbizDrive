@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-29 (게이트 2 — A3.1~A3.4 GREEN, 사용자 보고 대기)
-Status: 🟡 active — 게이트 2 OK 대기 후 A3.5 진입
+Last Updated: 2026-04-29 (🏁 closure)
+Status: ✅ closed
 ---
 
 # A3 — Tasks
@@ -11,13 +11,13 @@ Status: 🟡 active — 게이트 2 OK 대기 후 A3.5 진입
 
 | Phase | 상태 |
 |---|---|
-| A3.0 docs/03 §3 정합화 + ADR #26 | ✅ (ff5156c + aec7b74) |
-| A3.1 Permission/Preset enum + frontend mirror | ✅ (4458feb) |
-| A3.2 PermissionService + Evaluator + 403 핸들러 | ✅ (게이트 2 commit) |
-| A3.3 effectivePermissionsCacheKey hash 교체 | ✅ (게이트 2 commit) |
-| A3.4 permission.changed (role 변경) emission | ✅ (게이트 2 commit) |
-| A3.5 통합 E2E (Testcontainers) | ⏳ 게이트 2 OK 대기 |
-| A3.6 closure (PR + archive) | ⏳ |
+| A3.0 docs/03 §3 정합화 + ADR #26 | ✅ (`ff5156c` + `aec7b74`) |
+| A3.1 Permission/Preset enum + frontend mirror | ✅ (`4458feb`) |
+| A3.2 PermissionService + Evaluator + 403 핸들러 | ✅ (`e1083e4`) |
+| A3.3 effectivePermissionsCacheKey hash 교체 | ✅ (`e1083e4`) |
+| A3.4 permission.changed (role 변경) emission | ✅ (`e1083e4`) |
+| A3.5 통합 E2E (Testcontainers) | ✅ (`ccd766d`) — 11 + 2 케이스 |
+| A3.6 closure (PR + archive) | 🏁 진행 중 — progress.md ✅ / PR ⏳ / archive ⏳ |
 
 ---
 
