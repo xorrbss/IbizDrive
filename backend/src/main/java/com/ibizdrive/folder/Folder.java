@@ -46,7 +46,7 @@ public class Folder {
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
-    @Column(name = "updated_at", nullable = false, insertable = false, updatable = false)
+    @Column(name = "updated_at", nullable = false, insertable = false)
     private OffsetDateTime updatedAt;
 
     protected Folder() {
@@ -114,5 +114,12 @@ public class Folder {
         this.deletedAt = deletedAt;
         this.purgeAfter = purgeAfter;
         this.originalParentId = parentId;
+    }
+
+    public void rename(String name, String normalizedName, String slug) {
+        this.name = name;
+        this.normalizedName = normalizedName;
+        this.slug = slug;
+        this.updatedAt = OffsetDateTime.now();
     }
 }

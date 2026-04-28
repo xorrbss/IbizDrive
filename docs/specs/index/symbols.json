@@ -1,0 +1,162 @@
+{
+  "generated_at": "2026-04-29",
+  "scope": "a3-folder-mutation-service-slice",
+  "symbols": [
+    {
+      "id": "java:com.ibizdrive.folder.Folder",
+      "kind": "class",
+      "name": "Folder",
+      "path": "backend/src/main/java/com/ibizdrive/folder/Folder.java",
+      "line": 13,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": [
+        "folders-files",
+        "domain-entity"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.Folder#rename",
+      "kind": "method",
+      "name": "rename",
+      "path": "backend/src/main/java/com/ibizdrive/folder/Folder.java",
+      "line": 119,
+      "visibility": "public",
+      "container": "Folder",
+      "tags": [
+        "folders-files",
+        "domain-entity"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderRepository",
+      "kind": "interface",
+      "name": "FolderRepository",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderRepository.java",
+      "line": 12,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": [
+        "folders-files",
+        "repository"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderMutationService",
+      "kind": "class",
+      "name": "FolderMutationService",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderMutationService.java",
+      "line": 13,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": [
+        "folders-files",
+        "service"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderMutationService#create",
+      "kind": "method",
+      "name": "create",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderMutationService.java",
+      "line": 25,
+      "visibility": "public",
+      "container": "FolderMutationService",
+      "tags": [
+        "folders-files",
+        "mutation"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderMutationService#rename",
+      "kind": "method",
+      "name": "rename",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderMutationService.java",
+      "line": 43,
+      "visibility": "public",
+      "container": "FolderMutationService",
+      "tags": [
+        "folders-files",
+        "mutation"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderNotFoundException",
+      "kind": "class",
+      "name": "FolderNotFoundException",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderNotFoundException.java",
+      "line": 5,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": [
+        "folders-files",
+        "error"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderNameConflictException",
+      "kind": "class",
+      "name": "FolderNameConflictException",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderNameConflictException.java",
+      "line": 5,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": [
+        "folders-files",
+        "error"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileItem",
+      "kind": "class",
+      "name": "FileItem",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileItem.java",
+      "line": 13,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": [
+        "folders-files",
+        "domain-entity"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileVersion",
+      "kind": "class",
+      "name": "FileVersion",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileVersion.java",
+      "line": 15,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": [
+        "folders-files",
+        "domain-entity"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileItemRepository",
+      "kind": "interface",
+      "name": "FileItemRepository",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileItemRepository.java",
+      "line": 12,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": [
+        "folders-files",
+        "repository"
+      ]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileVersionRepository",
+      "kind": "interface",
+      "name": "FileVersionRepository",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileVersionRepository.java",
+      "line": 7,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": [
+        "folders-files",
+        "repository"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+version: 1
+modules:
+  folders_files:
+    spec: docs/specs/core/modules/folders-files.md
+    symbols:
+      - java:com.ibizdrive.folder.Folder
+      - java:com.ibizdrive.folder.Folder#rename
+      - java:com.ibizdrive.folder.FolderRepository
+      - java:com.ibizdrive.folder.FolderMutationService
+      - java:com.ibizdrive.folder.FolderMutationService#create
+      - java:com.ibizdrive.folder.FolderMutationService#rename
+      - java:com.ibizdrive.folder.FolderNotFoundException
+      - java:com.ibizdrive.folder.FolderNameConflictException
+      - java:com.ibizdrive.file.FileItem
+      - java:com.ibizdrive.file.FileVersion
+      - java:com.ibizdrive.file.FileItemRepository
+      - java:com.ibizdrive.file.FileVersionRepository

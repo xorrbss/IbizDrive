@@ -5,6 +5,26 @@
 
 ---
 
+## 2026-04-29 - A3 FolderMutationService create/rename
+
+### Completed
+- Implemented `FolderMutationService` create/rename:
+  - create: parent row lock, `NormalizeUtil` display/dedup normalization, active sibling conflict check, UUID-backed folder creation.
+  - rename: source row lock, self sibling allowed, other active sibling conflict rejected, name/normalizedName/slug/updatedAt updated.
+- Added `Folder.rename(...)`, `FolderNotFoundException`, and `FolderNameConflictException`.
+- Reused A2 audit AOP via `@Transactional` and `@Audited(FOLDER_CREATED/FOLDER_RENAMED)`.
+- Updated `docs/specs` folders-files module, symbol index, and coverage for the folder create/rename slice.
+
+### Verification
+- `cd backend && .\gradlew.bat test --tests "com.ibizdrive.folder.FolderMutationServiceTest"` PASS in the clean worktree.
+- `git diff --check` PASS (line-ending warnings only).
+
+### Next Session Context
+- Continue with file rename/move/soft-delete mutation service.
+- Controller/error-envelope mapping is still pending: `FolderNotFoundException` -> 404, `FolderNameConflictException` -> 409 conflict.
+
+---
+
 ## 2026-04-28 — FE Auth + Admin Routing
 
 ### 완료

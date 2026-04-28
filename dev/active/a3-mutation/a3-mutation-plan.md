@@ -12,8 +12,9 @@ Implement the folder/file mutation foundation required before A4 upload: schema,
 
 - A1/A2 auth and audit backbone exist.
 - A3 permission seam exists in `com.ibizdrive.security`.
-- `folders`, `files`, and `file_versions` tables are not present on the branch.
-- No folder/file JPA entities, repositories, or mutation services exist.
+- `folders`, `files`, and `file_versions` schema/entities/repositories exist.
+- Repository lock methods and active sibling uniqueness tests exist.
+- `FolderMutationService` create/rename is implemented with focused compile/manual verification.
 
 ## Target State
 
@@ -25,8 +26,8 @@ Implement the folder/file mutation foundation required before A4 upload: schema,
 
 ## Phases
 
-1. Domain schema + entities + repositories.
-2. Folder create/rename.
+1. Domain schema + entities + repositories. Done.
+2. Folder create/rename. Done.
 3. File rename/move/soft delete.
 4. Folder move/soft delete recursion.
 5. Controllers + error mapping.
