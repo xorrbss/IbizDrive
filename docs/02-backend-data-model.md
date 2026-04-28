@@ -110,7 +110,7 @@ CREATE TABLE folders (
 
 -- 🔑 핵심 제약: 같은 부모 폴더 내 이름 중복 금지 (휴지통 제외)
 CREATE UNIQUE INDEX idx_folders_unique_name
-  ON folders (parent_id, normalized_name)
+  ON folders (COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), normalized_name)
   WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_folders_parent ON folders(parent_id) WHERE deleted_at IS NULL;
