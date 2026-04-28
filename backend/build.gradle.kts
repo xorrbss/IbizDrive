@@ -71,3 +71,7 @@ tasks.withType<Test> {
         showStackTraces = true
     }
 }
+
+tasks.withType<JavaCompile> {
+    options.compilerArgs.add("-parameters")
+}
