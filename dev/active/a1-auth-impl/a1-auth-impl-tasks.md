@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-26
+Last Updated: 2026-04-28
 ---
 
 # A1 Auth Implementation — Tasks
@@ -11,7 +11,9 @@ Last Updated: 2026-04-26
 | A1.2 SecurityConfig wiring | done (commit 10a524b) |
 | A1.3 LoginController + Lockout | done (commit 06b9238) |
 | A1.4 /me + Logout | done (commit ca4e309) |
-| A1.5 통합 시나리오 + 마일스톤 종료 | in-progress (Testcontainers 시나리오 작성 + 로컬 PASS, audit/push 대기) |
+| A1.5 통합 시나리오 + 마일스톤 audit | done (commit c34e640) |
+| A1.6 Session Timeout Policy | done (commit 4aa372c) |
+| A1 마일스톤 종료 | done (PR #1 merge 반영, docs/progress.md 종료 블록 존재) |
 
 ---
 
@@ -150,15 +152,15 @@ Last Updated: 2026-04-26
 
 ---
 
-## A1.5 — 통합 시나리오 + 마일스톤 종료
+## A1.5 — 통합 시나리오 + 마일스톤 audit ✅ 완료 (commit c34e640)
 
 - [x] RED: `AuthScenarioIntegrationTest` (1건 종합 시나리오, `@SpringBootTest` + Testcontainers Postgres 15-alpine, mutable Clock 빈 override)
 - [x] GREEN: 필요 시 보강 — A1.0~A1.4 구현이 이미 시나리오 충족, 추가 코드 불필요
 - [x] `./gradlew test` PASS — 9 클래스, 152 tests, 4 skipped (UserRepositoryTest 3 + AuthScenarioIntegrationTest 1, 모두 Docker 미가용으로 SKIP), 0 fail
-- [ ] gsd-audit-milestone 실행
-- [ ] `progress.md` A1 마일스톤 종료 블록
-- [ ] commit `test(A1): integration scenarios`
-- [ ] `git push` + `gh pr checks 1` (CI 그린 확인)
+- [x] dev-docs 기반 수동 audit 작성 — `gsd-audit-milestone`은 GSD `.planning` 구조 전제라 본 프로젝트에 부적합함을 확인
+- [x] `progress.md` A1.5/A1.6/A1 마일스톤 종료 블록 작성
+- [x] commit `test(A1): integration scenarios`
+- [x] PR #1 merge 후 master 반영 확인
 
 ### A1.5 작업 전 필독
 
@@ -179,3 +181,28 @@ Last Updated: 2026-04-26
 ### A1.5 문서 반영
 
 - `docs/progress.md` A1 마일스톤 종료 블록 + A2 안내
+
+---
+
+## A1.6 — Session Timeout Policy ✅ 완료 (commit 4aa372c)
+
+- [x] RED: `SessionValidityFilterTest` 4건 작성
+- [x] GREEN: `SessionValidityFilter` 추가 — absolute 8h 만료 강제
+- [x] GREEN: `SecurityConfig`에 `Clock` bean + filter wiring 추가
+- [x] GREEN: `application.yml` `spring.session.timeout: PT30M`로 idle 30분 정책 정렬
+- [x] `./gradlew test` PASS — 156 tests, 4 Docker SKIP, 0 fail
+- [x] `a1-auth-impl-audit.md` must-fix #1 RESOLVED 반영
+- [x] `docs/progress.md` A1.6 및 A1 종료 블록 반영
+
+### A1.6 문서 반영
+
+- `dev/active/a1-auth-impl/a1-auth-impl-audit.md`
+- `docs/progress.md`
+
+---
+
+## Archive 상태
+
+- 2026-04-28 확인 기준 A1은 이미 `docs/progress.md`에 "A1 마일스톤 종료"로 기록되어 있고, git history에는 PR #1 merge commit(`eda6f75`) 이후 A2 완료까지 반영되어 있다.
+- 파일 이동은 sandbox 권한 정책으로 막혀 `dev/active/a1-auth-impl/` 경로는 유지한다. 대신 본 문서와 context 상태를 completed로 정리해 active task가 아님을 명시한다.
+- 다음 개발 진입점은 프론트 인증 + 관리자 라우팅 플랜이다.

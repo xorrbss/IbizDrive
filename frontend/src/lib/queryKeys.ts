@@ -14,6 +14,9 @@ import type { AuditLogFilters } from '@/types/audit'
  * `as const`로 readonly tuple을 반환해야 invalidateQueries({ queryKey }) 매칭이 정확함.
  */
 export const qk = {
+  auth: () => ['auth'] as const,
+  authMe: () => [...qk.auth(), 'me'] as const,
+
   all: ['explorer'] as const,
   folders: () => [...qk.all, 'folders'] as const,
   folderTree: () => [...qk.folders(), 'tree'] as const,

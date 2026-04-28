@@ -428,6 +428,9 @@ type DnDState = {
 export const qk = {
   all: ['explorer'] as const,
 
+  auth: () => ['auth'] as const,
+  authMe: () => [...qk.auth(), 'me'] as const,
+
   folders: () => [...qk.all, 'folders'] as const,
   folderTree: () => [...qk.folders(), 'tree'] as const,
   folder: (id: string) => [...qk.folders(), 'detail', id] as const,

@@ -14,6 +14,13 @@ describe('qk.filesListPrefix', () => {
   })
 })
 
+describe('qk.authMe', () => {
+  it('auth keyspace 아래 현재 세션 키를 반환', () => {
+    expect(qk.auth()).toEqual(['auth'])
+    expect(qk.authMe()).toEqual(['auth', 'me'])
+  })
+})
+
 describe('invalidations.afterFilesMoved', () => {
   it('source/target 폴더 + folderTree + 각 fileDetail 호출', async () => {
     const qc = new QueryClient()

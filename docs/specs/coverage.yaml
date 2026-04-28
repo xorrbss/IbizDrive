@@ -1,0 +1,28 @@
+version: 1
+modules:
+  authorization:
+    spec: docs/specs/core/modules/authorization.md
+    symbols:
+      - java:com.ibizdrive.security.Permission
+      - java:com.ibizdrive.security.PermissionService
+      - java:com.ibizdrive.security.IbizDrivePermissionEvaluator
+      - java:com.ibizdrive.security.MethodSecurityConfig
+      - ts:frontend/src/types/permission.PermissionCode
+  frontend_auth:
+    spec: docs/specs/core/modules/frontend-auth.md
+    symbols:
+      - ts:frontend/src/types/auth.AuthRole
+      - ts:frontend/src/types/auth.AuthSession
+      - ts:frontend/src/hooks/useAuth.useAuth
+      - ts:frontend/src/components/auth/AuthGate.AuthGate
+      - ts:frontend/src/components/auth/LoginClient.LoginClient
+      - route:frontend/src/app/admin/page.AdminRootPage
+  folders_files:
+    spec: docs/specs/core/modules/folders-files.md
+    symbols:
+      - java:com.ibizdrive.folder.Folder
+      - java:com.ibizdrive.folder.FolderRepository
+      - java:com.ibizdrive.file.FileItem
+      - java:com.ibizdrive.file.FileVersion
+      - java:com.ibizdrive.file.FileItemRepository
+      - java:com.ibizdrive.file.FileVersionRepository

@@ -5,6 +5,88 @@
 
 ---
 
+## 2026-04-28 — FE Auth + Admin Routing
+
+### 완료
+- [FE-AUTH-1] auth API/query key/useAuth 선 구현 상태 확인.
+- [FE-AUTH-2] `/login` page와 `LoginClient` 추가: CSRF login, `next` 복귀, invalid/locked error 표시.
+- [FE-AUTH-2] TopBar에 현재 사용자 표시와 logout entry 추가. logout 성공 시 auth query clear 후 `/login` 이동.
+- [FE-ADMIN-1] `AuthGate` 추가: `/files/*` 인증 guard, `/admin/*` ADMIN/AUDITOR role guard.
+- [FE-ADMIN-1] `/admin` → `/admin/audit/logs` redirect 추가.
+- `mustChangePassword`는 password change API/page 부재로 TODO BLOCKED 처리.
+- `docs/01` query key 스펙과 `docs/specs` frontend-auth symbol/module map 갱신.
+
+### 검증
+- `cd frontend && npm run lint` PASS.
+- `cd frontend && npm run typecheck -- --pretty false` PASS.
+- `git diff --check` PASS (line ending warning only).
+- targeted Vitest는 환경 정책으로 실행 전 실패:
+  - `Error: spawn EPERM` from `esbuild` while loading `vitest.config.ts`
+
+### 다음 세션 컨텍스트
+- 권한 있는 로컬/CI에서 아래 테스트 재검증 필요:
+  - `npm run test -- AuthGate.test.tsx LoginClient.test.tsx TopBar.test.tsx api.auth.test.ts useAuth.test.tsx`
+- 다음 구현 후보는 folder/file GET API 연결 또는 관리자 감사 로그 실제 권한 연동.
+
+### 블로커
+- 현재 sandbox는 Node `child_process.spawn`과 `node_modules` unlink가 EPERM으로 막혀 Vitest 실행 및 dependency 복구가 제한됨.
+
+---
+
+## 2026-04-28 — A3 Mutation domain foundation
+
+### 완료
+- [A3] V5 migration 추가: `folders`, `files`, `file_versions`.
+- [A3] active sibling uniqueness 제약 추가: folders는 root 중복까지 막도록 `COALESCE(parent_id, zero_uuid)`, files는 `(folder_id, normalized_name)`.
+- [A3] JPA entities/repositories 추가: `Folder`, `FileItem`, `FileVersion`, 각 repository.
+- [A3] repository tests 추가: active duplicate reject / deleted duplicate allow.
+- [A3] docs/02 §2.3 folder unique index snippet을 실제 migration과 동기화.
+- [A3] docs/specs folders-files module과 symbol index 갱신.
+
+### 검증
+- RED: focused `javac` test compile에서 `FolderRepository`, `Folder`, `FileItemRepository`, `FileItem` missing symbol 12 errors 확인.
+- GREEN: focused `javac -parameters` main/test compile 통과.
+- Gradle targeted test는 sandbox deletion policy로 test execution 전 실패:
+  - `Failed to delete file: C:\project\IbizDrive\.tmp\gradle-home\.tmp\gradle-kotlin-dsl-*.tmp`
+
+### 다음 세션 컨텍스트
+- 다음 slice: `FolderMutationService` create/rename (`@Transactional`, parent/source row lock, `NormalizeUtil`, audit event).
+- 이후 file rename/move/soft-delete, folder move/recursive soft-delete 순서로 진행.
+
+### 블로커
+- 로컬 Gradle 실행 제한은 계속 존재. 일반 로컬/CI에서 `cd backend && .\gradlew.bat test --tests "com.ibizdrive.folder.*" --tests "com.ibizdrive.file.*"` 재검증 필요.
+
+---
+
+## 2026-04-28 — A3 PermissionService 백엔드 seam
+
+### 완료
+- [A3] `com.ibizdrive.security.Permission` enum 9종 추가 (`READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN/PURGE`) — docs/03 §3.1 mirror.
+- [A3] `PermissionService` 추가 — 현재 도메인 테이블 부재에 맞춰 role-level만 판정: ADMIN=all, AUDITOR=READ only, MEMBER=리소스 grant 도입 전 deny.
+- [A3] `IbizDrivePermissionEvaluator` + `MethodSecurityConfig` 추가 — docs/03 §3.5의 `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` 표면 활성화.
+- [A3] `backend/build.gradle.kts`에 `-parameters` 추가 — Spring SpEL `#id` 파라미터 이름 해석 보장. 수동 method-security 검증에서 이 플래그 없이는 ADMIN도 deny되는 결함 확인.
+- [A3] 테스트 추가: `PermissionServiceTest`, `MethodSecurityPermissionTest`.
+- [A3] `frontend/src/types/permission.ts` 추가 — docs/03 §3.1 / backend `Permission` enum의 프론트 UX용 mirror.
+- [A3] `docs/specs` 최소 bootstrap — authorization module과 신규 public symbol index 기록.
+
+### 검증
+- `javac -parameters`로 focused main/test permission classes 컴파일 통과.
+- 수동 Spring method-security runner 통과: ADMIN all, AUDITOR READ only, MEMBER deny, invalid target/permission deny, `hasPermission(#id, ...)` method security allow/deny 확인.
+- `gradle test --tests "com.ibizdrive.security.*"`는 이 로컬 샌드박스에서 Gradle cache temp 삭제가 막혀 test execution 전 실패:
+  - `Failed to delete file: C:\project\IbizDrive\.g4\.tmp\gradle-kotlin-dsl-*.tmp`
+  - `GRADLE_USER_HOME` 우회, direct Gradle distro, generated jar cache 복사까지 시도했으나 동일 계열 이슈.
+
+### 다음 세션 컨텍스트
+- A4(tus 업로드 + 완료 감사)는 docs/00 §4.4 기준 A3 Mutation(폴더/파일 도메인, `deleted_at`, sibling unique, `SELECT FOR UPDATE` mutation)이 선행 조건이다. 현재 세션은 권한 seam만 닫았으므로, A4 본 구현 전 폴더/파일 도메인 A3를 먼저 확인/완료해야 한다.
+- 실제 CI/일반 로컬 환경에서는 `cd backend && .\gradlew.bat test --tests "com.ibizdrive.security.*"`를 먼저 재검증.
+- resource-level permission table/preset inheritance는 아직 구현하지 않음. 폴더/파일 도메인 스키마 도입 시 `PermissionService` 내부에 CTE/deny-first 평가를 추가.
+- frontend `usePermission` all-true stub 교체는 별도 프론트 트랙에서 `/api/effective-permissions` 계약 확정 후 진행.
+
+### 블로커
+- 로컬 Gradle 실행은 샌드박스 삭제 정책 때문에 제한됨. 코드 자체 검증은 manual runner로 대체 완료.
+
+---
+
 ## 2026-04-28 — 🏁 A2 마일스톤 종료 (Audit Log Backbone)
 
 ### 범위

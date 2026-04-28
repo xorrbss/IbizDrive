@@ -1,0 +1,176 @@
+{
+  "generated_at": "2026-04-28",
+  "scope": "manual-minimal-bootstrap",
+  "symbols": [
+    {
+      "id": "java:com.ibizdrive.security.Permission",
+      "kind": "enum",
+      "name": "Permission",
+      "path": "backend/src/main/java/com/ibizdrive/security/Permission.java",
+      "line": 9,
+      "visibility": "public",
+      "container": "com.ibizdrive.security",
+      "tags": ["authorization", "public-api"]
+    },
+    {
+      "id": "java:com.ibizdrive.security.PermissionService",
+      "kind": "class",
+      "name": "PermissionService",
+      "path": "backend/src/main/java/com/ibizdrive/security/PermissionService.java",
+      "line": 17,
+      "visibility": "public",
+      "container": "com.ibizdrive.security",
+      "tags": ["authorization", "service"]
+    },
+    {
+      "id": "java:com.ibizdrive.security.IbizDrivePermissionEvaluator",
+      "kind": "class",
+      "name": "IbizDrivePermissionEvaluator",
+      "path": "backend/src/main/java/com/ibizdrive/security/IbizDrivePermissionEvaluator.java",
+      "line": 14,
+      "visibility": "public",
+      "container": "com.ibizdrive.security",
+      "tags": ["authorization", "spring-security"]
+    },
+    {
+      "id": "java:com.ibizdrive.security.MethodSecurityConfig",
+      "kind": "class",
+      "name": "MethodSecurityConfig",
+      "path": "backend/src/main/java/com/ibizdrive/security/MethodSecurityConfig.java",
+      "line": 15,
+      "visibility": "public",
+      "container": "com.ibizdrive.security",
+      "tags": ["authorization", "spring-security", "configuration"]
+    },
+    {
+      "id": "ts:frontend/src/types/permission.PermissionCode",
+      "kind": "type",
+      "name": "PermissionCode",
+      "path": "frontend/src/types/permission.ts",
+      "line": 8,
+      "visibility": "exported",
+      "container": "frontend/src/types/permission.ts",
+      "tags": ["authorization", "frontend-mirror"]
+    },
+    {
+      "id": "ts:frontend/src/types/auth.AuthRole",
+      "kind": "type",
+      "name": "AuthRole",
+      "path": "frontend/src/types/auth.ts",
+      "line": 1,
+      "visibility": "exported",
+      "container": "frontend/src/types/auth.ts",
+      "tags": ["frontend-auth", "public-api"]
+    },
+    {
+      "id": "ts:frontend/src/types/auth.AuthSession",
+      "kind": "interface",
+      "name": "AuthSession",
+      "path": "frontend/src/types/auth.ts",
+      "line": 18,
+      "visibility": "exported",
+      "container": "frontend/src/types/auth.ts",
+      "tags": ["frontend-auth", "public-api"]
+    },
+    {
+      "id": "ts:frontend/src/hooks/useAuth.useAuth",
+      "kind": "function",
+      "name": "useAuth",
+      "path": "frontend/src/hooks/useAuth.ts",
+      "line": 10,
+      "visibility": "exported",
+      "container": "frontend/src/hooks/useAuth.ts",
+      "tags": ["frontend-auth", "hook"]
+    },
+    {
+      "id": "ts:frontend/src/components/auth/AuthGate.AuthGate",
+      "kind": "react-component",
+      "name": "AuthGate",
+      "path": "frontend/src/components/auth/AuthGate.tsx",
+      "line": 23,
+      "visibility": "exported",
+      "container": "frontend/src/components/auth/AuthGate.tsx",
+      "tags": ["frontend-auth", "route-guard"]
+    },
+    {
+      "id": "ts:frontend/src/components/auth/LoginClient.LoginClient",
+      "kind": "react-component",
+      "name": "LoginClient",
+      "path": "frontend/src/components/auth/LoginClient.tsx",
+      "line": 30,
+      "visibility": "exported",
+      "container": "frontend/src/components/auth/LoginClient.tsx",
+      "tags": ["frontend-auth", "login"]
+    },
+    {
+      "id": "route:frontend/src/app/admin/page.AdminRootPage",
+      "kind": "route",
+      "name": "AdminRootPage",
+      "path": "frontend/src/app/admin/page.tsx",
+      "line": 3,
+      "visibility": "exported",
+      "container": "frontend/src/app/admin/page.tsx",
+      "tags": ["frontend-auth", "admin-routing"]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.Folder",
+      "kind": "class",
+      "name": "Folder",
+      "path": "backend/src/main/java/com/ibizdrive/folder/Folder.java",
+      "line": 13,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": ["folders-files", "domain-entity"]
+    },
+    {
+      "id": "java:com.ibizdrive.folder.FolderRepository",
+      "kind": "interface",
+      "name": "FolderRepository",
+      "path": "backend/src/main/java/com/ibizdrive/folder/FolderRepository.java",
+      "line": 12,
+      "visibility": "public",
+      "container": "com.ibizdrive.folder",
+      "tags": ["folders-files", "repository"]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileItem",
+      "kind": "class",
+      "name": "FileItem",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileItem.java",
+      "line": 13,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": ["folders-files", "domain-entity"]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileVersion",
+      "kind": "class",
+      "name": "FileVersion",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileVersion.java",
+      "line": 15,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": ["folders-files", "domain-entity"]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileItemRepository",
+      "kind": "interface",
+      "name": "FileItemRepository",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileItemRepository.java",
+      "line": 12,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": ["folders-files", "repository"]
+    },
+    {
+      "id": "java:com.ibizdrive.file.FileVersionRepository",
+      "kind": "interface",
+      "name": "FileVersionRepository",
+      "path": "backend/src/main/java/com/ibizdrive/file/FileVersionRepository.java",
+      "line": 7,
+      "visibility": "public",
+      "container": "com.ibizdrive.file",
+      "tags": ["folders-files", "repository"]
+    }
+  ]
+}

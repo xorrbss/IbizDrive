@@ -1,6 +1,7 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
+import type { AuthApiError, AuthSession, LoginCredentials } from '@/types/auth'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
@@ -152,7 +153,73 @@ function relocateInTree(
   node.parentId = newParentId
 }
 
+async function readOptionalJson(res: Response): Promise<Record<string, unknown> | null> {
+  const contentType = res.headers.get('content-type') ?? ''
+  if (!contentType.includes('application/json')) return null
+  return (await res.json()) as Record<string, unknown>
+}
+
+async function throwAuthError(res: Response): Promise<never> {
+  const body = await readOptionalJson(res)
+  const err = new Error(`auth request failed: ${res.status}`) as AuthApiError
+  err.status = res.status
+  if (typeof body?.code === 'string') err.code = body.code
+  if (typeof body?.reason === 'string') err.reason = body.reason
+  if (typeof body?.retryAfterSec === 'number') err.retryAfterSec = body.retryAfterSec
+  throw err
+}
+
+async function authJson<T>(url: string, init: RequestInit): Promise<T> {
+  const res = await fetch(url, init)
+  if (!res.ok) return throwAuthError(res)
+  return (await res.json()) as T
+}
+
 export const api = {
+  async getCsrf(): Promise<string> {
+    const body = await authJson<{ csrfToken: string }>('/api/auth/csrf', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    return body.csrfToken
+  },
+
+  async getMe(): Promise<AuthSession> {
+    return authJson<AuthSession>('/api/auth/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+  },
+
+  async login(credentials: LoginCredentials): Promise<AuthSession> {
+    const csrfToken = await api.getCsrf()
+    return authJson<AuthSession>('/api/auth/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
+      body: JSON.stringify(credentials),
+    })
+  },
+
+  async logout(): Promise<void> {
+    const csrfToken = await api.getCsrf()
+    const res = await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        Accept: 'application/json',
+        'X-CSRF-Token': csrfToken,
+      },
+    })
+    if (!res.ok) return throwAuthError(res)
+  },
+
   async getFolderTree(): Promise<FolderNode> {
     await new Promise((r) => setTimeout(r, 100))
     return MOCK_TREE

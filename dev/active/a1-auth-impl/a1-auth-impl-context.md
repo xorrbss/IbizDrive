@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-04-26
+Last Updated: 2026-04-28
 ---
 
 # A1 Auth Implementation — Context
@@ -10,30 +10,24 @@ Last Updated: 2026-04-26
 - 2026-04-26 [세션 2, 완료, commit 06b9238]: A1.3 LoginController + AuthService + LoginAttemptTracker (in-memory ConcurrentHashMap, ADR #23). 5/15min lockout, timing-safe (@PostConstruct dummy hash, 비활성·잠금 INVALID_CREDENTIALS 매핑), session fixation defended (changeSessionId), last_login_at 갱신. AuthExceptionHandler → flat error shape (docs/02 §7.4). LoginAttemptTrackerTest 4/4 + LoginControllerIntegrationTest 8/8 PASS. ADR #23 docs/00 §5 등록. 컨텍스트 9% 한계로 dev sync는 다음 세션 이월.
 - 2026-04-26 [세션 3, 완료, commits 6591d1b/730c978/ca4e309]: dev-docs-update + HANDOFF cleanup → A1.4 (/me + /logout) 구현. **A1.3 hidden gap 발견 + 수정**: Spring Security 6의 SecurityContextHolderFilter는 load-only(5.x auto-save 제거). AuthService.login이 SecurityContext를 영속화하지 않아 후속 /me는 항상 401. SecurityConfig에 DelegatingSecurityContextRepository 빈 + securityContext() wire 추가, AuthService.login에 HttpServletResponse + saveContext 명시 호출. /me는 LoginResponse 재사용 (KISS, docs/02 §7.4 shape 동일). 테스트 4 클래스 22건 PASS. 컨텍스트 71%로 A1.5 미진입, pause-work.
 - 2026-04-26 [세션 4, 진행 중]: A1.5 RED+GREEN 완료. progress.md A1.4 세션 블록 추가. `AuthScenarioIntegrationTest` 1건 작성 — `@SpringBootTest` + Testcontainers Postgres 15-alpine + `@TestConfiguration` mutable Clock 빈 `@Primary` override. 시나리오 9 step (CSRF→login→/me→5×wrong PW→6번째=423→Clock 16분→재시도 200→logout→/me=401). 로컬 Docker 미가용 → SKIP, CI ubuntu-latest 실행 예정. `./gradlew test` 9 클래스, 152 tests, 4 skipped (Docker), 0 fail. 잔여: gsd-audit-milestone + 마일스톤 종료 블록 + commit + push.
+- 2026-04-28 [archive 확인, 완료]: git history와 `docs/progress.md` 확인 결과 A1은 PR #1 merge(`eda6f75`)로 master에 반영되어 있고, A1.6까지 포함된 종료 블록이 존재한다. `a1-auth-impl-audit.md`는 must-fix 0 / 종료 가능으로 정리되어 있다. 파일 이동은 sandbox 권한 정책으로 막혀 active 경로는 유지하되, 문서 내부 상태를 completed로 정리한다.
 
 ## Current Execution Contract
 
-- 사용자 큐: A1.4 → A1.5 (잔여 2 phase 자율 실행)
-- 모드: autonomous (spec/plan 승인 게이트 없음)
-- TDD 강제: superpowers:test-driven-development RED → GREEN
-- 디버깅: superpowers:systematic-debugging
-- commit 전: superpowers:verification-before-completion
-- 매 phase commit 직전 `./gradlew test` PASS 강제
-- 컨텍스트 35% → 현재 phase wrap-up, 25% → /gsd-pause-work 자체 실행. 본 세션 사용자 지시: A1.4 종료 시점에 65% 초과면 자동 pause-work, 아니면 A1.5까지 이어감
-- 중단 기준: ADR/CLAUDE.md §3 위반, DB breaking change, endpoint 매트릭스 외 신규, 외부 자격증명 필요, 같은 에러 3회 실패
+- 상태: completed
+- 더 이상 A1 active task 없음.
+- 재검증 명령: `cd backend && .\gradlew.bat test`
+- 다음 작업 진입점: 프론트 인증 + 관리자 라우팅 플랜. `/api/auth/me` 응답을 프론트 인증의 진실 출처로 사용한다.
+- 보존 근거: `docs/progress.md` A1 종료 블록, `a1-auth-impl-audit.md`, git history PR #1 merge.
 
-## 현재 active task
+## 완료 상태
 
-**A1.5 — 통합 시나리오 + 마일스톤 종료**
+**A1 — Backend Authentication** ✅ 완료
 
-next concrete actions (다음 세션 첫 작업):
-1. `docs/progress.md` 최상단에 A1.4 세션 블록 추가 (commit ca4e309, hidden gap fix 강조, /me=LoginResponse 재사용 결정)
-2. `AuthScenarioIntegrationTest` (@SpringBootTest + Testcontainers Postgres 15) 1건 종합 시나리오 — CSRF 발급 → 로그인 → /me → 4회 실패 → 5회 실패→423 → lockout 만료 (Clock fake) → 다시 성공 → /logout → /me=401
-3. `./gradlew test` 전체 PASS
-4. `gsd-audit-milestone A1` 실행 (드리프트 0 검증)
-5. `progress.md` A1 마일스톤 종료 블록
-6. commit `test(A1): integration scenarios`
-7. `git push` + `gh pr checks` 그린 또는 PR 생성
+- 완료 범위: A1.0~A1.6 (`/api/auth/csrf`, `/api/auth/login`, `/api/auth/me`, `/api/auth/logout`, lockout, CSRF, session timeout)
+- 종료 증거: `docs/progress.md` "2026-04-26 — A1 마일스톤 종료 (Backend Authentication)"
+- 남은 A1 blocker: 없음
+- 후속 추적: password change flow, 권한 매트릭스 백엔드 권위, 프론트 인증/관리자 라우팅은 별도 작업
 
 ### 이전 active (A1.4) — 완료
 
