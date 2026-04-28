@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-04-29 — A3.0 docs 정합 + ADR #26 (no-code phase)
+
+### 완료
+- **docs/03-security-compliance.md** 헤더 `현재 상태: 스켈레톤` → `§1·§2·§3·§4 본문 활성, §5·§6·§7·§8 일부 본문 진행 중` (line 4) — §3 본문은 이미 §3.1~§3.6 작성 완료 상태였으나 헤더가 stale했던 표기 정합
+- **CLAUDE.md** §2 라우팅 표 "권한 매트릭스 (작성 예정)" → "권한 매트릭스 (§3)" / §4 계약 파일 표 `src/types/permission.ts` "(예정)" 제거
+- **docs/00-overview.md** §5에 **ADR #26** 추가 — `PermissionEvaluator` MVP는 user-level (Role 기반) 평가만, resource-level은 A4 이월. SpEL 호출 시그니처(`hasPermission(#id, 'folder', 'READ')`)는 docs/02 §7.10 그대로 채택해 A4에서 evaluator 내부만 교체. `permission.granted/revoked` emit도 A4 이월 (A3는 `permission.changed`만), `effectivePermissionsCacheKey` SHA-256 hex prefix 16자 (A1 deviation #2 해소 예고)
+- **frontend/src/types/permission.ts** placeholder 신설 (`export {}` + JSDoc backlink)
+
+### 검증
+- `pnpm typecheck` PASS, `pnpm lint` PASS
+
+### 다음 단계 (A3.1 진입)
+- backend `com.ibizdrive.permission.Permission` enum 9 values + `Preset` enum 5 values + frontend 1:1 mirror (RED→GREEN)
+
+---
+
 ## 2026-04-28 — 🏁 A2 마일스톤 종료 (Audit Log Backbone)
 
 ### 범위

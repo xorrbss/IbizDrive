@@ -59,7 +59,7 @@ app/               Next.js App Router
 | API 스펙 | `docs/02-backend-data-model.md` §7 |
 | 에러 코드 | `docs/02-backend-data-model.md` §8 |
 | 위협 모델, 인증 | `docs/03-security-compliance.md` §1, §2 (스켈레톤) |
-| 권한 매트릭스 | `docs/03-security-compliance.md` §3 (작성 예정) |
+| 권한 매트릭스 | `docs/03-security-compliance.md` §3 |
 | 감사 이벤트 | `docs/03-security-compliance.md` §4 (스켈레톤) |
 | 저장소 보안 | `docs/03-security-compliance.md` §5 |
 | Legal Hold | `docs/03-security-compliance.md` §6.3 |
@@ -118,7 +118,7 @@ app/               Next.js App Router
 | `src/lib/queryKeys.ts` | docs/01 §6.1 | TanStack Query 키 팩토리 |
 | `src/lib/normalize.ts` | docs/02 §3 | NFC 정규화 함수 |
 | `src/lib/folderPath.ts` | docs/01 §17.3 | URL canonical 빌더 |
-| `src/types/permission.ts` | docs/03 §3 (예정) | 권한 enum |
+| `src/types/permission.ts` | docs/03 §3 | 권한 enum |
 | `src/types/audit.ts` | docs/03 §4 | 감사 이벤트 enum |
 | `src/lib/errors.ts` | docs/02 §8 | 에러 코드 상수 |
 
