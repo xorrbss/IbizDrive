@@ -2,6 +2,7 @@ package com.ibizdrive.common.error;
 
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.folder.FolderNameConflictException;
+import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionConflictException;
 import com.ibizdrive.permission.PermissionDenyContext;
@@ -73,6 +74,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleFileNameConflict(FileNameConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("RENAME_CONFLICT", "동일 이름의 파일이 이미 존재합니다", null));
+    }
+
+    /**
+     * 폴더 복원 시 원위치(original_parent_id) 아래 동일 normalized_name 활성 폴더 충돌 — A6.3.
+     *
+     * <p>docs/02 §8 line 1221에 등록된 {@code RESTORE_CONFLICT} envelope code. {@code RENAME_CONFLICT}와
+     * 분리한 이유: frontend가 "이름 변경 후 복원 제안" 흐름으로 분기 (rename은 RenameDialog 재요청).
+     */
+    @ExceptionHandler(FolderRestoreConflictException.class)
+    public ResponseEntity<ApiError> handleFolderRestoreConflict(FolderRestoreConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("RESTORE_CONFLICT", "동일 위치에 같은 이름의 폴더가 존재해 복원할 수 없습니다", null));
     }
 
     /**

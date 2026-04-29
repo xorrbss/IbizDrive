@@ -3,9 +3,12 @@ package com.ibizdrive.file;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -85,4 +88,25 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     boolean existsActiveByFolderAndNormalizedNameExcludingId(@Param("folderId") UUID folderId,
                                                              @Param("normalizedName") String normalizedName,
                                                              @Param("selfId") UUID selfId);
+
+    /**
+     * 폴더 cascade soft-delete의 file 분기 (A6.1) — folder 트리가 삭제될 때 트리에 속한 활성
+     * 파일도 동일 트랜잭션에서 일괄 soft-delete.
+     *
+     * <p><b>audit 정책 (CLAUDE.md §3 원칙 8 + A6 §A6.1.b)</b>: 본 쿼리는 {@code FILE_DELETED}
+     * 이벤트를 발행하지 않는다 — folder cascade 1회당 후손 파일이 1000+가 될 수 있어 audit_log
+     * 폭증 위험. cascade 전체에 대해 root {@code FOLDER_DELETED} 1건만 발행되며 after_state에
+     * descendantFiles 카운트가 보존된다(서비스 책임).
+     *
+     * <p>{@code original_folder_id = folder_id}를 동시에 set — 본 트랙은 후손 일괄 복원 endpoint를
+     * 도입하지 않지만, 향후 file restore 흐름이 호출될 때 destination 스냅샷이 보존되도록 함
+     * (FileMutationService.restore의 originalFolderId NOT NULL 가드와 호환).
+     */
+    @Modifying
+    @Query("UPDATE FileItem f SET f.deletedAt = :deletedAt, f.purgeAfter = :purgeAfter, "
+         + "f.originalFolderId = f.folderId, f.updatedAt = :deletedAt "
+         + "WHERE f.folderId IN :folderIds AND f.deletedAt IS NULL")
+    int softDeleteByFolderIds(@Param("folderIds") Collection<UUID> folderIds,
+                              @Param("deletedAt") Instant deletedAt,
+                              @Param("purgeAfter") Instant purgeAfter);
 }
