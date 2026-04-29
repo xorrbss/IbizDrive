@@ -1,5 +1,6 @@
 package com.ibizdrive.common.error;
 
+import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionConflictException;
@@ -60,6 +61,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleFolderNameConflict(FolderNameConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("RENAME_CONFLICT", "동일 이름의 폴더가 이미 존재합니다", null));
+    }
+
+    /**
+     * V5의 {@code idx_files_unique_name} 위반 → 동일 폴더 내 동일 normalized_name 활성 파일 — A4.8.
+     *
+     * <p>{@link FolderNameConflictException}과 동일 envelope code {@code RENAME_CONFLICT} —
+     * frontend는 폴더/파일 구분 없이 동일 RenameDialog로 재요청 (계약, docs/02 §8).
+     */
+    @ExceptionHandler(FileNameConflictException.class)
+    public ResponseEntity<ApiError> handleFileNameConflict(FileNameConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("RENAME_CONFLICT", "동일 이름의 파일이 이미 존재합니다", null));
     }
 
     /**
