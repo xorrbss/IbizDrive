@@ -969,27 +969,30 @@ POST /api/files/:id/versions   (이미 업로드된 임시 객체에서 새 버�
   Errors:   409 VERSION_CONFLICT { currentVersion }, 413 QUOTA_EXCEEDED
 
 GET /api/files/:id/versions
+  Guard:    @PreAuthorize hasPermission(#fileId, 'file', 'READ') — ADMIN/AUDITOR/READ-grant 통과
   Response: 200 {
     "versions": [
       {
         "id": "uuid",
-        "version_number": 3,
-        "size_bytes": 12345,
-        "checksum_sha256": "...",
-        "mime_type": "...",
-        "scan_status": "clean",                  // pending | clean | infected | error  (V5 CHECK 정합)
-        "uploaded_by": "uuid",
-        "uploaded_at": "iso8601",
+        "versionNumber": 3,                      // camelCase (FileDto/FolderDto 일관)
+        "sizeBytes": 12345,
+        "checksumSha256": "...",
+        "mimeType": "...",
+        "scanStatus": "clean",                   // pending | clean | infected | error  (V5 CHECK 정합 — lowercase wire)
+        "uploadedBy": "uuid",
+        "uploadedAt": "iso8601",
         "comment": "...",
-        "is_current": true
+        "isCurrent": true                        // file.currentVersionId === v.id
       }
     ]
   }
-  Order:    version_number DESC (최신 버전이 배열 첫 항목)
-  SoftDel:  파일이 soft-deleted(`files.deleted_at IS NOT NULL`)면 404 RESOURCE_NOT_FOUND
+  Order:    versionNumber DESC (최신 버전이 배열 첫 항목)
+  SoftDel:  파일이 soft-deleted(`files.deleted_at IS NOT NULL`)면 404 NOT_FOUND
             (휴지통에서 versions 노출 차단 — A5 plan 리스크 결정)
-  Errors:   404 RESOURCE_NOT_FOUND
+  Errors:   404 NOT_FOUND, 403 PERMISSION_DENIED (envelope code = §8 표준)
 ```
+
+> **A5 closure 정합 (2026-04-29)**: JSON 응답 키는 camelCase로 wire — 프로젝트 전체 DTO 계약(`FileDto`/`FolderDto`/`PermissionDto`)과 일관. envelope `code`는 §8 정의(`NOT_FOUND` / `PERMISSION_DENIED`)를 그대로 채택 (이전 버전 본문의 `RESOURCE_NOT_FOUND` 표기 정정). 구현체: `FileVersionController` + `FileVersionDto`.
 
 ### 7.7 업로드 (tus, ADR #13)
 

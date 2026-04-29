@@ -5,6 +5,59 @@
 
 ---
 
+## 2026-04-29 — 🏁 A5 마일스톤 종료 (FileVersion Domain — entity + GET /versions)
+
+### 범위
+
+A5.0 (docs/02 §7.6 응답 스키마 + ADR #29 트리거 마커, no-code) → A5.1 (`VersionScanStatus` enum + converter + `FileVersion` @Entity + `FileVersionRepository` + Testcontainers 7건) → A5.2 (`FileVersionDto` record + `FileVersionController` GET `/api/files/{fileId}/versions` + `@PreAuthorize` READ + 권한/404 매트릭스 통합 테스트 7건) → A5.3 (CI green wait + squash-merge `5155e00` + ADR #29 closed + dev-docs archive).
+
+### 회고
+
+- **commits**: 7 on top of A4 close `48e23a3` (worktree branch `feature/a5-file-versions`) → squash-merge `5155e00` on `master`. PR #13 single, CI green (backend junit + frontend vitest 모두 SUCCESS).
+- **production 파일**: 5 신설 (backend `file/VersionScanStatus.java`, `file/VersionScanStatusConverter.java`, `file/FileVersion.java`, `file/FileVersionRepository.java`, `file/dto/FileVersionDto.java`, `file/FileVersionController.java`). frontend 무수정.
+- **test 파일**: 2 신설 (`FileVersionRepositoryTest` 7건, `FileVersionControllerTest` 7건). A4 401건 테스트 회귀 0.
+- **endpoint 신규**: 1개 — `GET /api/files/{fileId}/versions` (DESC 정렬, `isCurrent` 계산, soft-delete 404, `@PreAuthorize` READ).
+- **ADR 변경**: **#29 closed** (deferred → "closed (A5, squash-merge `5155e00`)"). FileVersion entity/repo + GET versions까지 도입. POST `/versions` (업로드 commit) + restore는 A6+ 이월.
+- **schema-validation issue**: 최초 commit에서 `FileVersion.checksumSha256`을 `columnDefinition="char(64)"`로 매핑 → CI에서 Hibernate logical type VARCHAR ↔ Postgres bpchar(CHAR) 불일치로 ApplicationContext 부트 실패 (Testcontainers 125건 cascade FAILED). `@JdbcTypeCode(SqlTypes.CHAR)` 주입 fix 후 CI green.
+- **camelCase 정합**: `FileVersionDto`는 기존 `FileDto`/`FolderDto`와 동일하게 camelCase JSON 키. docs/02 §7.6 본문 예시는 snake_case로 적혀있어 closure에서 §7.6 본문 정합 patch (별도 commit).
+
+### 핵심 결정 (A5 트랙, 확정)
+
+1. **FileVersion entity Lombok-free** — A4 entity 패턴(`Folder`/`FileItem`) 보존. JPA AttributeConverter (`autoApply=false`) + `VersionScanStatusConverter`로 DB lowercase ↔ Java UPPERCASE 변환.
+2. **`scan_result JSONB` entity 미매핑** — A5 list endpoint 응답 스키마 미포함 + JSONB↔JPA 의존성 회피 (audit 모듈과 동일 — JdbcTemplate 분리). 스캐너 워커 도입 시점에 별도 매핑 검토 (KISS — YAGNI).
+3. **FileItem.currentVersionId 매핑 = UUID 컬럼** — `@OneToOne` 대신 단순 UUID. lazy proxy 비용/cycle 위험 회피 + service layer가 명시적 fetch.
+4. **GET /versions 만 도입** — POST `/versions` (업로드 commit), restore, comment 수정 등은 A6+ 이월. ADR #29 deferred는 GET까지로 close 처리.
+5. **CHAR vs VARCHAR 매핑 표준화** — `CHAR(N)` 컬럼은 entity에서 `@JdbcTypeCode(SqlTypes.CHAR) + @Column(length=N)`로 매핑. `columnDefinition` string은 logical type 결정에 무력 — 회귀 가드.
+
+### accepted-deviation (A6+ 이월)
+
+- POST `/api/files/{fileId}/versions` (업로드 commit + 멀티파트 + scan-status='pending' enqueue) — A4.8 file mutation 트랙과 별개로 진입 시점 미정.
+- `FileVersion.scanResult` JSONB 매핑 — 스캐너 워커 도입과 동시 (위 결정 #2).
+- 버전 restore (`PATCH /api/files/{id}/restore-version`) — 사용자 주도 롤백 UX와 함께 후속.
+- docs/02 §7.6 본문 snake_case 예시 → camelCase 정합 patch — 본 closure commit에서 동시 처리.
+
+### DoD 10/10
+
+1. ✅ `VersionScanStatus` enum + converter — DB lowercase ↔ Java UPPERCASE 라운드트립 GREEN
+2. ✅ `FileVersion` @Entity + V5 schema-validation GREEN (`ddl-auto=validate`)
+3. ✅ `FileVersionRepository.findByFileIdOrderByVersionNumberDesc` + `existsByStorageKey` — Testcontainers 7건 GREEN
+4. ✅ `FileVersionDto` record + `from(v, currentVersionId)` factory — `isCurrent` 계산 정확
+5. ✅ `FileVersionController` GET endpoint + `@PreAuthorize("hasPermission(#fileId, 'file', 'READ')")` + soft-delete 404
+6. ✅ Controller 통합 테스트 7건 — ADMIN/AUDITOR/MEMBER(no-grant 403)/MEMBER(grant 200)/missing 404/soft-deleted 404/currentVersionId NULL → 모두 GREEN
+7. ✅ A4 evaluator 13건 + audit 회귀 0, audit_log REVOKE 정책 무영향 (read-only endpoint, audit emission 없음)
+8. ✅ ADR #29 status "deferred" → "closed (A5, `5155e00`)" 정합. docs/00 §5 갱신
+9. ✅ PR #13 CI green (backend junit + frontend vitest 모두 SUCCESS) + master squash-merge `5155e00`
+10. ✅ dev-docs `dev/active/a5-file-versions/` → `dev/completed/` archive + docs/02 §7.6 camelCase/`NOT_FOUND` envelope 정합 patch
+
+### 다음 단계 — A6 또는 docs/03~04 본문
+
+- **A6 (이미 active)**: folder delete/restore + descendant cascade soft-delete + RESTORE_CONFLICT envelope (별도 worktree `dev/active/a6-folder-mutation-delete/`).
+- **A5 잔여 → A6+ 이월**: POST `/versions` (업로드 commit), 버전 restore, scan worker, scanResult JSONB 매핑.
+- **docs/03 §5~§8 본문**: 저장소 보안(KMS/presigned TTL), Legal Hold, 데이터 보호, 보안 회귀 가드 (코드 0줄 트랙).
+- **docs/04 본문**: 관리자 페이지·쿼터·백업 (별도 트랙).
+
+---
+
 ## 2026-04-29 — A5.0 docs/02 §7.6 + ADR #29 트리거 마커 (no-code)
 
 ### 범위
