@@ -5,6 +5,22 @@
 
 ---
 
+## 2026-04-29 — A4.0 docs/02 정합 patch (no-code)
+
+### 범위
+A4-data 트랙 진입점. ADR #27/#28/#29 결정을 docs/02 본문에 반영.
+
+### 변경
+- `docs/02 §2.3 folders` UNIQUE 인덱스: `parent_id` → `COALESCE(parent_id, ZERO_UUID)` 보강 + 보강 사유 주석 1줄 (root parent 다중 NULL 차단, ADR #27 보장사항).
+- `docs/02 §2.6 permissions` `preset` 컬럼 코멘트에 "preset 단일 — deny v1.x 이월, ADR #28" 주석 1줄.
+- `docs/02 §7.10` POST `/api/:resource/:id/permissions` Guard `'ADMIN'` → `'PERMISSION_ADMIN'` 정합 (구표기 alias 명시).
+
+### 검증
+- `git diff --stat backend/ frontend/` → 비어있음 (코드 0줄).
+- 다음 phase A4.1 V5 SQL이 본 §2.3/§2.6 본문과 1:1 정합.
+
+---
+
 ## 2026-04-29 — 🏁 A3 마일스톤 종료 (Permission Matrix + PermissionService)
 
 ### 범위

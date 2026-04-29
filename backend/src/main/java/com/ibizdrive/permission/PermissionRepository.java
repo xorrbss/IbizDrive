@@ -1,0 +1,92 @@
+package com.ibizdrive.permission;
+
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * Spring Data JPA repository for {@link PermissionRow}.
+ *
+ * <p>핵심 메서드 {@link #findEffective(UUID, String, UUID)}: 사용자가 주어진 리소스에 대해 보유한
+ * <em>유효</em> grant 모두를 반환 (ADR #28 — grant 우선 lookup, 명시 deny 처리 없음).
+ *
+ * <p>"유효"의 정의 (A4 MVP 범위):
+ * <ol>
+ *   <li><strong>상속</strong>: file이 속한 폴더와 그 모든 조상 폴더(루트까지)에서 부여된 grant + file 자체에
+ *       부여된 grant. 폴더 리소스의 경우는 폴더 자체와 조상.</li>
+ *   <li><strong>subject 매칭</strong>: ({@code subject_type='user'} AND {@code subject_id=:userId})
+ *       OR ({@code subject_type='everyone'}). department/role 멤버십 확장은 A5+ — A4.3 evaluator가
+ *       department/role 매핑이 필요해지면 본 메서드 시그니처를 확장하거나 evaluator 측에서 OR 조합.</li>
+ *   <li><strong>만료</strong>: {@code expires_at IS NULL} OR {@code expires_at > NOW()}.</li>
+ *   <li><strong>soft delete</strong>: 삭제된 폴더({@code folders.deleted_at IS NOT NULL})는 조상
+ *       체인에서 제외 — 휴지통에 들어간 폴더는 권한 상속 경로에서 끊김.</li>
+ * </ol>
+ *
+ * <p>구현은 PostgreSQL recursive CTE — 폴더 트리를 자식→부모로 거슬러 올라가며 권한 후보 노드 집합을
+ * 만들고 권한 행과 join. 본 동작은 {@link com.ibizdrive.folder.V5MigrationIT}와 동일한
+ * Testcontainers 기반 단위 테스트({@code PermissionRepositoryTest})에서 검증.
+ *
+ * <p>A4.3에서 {@code IbizDrivePermissionEvaluator} 내부가 본 메서드를 호출하도록 교체된다 — 본 세션
+ * (A4-data 트랙)은 repository 계약만 제공.
+ */
+public interface PermissionRepository extends JpaRepository<PermissionRow, UUID> {
+
+    /**
+     * 주어진 사용자 × 리소스 조합에 대해 적용 가능한 활성 grant 행 목록.
+     *
+     * @param userId       사용자 식별자 (subject_type='user' 매칭). everyone grant는 userId와 무관하게 포함.
+     * @param resourceType {@code "folder"} 또는 {@code "file"}.
+     * @param resourceId   리소스 식별자. file이면 그 파일의 folder_id에서 시작해 조상 추적.
+     * @return 매칭되는 {@link PermissionRow} 목록 (만료/soft-delete 제외).
+     */
+    @Query(value = """
+        WITH RECURSIVE start_folder AS (
+            SELECT CASE
+                WHEN :resourceType = 'file' THEN
+                    (SELECT folder_id FROM files
+                     WHERE id = CAST(:resourceId AS uuid) AND deleted_at IS NULL)
+                ELSE CAST(:resourceId AS uuid)
+            END AS id
+        ),
+        ancestors AS (
+            SELECT f.id, f.parent_id
+            FROM folders f, start_folder s
+            WHERE f.id = s.id AND f.deleted_at IS NULL
+
+            UNION ALL
+
+            SELECT f.id, f.parent_id
+            FROM folders f
+            INNER JOIN ancestors a ON f.id = a.parent_id
+            WHERE f.deleted_at IS NULL
+        ),
+        candidates AS (
+            -- file 리소스의 경우 file 자체에 부여된 grant도 후보에 포함
+            SELECT CAST(:resourceId AS uuid) AS id, 'file'::text AS rt
+            WHERE :resourceType = 'file'
+
+            UNION ALL
+
+            SELECT id, 'folder'::text AS rt FROM ancestors
+        )
+        SELECT p.id, p.resource_type, p.resource_id, p.subject_type, p.subject_id,
+               p.preset, p.granted_by, p.expires_at, p.created_at
+        FROM permissions p
+        INNER JOIN candidates c
+          ON p.resource_id = c.id AND p.resource_type = c.rt
+        WHERE
+            (
+              (p.subject_type = 'user' AND p.subject_id = CAST(:userId AS uuid))
+              OR p.subject_type = 'everyone'
+            )
+            AND (p.expires_at IS NULL OR p.expires_at > NOW())
+        """, nativeQuery = true)
+    List<PermissionRow> findEffective(
+        @Param("userId") UUID userId,
+        @Param("resourceType") String resourceType,
+        @Param("resourceId") UUID resourceId
+    );
+}

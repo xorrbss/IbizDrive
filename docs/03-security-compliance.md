@@ -352,7 +352,7 @@
 
 - 폴더 → 자식 폴더/파일로 상속 (default)
 - 자식에 명시적 권한 정의 시 → override
-- 계산 로직: 재귀 CTE로 root까지 순회, **deny 우선** (deny가 한 번이라도 나오면 최종 deny)
+- 계산 로직: 재귀 CTE로 root까지 순회, **deny 우선** (deny가 한 번이라도 나오면 최종 deny) — *(v1 deferred — preset 단일 컬럼만 도입, 명시 deny semantics는 v1.x 이월. ADR #28 참조. v1 evaluator는 explicit grant lookup = "grant 우선"으로 동작.)*
 - `PermissionService.check(userId, resource, resourceId, permission)`이 단일 진입점.
 
 ### 3.5 권한 매트릭스 (엔드포인트 × 권한)
