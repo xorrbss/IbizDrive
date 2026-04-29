@@ -5,6 +5,21 @@
 
 ---
 
+## 2026-04-29 — A5.0 docs/02 §7.6 + ADR #29 트리거 마커 (no-code)
+
+### 범위
+A5 마일스톤 진입점. ADR #29 deferred 클리어를 위한 docs 정합 patch.
+
+### 변경
+- `docs/02 §7.6 (Files)` GET `/api/files/:id/versions` 응답 스키마 본문 보강 (`versions` 배열 + `is_current` 플래그 + 정렬(version_number DESC)·soft-delete 404 정책 명시). _주: dev-docs(plan/tasks)는 §7.7로 표기되어 있으나 실제 표 위치는 §7.6 — A5 후속 phase에서 dev-docs drift 정정 예정._
+- `docs/00 §5 ADR #29` 본문에 "A5 진입 (2026-04-29)" 트리거 마커 1줄 추가 (close는 A5.3 commit hash로 갱신 예정).
+
+### 검증
+- A5.0 commit 자체는 docs 3파일만 staged (코드 0줄). _작업 트리에 별도 세션 발 backend 변경 잔재 발견 — 본 commit 범위 외, 사용자 확인 대기._
+- 다음 phase A5.1 FileVersion entity 작성이 본 §7.6 스키마와 1:1 정합.
+
+---
+
 ## 2026-04-29 — 🏁 A4 마일스톤 종료 (Folder/File Domain + Resource-Level Permissions)
 
 ### 범위

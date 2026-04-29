@@ -967,6 +967,28 @@ POST /api/files/:id/versions   (이미 업로드된 임시 객체에서 새 버�
   TX:       SELECT FOR UPDATE files → expectedCurrentVersionId 일치 검증
             → INSERT file_versions → UPDATE files.current_version_id → audit_log (FILE_VERSION_CREATE) → COMMIT
   Errors:   409 VERSION_CONFLICT { currentVersion }, 413 QUOTA_EXCEEDED
+
+GET /api/files/:id/versions
+  Response: 200 {
+    "versions": [
+      {
+        "id": "uuid",
+        "version_number": 3,
+        "size_bytes": 12345,
+        "checksum_sha256": "...",
+        "mime_type": "...",
+        "scan_status": "clean",                  // pending | clean | infected | error  (V5 CHECK 정합)
+        "uploaded_by": "uuid",
+        "uploaded_at": "iso8601",
+        "comment": "...",
+        "is_current": true
+      }
+    ]
+  }
+  Order:    version_number DESC (최신 버전이 배열 첫 항목)
+  SoftDel:  파일이 soft-deleted(`files.deleted_at IS NOT NULL`)면 404 RESOURCE_NOT_FOUND
+            (휴지통에서 versions 노출 차단 — A5 plan 리스크 결정)
+  Errors:   404 RESOURCE_NOT_FOUND
 ```
 
 ### 7.7 업로드 (tus, ADR #13)
