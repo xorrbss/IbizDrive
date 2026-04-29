@@ -7,6 +7,7 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.common.normalize.NormalizationException;
+import com.ibizdrive.file.FileRepository;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,9 +74,10 @@ class FolderMutationServiceTest {
         }
 
         @Bean FolderMutationService folderMutationService(FolderRepository repo,
+                                                          FileRepository fileRepo,
                                                           AuditService audit,
                                                           ObjectMapper mapper) {
-            return new FolderMutationService(repo, audit, mapper);
+            return new FolderMutationService(repo, fileRepo, audit, mapper);
         }
     }
 
@@ -362,6 +364,62 @@ class FolderMutationServiceTest {
     // ──────────────────────────────────────────────────────────────────
 
     /** {@link AuditService#record}가 정확히 1회, 기대 eventType/target/actor로 호출됐는지 검증. */
+    // -- delete / restore ---------------------------------------------------------------
+
+    @Test
+    void delete_activeFolder_softDeletesDescendantsAndEmitsAudit() {
+        UUID owner = insertUser("d1@test", "d1");
+        Folder parent = service.create(null, "ParentD1", owner, "standard", owner);
+        Folder child = service.create(parent.getId(), "ChildD1", owner, "standard", owner);
+        reset(auditService);
+
+        service.delete(parent.getId(), owner);
+
+        assertThat(folderRepository.findByIdAndDeletedAtIsNull(parent.getId())).isEmpty();
+        assertThat(folderRepository.findByIdAndDeletedAtIsNull(child.getId())).isEmpty();
+        assertThat(countDeleted(parent.getId())).isEqualTo(1);
+        assertThat(countDeleted(child.getId())).isEqualTo(1);
+        verifyAuditEmitted(AuditEventType.FOLDER_DELETED, parent.getId(), owner);
+    }
+
+    @Test
+    void delete_missingFolder_throwsNotFound() {
+        UUID owner = insertUser("d2@test", "d2");
+        reset(auditService);
+
+        assertThatThrownBy(() -> service.delete(UUID.randomUUID(), owner))
+            .isInstanceOf(FolderNotFoundException.class);
+        verify(auditService, never()).record(any());
+    }
+
+    @Test
+    void restore_softDeletedFolder_reactivatesAndEmitsAudit() {
+        UUID owner = insertUser("rs1@test", "rs1");
+        Folder folder = service.create(null, "RestoreRs1", owner, "standard", owner);
+        service.delete(folder.getId(), owner);
+        reset(auditService);
+
+        Folder restored = service.restore(folder.getId(), owner);
+
+        assertThat(restored.getId()).isEqualTo(folder.getId());
+        assertThat(folderRepository.findByIdAndDeletedAtIsNull(folder.getId())).isPresent();
+        assertThat(countDeleted(folder.getId())).isZero();
+        verifyAuditEmitted(AuditEventType.FOLDER_RESTORED, folder.getId(), owner);
+    }
+
+    @Test
+    void restore_nameConflict_throwsRestoreConflict() {
+        UUID owner = insertUser("rs2@test", "rs2");
+        Folder first = service.create(null, "RestoreRs2", owner, "standard", owner);
+        service.delete(first.getId(), owner);
+        service.create(null, "RestoreRs2", owner, "standard", owner);
+        reset(auditService);
+
+        assertThatThrownBy(() -> service.restore(first.getId(), owner))
+            .isInstanceOf(FolderRestoreConflictException.class);
+        verify(auditService, never()).record(any());
+    }
+
     private void verifyAuditEmitted(AuditEventType expectedType, UUID expectedTargetId, UUID expectedActorId) {
         ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
         verify(auditService, times(1)).record(captor.capture());
@@ -386,6 +444,15 @@ class FolderMutationServiceTest {
     }
 
     /** Mockito {@code any()} import 충돌 회피용 wrapper. */
+    private int countDeleted(UUID folderId) {
+        Integer count = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM folders WHERE id = ? AND deleted_at IS NOT NULL AND purge_after IS NOT NULL",
+            Integer.class,
+            folderId
+        );
+        return count == null ? 0 : count;
+    }
+
     private static AuditEvent any() {
         return org.mockito.ArgumentMatchers.any(AuditEvent.class);
     }

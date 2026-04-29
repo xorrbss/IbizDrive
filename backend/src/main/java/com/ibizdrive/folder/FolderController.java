@@ -10,6 +10,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -24,9 +25,11 @@ import java.util.UUID;
  * Folder mutation REST endpoint — A4.7 (docs/02 §7.5).
  *
  * <ul>
- *   <li><b>POST</b>  {@code /api/folders}             — create. 201 {@code { folder }}</li>
- *   <li><b>PATCH</b> {@code /api/folders/{id}}        — rename. 200 {@code { folder }}</li>
- *   <li><b>POST</b>  {@code /api/folders/{id}/move}   — move. 200 {@code { folder }}</li>
+ *   <li><b>POST</b>  {@code /api/folders}                — create. 201 {@code { folder }}</li>
+ *   <li><b>PATCH</b> {@code /api/folders/{id}}           — rename. 200 {@code { folder }}</li>
+ *   <li><b>POST</b>  {@code /api/folders/{id}/move}      — move. 200 {@code { folder }}</li>
+ *   <li><b>DELETE</b> {@code /api/folders/{id}}          — soft-delete + cascade. 204 (A6.3)</li>
+ *   <li><b>POST</b>  {@code /api/folders/{id}/restore}   — restore from trash. 200 {@code { folder }} (A6.3)</li>
  * </ul>
  *
  * <p><b>인가 (ADR #30, docs/02 §7.5)</b>:
@@ -137,5 +140,45 @@ public class FolderController {
     ) {
         Folder moved = folderMutationService.move(id, req.targetParentId(), principal.getUser().getId());
         return ResponseEntity.ok(Map.of("folder", FolderDto.from(moved)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // DELETE /api/folders/{id}
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 폴더와 후손(폴더+파일)을 휴지통으로 이동(soft-delete) — A6.3 (docs/02 §7.5).
+     *
+     * <p>cascade 정책은 service 책임 — 후손 폴더/파일은 동일 트랜잭션에서 batch UPDATE되며
+     * audit는 root에 대해 1건만 발행 (FOLDER_DELETED). 응답은 204 NO_CONTENT (본문 없음).
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'folder', 'DELETE')")
+    public ResponseEntity<Void> delete(
+        @PathVariable("id") UUID id,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        folderMutationService.delete(id, principal.getUser().getId());
+        return ResponseEntity.noContent().build();
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // POST /api/folders/{id}/restore
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 휴지통 폴더를 원위치(original_parent_id)로 복원 — A6.3 (docs/02 §7.5).
+     *
+     * <p>복원 범위: 자기 자신만 (후손 잔존). original_parent_id가 soft-deleted면 404,
+     * 원위치에 동일 normalized_name 활성 폴더 존재 시 409 RESTORE_CONFLICT envelope.
+     */
+    @PostMapping("/{id}/restore")
+    @PreAuthorize("hasPermission(#id, 'folder', 'DELETE')")
+    public ResponseEntity<Map<String, FolderDto>> restore(
+        @PathVariable("id") UUID id,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        Folder restored = folderMutationService.restore(id, principal.getUser().getId());
+        return ResponseEntity.ok(Map.of("folder", FolderDto.from(restored)));
     }
 }
