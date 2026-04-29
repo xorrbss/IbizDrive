@@ -61,6 +61,12 @@ class PermissionEvaluatorIntegrationTest {
     @MockBean
     private DbUserDetailsService dbUserDetailsService;
 
+    // A4.3 — IbizDrivePermissionEvaluator가 PermissionResolver(→PermissionRepository)에 의존.
+    // @WebMvcTest 슬라이스는 JPA bean을 띄우지 않으므로 mock으로 대체. 본 통합 테스트의
+    // targetId는 모두 "abc" (비-UUID)라 resolver 경로 자체가 skip되어 default false도 호출되지 않음.
+    @MockBean
+    private PermissionResolver permissionResolver;
+
     private IbizDriveUserDetails admin;
     private IbizDriveUserDetails auditor;
     private IbizDriveUserDetails member;
