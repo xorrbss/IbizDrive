@@ -175,9 +175,9 @@ A4는 **A4-data PR + A4-controllers PR** 두 트랙. 의존 단방향 (A4-contro
 
 ## A4-data PR 머지 + 게이트 2
 
-- [ ] PR 생성 (`feature/a4-folder-file-domain` → master)
-- [ ] CI green
-- [ ] master 머지
+- [x] PR 생성 (`feature/a4-folder-file-domain` → master) — xorrbss/IbizDrive#6
+- [x] CI green — run `25087580861`: backend (junit) + frontend (vitest) 둘 다 SUCCESS
+- [ ] master 머지 (사용자 OK 대기)
 - [ ] 게이트 2 보고: V5 + entity GREEN + A2 회귀 0 + dev/process ownership 재확인 + A4-controllers worktree 분기 GO
 
 ---
