@@ -1,5 +1,6 @@
 package com.ibizdrive.common.error;
 
+import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionConflictException;
 import com.ibizdrive.permission.PermissionDenyContext;
@@ -46,6 +47,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handlePermissionConflict(PermissionConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("PERMISSION_CONFLICT", "이미 존재하는 권한입니다", null));
+    }
+
+    /**
+     * V5의 {@code idx_folders_unique_name} 위반 → 동일 부모 내 동일 normalized_name 활성 폴더 — A4.7.
+     *
+     * <p>{@code FolderMutationService}의 사전 conflict 검사 또는 INSERT 시점 race로 잡힌
+     * {@code DataIntegrityViolationException}을 service가 변환한 결과. envelope code는 docs/02 §8 계약
+     * {@code RENAME_CONFLICT} (rename뿐 아니라 create/move의 충돌도 동일 분류 — frontend는 동일 RenameDialog로 재요청).
+     */
+    @ExceptionHandler(FolderNameConflictException.class)
+    public ResponseEntity<ApiError> handleFolderNameConflict(FolderNameConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("RENAME_CONFLICT", "동일 이름의 폴더가 이미 존재합니다", null));
     }
 
     /**
