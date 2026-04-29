@@ -357,24 +357,27 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNotNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("trashed folder not found: " + folderId));
 
-        UUID originalParentId = target.getOriginalParentId();
-        if (originalParentId != null) {
+        UUID originalParentSnapshot = target.getOriginalParentId();
+        UUID restoreParentId = originalParentSnapshot != null
+            ? originalParentSnapshot
+            : target.getParentId();
+        if (restoreParentId != null) {
             // 원래 parent가 활성인지 확인. soft-deleted parent로의 복원은 불허 — 사용자가 parent부터
             // 복원해야 한다는 UX 강제 (자기 자신만 복원 정책의 일관성).
-            folderRepository.findByIdAndDeletedAtIsNull(originalParentId)
+            folderRepository.findByIdAndDeletedAtIsNull(restoreParentId)
                 .orElseThrow(() -> new FolderNotFoundException(
-                    "original parent is not active: " + originalParentId));
+                    "original parent is not active: " + restoreParentId));
         }
 
         if (folderRepository.existsActiveByParentAndNormalizedNameExcludingId(
-                originalParentId, target.getNormalizedName(), target.getId())) {
+                restoreParentId, target.getNormalizedName(), target.getId())) {
             throw new FolderRestoreConflictException(
                 "folder name already exists at restore destination: " + target.getNormalizedName());
         }
 
         Instant deletedAtBefore = target.getDeletedAt();
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
-        target.setParentId(originalParentId);                   // tombstone 시점 parent로 복원
+        target.setParentId(restoreParentId);
         target.setDeletedAt(null);
         target.setPurgeAfter(null);
         target.setOriginalParentId(null);
@@ -392,9 +395,10 @@ public class FolderMutationService {
 
         Map<String, Object> beforeState = new LinkedHashMap<>();
         beforeState.put("deletedAt", deletedAtBefore == null ? null : deletedAtBefore.toString());
-        beforeState.put("originalParentId", originalParentId);
+        beforeState.put("originalParentId", originalParentSnapshot);
+        beforeState.put("restoreParentId", restoreParentId);
         Map<String, Object> afterState = new LinkedHashMap<>();
-        afterState.put("parentId", originalParentId);
+        afterState.put("parentId", restoreParentId);
         afterState.put("deletedAt", null);
         emitAudit(AuditEventType.FOLDER_RESTORED, saved.getId(), actorId, beforeState, afterState);
         return saved;
