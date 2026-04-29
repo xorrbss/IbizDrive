@@ -12,12 +12,12 @@ Status: 📋 BOOTSTRAP COMMITTED — A4-data 트랙 진입 대기 (다음 세션
 | 1. A3 archive 확인 (origin/master) | ✅ | `dev/completed/a3-permission-matrix/` 존재, master HEAD `6f0820d` |
 | 2. A4 dev-docs bootstrap | ✅ | 본 3파일 |
 | 3. **사용자 plan 리뷰 게이트** | ✅ | GO (옵션 B 분할 + ADR #28/#29 확정, 2026-04-29) |
-| 4. ADR #27/#28/#29 등록 + docs/03 §3.4 마커 | ✅ | docs/00 §5 + docs/03 §3.4 patch (본 세션) |
-| 5. **bootstrap commit + 게이트 1 보고 + 세션 종료** | 🏁 | 본 세션 종료 |
-| --- A4-data 트랙 (다음 세션) --- | | |
-| 6. A4.0 docs/02 §2.3/§2.6/§7.10 정합 patch (no-code) | ⏳ | — |
-| 7. A4.1 V5 마이그레이션 | ⏳ | — |
-| 8. A4.2 entity + repo + NormalizeUtil + frontend mirror | ⏳ | — |
+| 4. ADR #27/#28/#29 등록 + docs/03 §3.4 마커 | ✅ | docs/00 §5 + docs/03 §3.4 patch (bootstrap 세션) |
+| 5. bootstrap commit + 게이트 1 보고 | ✅ | bootstrap 세션 종료 (commit `25db93d`) |
+| --- A4-data 트랙 (2026-04-29 본 세션) --- | | |
+| 6. A4.0 docs/02 §2.3/§2.6/§7.10 정합 patch (no-code) | ✅ | commit `53f1c02` |
+| 7. A4.1 V5 마이그레이션 + V5MigrationIT | ✅ | commit `2118565` (4테이블 + 7 IT 케이스) |
+| 8. A4.2 (부분) file + permission entity/repo only | 🔄 in progress | folder 부분 [DEFERRED] → A4.5 |
 | 9. **A4-data PR 머지** | ⏳ | — |
 | 10. **게이트 2 (A4-controllers 진입 직전)** | ⏳ | — |
 | --- A4-controllers 트랙 (A4-data 머지 후) --- | | |
@@ -48,7 +48,58 @@ Status: 📋 BOOTSTRAP COMMITTED — A4-data 트랙 진입 대기 (다음 세션
 
 ## 현재 active task
 
-**🏁 bootstrap 종료 후 → 다음 세션은 A4-data 트랙 A4.0 (docs/02 정합 patch) 진입.**
+**🔄 A4.2 부분 진행 중** (file + permission entity/repo). 본 세션 종료 후 A4-data PR 생성 게이트 (게이트 2).
+
+## DEFERRED 섹션 (2026-04-29 본 세션 신설)
+
+### A4.2 → A4.5 흡수 항목
+
+A4-data 트랙에서 신설 예정이었으나 ownership 충돌로 **A4.5(a4-crud) 세션이 흡수**:
+
+- **해소 대상 파일**:
+  - `backend/src/main/java/com/ibizdrive/folder/Folder.java` (JPA entity)
+  - `backend/src/main/java/com/ibizdrive/folder/FolderRepository.java` (lock query 포함)
+  - 관련 단위 테스트 (`FolderRepositoryTest.java` 또는 동급)
+  - `FileItem.folderId` `Long` → `@ManyToOne(fetch=LAZY) Folder` 승격 (작은 리팩터)
+
+- **충돌 owner**:
+  - 파일: `C:/project/IbizDrive/dev/process/20260428-a3-folder-mutation-service.md`
+  - last_updated: 2026-04-28
+  - 발췌된 working_files (folder 패키지 전체 ownership 주장):
+    - `backend/src/main/java/com/ibizdrive/folder/Folder.java`
+    - `backend/src/main/java/com/ibizdrive/folder/FolderMutationService.java`
+    - `backend/src/main/java/com/ibizdrive/folder/FolderNotFoundException.java`
+    - `backend/src/main/java/com/ibizdrive/folder/FolderNameConflictException.java`
+    - `backend/src/test/java/com/ibizdrive/folder/FolderMutationServiceTest.java`
+    - `dev/active/a3-mutation/{a3-mutation-context.md, a3-mutation-tasks.md}`
+    - docs/specs/* (folder 관련)
+
+- **해소 조건**:
+  - master worktree의 위 dev/process 파일이 archive/삭제/stale 처리되어 ownership 해제됨.
+  - A4.5(a4-crud) 세션 진입 직전 본 파일 부재 확인 → A4.5 working_files에 folder/** 추가 가능.
+  - 미해제 시 A4.5 진입을 보류하고 사용자 보고 (별도 triage 세션 또는 사용자 직접 처리 필요).
+
+- **본 세션 책임 범위 외**:
+  - master 측 dev/process 파일 정리는 본 세션이 수행하지 않음.
+  - 본 세션은 backup branch / stash / local master / 다른 worktree 일절 미수정 정책 유지.
+
+### A4.5 추가 책임
+
+- 본래 controller/service 중심 phase였으나, A4.2 deferred 흡수로 다음 추가:
+  1. Folder JPA entity + Repository 신설 (lock query 포함)
+  2. FileItem의 folderId Long 컬럼을 `@ManyToOne` 승격
+  3. (선택) 정규화 mirror 테스트 추가 — 기존 NormalizeUtilTest로 충분하면 생략
+
+### A4.2 drift (참조용 — 이미 master에 존재해 본 세션 신설 미수행)
+
+다음은 A4.2 plan에 "신설"로 적혔으나 master HEAD `6f0820d`(A3 PR)에 이미 도입되어 검증만:
+
+- `backend/src/main/java/com/ibizdrive/common/normalize/NormalizeUtil.java`
+- `backend/src/main/java/com/ibizdrive/common/normalize/NormalizationException.java`
+- `backend/src/test/java/com/ibizdrive/common/normalize/NormalizeUtilTest.java`
+- `frontend/src/lib/normalize.ts`
+- `frontend/src/lib/normalize.test.ts`
+- `docs/normalize-fixtures.json`
 
 ## 다음 세션 읽기 순서
 

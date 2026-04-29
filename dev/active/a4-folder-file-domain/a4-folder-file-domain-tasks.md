@@ -14,9 +14,9 @@ A4는 **A4-data PR + A4-controllers PR** 두 트랙. 의존 단방향 (A4-contro
 | Phase | 트랙 | 상태 | 설명 |
 |---|---|---|---|
 | bootstrap | — | ✅ done | dev-docs 3파일 + ADR #27/#28/#29 + docs/03 §3.4 마커 |
-| A4.0 | A4-data | ⏳ pending (다음 세션 진입점) | docs/02 §2.3/§2.6/§7.10 정합 patch (no-code) |
-| A4.1 | A4-data | ⏳ pending | V5 마이그레이션 |
-| A4.2 | A4-data | ⏳ pending | entity + repo + NormalizeUtil + frontend mirror |
+| A4.0 | A4-data | ✅ done (commit 53f1c02) | docs/02 §2.3/§2.6/§7.10 정합 patch (no-code) |
+| A4.1 | A4-data | ✅ done (commit 2118565) | V5 마이그레이션 + V5MigrationIT (7케이스) |
+| A4.2 (부분) | A4-data | 🔄 in progress | file + permission entity/repo only (Folder는 ownership 충돌로 A4.5 deferred) |
 | **A4-data PR 머지** | — | ⏳ | **게이트 2 → A4-controllers worktree 분기** |
 | A4.3 | A4-controllers | ⏳ pending | IbizDrivePermissionEvaluator 내부 교체 |
 | A4.4 | A4-controllers | ⏳ pending | 권한 endpoint + permission.granted/revoked emit |
@@ -116,51 +116,60 @@ A4는 **A4-data PR + A4-controllers PR** 두 트랙. 의존 단방향 (A4-contro
 
 ---
 
-## A4.2 — 도메인 entity + repository + NormalizeUtil ⏳
+## A4.2 (부분) — file + permission entity/repo 🔄
+
+### 본 세션 결정 (2026-04-29)
+
+**범위 축소**: file + permission만 본 세션 진행. **folder entity/repo는 A4.5(a4-crud) 세션 흡수.**
+
+**축소 사유**:
+- master worktree `dev/process/20260428-a3-folder-mutation-service.md` (last_updated 2026-04-28)가 `backend/src/main/java/com/ibizdrive/folder/Folder.java` 외 folder 패키지 내 working_files 5건의 ownership을 보유 중 → A4.2의 동일 경로 신설은 ownership 충돌.
+- 본 세션 권한 외이므로 정리 불가 → file + permission만 안전 진행.
+
+**drift 발견**:
+- A4.2 plan의 "신설" 항목 중 `NormalizeUtil`, `NormalizationException`, `NormalizeUtilTest`, `frontend/src/lib/normalize.{ts,test.ts}`, `docs/normalize-fixtures.json`은 master HEAD `6f0820d` (A3 PR)에 **이미 존재** → 신설 불필요, 검증만 (KISS / YAGNI / 기존 구조 우선).
 
 ### 작업 전 필독
 
-- A4.1 완료된 V5 스키마
-- `docs/02 §3.2` 정규화 pipeline + `docs/normalize-fixtures.json` (없으면 동시 작성)
-- `frontend/src/lib/normalize.ts` (있으면 mirror, 없으면 동시 작성)
-- backup branch entity 구조 참고: `git show backup/codex-d99cd2a:backend/src/main/java/com/ibizdrive/folder/Folder.java` (구조 참고만, 패키지/import는 master 기준)
+- A4.1 완료된 V5 스키마 (commit 2118565)
+- 기존 `backend/.../common/normalize/NormalizeUtil.java` (3 함수 + 7-step pipeline) — 검증 대상
+- 기존 `frontend/src/lib/normalize.ts`, `docs/normalize-fixtures.json` — 검증 대상
+- A3 `Permission`/`Preset` enum (`backend/.../permission/`) — 그대로 사용
 - **ADR #29 — `FileVersion.java` 미작성**
+- **본 세션 결정 — `Folder.java` / `FolderRepository.java` 미작성 (A4.5 흡수)**
 
-### 원본 코드 참조
+### 구현 대상 (본 세션)
 
-- A3 `Permission`/`Preset` enum (`backend/src/main/java/com/ibizdrive/permission/`) — 그대로 사용
-- A2 audit listener 패턴 — `@Audited` AOP
-
-### 구현 대상
-
-- [ ] `backend/src/main/java/com/ibizdrive/folder/Folder.java` (JPA entity, soft delete 명시 query 또는 `@Where`)
-- [ ] `backend/src/main/java/com/ibizdrive/folder/FolderRepository.java` (lock query — `@Lock(PESSIMISTIC_WRITE)` 또는 native)
-- [ ] `backend/src/main/java/com/ibizdrive/file/FileItem.java` (이름 충돌 회피)
+- [DEFERRED → A4.5] ~~`backend/src/main/java/com/ibizdrive/folder/Folder.java`~~ — ownership 충돌
+- [DEFERRED → A4.5] ~~`backend/src/main/java/com/ibizdrive/folder/FolderRepository.java`~~ — ownership 충돌
+- [ ] `backend/src/main/java/com/ibizdrive/file/FileItem.java` (이름 충돌 회피, **`Long folderId` 단순 컬럼 — A4.5에서 `@ManyToOne` 승격**)
 - [ ] `backend/src/main/java/com/ibizdrive/file/FileRepository.java`
 - ~~[ ] `FileVersion.java`~~ — **ADR #29 A5 이월**
 - [ ] `backend/src/main/java/com/ibizdrive/permission/PermissionRow.java` (DB row — enum `Permission`과 이름 분리)
 - [ ] `backend/src/main/java/com/ibizdrive/permission/PermissionRepository.java` (재귀 CTE `findEffective(userId, resourceType, resourceId)` native query, **grant 우선 lookup — ADR #28**)
-- [ ] `backend/src/main/java/com/ibizdrive/common/normalize/NormalizeUtil.java`
-- [ ] `docs/normalize-fixtures.json` (없으면 신설)
-- [ ] `frontend/src/lib/normalize.ts` (mirror, fixtures 통과)
-- [ ] 단위 테스트: NormalizeUtilTest (Vitest mirror 동등 fixtures)
-- [ ] commit 2~3건 분할 (entity, normalize, frontend mirror)
+- [ ] `backend/src/test/java/com/ibizdrive/permission/PermissionRepositoryTest.java` (재귀 CTE 단위 테스트, Testcontainers)
+- [ ] (검증만) NormalizeUtil 기존 구현 + frontend mirror + fixtures 1:1 확인
+- [ ] commit 2건 분할 (file/permission entity/repo, permission repo test)
 
 ### 검증 참조
 
-- `./gradlew :backend:test --tests NormalizeUtilTest --tests *RepositoryTest`
-- `pnpm --filter frontend test src/lib/normalize.test.ts`
+- `./gradlew :backend:compileTestJava` (compile)
+- `./gradlew :backend:test --tests PermissionRepositoryTest` (Docker 가용 환경)
+- 기존 `NormalizeUtilTest` (DynamicTest fixtures 기반) — 무수정
 
 ### 문서 반영
 
-- `docs/02 §3.5` Postgres normalize 함수 표기 정합
+- (본 절 내) deferred 명시
+- `docs/progress.md`
 
 ### Acceptance Criteria
 
-- [ ] 3 entity (Folder/FileItem/PermissionRow) + 3 JpaRepository + NormalizeUtil 신설
-- [ ] frontend/backend fixtures 동일 통과 (CLAUDE.md §3 원칙 11)
-- [ ] PermissionRepository.findEffective 재귀 CTE 단위 테스트 GREEN (grant 우선 동작 — ADR #28)
+- [ ] 2 entity (FileItem + PermissionRow) + 2 JpaRepository (FileRepository + PermissionRepository) 신설
+- [ ] PermissionRepository.findEffective 재귀 CTE 컴파일 GREEN (Docker 가용 시 단위 테스트 GREEN — grant 우선 동작 ADR #28)
+- [ ] FileItem.folderId = `Long` 단순 컬럼 (Folder 엔티티 부재 호환)
 - [ ] FileVersion entity/repo 미작성 확인 (ADR #29)
+- [ ] Folder entity/repo 미작성 확인 (A4.5 deferred — context의 deferred 섹션과 일치)
+- [ ] 기존 NormalizeUtil + frontend mirror + fixtures 무수정 확인
 
 ---
 
@@ -269,6 +278,17 @@ A4는 **A4-data PR + A4-controllers PR** 두 트랙. 의존 단방향 (A4-contro
 ---
 
 ## A4.5 — 폴더/파일 CRUD MVP endpoint ⏳
+
+### 본 세션(2026-04-29)에서 추가된 흡수 책임
+
+A4.2 부분 진행으로 deferred된 항목을 A4.5 진입 시 함께 처리:
+
+- [ ] (deferred from A4.2) `backend/.../folder/Folder.java` JPA entity (soft delete `@Where`)
+- [ ] (deferred from A4.2) `backend/.../folder/FolderRepository.java` (lock query, `@Lock(PESSIMISTIC_WRITE)` 또는 native)
+- [ ] (deferred from A4.2) `FileItem.folderId` `Long` → `@ManyToOne(fetch=LAZY) Folder` 승격 (작은 리팩터)
+
+**진입 게이트 (A4.5 시작 직전)**:
+master worktree `dev/process/20260428-a3-folder-mutation-service.md` ownership이 해제되었는지 재확인. 미해제 시 A4.5 자체를 보류하고 사용자 보고. 해제 방법은 별도 세션 / 사용자 직접 처리(예: stale 디렉토리 이동) — A4.5 세션 자체가 ownership 정리 권한을 갖지 않음.
 
 ### 작업 전 필독
 

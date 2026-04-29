@@ -13,13 +13,18 @@ A4 마일스톤은 (1) `folders`/`files`/`file_versions`/`permissions` 도메인
 
 A4는 **A4-data PR + A4-controllers PR** 두 트랙으로 분할한다. 의존 단방향: A4-controllers는 A4-data master 머지 후 새 worktree에서 분기.
 
-### 트랙 A4-data PR (A4.0 → A4.1 → A4.2)
+### 트랙 A4-data PR (A4.0 → A4.1 → A4.2 부분)
 
-- **A4.0** docs 정합 + ADR #27/#28/#29 (no-code, **본 bootstrap 세션에서 ADR 부분 commit** — A4.0 docs 정합 패치는 별도 세션)
-- **A4.1** V5 마이그레이션 (folders + files + file_versions + permissions)
-- **A4.2** 4 entity + 4 repository + NormalizeUtil + frontend mirror
-- **PR 머지 조건**: schema GREEN + repository unit test GREEN + audit_log REVOKE 회귀 0
-- **추정 commits**: 5~7
+- **A4.0** docs 정합 + ADR #27/#28/#29 (no-code) — ✅ commit `53f1c02` (2026-04-29)
+- **A4.1** V5 마이그레이션 (folders + files + file_versions + permissions) — ✅ commit `2118565` (2026-04-29). schema는 4테이블 모두 도입 (JPA 매핑 분리).
+- **A4.2 (부분)** **file + permission entity/repo만**. **Folder entity/repo는 [DEFERRED] → A4.5 흡수.** drift 발견: NormalizeUtil/frontend mirror/fixtures는 A3 PR에서 이미 도입 → 검증만.
+- **PR 머지 조건**: schema GREEN + file/permission repo compile GREEN + audit_log REVOKE 회귀 0 + deferred 항목 dev-docs에 명시
+- **추정 commits**: 4~5 (bootstrap 1 + A4.0 1 + A4.1 1 + A4.2 부분 1~2)
+
+### A4-data → A4-controllers 의존성 (본 세션 신설)
+
+- A4.5(a4-crud) 진입 전 **master worktree `dev/process/20260428-a3-folder-mutation-service.md` ownership 해제 필수**. 미해제 시 A4.5 자체를 보류하고 사용자 보고 (folder 패키지 신설이 다시 충돌).
+- ownership 정리는 A4-data PR 외부 (별도 triage 세션 또는 사용자 직접 처리). A4-controllers worktree 분기 직전에 해제 상태 재확인.
 
 ### 트랙 A4-controllers PR (A4.3 → A4.4 → A4.5 → A4.6 → A4.7)
 
