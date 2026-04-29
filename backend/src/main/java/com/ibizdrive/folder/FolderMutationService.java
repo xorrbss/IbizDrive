@@ -275,10 +275,11 @@ public class FolderMutationService {
                 throw new IllegalArgumentException("cannot move folder into its own descendant");
             }
             final UUID currentCursor = cursor;
-            UUID next = folderRepository.findByIdAndDeletedAtIsNull(currentCursor)
-                .map(Folder::getParentId)
+            // Optional.map(Folder::getParentId) 는 root 폴더의 parentId=null 을
+            // Optional.empty() 로 collapse 시켜 orElseThrow 가 오발 — 분리해서 lookup 후 getParentId 호출.
+            Folder ancestor = folderRepository.findByIdAndDeletedAtIsNull(currentCursor)
                 .orElseThrow(() -> new FolderNotFoundException("ancestor folder not found: " + currentCursor));
-            cursor = next;
+            cursor = ancestor.getParentId();
         }
     }
 
