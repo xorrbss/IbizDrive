@@ -125,19 +125,14 @@ public class FolderMutationService {
                 "folder name conflict at insert: " + normalizedName, ex);
         }
 
-        emitAudit(
-            AuditEventType.FOLDER_CREATED,
-            saved.getId(),
-            actorId,
-            null,
-            Map.of(
-                "name", displayName,
-                "normalizedName", normalizedName,
-                "parentId", parentId,
-                "ownerId", ownerId,
-                "auditLevel", auditLevel
-            )
-        );
+        // root 폴더는 parentId=null — Map.of 가 null 값을 거부하므로 LinkedHashMap 사용.
+        Map<String, Object> afterState = new LinkedHashMap<>();
+        afterState.put("name", displayName);
+        afterState.put("normalizedName", normalizedName);
+        afterState.put("parentId", parentId);
+        afterState.put("ownerId", ownerId);
+        afterState.put("auditLevel", auditLevel);
+        emitAudit(AuditEventType.FOLDER_CREATED, saved.getId(), actorId, null, afterState);
         return saved;
     }
 
