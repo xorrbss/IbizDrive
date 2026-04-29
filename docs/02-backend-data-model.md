@@ -109,8 +109,9 @@ CREATE TABLE folders (
 );
 
 -- 🔑 핵심 제약: 같은 부모 폴더 내 이름 중복 금지 (휴지통 제외)
+-- 🔑 root parent (parent_id IS NULL)는 COALESCE로 ZERO_UUID 치환 — Postgres가 NULL을 distinct 취급해 UNIQUE 우회되는 것을 차단 (ADR #27 보장사항, V5 마이그레이션 반영)
 CREATE UNIQUE INDEX idx_folders_unique_name
-  ON folders (parent_id, normalized_name)
+  ON folders (COALESCE(parent_id, '00000000-0000-0000-0000-000000000000'::uuid), normalized_name)
   WHERE deleted_at IS NULL;
 
 CREATE INDEX idx_folders_parent ON folders(parent_id) WHERE deleted_at IS NULL;
@@ -188,7 +189,7 @@ CREATE TABLE permissions (
   resource_id     UUID NOT NULL,
   subject_type    VARCHAR(20) NOT NULL,             -- user|department|role|everyone
   subject_id      UUID,                             -- subject_type=everyone이면 NULL
-  preset          VARCHAR(20) NOT NULL,             -- read|upload|edit|admin
+  preset          VARCHAR(20) NOT NULL,             -- read|upload|edit|admin (preset 단일 컬럼 — 명시 deny semantics는 v1.x 이월, ADR #28)
   granted_by      UUID NOT NULL REFERENCES users(id),
   expires_at      TIMESTAMPTZ,                      -- NULL = 무기한
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1049,7 +1050,7 @@ POST /api/files/:id/share
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
 | GET | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
-| POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'ADMIN')` | REQUIRED | — | — | 400, 403, 404 |
+| POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` (구표기 `'ADMIN'` alias) | REQUIRED | — | — | 400, 403, 404 |
 | DELETE | `/api/permissions/:permissionId` | `PermissionService.canRevokePermission(#permissionId, currentUser)` | REQUIRED | — | — | 403, 404 |
 | GET | `/api/me/effective-permissions?nodeId=` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | 404 |
 
