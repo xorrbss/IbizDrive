@@ -887,8 +887,8 @@ GET /api/auth/csrf
 | POST | `/api/folders` | `#req.parentId == null ? hasRole('ADMIN') : hasPermission(#req.parentId, 'folder', 'EDIT')` (ADR #30) | REQUIRED + FOR UPDATE on `parentId` | `name → normalized_name` | — | 400 VALIDATION_ERROR, 404 (parent), 409 RENAME_CONFLICT |
 | PATCH | `/api/folders/:id` | `hasPermission(#id, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + sibling | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `(#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))` (ADR #30) | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
-| DELETE | `/api/folders/:id` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW()` (재귀: 후손 폴더/파일 cascade) | 404 |
-| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
+| DELETE | `/api/folders/:id` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW()` (재귀: 후손 폴더/파일 cascade — root 1회 audit) | 404 |
+| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | — | `SET deleted_at = NULL` + UNIQUE 재검사 (자기 자신만 복원, 후손 잔존) | 404, 409 RESTORE_CONFLICT |
 
 ```text
 POST /api/folders
@@ -911,14 +911,20 @@ POST /api/folders/:id/move
 
 DELETE /api/folders/:id   (휴지통 이동)
   Response: 204
-  TX:       재귀 SELECT FOR UPDATE 후손 → SET deleted_at = NOW(), purge_after = NOW() + 30d
-            → audit_log (FOLDER_DELETE) → COMMIT
+  TX:       재귀 BFS로 후손 폴더 id 수집 (visited Set + hop limit)
+            → 후손 폴더 batch UPDATE (deleted_at = NOW(), purge_after = NOW() + 30d)
+            → 후손 파일 batch UPDATE (folder_id IN 후손 ids)
+            → audit_log INSERT (FOLDER_DELETE, root 1회만, after_state.descendantFolders/Files 카운트) → COMMIT
+  Note:     cascade 후손 폴더/파일은 동일 트랜잭션에서 soft-delete되며 audit는 root에 대해 1회만 발행.
+            후손 파일은 FILE_DELETED를 발행하지 않는다(audit 폭증 회피).
 
 POST /api/folders/:id/restore
   Response: 200 { folder, breadcrumb }
-  TX:       SELECT FOR UPDATE → 원위치 parent_id 확인 (deleted 아님)
+  TX:       SELECT FOR UPDATE (soft-deleted) → 원위치 parent_id 활성 확인
             → UNIQUE 충돌 검사 → SET deleted_at = NULL → audit_log (FOLDER_RESTORE)
-  Errors:   409 RESTORE_CONFLICT (원위치에 동일 normalized_name)
+  Note:     자기 자신만 복원 (후손은 휴지통 잔존). original_parent_id가 soft-deleted면 404.
+            후손 일괄 복원은 별도 endpoint 트랙(out of scope).
+  Errors:   404 (target/original parent), 409 RESTORE_CONFLICT (원위치에 동일 normalized_name 활성 폴더)
 ```
 
 ### 7.6 파일 (Files)
