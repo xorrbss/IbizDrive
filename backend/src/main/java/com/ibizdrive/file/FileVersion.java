@@ -5,6 +5,8 @@ import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -50,7 +52,13 @@ public class FileVersion {
     @Column(name = "size_bytes", nullable = false)
     private long sizeBytes;
 
-    @Column(name = "checksum_sha256", nullable = false, length = 64, columnDefinition = "char(64)")
+    /**
+     * V5 schema: {@code CHAR(64)} (Postgres {@code bpchar}). Hibernate 기본 String 매핑은 VARCHAR이므로
+     * {@code @JdbcTypeCode(SqlTypes.CHAR)}로 logical type을 CHAR로 고정 — {@code ddl-auto=validate}
+     * 환경에서 schema-validation 통과를 위해 필수.
+     */
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(name = "checksum_sha256", nullable = false, length = 64)
     private String checksumSha256;
 
     @Column(name = "mime_type", length = 255)
