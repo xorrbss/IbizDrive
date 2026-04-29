@@ -18,7 +18,7 @@ Last Updated: 2026-04-29
 
 ## 현재 active task
 
-- **A5.0** — docs/02 §7.7 GET versions 응답 스키마 본문 정합 + ADR #29 트리거 마커 1줄 (no-code).
+- **A5.0** — docs/02 §7.6 GET versions 응답 스키마 본문 정합 + ADR #29 트리거 마커 1줄 (no-code).
 
 ## 다음 세션 읽기 순서
 
@@ -26,7 +26,7 @@ Last Updated: 2026-04-29
 2. `dev/active/a5-file-versions/a5-file-versions-plan.md` — 단계 지도와 acceptance criteria.
 3. `dev/active/a5-file-versions/a5-file-versions-tasks.md` — 현재 phase 체크박스 + 참조 블록.
 4. `docs/00 §5 ADR #29` — A5 트리거 결정.
-5. `docs/02 §2.5` (file_versions schema) + `§7.7` (file API GET versions).
+5. `docs/02 §2.5` (file_versions schema) + `§7.6` (file API GET versions).
 6. `backend/src/main/resources/db/migration/V5__folders_files_permissions.sql` line 89~119.
 7. `backend/.../file/FileItem.java` (currentVersionId 코멘트).
 8. `docs/progress.md` 최상단 A4 closure block — accepted-deviation 항목 + evaluator 보존 정책.
@@ -46,7 +46,7 @@ Last Updated: 2026-04-29
 ### 변경 가능
 
 - `backend/.../file/FileItem.java` — `currentVersionId` 매핑 승격 검토 (A5.1, KISS 평가 후 결정).
-- `docs/02-backend-data-model.md` §7.7 — 응답 스키마 본문 보강 (A5.0).
+- `docs/02-backend-data-model.md` §7.6 — 응답 스키마 본문 보강 (A5.0).
 - `docs/00-overview.md` §5 ADR #29 — 트리거 마커 + closure status (A5.0/A5.3).
 - `docs/progress.md` — phase별 진행 + closure (A5.0~A5.3).
 

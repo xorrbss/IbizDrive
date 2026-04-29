@@ -10,7 +10,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
 | Phase | 상태 | 설명 |
 |---|---|---|
 | bootstrap | ⏳ in progress | dev-docs 3파일 commit + dev/active 등록 (게이트 0) |
-| A5.0 | ⏳ pending | docs/02 §7.7 응답 스키마 + ADR #29 트리거 마커 (no-code) |
+| A5.0 | ⏳ pending | docs/02 §7.6 응답 스키마 + ADR #29 트리거 마커 (no-code) |
 | A5.1 | ⏳ pending | FileVersion entity + FileVersionRepository + Testcontainers 단위 테스트 |
 | A5.2 | ⏳ pending | FileVersionController.list + integration 권한 매트릭스 |
 | A5.3 | ⏳ pending | closure (PR + archive + ADR #29 closed 표기) |
@@ -39,7 +39,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
 ### 작업 전 필독
 
 - `docs/00-overview.md` §5 ADR #29 (line 161 — 본 plan 작성 시점)
-- `docs/02-backend-data-model.md` §7.7 file API 표 (line 934 부근 GET /api/files/:id/versions 행)
+- `docs/02-backend-data-model.md` §7.6 file API 표 (line 934 부근 GET /api/files/:id/versions 행)
 - `docs/02-backend-data-model.md` §2.5 file_versions 본문 (line 153~180)
 - A4 closure block (`docs/progress.md` 최상단) — accepted-deviation 항목 1번(file_versions A5 이월) 확인
 
@@ -49,7 +49,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
 
 ### 구현 대상
 
-- [ ] `docs/02 §7.7` GET `/api/files/:id/versions` 행 또는 본문에 응답 스키마 명시:
+- [ ] `docs/02 §7.6` GET `/api/files/:id/versions` 행 또는 본문에 응답 스키마 명시:
   ```json
   {
     "versions": [
@@ -77,7 +77,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
 ### 검증 참조
 
 - `git diff --stat backend/ frontend/` → 비어있음 (코드 0줄).
-- 다음 phase A5.1이 §7.7 본문과 1:1 정합.
+- 다음 phase A5.1이 §7.6 본문과 1:1 정합.
 
 ### 문서 반영
 
@@ -85,7 +85,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
 
 ### Acceptance Criteria
 
-- [ ] docs/02 §7.7 응답 스키마 본문 정합
+- [ ] docs/02 §7.6 응답 스키마 본문 정합
 - [ ] ADR #29 트리거 마커 추가
 - [ ] 코드 변경 0줄
 - [ ] commit 1건
@@ -152,7 +152,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
 - `backend/.../folder/FolderControllerTest.java` (A4.7 권한 매트릭스 테스트 패턴)
 - `backend/.../permission/PermissionEvaluatorIntegrationTest.java` (A3 13개 — 회귀 보존 대상)
 - `backend/.../common/error/GlobalExceptionHandler.java` (404 envelope + 403 envelope)
-- `docs/02 §7.7` GET `/api/files/:id/versions` (A5.0 patch 후 본문)
+- `docs/02 §7.6` GET `/api/files/:id/versions` (A5.0 patch 후 본문)
 
 ### 원본 코드 참조
 
@@ -166,7 +166,7 @@ Status: 📋 BOOTSTRAP — A5.0 진입 대기
   - `@RestController` + `@RequestMapping("/api/files/{fileId}/versions")`
   - `@GetMapping` `@PreAuthorize("hasPermission(#fileId, 'file', 'READ')")`
   - 흐름: `fileRepository.findById(fileId)` → 미존재/soft-deleted 404 → `fileVersionRepository.findByFileIdOrderByVersionNumberDesc(fileId)` → DTO 변환 + `is_current = (v.id == file.currentVersionId)`
-  - 응답: `{ versions: [...] }` (docs/02 §7.7)
+  - 응답: `{ versions: [...] }` (docs/02 §7.6)
 - [ ] `backend/src/test/java/com/ibizdrive/file/FileVersionControllerTest.java` (`@SpringBootTest` 또는 `@WebMvcTest` + Testcontainers):
   - ADMIN: 200 + 정렬 검증
   - AUDITOR: 200 (READ 가능 — A3 매트릭스)

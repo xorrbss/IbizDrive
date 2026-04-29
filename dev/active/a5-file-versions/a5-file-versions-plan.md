@@ -41,10 +41,10 @@ A5는 추정 4~6 commits 규모로 단일 PR. A4 분할(2 PR + 5 sub-track)은 1
 - `backend/src/main/java/com/ibizdrive/file/FileVersionRepository.java` — repository 부재
 - `FileItem.currentVersionId`는 `UUID` 단순 컬럼(`@ManyToOne FileVersion` 매핑 없음) — A5에서 매핑 승격 검토(작은 리팩터)
 
-### docs/02 §2.5 / §7.7
+### docs/02 §2.5 / §7.6
 
 - §2.5 본문이 schema 정의 그대로 반영됨 (file_versions 테이블 + DEFERRABLE FK).
-- §7.7 file API 표:
+- §7.6 file API 표:
   - `POST /api/files/:id/versions` — `hasPermission(#id, 'file', 'EDIT')` (A6 이월)
   - **`GET /api/files/:id/versions`** — `hasPermission(#id, 'file', 'READ')` (A5 활성화 대상)
 - §6.7 VERSION_CONFLICT optimistic lock 패턴은 POST 의존(A6 이월).
@@ -56,7 +56,7 @@ A5는 추정 4~6 commits 규모로 단일 PR. A4 분할(2 PR + 5 sub-track)은 1
 
 ### audit emission
 
-- `FILE_VERSION_CREATE` 이벤트 enum은 docs/02 §7.7 line 968에서 언급(`audit_log (FILE_VERSION_CREATE)`).
+- `FILE_VERSION_CREATE` 이벤트 enum은 docs/02 §7.6 line 968에서 언급(`audit_log (FILE_VERSION_CREATE)`).
 - 본 A5는 read-only이므로 emit 없음. POST는 A6에서 emit.
 
 ## 목표 상태 (A5 종료 시점)
@@ -71,7 +71,7 @@ A5는 추정 4~6 commits 규모로 단일 PR. A4 분할(2 PR + 5 sub-track)은 1
 
 ### A5.0 — docs 정합 (no-code)
 
-- `docs/02 §7.7` GET `/api/files/:id/versions` 본문에 응답 스키마 명시(없으면 보강): `{ versions: [{ id, version_number, size_bytes, checksum_sha256, mime_type, scan_status, uploaded_by, uploaded_at, comment, is_current }] }`.
+- `docs/02 §7.6` GET `/api/files/:id/versions` 본문에 응답 스키마 명시(없으면 보강): `{ versions: [{ id, version_number, size_bytes, checksum_sha256, mime_type, scan_status, uploaded_by, uploaded_at, comment, is_current }] }`.
 - `docs/00 §5 ADR #29` 본문에 "A5 진입 시점 = ..." 트리거 마커 1줄 (close는 A5.x commit hash로 갱신).
 
 ### A5.1 — FileVersion entity + repository + 테스트
@@ -104,20 +104,20 @@ A5는 추정 4~6 commits 규모로 단일 PR. A4 분할(2 PR + 5 sub-track)은 1
 ## acceptance criteria (전체)
 
 1. ✅ `FileVersion` entity + `FileVersionRepository` 컴파일 + Testcontainers 단위 테스트 GREEN.
-2. ✅ `GET /api/files/:id/versions` 200 + 응답 스키마 정합 (docs/02 §7.7).
+2. ✅ `GET /api/files/:id/versions` 200 + 응답 스키마 정합 (docs/02 §7.6).
 3. ✅ 권한 매트릭스 통과 — ADMIN/AUDITOR/MEMBER+grant ✅ / MEMBER-grant ❌ 403 envelope.
 4. ✅ 미존재 또는 soft-deleted 파일 404 envelope.
 5. ✅ A4 `PermissionEvaluatorIntegrationTest` 13/13 회귀 GREEN.
 6. ✅ A2 audit append-only `42501` 회귀 0 (V5 GRANT는 본 phase에서 변경 없음).
 7. ✅ ADR #29 closed 표기 + commit hash 명시.
-8. ✅ docs/02 §7.7 GET versions 응답 스키마 본문 정합.
+8. ✅ docs/02 §7.6 GET versions 응답 스키마 본문 정합.
 9. ✅ PR CI green (backend junit + frontend vitest 둘 다 SUCCESS).
 10. ✅ dev-docs `dev/active/a5-file-versions/` → `dev/completed/` archive.
 
 ## 검증 게이트
 
 - **게이트 0** (본 bootstrap 종료): plan/context/tasks 3파일 commit + dev/active 등록.
-- **게이트 1** (A5.0 종료): docs/02 §7.7 + ADR #29 backlink 정합 commit.
+- **게이트 1** (A5.0 종료): docs/02 §7.6 + ADR #29 backlink 정합 commit.
 - **게이트 2** (A5.1 종료): FileVersion entity + repo + Testcontainers 테스트 GREEN, gradle compile + test GREEN.
 - **게이트 3** (A5.2 종료): controller + integration test GREEN, A4/A3/A2 회귀 0.
 - **게이트 4** (A5.3 PR 생성 직전): 사용자 OK 대기.
@@ -134,7 +134,7 @@ A5는 추정 4~6 commits 규모로 단일 PR. A4 분할(2 PR + 5 sub-track)은 1
 
 ## 참조
 
-- `docs/02 §2.5` (file_versions schema), `§7.7` (file API), `§6.7` (VERSION_CONFLICT — A6 이월 분)
+- `docs/02 §2.5` (file_versions schema), `§7.6` (file API), `§6.7` (VERSION_CONFLICT — A6 이월 분)
 - `docs/00 §5 ADR #29` (FileVersion A5 이월 + 보장사항 (a)(b)(c))
 - A4 closure block (`docs/progress.md` 최상단) — A4.3 evaluator 시그니처 보존, accepted-deviation 항목
 - `backend/src/main/resources/db/migration/V5__folders_files_permissions.sql` line 89~119 (file_versions 본체)
