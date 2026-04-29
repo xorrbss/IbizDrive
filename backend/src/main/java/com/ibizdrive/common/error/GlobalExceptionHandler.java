@@ -1,6 +1,7 @@
 package com.ibizdrive.common.error;
 
 import com.ibizdrive.permission.Permission;
+import com.ibizdrive.permission.PermissionConflictException;
 import com.ibizdrive.permission.PermissionDenyContext;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -36,6 +37,33 @@ public class GlobalExceptionHandler {
         }
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(ApiError.of("PERMISSION_DENIED", "권한이 없습니다", details));
+    }
+
+    /**
+     * V5 의 {@code idx_permissions_unique} 위반 → 동일 (resource, subject) 중복 grant — A4.4.
+     */
+    @ExceptionHandler(PermissionConflictException.class)
+    public ResponseEntity<ApiError> handlePermissionConflict(PermissionConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("PERMISSION_CONFLICT", "이미 존재하는 권한입니다", null));
+    }
+
+    /**
+     * 폴더/파일/grant row 등 리소스 미존재 → 404. controller 또는 service 단의 lookup 부재가 일관되게 envelope 매핑.
+     */
+    @ExceptionHandler(ResourceNotFoundException.class)
+    public ResponseEntity<ApiError> handleNotFound(ResourceNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiError.of("NOT_FOUND", "리소스를 찾을 수 없습니다", null));
+    }
+
+    /**
+     * service 입력 검증 실패 (subject_id ↔ everyone, expiresAt past, preset 미지정 등) → 400.
+     */
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiError> handleBadRequest(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiError.of("BAD_REQUEST", ex.getMessage(), null));
     }
 
     private static String[] toWireArray(Set<Permission> have) {

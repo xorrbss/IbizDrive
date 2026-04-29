@@ -1050,16 +1050,29 @@ POST /api/files/:id/share
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
 | GET | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
-| POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` (구표기 `'ADMIN'` alias) | REQUIRED | — | — | 400, 403, 404 |
+| POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` (구표기 `'ADMIN'` alias) | REQUIRED | — | — | 400, 403, 404, 409 |
 | DELETE | `/api/permissions/:permissionId` | `PermissionService.canRevokePermission(#permissionId, currentUser)` | REQUIRED | — | — | 403, 404 |
 | GET | `/api/me/effective-permissions?nodeId=` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | 404 |
 
 ```text
 POST /api/:resource/:id/permissions
-  Request:  { subject: { type: 'USER'|'DEPT'|'ROLE', id: string }, permissions: Permission[], expiresAt? }
+  Request:  { subject: { type: 'user'|'department'|'role'|'everyone', id?: UUID }, preset: 'read'|'upload'|'edit'|'admin', expiresAt? }
+              # subject.id 는 type='everyone' 일 때만 NULL (V5 CHECK 와 일치)
+              # preset 은 ADR #28 — 4값 (deny/share 제외, share 는 별도 shares 테이블)
   Response: 201 { permission: PermissionDto }
-  TX:       INSERT permissions + audit_log (PERMISSION_GRANT)
+  TX:       INSERT permissions + emit PermissionGrantedEvent
+              → PermissionAuditListener (REQUIRES_NEW) → audit_log (permission.granted, target_type=permission)
+  Errors:   400 BAD_REQUEST (subject_id ↔ everyone 위반, preset 미지원, expiresAt past)
+            403 PERMISSION_DENIED (PERMISSION_ADMIN 미보유)
+            404 NOT_FOUND (resource 미존재)
+            409 PERMISSION_CONFLICT (V5 idx_permissions_unique 위반 — 동일 resource×subject 중복)
   Note:     resource ∈ { 'folder', 'file' }
+
+DELETE /api/permissions/:permissionId
+  Response: 204 No Content
+  TX:       SELECT row → DELETE → emit PermissionRevokedEvent
+              → PermissionAuditListener (REQUIRES_NEW) → audit_log (permission.revoked, before_state=snapshot)
+  Errors:   403 PERMISSION_DENIED, 404 NOT_FOUND
 ```
 
 ### 7.11 휴지통 (Trash, A7)

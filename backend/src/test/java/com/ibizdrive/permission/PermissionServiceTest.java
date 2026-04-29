@@ -23,6 +23,7 @@ class PermissionServiceTest {
 
     private final PermissionService service = new PermissionService(
         mock(UserRepository.class),
+        mock(PermissionRepository.class),
         mock(ApplicationEventPublisher.class)
     );
 

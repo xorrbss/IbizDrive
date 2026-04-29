@@ -67,6 +67,11 @@ class PermissionEvaluatorIntegrationTest {
     @MockBean
     private PermissionResolver permissionResolver;
 
+    // A4.4 — PermissionService 가 PermissionRepository 의존을 갖게 되었으므로 슬라이스 충족용 mock.
+    // (PermissionResolver 가 같은 repo 를 쓰지만 PermissionService 도 별도로 주입받음 → 빈 그래프 충족)
+    @MockBean
+    private PermissionRepository permissionRepository;
+
     private IbizDriveUserDetails admin;
     private IbizDriveUserDetails auditor;
     private IbizDriveUserDetails member;

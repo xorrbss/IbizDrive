@@ -40,14 +40,16 @@ class PermissionServiceChangeRoleTest {
     private static final UUID TARGET = UUID.fromString("22222222-2222-2222-2222-222222222222");
 
     private UserRepository userRepository;
+    private PermissionRepository permissionRepository;
     private ApplicationEventPublisher publisher;
     private PermissionService service;
 
     @BeforeEach
     void setUp() {
         userRepository = mock(UserRepository.class);
+        permissionRepository = mock(PermissionRepository.class);
         publisher = mock(ApplicationEventPublisher.class);
-        service = new PermissionService(userRepository, publisher);
+        service = new PermissionService(userRepository, permissionRepository, publisher);
     }
 
     private User userWithRole(Role role) {
