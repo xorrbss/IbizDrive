@@ -1,10 +1,15 @@
 package com.ibizdrive.audit;
 
+import com.ibizdrive.permission.PermissionGrantedEvent;
+import com.ibizdrive.permission.PermissionRevokedEvent;
 import com.ibizdrive.permission.RoleChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.event.EventListener;
 import org.springframework.stereotype.Component;
+
+import java.time.Instant;
+import java.util.UUID;
 
 /**
  * A3.4 — {@link RoleChangedEvent} → {@link AuditEventType#PERMISSION_CHANGED} 기록.
@@ -48,5 +53,92 @@ public class PermissionAuditListener {
         } catch (RuntimeException ex) {
             log.error("audit emission failed for event={}", AuditEventType.PERMISSION_CHANGED, ex);
         }
+    }
+
+    /**
+     * A4.4 — {@link PermissionGrantedEvent} → {@link AuditEventType#PERMISSION_GRANTED} 기록.
+     *
+     * <p>{@code target_type=PERMISSION} / {@code target_id} = grant row 의 PK. before_state 는 NULL,
+     * after_state 는 grant 의 핵심 필드 스냅샷 (resource/subject/preset/expires_at). 본 JSON 은 frontend
+     * AuditDetail 에서 raw 표시 — Jackson 직렬화 대신 직접 조립 (의존도 최소화 + null 처리 일관성).
+     *
+     * <p>{@code metadata} 에 resource 컨텍스트(resource_type/resource_id) 를 별도 키로 두어 audit 검색에서
+     * resource 기준 필터를 가능하게 한다 (A4.5 이후 audit query 확장 hook).
+     */
+    @EventListener
+    public void onPermissionGranted(PermissionGrantedEvent event) {
+        String after = grantStateJson(
+            event.resourceType(), event.resourceId(),
+            event.subjectType(), event.subjectId(),
+            event.preset().wire(), event.expiresAt()
+        );
+        String metadata = resourceMetadataJson(event.resourceType(), event.resourceId());
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.PERMISSION_GRANTED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.PERMISSION,
+                event.permissionId(),
+                null,
+                after,
+                metadata
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event={}", AuditEventType.PERMISSION_GRANTED, ex);
+        }
+    }
+
+    /**
+     * A4.4 — {@link PermissionRevokedEvent} → {@link AuditEventType#PERMISSION_REVOKED} 기록.
+     *
+     * <p>DELETE 의 특성상 row 가 사라지므로 caller 가 캡처한 snapshot 을 그대로 before_state 로 기록.
+     * after_state 는 NULL.
+     */
+    @EventListener
+    public void onPermissionRevoked(PermissionRevokedEvent event) {
+        String before = grantStateJson(
+            event.resourceType(), event.resourceId(),
+            event.subjectType(), event.subjectId(),
+            event.preset().wire(), event.expiresAt()
+        );
+        String metadata = resourceMetadataJson(event.resourceType(), event.resourceId());
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.PERMISSION_REVOKED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.PERMISSION,
+                event.permissionId(),
+                before,
+                null,
+                metadata
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event={}", AuditEventType.PERMISSION_REVOKED, ex);
+        }
+    }
+
+    private static String grantStateJson(String resourceType, UUID resourceId,
+                                          String subjectType, UUID subjectId,
+                                          String presetWire, Instant expiresAt) {
+        // 직접 조립 — keys 는 fixed 라 escape 불필요. value 는 enum/UUID/Instant 로 안전한 문자열.
+        StringBuilder sb = new StringBuilder(160);
+        sb.append("{\"resource_type\":\"").append(resourceType).append("\"")
+          .append(",\"resource_id\":\"").append(resourceId).append("\"")
+          .append(",\"subject_type\":\"").append(subjectType).append("\"")
+          .append(",\"subject_id\":");
+        if (subjectId == null) sb.append("null"); else sb.append("\"").append(subjectId).append("\"");
+        sb.append(",\"preset\":\"").append(presetWire).append("\"")
+          .append(",\"expires_at\":");
+        if (expiresAt == null) sb.append("null"); else sb.append("\"").append(expiresAt).append("\"");
+        sb.append("}");
+        return sb.toString();
+    }
+
+    private static String resourceMetadataJson(String resourceType, UUID resourceId) {
+        return "{\"resource_type\":\"" + resourceType + "\",\"resource_id\":\"" + resourceId + "\"}";
     }
 }
