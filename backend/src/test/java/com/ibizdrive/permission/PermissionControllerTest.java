@@ -3,6 +3,8 @@ package com.ibizdrive.permission;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.folder.Folder;
+import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.permission.dto.GrantPermissionRequest;
 import com.ibizdrive.permission.dto.PermissionDto;
 import com.ibizdrive.user.IbizDriveUserDetails;
@@ -12,8 +14,6 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
-import org.springframework.jdbc.core.ResultSetExtractor;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -37,7 +37,7 @@ import static org.mockito.Mockito.when;
  * <p>{@code @WebMvcTest} 슬라이스 대신 controller 메서드를 직접 호출하여 routing 외 책임만 본다 —
  * <ul>
  *   <li>path segment 정규화 (folders→folder, files→file)</li>
- *   <li>리소스 존재 검증 (file: repository, folder: JDBC)</li>
+ *   <li>리소스 존재 검증 (file/folder 모두 JPA repository)</li>
  *   <li>service delegation 인자 전달</li>
  *   <li>DTO 매핑 + 201/204 status</li>
  * </ul>
@@ -53,7 +53,7 @@ class PermissionControllerTest {
 
     private PermissionService permissionService;
     private FileRepository fileRepository;
-    private JdbcTemplate jdbcTemplate;
+    private FolderRepository folderRepository;
     private PermissionController controller;
     private IbizDriveUserDetails principal;
 
@@ -61,8 +61,8 @@ class PermissionControllerTest {
     void setUp() {
         permissionService = mock(PermissionService.class);
         fileRepository = mock(FileRepository.class);
-        jdbcTemplate = mock(JdbcTemplate.class);
-        controller = new PermissionController(permissionService, fileRepository, jdbcTemplate);
+        folderRepository = mock(FolderRepository.class);
+        controller = new PermissionController(permissionService, fileRepository, folderRepository);
 
         User u = new User(
             ACTOR, "admin@example.com", "Admin", "{bcrypt}$2a$12$dummy",
@@ -75,9 +75,9 @@ class PermissionControllerTest {
 
     @Test
     void grant_folderPlural_normalizesAndPersists() {
-        // folder 존재 — JDBC stub 이 1 반환.
-        when(jdbcTemplate.query(anyString(), any(ResultSetExtractor.class), eq(RESOURCE_ID)))
-            .thenReturn(1);
+        // folder 존재 — FolderRepository stub.
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.of(mock(Folder.class)));
 
         UUID newPermId = UUID.randomUUID();
         when(permissionService.grantPermission(
@@ -122,15 +122,15 @@ class PermissionControllerTest {
             controller.grant("file", RESOURCE_ID, body, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
-        verify(jdbcTemplate, never()).query(anyString(), any(ResultSetExtractor.class), any(Object[].class));
+        verify(folderRepository, never()).findByIdAndDeletedAtIsNull(any());
     }
 
     // ── grant: 404 paths ───────────────────────────────────────────────
 
     @Test
     void grant_folderMissing_throwsNotFound() {
-        when(jdbcTemplate.query(anyString(), any(ResultSetExtractor.class), eq(RESOURCE_ID)))
-            .thenReturn(null);
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.empty());
 
         GrantPermissionRequest body = new GrantPermissionRequest(
             new GrantPermissionRequest.SubjectRef("user", SUBJECT_ID), "read", null);
@@ -172,8 +172,8 @@ class PermissionControllerTest {
 
     @Test
     void grant_unknownPresetWire_throwsBadRequest() {
-        when(jdbcTemplate.query(anyString(), any(ResultSetExtractor.class), eq(RESOURCE_ID)))
-            .thenReturn(1);
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.of(mock(Folder.class)));
 
         GrantPermissionRequest body = new GrantPermissionRequest(
             new GrantPermissionRequest.SubjectRef("user", SUBJECT_ID), "wizard", null);
