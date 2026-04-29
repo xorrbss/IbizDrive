@@ -10,7 +10,7 @@
 - [x] `FileControllerTest` (direct invocation) — 9 tests: each endpoint's status + service delegation + exception propagation.
 - [x] Full `gradle :backend:test` green: 387 total / 0 failures / 0 errors / 111 skipped (Docker-gated, baseline parity).
 - [x] dev/active updated.
-- [ ] commit + remove dev/process file (in progress).
+- [x] commit + PR + squash merge (PR #12, master 4e720eb) + dev-docs archive.
 
 ## Verified
 
