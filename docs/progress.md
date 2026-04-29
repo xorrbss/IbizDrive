@@ -5,6 +5,62 @@
 
 ---
 
+## 2026-04-29 — 🏁 A4 마일스톤 종료 (Folder/File Domain + Resource-Level Permissions)
+
+### 범위
+
+A4.0 (docs/02 §2.3/§2.6/§7.10 정합 patch + ADR #27/#28/#29) → A4.1 (V5 마이그레이션 — folders/files/file_versions/permissions + UNIQUE COALESCE + DEFERRABLE FK + V5MigrationIT) → A4.2 (file/permission entity·repo + 재귀 CTE `findEffective`, Folder는 ownership 충돌로 A4.5 흡수) → A4.3 (`IbizDrivePermissionEvaluator` 내부 resource-level 교체 + 상속, A3 13/13 회귀 보존) → A4.4 (PermissionController 4 endpoint + `permission.granted/revoked` 실 emission, ADR #26 close) → A4.5 (Folder JPA entity + FolderRepository, A4.2 deferred 흡수) → A4.6 (FolderMutationService + create/rename/move/delete/restore + audit emit + cycle 가드) → A4.7 (FolderController + 3 REST endpoint + RENAME_CONFLICT envelope + ADR #30 root=ADMIN-only).
+
+### 회고
+
+- **commits**: 9 (no-merges) on top of A3 close `6f0820d` → master HEAD `48e23a3`. PR 6건 (#6 A4-data, #7 evaluator, #8 perm-endpoint, #9 folder-entity, #10 mutation-service, #11 folder-endpoint) 모두 squash-merged + CI green.
+- **production 파일**: 26 신설/변경 (backend `folder/` 11 + `permission/` 11 + `file/` 2 + `audit/` 1 + `common/error/` 1) + frontend는 enum mirror 무수정 (A3 1:1 mirror 그대로 유효).
+- **test 파일**: 13 신설 (A4 신규 — `V5MigrationIT`, `FolderRepositoryTest`, `FolderMutationServiceTest`, `FolderControllerTest`, `PermissionRepositoryTest`, `PermissionResolverTest`, `IbizDrivePermissionEvaluatorTest`, `PermissionControllerTest`, `PermissionServiceGrantRevokeTest`, `PermissionAuditListenerTest` 등). A3 13개 evaluator 통합 테스트 회귀 보존.
+- **마이그레이션**: V5 — `folders` (parent UNIQUE = `COALESCE(parent_id, ZERO_UUID)` 보강, soft delete `WHERE deleted_at IS NULL`) + `files` (`folder_id` FK, normalized_name UNIQUE) + `file_versions` (테이블만 도입, entity는 ADR #29로 A5 이월) + `permissions` (preset 단일 컬럼, ADR #28).
+- **endpoint 신규**: 7개 — `POST/DELETE/GET /api/{resource}/{id}/permissions`, `GET /api/me/effective-permissions` (A4.4) + `POST /api/folders`, `PATCH /api/folders/{id}`, `POST /api/folders/{id}/move` (A4.7).
+- **ADR 변경**: **#26 closed** (A4.4 — `permission.granted/revoked` 실 emission + 4 endpoint 도입), **#27/#28/#29 신규** (A4 PR 분할 / preset 단일 / FileVersion A5 이월), **#30 신규** (A4.7 — root parent 작업은 ROLE ADMIN-only SpEL 삼항 분기).
+- **재귀 CTE**: `PermissionRepository.findEffective(userId, resourceType, resourceId)` — 부모→자식 상속 + grant 우선 lookup (ADR #28). evaluator는 SpEL 시그니처 `hasPermission(#id, 'folder', 'READ')` 그대로 보존, 내부만 교체 (ADR #26 보장사항 충족).
+- **트랜잭션**: 모든 mutation = `@Transactional` + `SELECT FOR UPDATE` (FolderMutationService). audit emit은 `REQUIRES_NEW`로 분리 (ADR #24 보존). audit append-only `42501` 회귀 0 (V4 REVOKE 무영향).
+
+### 핵심 결정 (A4 트랙 6+1, 확정)
+
+1. **PR 2개 분할** — A4-data + A4-controllers, 의존 단방향. 추가로 A4-controllers 내부도 evaluator/perm-endpoint/folder-entity/mutation-service/folder-endpoint 5 sub-track으로 분기 (ADR #27)
+2. **permissions = preset 단일 컬럼**, deny semantics v1.x 이월 (ADR #28). evaluator는 grant 우선 lookup만 (allow 발견 → true, 어디서도 grant 없으면 false)
+3. **FileVersion entity/repo/CRUD A5 이월** — V5 schema는 테이블 + DEFERRABLE FK만 (ADR #29). `current_version_id` NULL 허용 유지
+4. **root parent 작업 = ROLE ADMIN-only** — SpEL 삼항 `#req.parentId == null ? hasRole('ADMIN') : hasPermission(...)` (ADR #30). 노드 admin preset이 root 트리 구조 변경으로 번지지 않게 차단
+5. **SpEL 호출 시그니처 0변경** — A3 `hasPermission(#id, 'folder', 'READ')` 그대로, evaluator 내부만 user-level → resource-level. controller `@PreAuthorize` 회귀 0 (ADR #26 보장사항 충족)
+6. **Folder ownership 충돌 → A4.5 흡수** — A4.2에서 file/permission만 진행, master worktree `dev/process/20260428-a3-folder-mutation-service.md` ownership 해제 후 a4-folder-entity 세션에서 정리 + Folder JPA entity 신설
+
+### accepted-deviation (A5 이월)
+
+- `file_versions` entity/repository/CRUD endpoint — 버전 이력 UI/API는 별도 기능 (ADR #29). V5 schema는 테이블만 도입했으므로 A5는 entity/repo/endpoint만 추가
+- 명시 deny semantics — `permissions.deny BOOLEAN` 또는 별도 `denies` 테이블 (ADR #28). 현 schema 호환 (컬럼 추가만으로 확장)
+- LTREE 부서 계층 + `includeDescendants` — 부서 모델 자체가 A1.5 후속 (track 미정)
+- File mutation/CRUD endpoint — A4는 Folder MVP까지만, File mutation은 A5 또는 별도 트랙 (5 endpoint 미구현)
+
+### DoD 11/11
+
+1. ✅ V5 마이그레이션 GREEN — 4테이블 + UNIQUE COALESCE + DEFERRABLE FK + REVOKE 무충돌 (V5MigrationIT 7+ 케이스)
+2. ✅ `Folder`/`FileItem`/`PermissionRow` entity + repository + 재귀 CTE `findEffective`
+3. ✅ A3 `PermissionEvaluatorIntegrationTest` 13/13 GREEN 회귀 보존 + resource-level 신규 테스트 GREEN
+4. ✅ `PermissionService.grantPermission/revokePermission` + `PermissionGrantedEvent/RevokedEvent` + `PermissionAuditListener` 확장 — `permission.granted/revoked` 실 emission (REQUIRES_NEW)
+5. ✅ `PermissionController` 4 endpoint + 가드 + 403 envelope `PERMISSION_DENIED`
+6. ✅ `FolderMutationService` create/rename/move/delete/restore — `@Transactional` + `SELECT FOR UPDATE` + cycle 가드
+7. ✅ `FolderController` 3 endpoint (create/rename/move) + `RENAME_CONFLICT` 409 envelope
+8. ✅ ADR #26 status "deferred" → "closed (A4.4)" 표기 정합. ADR #27/#28/#29/#30 docs/00 §5 등록
+9. ✅ A2 audit append-only 회귀 0 — V4 REVOKE 정책 무영향, `42501` 가드 보존
+10. ✅ PR #6/#7/#8/#9/#10/#11 모두 CI green (backend junit + frontend vitest 둘 다 SUCCESS) + master squash-merge
+11. ✅ dev-docs `dev/active/a4-folder-file-domain/` + sub-track 5건 → `dev/completed/` archive (parent + 5 sub-tracks 통합 closure)
+
+### 다음 단계 — A5 또는 docs/03~04 본문
+
+- **A5 후보**: `FileVersion` entity/repo + 버전 생성/조회/복원 endpoint (ADR #29 deferred 클리어). File mutation endpoint(rename/move/delete/restore) 흡수 검토.
+- **docs/03 §5~§8 본문**: 저장소 보안(KMS/presigned TTL), Legal Hold, 데이터 보호, 보안 회귀 가드 (코드 0줄 트랙).
+- **docs/04 본문**: 관리자 페이지·쿼터·백업 (별도 트랙).
+- **stale PR 정리**: #3 (codex/a3-mutation-domain), #4 (codex/a3-folder-mutation-service) — A3 머지가 다른 경로로 끝났으므로 close 예정.
+
+---
+
 ## 2026-04-29 — A4.0 docs/02 정합 patch (no-code)
 
 ### 범위
