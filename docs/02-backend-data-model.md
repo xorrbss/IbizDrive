@@ -884,9 +884,9 @@ GET /api/auth/csrf
 |---|---|---|---|---|---|---|
 | GET | `/api/folders/tree` | `hasPermission(#root, 'folder', 'READ')` (필터링) | — | — | `WHERE deleted_at IS NULL` | — |
 | GET | `/api/folders/:id` | `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` | — | — | `WHERE deleted_at IS NULL` | 404 NOT_FOUND |
-| POST | `/api/folders` | `hasPermission(#req.parentId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `parentId` | `name → normalized_name` | — | 400 VALIDATION_ERROR, 404 (parent), 409 RENAME_CONFLICT |
+| POST | `/api/folders` | `#req.parentId == null ? hasRole('ADMIN') : hasPermission(#req.parentId, 'folder', 'EDIT')` (ADR #30) | REQUIRED + FOR UPDATE on `parentId` | `name → normalized_name` | — | 400 VALIDATION_ERROR, 404 (parent), 409 RENAME_CONFLICT |
 | PATCH | `/api/folders/:id` | `hasPermission(#id, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + sibling | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
-| POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `hasPermission(#req.targetParentId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
+| POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `(#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))` (ADR #30) | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
 | DELETE | `/api/folders/:id` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW()` (재귀: 후손 폴더/파일 cascade) | 404 |
 | POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
 
