@@ -7,10 +7,14 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 ## SESSION PROGRESS
 
-- **2026-04-29 bootstrap** — plan/context/tasks 3파일 작성. 게이트 0 진입 대기.
-  - 동기: 워크트리 `a4-folder-file-domain`에 uncommitted RED 테스트 87줄(FolderMutationServiceTest 4건 + FolderControllerTest 2건) 발견, A4 closure block의 file/folder mutation backlog 정리.
-  - 범위: folder delete/restore만. file mutation은 별도 트랙. hard purge job/frontend UI는 별도 마일스톤.
-  - 분기점: 본 트랙은 A5와 도메인·파일 충돌 0 (folder/* vs file/FileVersion*) — 병렬 진행 가능.
+- **2026-04-29 bootstrap** — plan/context/tasks 3파일 작성 + master commit `072cdaa`. 게이트 0 통과.
+  - 동기: 워크트리 `a4-folder-file-domain`에 uncommitted RED 테스트 87줄(FolderMutationServiceTest 4건 + FolderControllerTest 2건) 발견, A4 closure block의 folder mutation backlog 정리.
+  - 범위: folder delete/restore + 후손 cascade (folder + file). hard purge job/frontend UI는 별도 마일스톤.
+  - 분기점: 본 트랙은 A5와 도메인 disjoint(folder vs file/FileVersion) — 병렬 가능.
+- **2026-04-29 bootstrap 후 갱신** — bootstrap commit 직후 master에 다음이 이미 머지됨이 발견:
+  - `4e720eb feat(A4.8): FileMutationService + 4 REST endpoint (#12)` — file rename/move/delete/restore + 387 test green
+  - `e603964 docs(A5.0): file_versions GET 응답 스키마 + ADR #29 트리거 마커`
+  - 영향: §out-of-scope에서 "file mutation 트랙" 항목 제거. cascade는 `FileMutationService.delete` 미호출 정책으로 audit 폭증 회피(batch UPDATE 유지).
 
 ## Current Execution Contract
 
@@ -75,7 +79,7 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 ## 비활성 항목 / 추후
 
-- **File mutation 트랙** (rename/move/delete/restore on `/api/files/:id*`) — A6 종료 후 별도 마일스톤(A7?). FileMutationService 도입 시 본 트랙의 cascade batch UPDATE를 흡수.
+- ~~File mutation 트랙~~ — **A4.8(`4e720eb`)에서 닫힘**. FileMutationService 단일 파일 mutation은 완료. 본 트랙은 folder cascade에서 FileMutationService.delete를 호출하지 않고 batch UPDATE만 사용(audit 정책 일관성).
 - **Hard purge job** — `purge_after` 경과 row 영구 삭제 + S3 객체 삭제. docs/04 §13 배치 트랙.
 - **후손 cascade restore endpoint** — `?cascade=true` 또는 별도 path. 사용자 UX 결정 후 신설.
 - **Frontend 휴지통 UI** (docs/01 §13) — backend 계약 안정화 완료 시점부터 시작 가능.
