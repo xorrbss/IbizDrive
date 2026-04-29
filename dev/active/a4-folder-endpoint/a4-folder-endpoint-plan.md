@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-29
-Status: 🔄 IMPLEMENTATION
+Status: 🟢 PR open 단계 (구현·로컬검증 완료)
 ---
 
 # A4.7 — FolderController + REST endpoint — Plan
