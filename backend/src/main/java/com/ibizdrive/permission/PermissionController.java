@@ -2,13 +2,13 @@ package com.ibizdrive.permission;
 
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.permission.dto.GrantPermissionRequest;
 import com.ibizdrive.permission.dto.PermissionDto;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -39,7 +39,7 @@ import java.util.UUID;
  *
  * <p><b>리소스 존재 검증</b>: SpEL 평가는 {@code id} 만 받고 존재 여부는 검사하지 않으므로 본체에서 추가 lookup —
  * {@code resource='file'} → {@link FileRepository#findByIdAndDeletedAtIsNull(UUID)},
- * {@code resource='folder'} → {@code folders} 테이블 직접 조회 (Folder entity 부재, A4.5 이월).
+ * {@code resource='folder'} → {@link FolderRepository#findByIdAndDeletedAtIsNull(UUID)} (A4.5에서 entity layer 도입).
  * 부재 시 {@link ResourceNotFoundException} → 404.
  *
  * <p><b>에러 매핑</b>:
@@ -56,14 +56,14 @@ public class PermissionController {
 
     private final PermissionService permissionService;
     private final FileRepository fileRepository;
-    private final JdbcTemplate jdbcTemplate;
+    private final FolderRepository folderRepository;
 
     public PermissionController(PermissionService permissionService,
                                 FileRepository fileRepository,
-                                JdbcTemplate jdbcTemplate) {
+                                FolderRepository folderRepository) {
         this.permissionService = permissionService;
         this.fileRepository = fileRepository;
-        this.jdbcTemplate = jdbcTemplate;
+        this.folderRepository = folderRepository;
     }
 
     /**
@@ -139,23 +139,16 @@ public class PermissionController {
     /**
      * 대상 리소스가 활성 상태로 존재하는지 확인. 부재 시 {@link ResourceNotFoundException} → 404.
      *
-     * <p>{@code folder} 는 Folder entity 가 A4.5 까지 미존재 (A4.5 a4-crud 세션 이월) — V5 의 {@code folders} 테이블에
-     * 직접 SELECT. {@code file} 은 {@link FileRepository#findByIdAndDeletedAtIsNull(UUID)} 사용.
+     * <p>A4.6에서 folder 분기를 {@link FolderRepository}로 교체 — 이전에는 entity layer 부재로
+     * {@code JdbcTemplate}로 직접 SELECT했으나 PR #9 (A4.5)이 entity/repository를 도입하여 file과
+     * 동일한 JPA 경로로 통일.
      */
     private void ensureResourceExists(String resourceType, UUID id) {
         switch (resourceType) {
             case "file" -> fileRepository.findByIdAndDeletedAtIsNull(id)
                 .orElseThrow(() -> new ResourceNotFoundException("file not found: " + id));
-            case "folder" -> {
-                Integer found = jdbcTemplate.query(
-                    "SELECT 1 FROM folders WHERE id = ? AND deleted_at IS NULL",
-                    rs -> rs.next() ? 1 : null,
-                    id
-                );
-                if (found == null) {
-                    throw new ResourceNotFoundException("folder not found: " + id);
-                }
-            }
+            case "folder" -> folderRepository.findByIdAndDeletedAtIsNull(id)
+                .orElseThrow(() -> new ResourceNotFoundException("folder not found: " + id));
             default -> throw new IllegalArgumentException("unsupported resourceType: " + resourceType);
         }
     }
