@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-04-29 — 🏁 M8 권한 UI + ShareDialog
+
+### 범위
+docs/01 §14 권한 훅 + 조건부 렌더링 + 단일 파일 공유. M8.0 bootstrap → M8.1 api/qk → M8.2 usePermission useQuery + BulkActionBar 마이그레이션 → M8.3 ShareDialog.
+
+### 변경
+- **api/qk (M8.1)**: `qk.permissions(nodeId)` (nodeId 없으면 `qk.effectivePermissions()`와 동일). `api.getEffectivePermissions(nodeId?)` mock — admin preset 8 권한(`READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN`, `PURGE` 제외 — docs/03 §3.2).
+- **usePermission (M8.2)**: 기존 stub(lowercase 모두 true) → `useQuery` 기반, `Record<Permission, boolean>` 반환 (UPPER_SNAKE_CASE — `types/permission.ts` 미러). 로딩 중 모든 플래그 false (보수 디폴트, 깜빡임 방지). staleTime 60s.
+- **BulkActionBar (M8.2/M8.3)**: 4개 필드 `download/move/edit/delete` → `DOWNLOAD/MOVE/EDIT/DELETE` 마이그레이션. 신규 SHARE 버튼 (단일 **파일** 선택 시만 활성, 폴더 공유는 v1.x).
+- **stores/shareUi (M8.3)**: `useShareUiStore` (open/close + fileId + fileName).
+- **ShareDialog (M8.3)**: focus trap (close 버튼) + Esc + 닫기. 링크 placeholder `https://ibiz.example/share/{fileId}` + `navigator.clipboard.writeText` + sonner 토스트. 만료/권한 옵션은 v1.x.
+- **ClientFilesPage**: ShareDialog 마운트.
+
+### 검증
+- `npx vitest run`: 48 files / 391 tests passed (M8 신규 20 — api.permissions 4 + usePermission 4 + shareUi 3 + ShareDialog 6 + BulkActionBar 공유 3, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint .`: clean.
+
+### 핵심 결정
+- **권한 enum 단일 진실**: `types/permission.ts` (UPPER_SNAKE_CASE 백엔드 미러)가 계약. usePermission이 그 enum 그대로 키로 노출. 기존 lowercase API는 정리.
+- **로딩 중 모든 false**: docs/01 §14.3 보수적 패턴. 깜빡임은 staleTime 60s + admin preset mock 80ms로 거의 없음.
+- **vi.mock 권장 패턴**: 기존 컴포넌트 테스트는 `vi.mock('@/hooks/usePermission')`로 admin preset 고정 → 권한 검증과 무관한 본 테스트 의도 보존. usePermission 자체는 별도 dedicated test.
+- **단일 파일만 공유**: 폴더/다중 공유는 v1.x — 백엔드 endpoint 미정.
+- **clipboard 폴백**: `navigator.clipboard?.writeText` optional chaining + try/catch — jsdom safe.
+
+### 비범위 (후속)
+- 403 글로벌 핸들러 (toast + qk.permissions invalidate) — api fetch wrapper 정리 후 별도 PR
+- ShareDialog 만료/권한 옵션 — 백엔드 `POST /api/files/:id/share` endpoint 신설 후
+- 폴더 공유 / 다중 파일 공유 — v1.x
+- FileRow 우클릭/단축키 공유 진입점 — KISS
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M14 Visual Identity** (TopBar 정비 + Lucide 아이콘 + StatusBar + FileRow 밀도).
+
+---
+
 ## 2026-04-29 — 🏁 M9 휴지통 + 5초 Undo + /trash 페이지
 
 ### 범위
