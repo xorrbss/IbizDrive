@@ -7,6 +7,7 @@ import { useRestoreBulk } from '@/hooks/useRestoreBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useRenameUiStore } from '@/stores/renameUi'
+import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
 
@@ -40,6 +41,7 @@ export function BulkActionBar() {
   })
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
   const openRename = useRenameUiStore((s) => s.open)
+  const openShare = useShareUiStore((s) => s.open)
   const { sort, dir } = useSortParams()
   // 단일 선택 시 RenameDialog에 넘길 이름을 현재 폴더 캐시에서 찾는다.
   // 다중/없음일 때는 비활성이라 조회 결과가 비어 있어도 무방.
@@ -51,6 +53,8 @@ export function BulkActionBar() {
   // 양쪽을 모두 지원하므로 BulkActionBar에서 추가로 막을 이유가 없다.
   // 캐시 미스(items 미로딩)는 disabled로 안전하게 폴백.
   const renameEnabled = count === 1 && !!singleItem
+  // M8: 공유는 단일 파일만 (폴더 공유는 v1.x). 캐시 미스 시 disabled 폴백.
+  const shareEnabled = count === 1 && !!singleItem && singleItem.type === 'file'
 
   if (count === 0) return null
 
@@ -70,6 +74,11 @@ export function BulkActionBar() {
 
   const handleDelete = () => {
     deleteMut.mutate({ ids, folderIdAtStart: folderId })
+  }
+
+  const handleShare = () => {
+    if (!shareEnabled || !singleItem) return
+    openShare(singleItem.id, singleItem.name)
   }
 
   return (
@@ -111,6 +120,18 @@ export function BulkActionBar() {
             className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
           >
             이름 변경
+          </button>
+        )}
+        {can.SHARE && (
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={!shareEnabled}
+            title={shareEnabled ? undefined : '단일 파일 선택 시 사용 가능'}
+            aria-disabled={!shareEnabled || undefined}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+          >
+            공유
           </button>
         )}
         {can.DELETE && (

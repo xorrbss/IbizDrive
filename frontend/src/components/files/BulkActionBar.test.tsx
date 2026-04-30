@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { BulkActionBar } from './BulkActionBar'
 import { useSelectionStore } from '@/stores/selection'
 import { useRenameUiStore } from '@/stores/renameUi'
+import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useSortParams } from '@/hooks/useSortParams'
@@ -176,6 +177,59 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
     })
     expect(useRenameUiStore.getState().targetId).toBe('fo1')
     expect(useRenameUiStore.getState().targetName).toBe('폴더A')
+  })
+})
+
+describe('BulkActionBar — 공유 버튼 (M8)', () => {
+  beforeEach(() => {
+    act(() => {
+      useSelectionStore.getState().clear()
+      useShareUiStore.getState().close()
+    })
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: ITEMS,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    vi.mocked(useCurrentFolder).mockReturnValue({
+      folderId: 'root',
+      folder: { id: 'root', name: 'root', slugPath: [] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCurrentFolder>)
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+  })
+
+  it('단일 파일 선택 시 활성 — 클릭하면 ShareDialog 열림 (id, name)', () => {
+    act(() => useSelectionStore.getState().selectOnly('f1'))
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    act(() => fireEvent.click(btn))
+    const s = useShareUiStore.getState()
+    expect(s.isOpen).toBe(true)
+    expect(s.fileId).toBe('f1')
+    expect(s.fileName).toBe('alpha.txt')
+  })
+
+  it('다중 선택 시 비활성 + tooltip', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+      useSelectionStore.getState().toggle('f2')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    expect(btn.getAttribute('title')).toBe('단일 파일 선택 시 사용 가능')
+    act(() => fireEvent.click(btn))
+    expect(useShareUiStore.getState().isOpen).toBe(false)
+  })
+
+  it('단일 폴더 선택 시 비활성 (폴더 공유는 v1.x)', () => {
+    act(() => useSelectionStore.getState().selectOnly('fo1'))
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 })
 

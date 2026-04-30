@@ -7,9 +7,11 @@ import { api } from '@/lib/api'
 
 function makeWrapper() {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-  return ({ children }: { children: ReactNode }) => (
+  const Wrapper = ({ children }: { children: ReactNode }) => (
     <QueryClientProvider client={qc}>{children}</QueryClientProvider>
   )
+  Wrapper.displayName = 'Wrapper'
+  return Wrapper
 }
 
 describe('usePermission (M8)', () => {
