@@ -1,20 +1,21 @@
 ---
 Last Updated: 2026-04-30
-Status: 📋 BOOTSTRAP — A8.0 진입 대기
+Status: ✅ A8.0 완료 — A8.1 진입 대기
 ---
 
 # A8 — Trash Listing + Manual Purge — Context
 
 ## SESSION PROGRESS
 
-### 2026-04-30 (bootstrap)
+### 2026-04-30 (bootstrap → A8.0 완료)
 - A7 closure(`d539640`) 후 A8 진입. worktree `.claude/worktrees/a8-trash-manage` 생성, branch `feature/a8-trash-manage` master 기준.
 - 사용자 요구 확정: GET `/api/trash` + DELETE `/api/trash/:type/:id` 2개. bulk DELETE는 out-of-scope.
-- docs/02 §7.11 정독 → restore endpoint drift 발견(`/api/trash/:id/restore` doc vs `/api/files/:id/restore` & `/api/folders/:id/restore` code) → A8.0에서 docs 정정.
+- docs/02 §7.11 정독 → restore endpoint drift 발견(`/api/trash/:id/restore` doc vs `/api/files/:id/restore` & `/api/folders/:id/restore` code) → A8.0에서 docs 정정 완료.
 - AuditEventType enum 검사 → `FILE_PURGED`/`FOLDER_PURGED` 정의됐으나 사용처 0(A8 활성화 대상). `SYSTEM_PURGE_EXECUTED`는 A7에서 발행.
 - SSE infra 부재 확인(`sse`/`Sse`/`EventBus` 클래스 0) → A8도 audit-only. SSE emission은 별도 milestone deferred로 docs 명시.
-- ADR 마지막 #31 → A8 신규 ADR = **#32** (manual purge URL `:type/:id` + per-row audit + bulk deferral).
-- dev-docs 3파일 작성 완료. **A8.0 phase ready.**
+- ADR #32 신설 — manual purge URL `:type/:id` + per-row audit 활성화 + bulk 미구현/별도 트랙 + SSE deferred + GET 권한 후처리 + restore drift 정정. 6개 핵심 결정 박제.
+- bootstrap commit `7391547` (게이트 0 통과).
+- A8.0 commit (게이트 1 통과 예정) — docs/00 §5 #32 추가 + docs/02 §7.11 재작성 + docs/02 §7.13.1 footnote + docs/01 §13.2 backend backlink.
 
 ## Current Execution Contract
 
@@ -26,8 +27,8 @@ Status: 📋 BOOTSTRAP — A8.0 진입 대기
 
 ## 현재 active task
 
-- **A8.0** — docs/02 §7.11 정합 patch + ADR #32 신설 + docs/01 §13 backlink. **no-code**.
-- 게이트 조건: docs commit + dev-docs context update.
+- **A8.1** — `GET /api/trash` list endpoint. `TrashController`/`TrashQueryService`/`TrashItemDto`/`TrashItemType` enum 신설 + Repository 확장 + Testcontainers 7건.
+- 게이트 조건: 7개 테스트 GREEN + 회귀 0 + commit.
 
 ## 다음 세션 읽기 순서
 

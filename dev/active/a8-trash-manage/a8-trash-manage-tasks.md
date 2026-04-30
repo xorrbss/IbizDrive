@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: 📋 BOOTSTRAP — A8.0 진입 대기 (게이트 0 통과)
+Status: ✅ A8.0 완료 — A8.1 진입 대기 (게이트 1 통과)
 ---
 
 # A8 — Trash Listing + Manual Purge — Tasks
@@ -9,8 +9,8 @@ Status: 📋 BOOTSTRAP — A8.0 진입 대기 (게이트 0 통과)
 
 | Phase | 제목 | 상태 |
 |---|---|---|
-| A8.0 | docs 정합 + ADR #32 신설 (no-code) | 📋 ready |
-| A8.1 | GET /api/trash (list) | ⏳ pending |
+| A8.0 | docs 정합 + ADR #32 신설 (no-code) | ✅ done |
+| A8.1 | GET /api/trash (list) | 📋 ready |
 | A8.2 | DELETE /api/trash/:type/:id (manual purge) | ⏳ pending |
 | A8.3 | closure (PR + archive) | ⏳ pending |
 
@@ -31,16 +31,11 @@ Status: 📋 BOOTSTRAP — A8.0 진입 대기 (게이트 0 통과)
 - `backend/src/main/java/com/ibizdrive/audit/AuditEventType.java` line 27~28, 40~41 (PURGE/RESTORED enum)
 
 **구현 대상**:
-- [ ] (1) `docs/00-overview.md` §5 ADR 표에 **#32 행 추가** — 제목, 결정, 근거, 영향 문서. 본문은 ADR #31 형식 미러링.
-  - 결정 키포인트: (a) URL `DELETE /api/trash/:type/:id` 채택, (b) per-row audit `FILE_PURGED`/`FOLDER_PURGED` 활성화(A7 reserve 해제), (c) bulk DELETE `/api/trash` 미구현/별도 트랙, (d) SSE emission은 인프라 milestone deferred(audit-only A8 발행), (e) GET /api/trash 권한 = `isAuthenticated()` + 결과 후처리(MVP), (f) restore endpoint drift 정정 (docs/02 §7.11 line 1114).
-- [ ] (2) `docs/02-backend-data-model.md` §7.11 patch:
-  - line 1114 `POST /api/trash/:id/restore` → 행 두 개로 분할 또는 본문 정정: 실제는 `POST /api/files/:id/restore` + `POST /api/folders/:id/restore`. drift 정정 + ADR #32 backlink.
-  - line 1115 `DELETE /api/trash/:id` → `DELETE /api/trash/:type/:id` ({type} ∈ `file`|`folder`). guard `hasRole('ADMIN')` 유지. ADR #32 backlink.
-  - line 1116 `DELETE /api/trash` → 행 보존 + 끝에 "(A8 미구현, 별도 트랙)" 주석 + ADR #32 backlink.
-  - 본문 ```text``` 블록 정정 — `GET /api/trash` 응답 스키마 그대로, `DELETE /api/trash/:type/:id` 본문 추가(per-row audit emit 명시), bulk 블록은 deferred 주석.
-- [ ] (3) `docs/02-backend-data-model.md` §7.13.1 footnote — `FILE_PURGED`/`FOLDER_PURGED` 행 끝 또는 표 직후 footnote: "*audit emission은 A8 트랙(`/api/trash/:type/:id`) 활성화. SSE emission은 SSE 인프라 milestone에서 활성화 — `EventBus`/`SseEmitter` 미구현 단계.*"
-- [ ] (4) `docs/01-frontend-design.md` §13 backlink — TrashView fetch 위치 backend endpoint(`GET /api/trash`) 명시 + ADR #32 backlink. queryKey `qk.trash()` 그대로.
-- [ ] (5) commit: `docs(A8.0): trash endpoint 정합 + ADR #32 (manual purge URL :type/:id, per-row audit, bulk deferred)`
+- [x] (1) `docs/00-overview.md` §5 ADR 표에 **#32 행 추가** — 제목, 결정, 근거, 영향 문서. 본문은 ADR #31 형식 미러링.
+- [x] (2) `docs/02-backend-data-model.md` §7.11 patch — restore 행 per-resource로 분할, DELETE `:type/:id` 채택, bulk 행 strikethrough + 미구현 주석, 본문 ```text``` 블록 재작성.
+- [x] (3) `docs/02-backend-data-model.md` §7.13.1 — `FILE_PURGED`/`FOLDER_PURGED` 행에 "audit는 A8 활성화, SSE emission은 인프라 milestone deferred (ADR #32)" 주석.
+- [x] (4) `docs/01-frontend-design.md` §13.2 — Backend endpoints backlink 추가 (`GET /api/trash`, restore endpoints, manual purge ADR #32).
+- [x] (5) commit: `docs(A8.0): trash endpoint 정합 + ADR #32 (manual purge URL :type/:id, per-row audit, bulk deferred)`
 
 **검증 참조**:
 - ADR #32 본문이 plan.md "도메인 정책 — 핵심 결정" 6항목과 1:1 대응되는가
