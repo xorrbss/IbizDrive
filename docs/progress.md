@@ -5,6 +5,39 @@
 
 ---
 
+## 2026-04-29 — 🏁 M14 Visual Identity (Lucide + Avatar + StatusBar)
+
+### 범위
+docs/01 §4 트리 + 시각적 통일. SearchBar 아이콘 / TopBar Avatar / FileRow 이모지 → Lucide / 하단 StatusBar.
+
+### 변경
+- **SearchBar (M14.1)**: input prefix `Search` Lucide 아이콘 (16px, fg-muted). `pl-8` padding 조정.
+- **Avatar (M14.2)**: 신규 컴포넌트 — `initial`/`displayName` props (default `"U"`/`"사용자"`). 28px circle, accent bg, `aria-label=displayName`. TopBar 우측 액션 영역에 마운트.
+- **FileRow (M14.3)**: 이모지(`📁/📄/...`) → Lucide (`Folder`(accent) / `File` / `FileText` / `FileImage` / `FileSpreadsheet`(fg-muted)). mime 기반 분기 함수 `fileIconFor`. size 16, currentColor.
+- **StatusBar (M14.4)**: 신규 — `<footer role="contentinfo">` 좌측 항목 수(`useFilesInFolder`) + 우측 선택 카운트(`useSelectionStore`, 0일 때 숨김, `aria-live=polite`). h-7 / border-t / surface-1 bg.
+- **(explorer)/layout.tsx**: `<StatusBar />` main 하단 마운트.
+
+### 검증
+- `npx vitest run`: 50 files / 397 tests passed (M14 신규 6 — Avatar 2 + StatusBar 4, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint`: clean (변경 파일 8개 0 issue).
+
+### 핵심 결정
+- **Lucide 단일 아이콘 라이브러리**: 이모지/SVG 혼재 제거. 색상은 `currentColor` + `text-*` 유틸로 일관 제어. 폴더만 `text-accent` 강조.
+- **Avatar는 stub만**: 실제 user/session API 미정 → props 기반 placeholder. M16+ 또는 백엔드 auth 후 교체.
+- **StatusBar 최소 정보**: 항목 수 + 선택 카운트만. 저장 용량/SSE 동기화/정렬 표시는 M15+에서 확장.
+- **선택 카운트 aria-live**: 선택 변동을 스크린리더에 안내. 0일 땐 DOM 자체에서 숨겨 카운트 음성 잡음 방지.
+
+### 비범위 (후속)
+- StorageBar / SortChip / ViewSwitch — M15
+- Avatar 실제 사용자 데이터 연결 — auth 백엔드 후
+- StatusBar 동기화 상태(SSE) — M15+
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M15 Layout Extras** (SortChip + ViewSwitch + StorageBar + RightPanel 탭).
+
+---
+
 ## 2026-04-29 — 🏁 M8 권한 UI + ShareDialog
 
 ### 범위
