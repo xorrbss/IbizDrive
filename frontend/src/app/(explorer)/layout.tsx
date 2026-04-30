@@ -2,6 +2,7 @@ import { FolderTree } from '@/components/folders/FolderTree'
 import { DndProvider } from '@/components/dnd/DndProvider'
 import { TopBar } from '@/components/topbar/TopBar'
 import { TrashLink } from '@/components/trash/TrashLink'
+import { StatusBar } from '@/components/statusbar/StatusBar'
 
 export default function ExplorerLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -25,7 +26,8 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
         </aside>
         <main className="flex-1 min-w-0 flex flex-col bg-bg overflow-hidden">
           <TopBar />
-          {children}
+          <div className="flex-1 min-h-0 flex flex-col">{children}</div>
+          <StatusBar />
         </main>
       </div>
     </DndProvider>

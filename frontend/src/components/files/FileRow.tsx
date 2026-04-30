@@ -1,6 +1,14 @@
 // frontend/src/components/files/FileRow.tsx
 'use client'
 import { useDraggable } from '@dnd-kit/core'
+import {
+  Folder,
+  File as FileIcon,
+  FileText,
+  FileImage,
+  FileSpreadsheet,
+  type LucideIcon,
+} from 'lucide-react'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
@@ -34,13 +42,26 @@ function formatDate(iso: string): string {
   })
 }
 
-function fileIcon(item: FileItem): string {
-  if (item.type === 'folder') return '📁'
-  if (item.mimeType?.startsWith('image/')) return '🖼️'
-  if (item.mimeType?.includes('pdf')) return '📄'
-  if (item.mimeType?.includes('spreadsheet') || item.mimeType?.includes('excel')) return '📊'
-  if (item.mimeType?.includes('word') || item.mimeType?.includes('document')) return '📝'
-  return '📎'
+/**
+ * mime 기반 Lucide 아이콘 + 색상 클래스 결정 (M14).
+ * folder는 accent로 강조, 그 외는 fg-muted.
+ */
+function fileIconFor(item: FileItem): { Icon: LucideIcon; className: string } {
+  if (item.type === 'folder') return { Icon: Folder, className: 'text-accent' }
+  if (item.mimeType?.startsWith('image/'))
+    return { Icon: FileImage, className: 'text-fg-muted' }
+  if (
+    item.mimeType?.includes('spreadsheet') ||
+    item.mimeType?.includes('excel')
+  )
+    return { Icon: FileSpreadsheet, className: 'text-fg-muted' }
+  if (
+    item.mimeType?.includes('pdf') ||
+    item.mimeType?.includes('word') ||
+    item.mimeType?.includes('document')
+  )
+    return { Icon: FileText, className: 'text-fg-muted' }
+  return { Icon: FileIcon, className: 'text-fg-muted' }
 }
 
 export function FileRow({
@@ -121,7 +142,12 @@ export function FileRow({
       onKeyDown={onKeyDown}
       data-file-id={item.id}
     >
-      <span className="text-center" role="gridcell" aria-hidden="true">{fileIcon(item)}</span>
+      <span className="flex items-center justify-center" role="gridcell" aria-hidden="true">
+        {(() => {
+          const { Icon, className } = fileIconFor(item)
+          return <Icon size={16} className={className} />
+        })()}
+      </span>
       <span
         className="truncate font-medium text-fg"
         role="gridcell"

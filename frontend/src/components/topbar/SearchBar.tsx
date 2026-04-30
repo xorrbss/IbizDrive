@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
+import { Search } from 'lucide-react'
 import { useSearch } from '@/hooks/useSearch'
 import { FOCUS_SEARCH_EVENT } from '@/hooks/useGlobalShortcuts'
 import { SearchResults } from './SearchResults'
@@ -41,6 +42,11 @@ export function SearchBar() {
 
   return (
     <div className="relative w-72">
+      <Search
+        aria-hidden
+        size={14}
+        className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-fg-muted"
+      />
       <input
         ref={inputRef}
         type="search"
@@ -55,7 +61,7 @@ export function SearchBar() {
         onFocus={() => setOpen(true)}
         onBlur={handleBlur}
         onKeyDown={handleKey}
-        className="w-full rounded-md border border-border bg-surface-2 px-3 py-1 text-sm outline-none focus:ring-1 focus:ring-ring"
+        className="w-full rounded-md border border-border bg-surface-2 pl-8 pr-3 py-1 text-sm outline-none focus:ring-1 focus:ring-ring"
       />
       {open && (
         <SearchResults
