@@ -183,7 +183,8 @@ export const api = {
     dir: 'asc' | 'desc' = 'asc'
   ): Promise<FileItem[]> {
     await new Promise((r) => setTimeout(r, 150))
-    const items = MOCK_FILES.filter((f) => f.parentId === folderId)
+    // M9: deletedAt != null 인 항목은 active 목록에서 제외 (휴지통 라우트로 분리)
+    const items = MOCK_FILES.filter((f) => f.parentId === folderId && !f.deletedAt)
     return items.sort((a, b) => {
       let cmp = 0
       if (sort === 'name') {
@@ -204,13 +205,70 @@ export const api = {
     return found
   },
 
+  /**
+   * M9 휴지통: hard delete가 아니라 soft delete (deletedAt + originalParentId 세팅).
+   *
+   * 동일 id를 두 번 호출해도 originalParentId는 최초 호출 값을 보존
+   * (이미 deletedAt 있으면 noop). 영구 삭제는 purgeBulk로 분리.
+   */
   async deleteBulk(ids: string[]): Promise<{ deletedIds: string[] }> {
     await new Promise((r) => setTimeout(r, 500))
+    const now = new Date().toISOString()
     for (const id of ids) {
-      const idx = MOCK_FILES.findIndex((f) => f.id === id)
-      if (idx !== -1) MOCK_FILES.splice(idx, 1)
+      const f = MOCK_FILES.find((x) => x.id === id)
+      if (!f || f.deletedAt) continue
+      f.deletedAt = now
+      f.originalParentId = f.parentId
     }
     return { deletedIds: ids }
+  },
+
+  /**
+   * M9 휴지통 목록. deletedAt NOT NULL인 항목, deletedAt 내림차순 (최근 삭제 우선).
+   */
+  async listTrash(): Promise<{ items: FileItem[] }> {
+    await new Promise((r) => setTimeout(r, 150))
+    const items = MOCK_FILES.filter((f) => f.deletedAt).sort((a, b) =>
+      (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''),
+    )
+    return { items }
+  },
+
+  /**
+   * M9 복원: deletedAt/originalParentId clear + parentId를 originalParentId로 복귀.
+   * 원위치 폴더가 사라진 경우 root로 복원 (백엔드 backend-A6 정책과는 다름 — frontend mock은 단순화).
+   * 이미 active(또는 미존재)인 id는 무시.
+   */
+  async restoreBulk(ids: string[]): Promise<{ restoredIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 300))
+    const restored: string[] = []
+    for (const id of ids) {
+      const f = MOCK_FILES.find((x) => x.id === id)
+      if (!f || !f.deletedAt) continue
+      const target = f.originalParentId ?? 'root'
+      const parentExists = target === 'root' || !!findNode(MOCK_TREE, target)
+      f.parentId = parentExists ? target : 'root'
+      f.deletedAt = null
+      f.originalParentId = null
+      restored.push(id)
+    }
+    return { restoredIds: restored }
+  },
+
+  /**
+   * M9 영구 삭제(purge): MOCK_FILES에서 hard splice. trashed가 아니어도 호출 가능
+   * (mock 단순화 — 실제 백엔드는 deletedAt NOT NULL인 row만 허용).
+   */
+  async purgeBulk(ids: string[]): Promise<{ purgedIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 300))
+    const purged: string[] = []
+    for (const id of ids) {
+      const idx = MOCK_FILES.findIndex((f) => f.id === id)
+      if (idx === -1) continue
+      MOCK_FILES.splice(idx, 1)
+      purged.push(id)
+    }
+    return { purgedIds: purged }
   },
 
   async moveFiles(
@@ -380,7 +438,10 @@ export const api = {
       }
     })
 
-    const items = MOCK_FILES.filter((f) => normalizeForSearch(f.name).includes(q))
+    // M9: 휴지통 항목은 검색 결과에서 제외
+    const items = MOCK_FILES.filter(
+      (f) => !f.deletedAt && normalizeForSearch(f.name).includes(q),
+    )
     return { items }
   },
 

@@ -92,15 +92,70 @@ describe('invalidations.afterRename', () => {
 })
 
 describe('invalidations.afterDelete', () => {
-  it('해당 폴더 prefix만 호출', async () => {
+  it('해당 폴더 prefix + trash + search 호출 (M9)', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     await invalidations.afterDelete(qc, { folderId: 'root' })
 
-    expect(spy).toHaveBeenCalledTimes(1)
-    expect((spy.mock.calls[0][0] as { queryKey: readonly unknown[] }).queryKey).toEqual(
-      qk.filesListPrefix('root'),
+    const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: readonly unknown[] }).queryKey)
+    expect(keys).toEqual(
+      expect.arrayContaining([qk.filesListPrefix('root'), qk.trash(), qk.search()]),
     )
+    expect(spy).toHaveBeenCalledTimes(3)
+  })
+})
+
+describe('qk.trash', () => {
+  it('trash() prefix + trashList()', () => {
+    expect(qk.trash()).toEqual(['explorer', 'trash'])
+    const full = qk.trashList()
+    const prefix = qk.trash()
+    expect(full.slice(0, prefix.length)).toEqual([...prefix])
+  })
+})
+
+describe('invalidations.afterRestore', () => {
+  it('folderIds 미지정: trash + search + files prefix 보수 무효화', async () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    await invalidations.afterRestore(qc)
+
+    const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: readonly unknown[] }).queryKey)
+    expect(keys).toEqual(expect.arrayContaining([qk.trash(), qk.search(), qk.files()]))
+    expect(spy).toHaveBeenCalledTimes(3)
+  })
+
+  it('folderIds 지정: trash + search + 각 folder prefix만', async () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    await invalidations.afterRestore(qc, { folderIds: ['root', 'folder_sales'] })
+
+    const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: readonly unknown[] }).queryKey)
+    expect(keys).toEqual(
+      expect.arrayContaining([
+        qk.trash(),
+        qk.search(),
+        qk.filesListPrefix('root'),
+        qk.filesListPrefix('folder_sales'),
+      ]),
+    )
+    // files() prefix는 호출되지 않아야 함
+    expect(keys).not.toContainEqual(qk.files())
+    expect(spy).toHaveBeenCalledTimes(4)
+  })
+})
+
+describe('invalidations.afterPurge', () => {
+  it('trash만 호출', async () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    await invalidations.afterPurge(qc)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect((spy.mock.calls[0][0] as { queryKey: readonly unknown[] }).queryKey).toEqual(qk.trash())
   })
 })
