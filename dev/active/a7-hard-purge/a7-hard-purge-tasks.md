@@ -10,7 +10,7 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
 | Phase | 상태 | 설명 |
 |---|---|---|
 | bootstrap | 🟡 in-progress | dev-docs 3파일 작성 + master commit (게이트 0) |
-| A7.0 | ⏳ pending | docs/00 ADR #30 + docs/02 §2.5 line 37 + docs/04 §13 patch (no-code) |
+| A7.0 | ⏳ pending | docs/00 ADR #31 + docs/02 §2.5 line 37 + docs/04 §13 patch (no-code) |
 | A7.1 | ⏳ pending | Repository 8메서드 + Testcontainers RED→GREEN |
 | A7.2 | ⏳ pending | `HardPurgeService` 트랜잭션 본체 + audit emit + 테스트 |
 | A7.3 | ⏳ pending | `SchedulingConfig` + `HardPurgeProperties` + `HardPurgeJob` + 통합 테스트 |
@@ -51,7 +51,7 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
 
 ### 구현 대상
 
-- [ ] **ADR #30 신설** in `docs/00-overview.md §5`:
+- [ ] **ADR #31 신설** in `docs/00-overview.md §5`:
   - title: "A7 hard purge: DB-only, S3 cleanup deferred to storage module milestone"
   - status: accepted (A7.0)
   - context: backend storage 모듈 0개. `purge_after` 경과 row의 DB hard delete만 A7에서 수행.
@@ -63,9 +63,9 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
   - leaf-first folder 처리
   - file_versions cascade (line 37 backlink)
   - MAX_PURGE_PER_RUN 한도 + truncated 플래그
-  - ADR #30 backlink (S3 deferred)
-- [ ] **docs/04 §13 `purge.expired` 행 footnote** — 한도 / audit 정책 / ADR #30 backlink.
-- [ ] commit: `docs(A7.0): hard purge 정책 + ADR #30 (DB-only, S3 deferred)`
+  - ADR #31 backlink (S3 deferred)
+- [ ] **docs/04 §13 `purge.expired` 행 footnote** — 한도 / audit 정책 / ADR #31 backlink.
+- [ ] commit: `docs(A7.0): hard purge 정책 + ADR #31 (DB-only, S3 deferred)`
 
 ### 검증 참조
 
@@ -74,13 +74,13 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
 
 ### 문서 반영
 
-- `docs/00-overview.md` §5 ADR #30
+- `docs/00-overview.md` §5 ADR #31
 - `docs/02-backend-data-model.md` line 37 + §7.11
 - `docs/04-admin-operations.md` §13
 
 ### Acceptance Criteria
 
-- [ ] ADR #30 본문 게재 + status: accepted
+- [ ] ADR #31 본문 게재 + status: accepted
 - [ ] line 37 주석 hard purge cascade 명시
 - [ ] §13 row footnote에 한도/audit/ADR backlink
 
@@ -240,7 +240,7 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
 
 ### 구현 대상
 
-- [ ] PR 생성 (gh): `feat(A7): hard purge job (purge.expired) + ADR #30`
+- [ ] PR 생성 (gh): `feat(A7): hard purge job (purge.expired) + ADR #31`
 - [ ] CI green 대기 (backend junit + frontend vitest)
 - [ ] squash-merge to master
 - [ ] `docs/progress.md` 최상단에 A7 closure 블록 (A6/A5와 동일 양식 — 회고 / 핵심 결정 / accepted-deviation / DoD 10/10 / 다음 단계)

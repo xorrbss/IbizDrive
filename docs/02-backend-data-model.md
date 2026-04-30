@@ -34,7 +34,7 @@
 
 ```text
 files / folders       : deleted_at + purge_after (휴지통 모델)
-file_versions         : 삭제 불가 (버전은 영구 보존)
+file_versions         : 삭제 불가 (버전은 영구 보존, soft-delete/restore 컨텍스트). hard purge(A7)는 file row와 함께 cascade 삭제.
 permissions           : 물리 삭제 (revoked_at 기록 후 audit_log로만 추적)
 audit_log             : 삭제 불가 (append-only)
 ```
@@ -1129,6 +1129,31 @@ DELETE /api/trash/:id  (영구 삭제, 관리자)
   TX:       S3 객체 삭제 큐잉 → DELETE row → audit_log (PURGE) → COMMIT
   Note:     audit_log은 append-only이므로 PURGE 이벤트는 보존
 ```
+
+#### 7.11.1 Hard purge 배치 잡 (A7, `purge.expired`)
+
+`docs/04 §13` `purge.expired` (매일 00:00 KST) 배치 트랙. **DB-only hard delete** — S3 객체 삭제는 storage 모듈 도입 시점에 별도 잡(`orphan.detect`)에서 처리 (ADR #31).
+
+```text
+A7 cron: 0 0 0 * * * (Asia/Seoul)
+  Predicate:  WHERE deleted_at IS NOT NULL AND purge_after <= NOW()
+  Order:      (1) file_versions (file_id IN expired_files)
+              (2) files (id IN expired_files)             -- current_version_id FK는 DEFERRABLE INITIALLY DEFERRED (line 177)
+              (3) folders (leaf-first 위상정렬, parent_id ON DELETE RESTRICT 만족)
+  Limit:      app.purge.max-per-run (default 10000, files+folders 합산)
+              초과 시 truncated=true → 다음 day cron에서 처리
+  Audit:      `SYSTEM_PURGE_EXECUTED` 1건만 발행 (summary-only, A6 root-only 패턴 일관)
+              actor_id=null, actor_role="SYSTEM"
+              after_state = { runId, purgedFiles, purgedFolders,
+                              orphanStorageKeys (cap=1000), durationMs, truncated }
+  Skip:       Legal Hold — 컬럼 미존재 시 deferred (legal_hold IS NOT TRUE 조건은 컬럼 도입 시 추가)
+  Toggle:     app.purge.enabled (default true). false → bean 미등록.
+  S3:         orphanStorageKeys는 audit에 기록만. 실 삭제 = ADR #31 (storage 모듈 milestone)
+```
+
+**FK 정합 (line 37 backlink)**: `file_versions: 삭제 불가`는 soft-delete/restore 컨텍스트 한정. hard purge 시 file row와 cascade 삭제.
+
+**`FILE_PURGED`/`FOLDER_PURGED` 이벤트는 A8 reserve** — `/api/trash/:id` (manual purge) 트랙에서 per-row 발행.
 
 ### 7.12 관리자 (Admin)
 
