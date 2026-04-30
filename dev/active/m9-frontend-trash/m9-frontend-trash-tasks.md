@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-30
-Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
+Last Updated: 2026-05-01
+Status: 🟢 ACTIVE — 게이트 2 통과 → M9.2 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Tasks
@@ -11,8 +11,8 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 |---|---|---|
 | bootstrap | dev-docs 3파일 + worktree | ✅ done (게이트 0 통과 2026-04-30) |
 | M9.0 | docs 정합 + queryKeys `qk.trash()` (no-code/1줄) | ✅ done (게이트 1 통과 2026-05-01) |
-| M9.1 | API client 확장 + types | ⏸ blocked by M9.0 |
-| M9.2 | TanStack Query hooks + 단위 테스트 | ⏸ blocked by M9.1 |
+| M9.1 | API client 확장 + types | ✅ done (게이트 2 통과 2026-05-01) |
+| M9.2 | TanStack Query hooks + 단위 테스트 | 📋 ready |
 | M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | ⏸ blocked by M9.2 |
 | M9.4 | Undo toast wiring (BulkActionBar 5초) | ⏸ blocked by M9.3 |
 | M9.5 | closure (PR + archive) | ⏸ blocked by M9.4 |
@@ -65,7 +65,7 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 
 ---
 
-## M9.1 — API client 확장 + types [⏸ blocked by M9.0]
+## M9.1 — API client 확장 + types [✅ done]
 
 **작업 전 필독**:
 - M9.0 결과 — `useDeleteBulk` 분기 (A) or (B)
@@ -79,17 +79,14 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 - `dev/completed/a8-trash-manage/` — backend response field naming (`originalParentId` 등)
 
 **구현 대상**:
-- [ ] (1) `frontend/src/types/trash.ts` 신설:
-  - `type TrashItemType = 'file' | 'folder'`
-  - `interface TrashItem { id: string; name: string; type: TrashItemType; deletedAt: string; purgeAfter: string; originalParentId: string | null }`
-  - `interface TrashPage { items: TrashItem[]; nextCursor: string | null }`
-- [ ] (2) `api.getTrash(opts: { cursor?: string; type?: TrashItemType }): Promise<TrashPage>` — `fetch('/api/trash?cursor=&type=', { credentials: 'include' })` + 401/403/400(invalid cursor) 분기 + 응답 map
-- [ ] (3) `api.restoreFile(id: string): Promise<void>` — `POST /api/files/:id/restore` + 409 RESTORE_CONFLICT 에러 throw (`{ status: 409, code: 'RESTORE_CONFLICT', suggestedName? }`)
-- [ ] (4) `api.restoreFolder(id: string): Promise<void>` — `POST /api/folders/:id/restore` + 409 동일
-- [ ] (5) `api.purgeTrashItem(type: TrashItemType, id: string): Promise<void>` — `DELETE /api/trash/:type/:id` + 403 (ADMIN 미보유) 에러 throw
-- [ ] (6) (분기 A시) `api.softDeleteFile(id)` / `api.softDeleteFolder(id)` 마이그레이션 → `api.deleteBulk` Mock 제거 + `useDeleteBulk` 호출부 fetch 전환
-- [ ] (7) `frontend/src/lib/api.trash.test.ts` — 4 endpoint × 성공/에러 fetch mock 테스트 (≥6건 GREEN)
-- [ ] (8) commit: `feat(M9.1): trash API client (getTrash + restore + purge) + types`
+- [x] (1) `frontend/src/types/trash.ts` 신설 — TrashItemType/TrashItem/TrashPage (backend TrashItemDto/TrashPage 1:1)
+- [x] (2) `api.getTrash` — fetch GET `/api/trash?cursor=&type=` + credentials include + 응답 map (originalParentId/nextCursor NON_NULL 누락 시 null 폴백)
+- [x] (3) `api.restoreFile` — POST `/api/files/:id/restore` + 409 envelope `{error.code:RESTORE_CONFLICT}` 파싱하여 err.code surface
+- [x] (4) `api.restoreFolder` — POST `/api/folders/:id/restore` + 409 동일 처리
+- [x] (5) `api.purgeTrashItem` — DELETE `/api/trash/:type/:id` + 비-ADMIN 403 status surface
+- [x] (6) 분기 A: `api.softDeleteFile` / `api.softDeleteFolder` 신설 + Mock `deleteBulk` 제거. `useDeleteBulk` 시그니처 `ids` → `items: {id,type}[]` 변경. 호출부 2건 마이그: BulkActionBar + FileTable(Delete 단축키).
+- [x] (7) `frontend/src/lib/api.trash.test.ts` — 15 tests GREEN (요건 ≥6 초과). `useDeleteBulk.test.ts` mock도 softDelete*로 교체.
+- [x] (8) commit: `feat(M9.1): trash API client (getTrash + restore + purge) + types`
 
 **검증 참조**:
 - 신규 ≥6건 GREEN + 회귀 0 (`pnpm test`)
@@ -98,11 +95,11 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 **문서 반영**:
 - 응답 스키마 drift 발견 시 docs/02 §7.11 본문 patch
 
-**게이트 2**: 신규 API ≥6건 GREEN + commit → M9.2 진입.
+**게이트 2**: ✅ 통과 (2026-05-01) — 15 tests GREEN (요건 ≥6 초과), 회귀 0 (337 tests), typecheck/lint 통과. 분기 (A) 마이그 완료. M9.2 진입.
 
 ---
 
-## M9.2 — TanStack Query hooks + 단위 테스트 [⏸ blocked by M9.1]
+## M9.2 — TanStack Query hooks + 단위 테스트 [📋 ready]
 
 **작업 전 필독**:
 - M9.1 결과 — `api.*` + types

@@ -2,6 +2,7 @@ import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type { Permission } from '@/types/permission'
+import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
@@ -184,8 +185,7 @@ export const api = {
     dir: 'asc' | 'desc' = 'asc'
   ): Promise<FileItem[]> {
     await new Promise((r) => setTimeout(r, 150))
-    // M9: deletedAt != null 인 항목은 active 목록에서 제외 (휴지통 라우트로 분리)
-    const items = MOCK_FILES.filter((f) => f.parentId === folderId && !f.deletedAt)
+    const items = MOCK_FILES.filter((f) => f.parentId === folderId)
     return items.sort((a, b) => {
       let cmp = 0
       if (sort === 'name') {
@@ -206,70 +206,31 @@ export const api = {
     return found
   },
 
-  /**
-   * M9 휴지통: hard delete가 아니라 soft delete (deletedAt + originalParentId 세팅).
-   *
-   * 동일 id를 두 번 호출해도 originalParentId는 최초 호출 값을 보존
-   * (이미 deletedAt 있으면 noop). 영구 삭제는 purgeBulk로 분리.
-   */
-  async deleteBulk(ids: string[]): Promise<{ deletedIds: string[] }> {
-    await new Promise((r) => setTimeout(r, 500))
-    const now = new Date().toISOString()
-    for (const id of ids) {
-      const f = MOCK_FILES.find((x) => x.id === id)
-      if (!f || f.deletedAt) continue
-      f.deletedAt = now
-      f.originalParentId = f.parentId
+  // M9.1 — 단건 soft delete (휴지통 이동). 호출자(useDeleteBulk)는 selection 단위로
+  // file/folder를 판별해 본 함수와 softDeleteFolder를 분기 호출한다 (backend는 bulk endpoint
+  // 미제공, ADR #32 §운영 노트). 응답은 204 NO_CONTENT라 본문 무시.
+  async softDeleteFile(id: string): Promise<void> {
+    const res = await fetch(`/api/files/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const err = new Error(`softDeleteFile failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
     }
-    return { deletedIds: ids }
   },
 
-  /**
-   * M9 휴지통 목록. deletedAt NOT NULL인 항목, deletedAt 내림차순 (최근 삭제 우선).
-   */
-  async listTrash(): Promise<{ items: FileItem[] }> {
-    await new Promise((r) => setTimeout(r, 150))
-    const items = MOCK_FILES.filter((f) => f.deletedAt).sort((a, b) =>
-      (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''),
-    )
-    return { items }
-  },
-
-  /**
-   * M9 복원: deletedAt/originalParentId clear + parentId를 originalParentId로 복귀.
-   * 원위치 폴더가 사라진 경우 root로 복원 (백엔드 backend-A6 정책과는 다름 — frontend mock은 단순화).
-   * 이미 active(또는 미존재)인 id는 무시.
-   */
-  async restoreBulk(ids: string[]): Promise<{ restoredIds: string[] }> {
-    await new Promise((r) => setTimeout(r, 300))
-    const restored: string[] = []
-    for (const id of ids) {
-      const f = MOCK_FILES.find((x) => x.id === id)
-      if (!f || !f.deletedAt) continue
-      const target = f.originalParentId ?? 'root'
-      const parentExists = target === 'root' || !!findNode(MOCK_TREE, target)
-      f.parentId = parentExists ? target : 'root'
-      f.deletedAt = null
-      f.originalParentId = null
-      restored.push(id)
+  async softDeleteFolder(id: string): Promise<void> {
+    const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      const err = new Error(`softDeleteFolder failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
     }
-    return { restoredIds: restored }
-  },
-
-  /**
-   * M9 영구 삭제(purge): MOCK_FILES에서 hard splice. trashed가 아니어도 호출 가능
-   * (mock 단순화 — 실제 백엔드는 deletedAt NOT NULL인 row만 허용).
-   */
-  async purgeBulk(ids: string[]): Promise<{ purgedIds: string[] }> {
-    await new Promise((r) => setTimeout(r, 300))
-    const purged: string[] = []
-    for (const id of ids) {
-      const idx = MOCK_FILES.findIndex((f) => f.id === id)
-      if (idx === -1) continue
-      MOCK_FILES.splice(idx, 1)
-      purged.push(id)
-    }
-    return { purgedIds: purged }
   },
 
   async moveFiles(
@@ -589,5 +550,116 @@ export const api = {
     }))
     return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   },
+
+  // ──────────────────────────────────────────────────────────────────
+  // M9.1 — 휴지통 (docs/02 §7.11, ADR #32)
+  // backend: com.ibizdrive.trash.TrashController + Per-resource restore.
+  // ──────────────────────────────────────────────────────────────────
+
+  /**
+   * 휴지통 목록 조회. backend는 사용자 DELETE 권한 후처리 결과만 반환 (ADR #32).
+   * cursor는 직전 응답의 nextCursor를 그대로 echo back. type 미지정 = file+folder 양쪽.
+   */
+  async getTrash(opts: { cursor?: string; type?: TrashItemType } = {}): Promise<TrashPage> {
+    const params = new URLSearchParams()
+    if (opts.cursor) params.set('cursor', opts.cursor)
+    if (opts.type) params.set('type', opts.type)
+    const qs = params.toString()
+    const url = qs ? `/api/trash?${qs}` : '/api/trash'
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(`getTrash failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const raw = (await res.json()) as {
+      items: Array<{
+        id: string
+        name: string
+        type: TrashItemType
+        deletedAt: string
+        purgeAfter: string
+        // backend record는 NON_NULL 직렬화라 root였던 폴더는 키 자체가 없을 수 있다.
+        originalParentId?: string | null
+      }>
+      // 마지막 페이지에서는 NON_NULL로 키 생략될 수 있다.
+      nextCursor?: string | null
+    }
+    const items: TrashItem[] = raw.items.map((it) => ({
+      id: it.id,
+      name: it.name,
+      type: it.type,
+      deletedAt: it.deletedAt,
+      purgeAfter: it.purgeAfter,
+      originalParentId: it.originalParentId ?? null,
+    }))
+    return { items, nextCursor: raw.nextCursor ?? null }
+  },
+
+  /**
+   * 휴지통 파일 복원. 409 RESTORE_CONFLICT는 backend envelope { error: { code, message, details } }
+   * 를 파싱해 err.code='RESTORE_CONFLICT'로 surface — UX layer가 RenameDialog 분기 가능.
+   */
+  async restoreFile(id: string): Promise<void> {
+    const res = await fetch(`/api/files/${encodeURIComponent(id)}/restore`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `restoreFile failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * 휴지통 폴더 복원. 409 시 envelope code 동일하게 'RESTORE_CONFLICT'로 throw.
+   */
+  async restoreFolder(id: string): Promise<void> {
+    const res = await fetch(`/api/folders/${encodeURIComponent(id)}/restore`, {
+      method: 'POST',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `restoreFolder failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * 휴지통 항목 영구 삭제 (ADMIN-only). 비-ADMIN은 backend 403 폴백 — 프론트 가드는 UX용.
+   * 응답 204 NO_CONTENT.
+   */
+  async purgeTrashItem(type: TrashItemType, id: string): Promise<void> {
+    const res = await fetch(
+      `/api/trash/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        credentials: 'include',
+      },
+    )
+    if (!res.ok) {
+      const err = new Error(`purgeTrashItem failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+  },
+}
+
+/**
+ * backend ApiError envelope { error: { code, message, details } } 를 안전 파싱해
+ * Error에 status/code를 부여한다. JSON 파싱 실패 시 status만 부여 — UX layer가 status로 분기 가능.
+ */
+async function buildApiError(res: Response, fallbackMessage: string): Promise<Error> {
+  const err = new Error(fallbackMessage) as Error & { status: number; code?: string }
+  err.status = res.status
+  try {
+    const body = (await res.json()) as { error?: { code?: string } }
+    if (body?.error?.code) err.code = body.error.code
+  } catch {
+    // 본문이 없거나 JSON이 아니면 status만으로 충분 (audit 패턴 일관)
+  }
+  return err
 }
 

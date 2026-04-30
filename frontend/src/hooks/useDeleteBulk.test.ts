@@ -17,10 +17,14 @@ vi.mock('@/hooks/useCurrentFolder', () => ({
   }),
 }))
 
-// Mock api.deleteBulk
-const deleteBulkMock = vi.fn()
+// M9.1 — Mock api.deleteBulk 제거 → softDeleteFile/softDeleteFolder per-item
+const softDeleteFileMock = vi.fn()
+const softDeleteFolderMock = vi.fn()
 vi.mock('@/lib/api', () => ({
-  api: { deleteBulk: (...args: unknown[]) => deleteBulkMock(...args) },
+  api: {
+    softDeleteFile: (id: string) => softDeleteFileMock(id),
+    softDeleteFolder: (id: string) => softDeleteFolderMock(id),
+  },
 }))
 
 const makeWrapper = (qc: QueryClient) => {
@@ -32,7 +36,8 @@ const makeWrapper = (qc: QueryClient) => {
 
 describe('useDeleteBulk', () => {
   beforeEach(() => {
-    deleteBulkMock.mockReset()
+    softDeleteFileMock.mockReset()
+    softDeleteFolderMock.mockReset()
     useSelectionStore.setState({
       ids: new Set(),
       lastClickedId: null,
@@ -41,17 +46,24 @@ describe('useDeleteBulk', () => {
     mockFolderId = 'root'
   })
 
-  it('성공: markPending → invalidate → unmarkPending → clear 순서', async () => {
+  it('성공: file/folder 분기 호출 + markPending → invalidate → unmarkPending → clear', async () => {
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
-    deleteBulkMock.mockResolvedValue({ deletedIds: ['a', 'b'] })
+    softDeleteFileMock.mockResolvedValue(undefined)
+    softDeleteFolderMock.mockResolvedValue(undefined)
 
     useSelectionStore.getState().selectAll(['a', 'b', 'c'])
 
     const { result } = renderHook(() => useDeleteBulk(), { wrapper: makeWrapper(qc) })
 
     await act(async () => {
-      result.current.mutate({ ids: ['a', 'b'], folderIdAtStart: 'root' })
+      result.current.mutate({
+        items: [
+          { id: 'a', type: 'file' },
+          { id: 'b', type: 'folder' },
+        ],
+        folderIdAtStart: 'root',
+      })
     })
 
     await waitFor(() => {
@@ -59,6 +71,8 @@ describe('useDeleteBulk', () => {
       expect(useSelectionStore.getState().ids.size).toBe(0)
     })
 
+    expect(softDeleteFileMock).toHaveBeenCalledWith('a')
+    expect(softDeleteFolderMock).toHaveBeenCalledWith('b')
     expect(invalidateSpy).toHaveBeenCalled()
   })
 
@@ -66,7 +80,8 @@ describe('useDeleteBulk', () => {
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
-    deleteBulkMock.mockRejectedValue(new Error('network'))
+    softDeleteFileMock.mockRejectedValue(new Error('network'))
+    softDeleteFolderMock.mockResolvedValue(undefined)
 
     useSelectionStore.getState().selectAll(['a', 'b'])
     mockFolderId = 'root'
@@ -74,7 +89,13 @@ describe('useDeleteBulk', () => {
     const { result } = renderHook(() => useDeleteBulk(), { wrapper: makeWrapper(qc) })
 
     await act(async () => {
-      result.current.mutate({ ids: ['a', 'b'], folderIdAtStart: 'root' })
+      result.current.mutate({
+        items: [
+          { id: 'a', type: 'file' },
+          { id: 'b', type: 'folder' },
+        ],
+        folderIdAtStart: 'root',
+      })
     })
 
     await waitFor(() => {
@@ -87,7 +108,8 @@ describe('useDeleteBulk', () => {
     const qc = new QueryClient({
       defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
     })
-    deleteBulkMock.mockRejectedValue(new Error('network'))
+    softDeleteFileMock.mockRejectedValue(new Error('network'))
+    softDeleteFolderMock.mockRejectedValue(new Error('network'))
 
     useSelectionStore.getState().selectAll(['a', 'b'])
     mockFolderId = 'folder_other' // 시작 시 current != start
@@ -95,7 +117,13 @@ describe('useDeleteBulk', () => {
     const { result } = renderHook(() => useDeleteBulk(), { wrapper: makeWrapper(qc) })
 
     await act(async () => {
-      result.current.mutate({ ids: ['a', 'b'], folderIdAtStart: 'root' })
+      result.current.mutate({
+        items: [
+          { id: 'a', type: 'file' },
+          { id: 'b', type: 'file' },
+        ],
+        folderIdAtStart: 'root',
+      })
     })
 
     await waitFor(() => {

@@ -236,7 +236,12 @@ export function FileTable({ folderId }: Props) {
           if (ids.length === 0) return
           const ok = window.confirm(`${ids.length}개 항목을 휴지통으로 이동할까요?`)
           if (!ok) return
-          deleteBulk.mutate({ ids, folderIdAtStart: folderId })
+          // M9.1 — items 캐시에서 type 동봉 (file/folder 분기 endpoint).
+          const itemsArg = ids.map((id) => {
+            const found = items.find((it) => it.id === id)
+            return { id, type: (found?.type ?? 'file') as 'file' | 'folder' }
+          })
+          deleteBulk.mutate({ items: itemsArg, folderIdAtStart: folderId })
           break
         }
       }

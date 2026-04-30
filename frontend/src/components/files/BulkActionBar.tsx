@@ -3,7 +3,6 @@ import { toast } from 'sonner'
 import { useSelectionStore } from '@/stores/selection'
 import { usePermission } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
-import { useRestoreBulk } from '@/hooks/useRestoreBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useRenameUiStore } from '@/stores/renameUi'
@@ -21,22 +20,9 @@ export function BulkActionBar() {
   const ids = Array.from(selectedIds)
   const can = usePermission()
   const { folderId } = useCurrentFolder()
-  const restoreMut = useRestoreBulk()
-  // M9: 삭제 직후 5초 Undo 토스트. 복원 시 originalParentId는 현재 폴더 (deleteBulk가 set).
   const deleteMut = useDeleteBulk({
-    onSuccess: (vars) => {
-      toast.success(`${vars.ids.length}개 항목을 휴지통으로 이동했습니다`, {
-        duration: 5000,
-        action: {
-          label: '되돌리기',
-          onClick: () =>
-            restoreMut.mutate({
-              ids: vars.ids,
-              originalParentIds: [vars.folderIdAtStart],
-            }),
-        },
-      })
-    },
+    onSuccess: (vars) =>
+      toast.success(`${vars.items.length}개 항목을 휴지통으로 이동했습니다`),
     onError: () => toast.error('삭제에 실패했습니다. 다시 시도해 주세요.'),
   })
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
@@ -73,7 +59,14 @@ export function BulkActionBar() {
   }
 
   const handleDelete = () => {
-    deleteMut.mutate({ ids, folderIdAtStart: folderId })
+    // M9.1 — backend는 file/folder 분기 endpoint이므로 선택 항목의 type을 cache(items)에서
+    // 조회해 함께 전달. items 미로딩(캐시 미스) 항목은 보수적으로 'file'로 폴백 — backend가
+    // 404를 돌려주면 onError에서 selection 복원되어 사용자 재시도 가능.
+    const itemsArg = ids.map((id) => {
+      const found = items?.find((it) => it.id === id)
+      return { id, type: (found?.type ?? 'file') as 'file' | 'folder' }
+    })
+    deleteMut.mutate({ items: itemsArg, folderIdAtStart: folderId })
   }
 
   const handleShare = () => {
