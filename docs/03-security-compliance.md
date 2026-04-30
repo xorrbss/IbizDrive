@@ -314,7 +314,7 @@
 | `MOVE` | 자기 자신을 이동 | POST `/api/folders/:id/move`, POST `/api/files/:id/move` |
 | `DOWNLOAD` | 다운로드 | GET `/api/files/:id/download` |
 | `DELETE` | 휴지통으로 이동 (soft delete) + 복원 | DELETE `/api/folders/:id`, POST `/api/folders/:id/restore`, 동일한 file/trash endpoint |
-| `SHARE` | 외부/내부 공유 링크 생성 | POST `/api/files/:id/share` |
+| `SHARE` | 내부 공유 (subject = user/department/role/everyone, ADR #34) | POST `/api/files/:id/share` |
 | `PERMISSION_ADMIN` | 권한 부여/회수 | POST/DELETE `/api/:resource/:id/permissions` |
 | **`PURGE`** | **영구 삭제 (소프트 → 완전 제거)** | **DELETE `/api/trash/:id`, DELETE `/api/trash`** |
 
