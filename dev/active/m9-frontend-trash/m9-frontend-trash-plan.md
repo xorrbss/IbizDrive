@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-30
-Status: 🟢 ACTIVE — 게이트 0 통과 (사용자 plan 리뷰 OK 2026-04-30) → M9.0 진입 대기
+Last Updated: 2026-05-01
+Status: 🟢 ACTIVE — 게이트 1 통과 (M9.0 commit `6e67785` 2026-05-01) → M9.1 진입 대기 (분기 A 채택)
 ---
 
 # M9 — Frontend 휴지통 통합 (Trash UI ↔ A6/A7/A8 backend) — Plan

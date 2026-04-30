@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-30
-Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
+Last Updated: 2026-05-01
+Status: 🟢 ACTIVE — 게이트 1 통과 (M9.0 commit `6e67785`) → M9.1 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Context
@@ -13,7 +13,15 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
   - 분기점: `useDeleteBulk` Mock vs 실 backend 마이그레이션 → M9.0 게이트에서 사용자 확인.
 - **2026-04-30 게이트 0 통과** — 사용자 plan 리뷰 OK. 단일 PR + 6 sub-phase 구조 확정.
   - 노트: 별도 세션이 짧게 3-PR 분할 대안 제시했으나 패턴 이탈 비용으로 철회. 기존 plan 그대로.
-- **다음**: M9.0 — `qk.trash()` + `invalidations.afterTrashAction` + `useDeleteBulk` Mock vs 실 backend 분기 결정.
+- **2026-05-01 M9.0 완료 (`6e67785`)** — 게이트 1 통과.
+  - 변경: `qk.trash()` + prep 키(qk.search/searchResults/storageQuota/trashList/permissions(nodeId?)).
+  - `invalidations.afterDelete` 확장 → filesListPrefix + trash + search + folderTree (4건).
+  - `invalidations.afterRestore({folderIds?})` + `invalidations.afterPurge` 신설 (afterTrashAction 단일 헬퍼 → 의미 분리).
+  - **Self Review 반영**: afterRestore/afterDelete에 folderTree 추가 (folder cascade restore/soft-delete 시 사이드바 stale 방지).
+  - **분기 (A) 채택**: backend `DELETE /api/files|folders/:id` 가용 확인 → M9.1에서 `api.deleteBulk` Mock 제거 + 실 fetch 마이그.
+  - 검증: queryKeys.test.ts 12 tests GREEN, 회귀 0 (전체 415 tests), typecheck/lint 통과.
+  - **lesson**: 이 worktree(`feature/m9-frontend-trash`)에서 작업 시 frontend 편집 경로는 반드시 `.claude/worktrees/m9-frontend-trash/frontend/...`. main repo `C:/project/IbizDrive/frontend/...`이 아님. 헷갈리면 `git rev-parse --show-toplevel`로 확인.
+- **다음**: M9.1 — types/trash.ts + api.getTrash/restoreFile/restoreFolder/purgeTrashItem + (분기 A) api.deleteBulk Mock 제거 + 실 fetch 마이그 + api.trash.test.ts ≥6 GREEN.
 
 ## Current Execution Contract
 
@@ -26,8 +34,9 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 
 ## 현재 active task
 
-- **Phase**: bootstrap (게이트 0 — dev-docs 3파일 작성 직후, **사용자 plan 리뷰 게이트**)
-- **다음**: 사용자 OK → M9.0 docs 정합 + `qk.trash()` 추가 + `useDeleteBulk` Mock vs 실 backend 분기 결정
+- **Phase**: M9.1 — API client 확장 + types (게이트 2 직전)
+- **선행 완료**: M9.0 (`6e67785`) — qk.trash + 무효화 헬퍼 (afterRestore/afterPurge), 분기 (A) 확정
+- **다음**: types/trash.ts + api.getTrash/restoreFile/restoreFolder/purgeTrashItem + api.deleteBulk Mock 제거 + 실 fetch 마이그 + api.trash.test.ts ≥6 GREEN
 
 ## 다음 세션 읽기 순서
 
