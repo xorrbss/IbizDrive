@@ -9,9 +9,9 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
 
 - **2026-04-30 bootstrap** — plan/context/tasks 3파일 작성 + worktree `feature/a7-hard-purge` 생성 (master `fdeb610` = A6 closure 기준).
   - 동기: A6 closure progress 블록의 "다음 단계 — Hard purge job (purge_after 경과 row 영구 삭제 + S3 객체 삭제). docs/04 §13 배치 트랙" 진입.
-  - 범위: DB-only hard purge (S3 객체 deferred via ADR #30). `/api/trash/*` admin endpoint은 A8 reserve.
+  - 범위: DB-only hard purge (S3 객체 deferred via ADR #31). `/api/trash/*` admin endpoint은 A8 reserve.
   - 분기점: backend storage 모듈 0개 → S3 cleanup은 storage 도입 시점에 별도 잡(`orphan.detect`)에서 처리.
-- **다음**: 게이트 0 통과 → A7.0 docs patch (ADR #30 + docs/02 §2.5 line 37 주석 + docs/04 §13 row)
+- **다음**: 게이트 0 통과 → A7.0 docs patch (ADR #31 + docs/02 §2.5 line 37 주석 + docs/04 §13 row)
 
 ## Current Execution Contract
 
@@ -52,13 +52,13 @@ Status: 📋 BOOTSTRAP — A7.0 진입 대기 (게이트 0)
 | `backend/.../folder/FolderRepository.java` | (EDIT) `findExpiredFolderIds`, `hardDeleteByIds`, `findParentIdsByIds` |
 | `backend/.../file/FileVersionRepository.java` | (EDIT) `findStorageKeysByFileIds`, `deleteByFileIds` |
 | `backend/.../audit/AuditEventType.java` | (READ-ONLY) `SYSTEM_PURGE_EXECUTED` 이미 정의됨 |
-| `docs/00-overview.md` | (EDIT) §5 ADR #30 신설 |
+| `docs/00-overview.md` | (EDIT) §5 ADR #31 신설 |
 | `docs/02-backend-data-model.md` | (EDIT) §2.5 line 37 주석 + §7.11 batch 행 footnote |
-| `docs/04-admin-operations.md` | (EDIT) §13 `purge.expired` 행 footnote (한도, audit, ADR #30 backlink) |
+| `docs/04-admin-operations.md` | (EDIT) §13 `purge.expired` 행 footnote (한도, audit, ADR #31 backlink) |
 
 ## 중요한 의사결정 (변경 시 docs 동기화)
 
-1. **DB-only purge** (ADR #30) — S3 객체는 orphan으로 잔존, storage 모듈 도입 시 처리. 이 결정 변경 시: storage 모듈 신설 + ADR #30 close + `HardPurgeService` 재작성.
+1. **DB-only purge** (ADR #31) — S3 객체는 orphan으로 잔존, storage 모듈 도입 시 처리. 이 결정 변경 시: storage 모듈 신설 + ADR #31 close + `HardPurgeService` 재작성.
 2. **Audit summary-only** — `SYSTEM_PURGE_EXECUTED` 1건/run. per-row enum(`FILE_PURGED`/`FOLDER_PURGED`)은 A8 manual purge에 reserve. 변경 시: A6 root-only 패턴과 정합성 재검토.
 3. **MAX_PURGE_PER_RUN=10000** — properties로 조정 가능. 환경별 튜닝 가능하도록.
 4. **Schedule cron Asia/Seoul** — docs/04 §13 "매일 00:00" 정합. 환경별 변경 시 `app.purge.cron` 추가 검토.

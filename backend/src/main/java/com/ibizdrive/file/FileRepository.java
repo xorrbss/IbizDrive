@@ -109,4 +109,28 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     int softDeleteByFolderIds(@Param("folderIds") Collection<UUID> folderIds,
                               @Param("deletedAt") Instant deletedAt,
                               @Param("purgeAfter") Instant purgeAfter);
+
+    /**
+     * A7 hard purge 후보 조회 — {@code purge_after <= now}이고 soft-deleted된 file row id를
+     * 오래된 순(purge_after ASC)으로 limit 만큼 반환. V5 partial index
+     * {@code idx_files_purge ON files(purge_after) WHERE deleted_at IS NOT NULL}를 활용.
+     */
+    @Query(value = """
+        SELECT id FROM files
+        WHERE deleted_at IS NOT NULL
+          AND purge_after <= :now
+        ORDER BY purge_after
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<UUID> findExpiredFileIds(@Param("now") Instant now, @Param("limit") int limit);
+
+    /**
+     * A7 hard purge — file row 영구 삭제. 호출자는 사전에 {@code file_versions}를 삭제해 FK
+     * {@code file_versions.file_id REFERENCES files(id) ON DELETE RESTRICT} 위반을 회피해야 한다
+     * ({@link FileVersionRepository#deleteByFileIds}). {@code current_version_id} self-FK는 V5에서
+     * {@code DEFERRABLE INITIALLY DEFERRED} (docs/02 §2.5 line 177)이므로 트랜잭션 내 순서 자유.
+     */
+    @Modifying
+    @Query("DELETE FROM FileItem f WHERE f.id IN :ids")
+    int hardDeleteByIds(@Param("ids") Collection<UUID> ids);
 }

@@ -47,6 +47,16 @@ server:
         same-site: lax
         name: SESSION
 
+# A7 hard purge job (docs/04 §13 purge.expired, ADR #31).
+# 운영 기본 비활성 — staging/prod에서 명시적으로 enabled=true 설정 후 투입.
+# enabled=false면 SchedulingConfig + HardPurgeJob 빈 모두 미등록 (cron 트리거 자체 부재).
+app:
+  purge:
+    enabled: false
+    max-per-run: 10000
+    cron: "0 0 0 * * *"   # 매일 자정
+    zone: Asia/Seoul
+
 ibizdrive:
   storage:
     s3:
