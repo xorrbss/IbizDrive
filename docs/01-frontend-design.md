@@ -724,6 +724,8 @@ export function normalizeFileName(s: string): string {
 
 백엔드도 **동일한 normalize 함수**로 `files.normalized_name` 컬럼을 만들어야 함 (Postgres `NORMALIZE()` 또는 애플리케이션 레벨 동기화).
 
+> **백엔드 계약**: `api.searchFiles` → `GET /api/search?q=&type=&cursor=&limit=` (docs/02 §7.8). 알고리즘/필터 범위는 ADR #33 (docs/00 §5).
+
 ---
 
 ## 11. 빈 / 로딩 / 에러 상태
