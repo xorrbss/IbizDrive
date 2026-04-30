@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: 🟢 OPEN — A9.0 완료 (commit 09d434a), A9.1 active
+Status: ✅ CLOSED — PR #19 squash-merge `73a8f01`, dev-docs archived
 ---
 
 # A9 — Search Endpoint Backend — Tasks
@@ -12,8 +12,8 @@ Status: 🟢 OPEN — A9.0 완료 (commit 09d434a), A9.1 active
 | A9.0 | ADR #33 + docs/02 §7.8 정합 + docs/01 §10 backlink | ✅ done (09d434a) |
 | A9.1 | DTO + cursor codec | ✅ done (5e1710b) |
 | A9.2 | SearchQueryService + repository LIKE + 권한 후처리 | ✅ done (657478a) |
-| A9.3 | SearchController + 400/401/403 + 통합 테스트 | 🟢 active |
-| A9.4 | closure (PR + dev-docs archive) | ⬜ pending |
+| A9.3 | SearchController + 400/401/403 + 통합 테스트 | ✅ done (9e2ae9e) |
+| A9.4 | closure (PR + dev-docs archive) | ✅ done (PR #19 → `73a8f01`) |
 
 ---
 

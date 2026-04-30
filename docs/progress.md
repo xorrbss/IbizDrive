@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-04-30 — 🏁 A9 마일스톤 종료 (Search Endpoint Backend)
+
+### 범위
+
+A9.0 (docs/00 ADR #33 신설 + docs/02 §7.8 spec 보강 (q/type/cursor/limit + 6단계 처리 + SearchResultDto schema) + docs/01 §10 backlink) → A9.1 (`SearchResultDto`/`SearchPage`/`SearchCursor` + base64 url-safe codec `{updatedAtEpochMs}|{type}|{id}` + 11건 GREEN) → A9.2 (`FileRepository`/`FolderRepository.searchByNormalizedName` LIKE+ESCAPE + `SearchQueryService` (q normalize→minLen 2→escapeLike→merge sort→READ 후처리→cursor) + 12건 GREEN) → A9.3 (`SearchController` GET /api/search + `@PreAuthorize("isAuthenticated()")` + IAE→400 + 5건 GREEN) → A9.4 (PR #19 squash-merge `73a8f01` + dev-docs archive).
+
+### 회고
+
+- **commits**: 5 on top of A8 close `a952f78` (worktree branch `a9-search-endpoint`) → squash-merge `73a8f01` on `master`. PR #19 single, CI green (backend junit + frontend vitest 모두 SUCCESS).
+- **production 파일**: 5 신설 + 2 수정 — `search/SearchController.java` NEW, `search/SearchQueryService.java` NEW, `search/SearchResultDto.java` NEW (record), `search/SearchPage.java` NEW (record), `search/SearchCursor.java` NEW (codec), `FileRepository`/`FolderRepository`에 `searchByNormalizedName` + `countByNormalizedName` 추가.
+- **test 파일**: 3 신설 — `SearchCursorTest` (11건, encode/decode round-trip + edge timestamps + invalid base64/format/type/uuid), `SearchQueryServiceTest` (12건, minLen/type/empty/file/folder/merge/READ filter/cursor round-trip/cursor page no-count/invalid cursor/escape), `SearchControllerTest` (5건, 정상/type blank/type=file/cursor+limit echo/IAE propagate).
+- **ADR 신설**: #33 — 검색 알고리즘 = LIKE on normalized_name (MVP), tsvector full-text + pg_trgm fuzzy + owner/modifiedFrom/To 필터 + SEARCH_QUERIED audit emission 보류.
+- **A1~A8 회귀 0**: 전체 `./gradlew test` 476/476 GREEN (51 suites).
+
+### 핵심 결정 (A9 트랙, 확정)
+
+1. **LIKE on normalized_name** (ADR #33) — full-text(tsvector + GIN) / trigram(`pg_trgm`)는 extension/index 마이그레이션 + 별도 ADR 필요. MVP 항목 수 가정 < 10k. 후속 트랙으로 박제.
+2. **type 필터 = file/folder/all** — frontend 현재 미사용이지만 spec 보존. owner/modifiedFrom/To는 controller param + service overload만으로 확장 가능하게 hook (KISS, YAGNI).
+3. **Cursor `{updatedAtEpochMs}|{type}|{id}` base64 url-safe** — A8 `TrashCursor` 패턴 변형. `updated_at DESC, id DESC` 정렬 키 + type tiebreaker(merge sort). round-trip 테스트로 계약 고정.
+4. **READ 후처리 필터** — A8 TrashQueryService와 동일 패턴. ROLE 단계 short-circuit (`PermissionService.effectivePermissions(role).contains(READ)`) → `PermissionResolver.isGranted(actorId, type, id, READ)` fallback.
+5. **DTO discriminated union** — `SearchResultDto` record + `type: "file"|"folder"` discriminator + `@JsonInclude(NON_NULL)` per-type field. 정적 팩토리 `fromFile(FileItem)` / `fromFolder(Folder)`.
+6. **min length 2 = normalize 후 기준** — `NormalizeUtil.normalizeForSearch(q).length() < 2` → `IllegalArgumentException("INVALID_SEARCH_QUERY")` → 400 envelope (`GlobalExceptionHandler` IAE→`BAD_REQUEST` + message).
+7. **LIKE pattern escape** — `\`, `%`, `_` backslash escape + repo native query에 `ESCAPE '\'` 박제. `SearchQueryService.escapeLike` package-private (테스트용 노출).
+8. **totalEstimate 첫 페이지 only** — cursor 페이지에서는 -1 (재집계 비용 회피). count 쿼리는 cursor==null일 때만 발사.
+9. **Pure Mockito (no Testcontainers)** — A8 KISS 패턴 일관. service boundary + repository contract + 권한 후처리 verify는 Mockito로 충분.
+
+### accepted-deviation (후속 backlog)
+
+- **Frontend `useSearch` 백엔드 연결** — 현재 `api.searchFiles` mock. PR #16 머지 후 본체 fetch로 교체.
+- **Full-text / trigram** — tsvector + GIN index 또는 `pg_trgm` 마이그레이션 (ADR #33 deferred).
+- **Filter 확장** — owner / modifiedFrom / modifiedTo. controller param + service overload hook 이미 마련.
+- **SEARCH_QUERIED audit** — 검색 패턴 분석/개인정보 우려 별도 보안 트랙 (ADR #33 deferred).
+
+### DoD 7/7
+
+1. ✅ ADR #33 신설 + docs/02 §7.8 spec 보강 (q/type/cursor/limit + 6단계 처리 + SearchResultDto schema) + docs/01 §10 backlink.
+2. ✅ `GET /api/search` — `@PreAuthorize("isAuthenticated()")` + q minLen 2 + type ∈ {file,folder,all} + cursor base64 + limit default 50/cap 100.
+3. ✅ `SearchQueryService` — q normalize → escapeLike → repo LIKE(limit+1) → merge sort → READ 후처리 → nextCursor + totalEstimate.
+4. ✅ Repository — `FileRepository`/`FolderRepository.searchByNormalizedName` (LIKE :pattern ESCAPE '\\' + cursor tuple predicate + WHERE deleted_at IS NULL) + `countByNormalizedName`.
+5. ✅ Cursor codec — base64 url-safe `{updatedAtEpochMs}|{type}|{id}` round-trip + invalid → IAE → 400.
+6. ✅ 테스트 28건 GREEN (cursor 11 + service 12 + controller 5) + A1~A8 회귀 0 (총 476 tests).
+7. ✅ PR #19 CI green (backend junit + frontend vitest) + master squash-merge `73a8f01` + dev-docs `dev/active/a9-search-endpoint/` → `dev/completed/a9-search-endpoint/` archive.
+
+### 다음 단계
+
+- **Frontend `useSearch` 실연결** — backend `/api/search` fetch + cursor pagination + minLength 2 일관 검증. PR #16 (M11) 머지 후 진입 권장.
+- **A10 (TBD)** — 후속 백엔드 마일스톤 미정. 후보: shares 본체(7.9), permissions 본체(7.10), 또는 Frontend M14 SSE/실시간.
+
+---
+
 ## 2026-04-30 — 🏁 A8 마일스톤 종료 (Trash Listing + Manual Purge)
 
 ### 범위
