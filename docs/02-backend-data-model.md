@@ -1106,28 +1106,49 @@ DELETE /api/permissions/:permissionId
   Errors:   403 PERMISSION_DENIED, 404 NOT_FOUND
 ```
 
-### 7.11 휴지통 (Trash, A7)
+### 7.11 휴지통 (Trash, A6/A8)
+
+> Restore endpoint은 A6에서 per-resource로 구현(`/api/files/:id/restore`, `/api/folders/:id/restore`) — 본 표는 그 위치 기준. Manual purge는 A8(`DELETE /api/trash/:type/:id`, ADR #32). Bulk purge `DELETE /api/trash`는 미구현(별도 트랙).
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| GET | `/api/trash` | isAuthenticated (결과는 사용자가 DELETE 권한 가진 항목만) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
-| POST | `/api/trash/:id/restore` | `hasPermission(#id, _, 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
-| DELETE | `/api/trash/:id` | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + S3 객체) | 403, 404 |
-| DELETE | `/api/trash` | `hasRole('ADMIN')` | REQUIRED (배치) | — | (purge: 전체 만료된 항목) | 403 |
+| GET | `/api/trash` | `isAuthenticated()` (결과는 사용자가 DELETE 권한 가진 항목만 — A8 결과 후처리, ADR #32) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
+| POST | `/api/files/:id/restore` (A6) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
+| POST | `/api/folders/:id/restore` (A6) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade | 404, 409 RESTORE_CONFLICT |
+| DELETE | `/api/trash/:type/:id` (A8, ADR #32) | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + file_versions cascade. S3 객체는 ADR #31 deferred) | 400 VALIDATION_ERROR(invalid type), 403, 404 |
+| ~~DELETE~~ | ~~`/api/trash`~~ (bulk) | ~~`hasRole('ADMIN')`~~ | — | — | **(미구현, 별도 트랙 — `purge.expired` 배치(A7) + manual single(A8) 조합으로 운영 충분, ADR #32)** | — |
 
 ```text
-GET /api/trash?cursor=&type=
+GET /api/trash?cursor=&type=                    (A8.1, ADR #32)
+  Guard:    isAuthenticated()
   Response: 200 { items: TrashItemDto[], nextCursor? }
   Note:     items 필드 = (id, name, type='file'|'folder', deletedAt, purgeAfter, originalPath)
+  Filter:   actor의 per-row hasPermission(id, type, 'DELETE') 후처리
+            (MVP 가정: 페이지 한도 < 권한 보유 row 수, 큰 dataset 시 별도 ADR)
+  type 파라미터: 'file' | 'folder' | (생략 = 양쪽)
 
-POST /api/trash/:id/restore
+POST /api/files/:id/restore                     (A6)
+POST /api/folders/:id/restore                   (A6)
   TX:       SELECT FOR UPDATE → 원 부모 폴더 활성 검증 → UNIQUE 충돌 검사
-            → SET deleted_at = NULL → audit_log (RESTORE) → COMMIT
+            → SET deleted_at = NULL (folder는 후손 cascade) → audit_log (FILE_RESTORED / FOLDER_RESTORED)
+            → COMMIT
   Errors:   409 RESTORE_CONFLICT { suggestedName }
 
-DELETE /api/trash/:id  (영구 삭제, 관리자)
-  TX:       S3 객체 삭제 큐잉 → DELETE row → audit_log (PURGE) → COMMIT
-  Note:     audit_log은 append-only이므로 PURGE 이벤트는 보존
+DELETE /api/trash/:type/:id                     (A8.2, ADR #32, 영구 삭제, 관리자)
+  Guard:    hasRole('ADMIN')                    -- 노드 admin preset 무시 (ADR #26 §3.2.5)
+  Path:     :type ∈ {'file','folder'}, invalid → 400 VALIDATION_ERROR
+  Pre:      대상 row의 deleted_at IS NOT NULL    -- active row면 404 (휴지통에 없음)
+  TX:       SELECT FOR UPDATE
+            → file: file_versions hard delete → file row hard delete
+              folder: 후손 폴더/파일 leaf-first cascade (A7 패턴 재사용, limit=10000)
+            → audit_log (FILE_PURGED 또는 FOLDER_PURGED, per-call 1건 — A6 root-only 패턴 일관)
+              before_state = { name, parentId, storageKeys[] }
+              after_state  = { purgedAt, descendantFolders?, descendantFiles? }
+            → COMMIT
+  Note:     S3 객체 hard delete는 ADR #31 deferred — orphan은 `orphan.detect` 잡 cross-check로 정리.
+            SSE FILE_PURGED/FOLDER_PURGED emission은 SSE 인프라 milestone deferred (A8은 audit-only).
+            audit_log은 append-only이므로 PURGE 이벤트는 보존 (ADR #25).
+  Response: 204 NO_CONTENT
 ```
 
 #### 7.11.1 Hard purge 배치 잡 (A7, `purge.expired`)
@@ -1197,13 +1218,13 @@ GET /api/sse/files?folderIds=fld_a,fld_b
 | `FILE_VERSION_CREATED` | `POST /api/files/:id/versions` | `[folderId]` |
 | `FILE_DELETED` | soft delete (휴지통 이동) | `[folderId]` |
 | `FILE_RESTORED` | `POST /api/files/:id/restore` | `[folderId]` |
-| `FILE_PURGED` | 영구 삭제 (`DELETE /api/trash/:id`, ADMIN) | `[folderId]` |
+| `FILE_PURGED` | 영구 삭제 (`DELETE /api/trash/:type/:id`, ADMIN) — audit는 A8 활성화, SSE emission은 인프라 milestone deferred (ADR #32) | `[folderId]` |
 | `FOLDER_CREATED` | 폴더 생성 | `[parentFolderId]` |
 | `FOLDER_RENAMED` | 폴더 이름변경 | `[parentFolderId, folderId]` |
 | `FOLDER_MOVED` | 폴더 이동 | `[sourceParent, targetParent]` |
 | `FOLDER_DELETED` | soft delete | `[parentFolderId]` |
 | `FOLDER_RESTORED` | 복원 | `[parentFolderId]` |
-| `FOLDER_PURGED` | 영구 삭제 (ADMIN) | `[parentFolderId]` |
+| `FOLDER_PURGED` | 영구 삭제 (`DELETE /api/trash/:type/:id`, ADMIN) — audit는 A8 활성화, SSE emission은 인프라 milestone deferred (ADR #32) | `[parentFolderId]` |
 | `PERMISSION_GRANTED` | `POST /api/:resource/:id/permissions` | `[resourceId]` (folder인 경우) |
 | `PERMISSION_REVOKED` | `DELETE /api/permissions/:permissionId` | `[resourceId]` |
 | `PERMISSION_CHANGED` | 기존 권한의 preset/expiry 변경 | `[resourceId]` |

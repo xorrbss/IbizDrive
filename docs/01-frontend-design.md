@@ -794,6 +794,12 @@ files.purge_after      : 영구 삭제 예정 (deleted_at + 30일)
 - 행 액션: **원위치로 복원**, **영구 삭제**
 - 삭제 직후 토스트의 **"되돌리기"** 버튼 (5초)
 
+> **Backend endpoints** (docs/02 §7.11):
+> - `GET /api/trash?cursor=&type=` — list. queryKey `qk.trash()` (§6.1).
+> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6).
+> - `DELETE /api/trash/:type/:id` — manual purge, ADMIN only (A8, ADR #32).
+> - bulk `DELETE /api/trash`는 미구현 — `purge.expired` 배치(A7) 자동 처리.
+
 ```tsx
 const handleDelete = (ids: string[]) => {
   markPending(ids)
