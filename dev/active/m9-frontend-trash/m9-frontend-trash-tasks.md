@@ -10,7 +10,7 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 | Phase | 제목 | 상태 |
 |---|---|---|
 | bootstrap | dev-docs 3파일 + worktree | ✅ done (게이트 0 통과 2026-04-30) |
-| M9.0 | docs 정합 + queryKeys `qk.trash()` (no-code/1줄) | 🟢 ready (다음 진입) |
+| M9.0 | docs 정합 + queryKeys `qk.trash()` (no-code/1줄) | ✅ done (게이트 1 통과 2026-05-01) |
 | M9.1 | API client 확장 + types | ⏸ blocked by M9.0 |
 | M9.2 | TanStack Query hooks + 단위 테스트 | ⏸ blocked by M9.1 |
 | M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | ⏸ blocked by M9.2 |
@@ -27,7 +27,7 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 - [x] (2) `git worktree add .claude/worktrees/m9-frontend-trash -b feature/m9-frontend-trash origin/master` (HEAD `a952f78`)
 - [x] (3) `dev/active/m9-frontend-trash/` 디렉터리 + `m9-frontend-trash-{plan,context,tasks}.md` 작성
 - [x] (4) **사용자 plan 리뷰 게이트** — 통과 2026-04-30 (단일 PR + 6 sub-phase 구조 확정)
-- [ ] (5) bootstrap commit: `chore(M9): bootstrap dev-docs (frontend trash integration)`
+- [x] (5) bootstrap commit: `chore(M9): bootstrap dev-docs (frontend trash integration)` (`94dc00c`)
 
 **게이트 0**: 사용자 OK → bootstrap commit → M9.0 진입.
 
@@ -47,14 +47,12 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 - `frontend/src/lib/queryKeys.ts:42~99` — `invalidations` 헬퍼 객체 — `afterDelete` 옆에 `afterTrashAction` 추가
 
 **구현 대상**:
-- [ ] (1) `qk.trash()` 추가 — `[...qk.all, 'trash'] as const` (docs/01 §6.1 정의 그대로)
-- [ ] (2) `invalidations.afterTrashAction(qc, { sourceFolderId? })` 추가 — `qk.trash()` + `qk.filesListPrefix(sourceFolderId)` (있을 때) + `qk.folderTree()` (cascade restore 대비)
-- [ ] (3) `invalidations.afterDelete` JSDoc patch — line 91 "휴지통 마일스톤에서 별도 헬퍼" 주석 제거 + `afterTrashAction`도 호출하도록 옵션 추가 OR 호출 시점에 둘 다 invoke
-- [ ] (4) `docs/01-frontend-design.md` §13.2 본문에 component 경로 backlink (`frontend/src/app/(explorer)/trash/page.tsx` 등) — M9.3 완료 후로 미루어도 됨, 진입 시점은 component 미생성이라 노미러
-- [ ] (5) **`useDeleteBulk` Mock vs 실 backend 분기 결정** — backend `DELETE /api/files/:id` 가용성 확인. 사용자에게 보고 후 분기:
-  - (A) 가용 → M9.1에서 일괄 마이그레이션 + Undo wiring
-  - (B) 미가용 → Mock 유지 + Undo wiring만 (`useDeleteBulk.onSuccess` → restore 콜백 노출)
-- [ ] (6) commit: `feat(M9.0): qk.trash() + invalidations.afterTrashAction (휴지통 무효화 헬퍼)` 또는 `docs(M9.0)` (코드 0줄이면)
+- [x] (1) `qk.trash()` 추가 + 추가 prep 키(`qk.trashList`, `qk.search`, `qk.searchResults`, `qk.permissions(nodeId?)`, `qk.storageQuota`) 사전 정의
+- [x] (2) `invalidations.afterRestore(qc, { folderIds? })` + `invalidations.afterPurge(qc)` 신설 (Self Review 결과 `afterTrashAction` 단일 헬퍼보다 의미 분리)
+- [x] (3) `invalidations.afterDelete` 확장 — `filesListPrefix` + `trash` + `search` + `folderTree` (4건). 옛 line 91 주석 제거됨.
+- [ ] (4) `docs/01-frontend-design.md` §13.2 본문 component 경로 backlink — M9.3 완료 후 일괄 patch
+- [x] (5) **`useDeleteBulk` Mock vs 실 backend 분기** — **(A) 채택** (backend `DELETE /api/files/:id`/`/api/folders/:id` 모두 가용 확인). Mock은 (B) 시 Undo→restore 404 모순 → (A) 강제. M9.1에서 일괄 마이그.
+- [x] (6) commit: `feat(M9.0): qk.trash + afterRestore/afterPurge + afterDelete 확장 (휴지통 무효화 헬퍼)`
 
 **검증 참조**:
 - `pnpm typecheck` 통과 — `qk.trash()` 호출 측 타입 안전
@@ -63,7 +61,7 @@ Status: 🟢 ACTIVE — 게이트 0 통과 → M9.0 진입 대기
 **문서 반영**:
 - §13.2 backlink — M9.3 완료 후 일괄 patch (M9.5 PR 본문에서 일괄)
 
-**게이트 1**: queryKeys 갱신 + (5) 사용자 분기 결정 → M9.1 진입.
+**게이트 1**: ✅ 통과 (2026-05-01) — queryKeys 12 tests GREEN, typecheck/lint 통과, 회귀 0 (415 tests). 분기 (A) 채택. M9.1 진입.
 
 ---
 

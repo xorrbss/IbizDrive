@@ -92,7 +92,7 @@ describe('invalidations.afterRename', () => {
 })
 
 describe('invalidations.afterDelete', () => {
-  it('해당 폴더 prefix + trash + search 호출 (M9)', async () => {
+  it('해당 폴더 prefix + trash + search + folderTree 호출 (M9)', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -100,9 +100,14 @@ describe('invalidations.afterDelete', () => {
 
     const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: readonly unknown[] }).queryKey)
     expect(keys).toEqual(
-      expect.arrayContaining([qk.filesListPrefix('root'), qk.trash(), qk.search()]),
+      expect.arrayContaining([
+        qk.filesListPrefix('root'),
+        qk.trash(),
+        qk.search(),
+        qk.folderTree(),
+      ]),
     )
-    expect(spy).toHaveBeenCalledTimes(3)
+    expect(spy).toHaveBeenCalledTimes(4)
   })
 })
 
@@ -116,18 +121,20 @@ describe('qk.trash', () => {
 })
 
 describe('invalidations.afterRestore', () => {
-  it('folderIds 미지정: trash + search + files prefix 보수 무효화', async () => {
+  it('folderIds 미지정: trash + search + folderTree + files prefix 보수 무효화', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
     await invalidations.afterRestore(qc)
 
     const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: readonly unknown[] }).queryKey)
-    expect(keys).toEqual(expect.arrayContaining([qk.trash(), qk.search(), qk.files()]))
-    expect(spy).toHaveBeenCalledTimes(3)
+    expect(keys).toEqual(
+      expect.arrayContaining([qk.trash(), qk.search(), qk.folderTree(), qk.files()]),
+    )
+    expect(spy).toHaveBeenCalledTimes(4)
   })
 
-  it('folderIds 지정: trash + search + 각 folder prefix만', async () => {
+  it('folderIds 지정: trash + search + folderTree + 각 folder prefix만', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -138,13 +145,14 @@ describe('invalidations.afterRestore', () => {
       expect.arrayContaining([
         qk.trash(),
         qk.search(),
+        qk.folderTree(),
         qk.filesListPrefix('root'),
         qk.filesListPrefix('folder_sales'),
       ]),
     )
     // files() prefix는 호출되지 않아야 함
     expect(keys).not.toContainEqual(qk.files())
-    expect(spy).toHaveBeenCalledTimes(4)
+    expect(spy).toHaveBeenCalledTimes(5)
   })
 })
 
