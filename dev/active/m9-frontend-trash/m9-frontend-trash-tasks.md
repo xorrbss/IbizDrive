@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 ACTIVE — 게이트 2 통과 → M9.2 진입 대기
+Status: 🟢 ACTIVE — 게이트 3 통과 → M9.3 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Tasks
@@ -12,8 +12,8 @@ Status: 🟢 ACTIVE — 게이트 2 통과 → M9.2 진입 대기
 | bootstrap | dev-docs 3파일 + worktree | ✅ done (게이트 0 통과 2026-04-30) |
 | M9.0 | docs 정합 + queryKeys `qk.trash()` (no-code/1줄) | ✅ done (게이트 1 통과 2026-05-01) |
 | M9.1 | API client 확장 + types | ✅ done (게이트 2 통과 2026-05-01) |
-| M9.2 | TanStack Query hooks + 단위 테스트 | 📋 ready |
-| M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | ⏸ blocked by M9.2 |
+| M9.2 | TanStack Query hooks + 단위 테스트 | ✅ done (게이트 3 통과 2026-05-01) |
+| M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | 📋 ready |
 | M9.4 | Undo toast wiring (BulkActionBar 5초) | ⏸ blocked by M9.3 |
 | M9.5 | closure (PR + archive) | ⏸ blocked by M9.4 |
 
@@ -99,7 +99,7 @@ Status: 🟢 ACTIVE — 게이트 2 통과 → M9.2 진입 대기
 
 ---
 
-## M9.2 — TanStack Query hooks + 단위 테스트 [📋 ready]
+## M9.2 — TanStack Query hooks + 단위 테스트 [✅ done]
 
 **작업 전 필독**:
 - M9.1 결과 — `api.*` + types
@@ -113,14 +113,13 @@ Status: 🟢 ACTIVE — 게이트 2 통과 → M9.2 진입 대기
 - `invalidations.afterFilesMoved` (queryKeys.ts:53) — 무효화 헬퍼 사용 예
 
 **구현 대상**:
-- [ ] (1) `useTrashList(opts: { type?: TrashItemType }): UseInfiniteQueryResult<TrashPage>` — `useInfiniteQuery` + `getNextPageParam: lastPage => lastPage.nextCursor ?? undefined`
-- [ ] (2) `useRestoreItem(): UseMutationResult<void, Error, { type: TrashItemType; id: string; sourceFolderId?: string }>` — type 분기 → `restoreFile` or `restoreFolder` → `invalidations.afterTrashAction(qc, { sourceFolderId })`
-- [ ] (3) `usePurgeTrashItem(): UseMutationResult<void, Error, { type: TrashItemType; id: string }>` — `purgeTrashItem` → `qk.trash()` invalidate
-- [ ] (4) 단위 테스트 (`useTrashList.test.tsx`, `useRestoreItem.test.tsx`, `usePurgeTrashItem.test.tsx`):
-  - useTrashList: empty / 한 페이지 / cursor 다음 페이지 / type 필터 / 401 에러
-  - useRestoreItem: file 분기 / folder 분기 / 409 에러 후 invalidate skip
-  - usePurgeTrashItem: 성공 invalidate / 403 에러 / 404 에러
-  - 총 ≥10건 GREEN
+- [x] (1) `useTrashList(opts: { type?: TrashItemType })` — `useInfiniteQuery`. queryKey는 `qk.trashList()` 또는 `[...qk.trashList(), type]` (qk 미수정, hook 사이트 인라인). `initialPageParam: undefined`, `getNextPageParam: lastPage => lastPage.nextCursor ?? undefined`.
+- [x] (2) `useRestoreItem()` — type 분기 → `restoreFile` or `restoreFolder` → `invalidations.afterRestore(qc, { folderIds: sourceFolderId ? [sourceFolderId] : undefined })`. M9.0 시점 `afterTrashAction` → `afterRestore`/`afterPurge` 분리됨에 맞춰 정합.
+- [x] (3) `usePurgeTrashItem()` — `purgeTrashItem(type, id)` → `invalidations.afterPurge` (qk.trash() invalidate).
+- [x] (4) 단위 테스트 — 14건 GREEN (요건 ≥10 초과):
+  - useTrashList(6): 빈 / 한 페이지 / cursor 다음 페이지 / type 필터 / type 변경 시 queryKey 분리 / 401 에러
+  - useRestoreItem(4): file 분기 / folder 분기 / sourceFolderId 미지정 시 qk.files() 보수 무효화 / 409 RESTORE_CONFLICT 후 invalidate skip
+  - usePurgeTrashItem(4): file 성공 + qk.trash() invalidate / folder 분기 / 403 비-ADMIN / 404 이미 purge
 - [ ] (5) commit: `feat(M9.2): useTrashList + useRestoreItem + usePurgeTrashItem hooks`
 
 **검증 참조**:
@@ -130,11 +129,11 @@ Status: 🟢 ACTIVE — 게이트 2 통과 → M9.2 진입 대기
 **문서 반영**:
 - (없음)
 
-**게이트 3**: 10건 GREEN + commit → M9.3 진입.
+**게이트 3**: ✅ 통과 (2026-05-01) — 14 tests GREEN, 회귀 0 (351 tests). typecheck/lint 통과. M9.3 진입.
 
 ---
 
-## M9.3 — `/trash` 페이지 + TrashTable + TrashLink [⏸ blocked by M9.2]
+## M9.3 — `/trash` 페이지 + TrashTable + TrashLink [📋 ready]
 
 **작업 전 필독**:
 - M9.2 결과 — hooks GREEN
