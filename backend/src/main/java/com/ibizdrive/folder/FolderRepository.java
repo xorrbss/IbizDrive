@@ -177,4 +177,38 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     List<Folder> findTrashedPage(@Param("cursorDeletedAt") Instant cursorDeletedAt,
                                  @Param("cursorId") UUID cursorId,
                                  @Param("limit") int limit);
+
+    /**
+     * A9.2 — search by normalized_name LIKE (docs/02 §7.8, ADR #33).
+     *
+     * <p>{@link com.ibizdrive.file.FileRepository#searchByNormalizedName}와 동일 contract — folder
+     * source. 정렬/cursor 의미 동일 ({@code updated_at DESC, id DESC}). 호출자(SearchQueryService)가
+     * 양 source의 결과를 in-memory merge한다.
+     */
+    @Query(value = """
+        SELECT * FROM folders
+        WHERE deleted_at IS NULL
+          AND normalized_name LIKE :pattern ESCAPE '\\'
+          AND (
+            CAST(:cursorUpdatedAt AS timestamptz) IS NULL
+            OR updated_at < CAST(:cursorUpdatedAt AS timestamptz)
+            OR (updated_at = CAST(:cursorUpdatedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY updated_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Folder> searchByNormalizedName(@Param("pattern") String pattern,
+                                        @Param("cursorUpdatedAt") Instant cursorUpdatedAt,
+                                        @Param("cursorId") UUID cursorId,
+                                        @Param("limit") int limit);
+
+    /**
+     * A9.2 — search totalEstimate 보조 (folder 분기). FileRepository 동등.
+     */
+    @Query(value = """
+        SELECT COUNT(*) FROM folders
+        WHERE deleted_at IS NULL
+          AND normalized_name LIKE :pattern ESCAPE '\\'
+        """, nativeQuery = true)
+    long countByNormalizedName(@Param("pattern") String pattern);
 }

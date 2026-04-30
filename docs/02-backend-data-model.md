@@ -1050,14 +1050,48 @@ DELETE /api/files/upload/:uploadId  (사용자 취소 또는 만료)
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| GET | `/api/search` | isAuthenticated (결과는 권한 필터링) | — | `q → normalizeForSearch(q)` | `WHERE deleted_at IS NULL` | 400 (minLength 미달) |
+| GET | `/api/search` | isAuthenticated (결과는 권한 필터링) | — | `q → normalizeForSearch(q)` | `WHERE deleted_at IS NULL` | 400 `INVALID_SEARCH_QUERY` (minLength 미달 / type invalid / cursor invalid) |
 
 ```text
-GET /api/search?q=&type=&owner=&modifiedFrom=&modifiedTo=&cursor=
-  - minLength: 2 (정규화 후 기준)
-  - 서버 정규화: q' = normalizeForSearch(q) (NFC + lowercase + 공백 collapse)
-  - 결과는 사용자 effective READ 권한 있는 노드만
-  Response: 200 { items: SearchResultDto[], nextCursor?, totalEstimate }
+GET /api/search?q=&type=file|folder|all&cursor=&limit=
+  - q (required, string): 검색어. 서버 정규화 q' = normalizeForSearch(q) (NFC + lowercase + 공백 collapse + trim)
+                          minLength: 2 (정규화 후 기준 — 1자/공백만 → 400 INVALID_SEARCH_QUERY)
+  - type (optional, default=all): "file" | "folder" | "all". invalid → 400.
+  - cursor (optional): 직전 응답의 nextCursor를 echo back. 첫 페이지에서는 미지정.
+                       opaque base64 url-safe `{updatedAtEpochMs}|{type}|{id}` (ADR #33).
+  - limit (optional, default=50, cap=100)
+
+  서버 처리:
+  1. q normalize → minLen 2 검증
+  2. type 분기 → file 검색(LIKE) + folder 검색(LIKE) [+ cursor tuple 조건]
+  3. 각 테이블당 LIMIT (limit+1) — hasMore 판정 + nextCursor 발급
+  4. type=all이면 in-memory merge sort `(updatedAt DESC, type DESC, id DESC)`
+  5. 권한 후처리 — actor의 effective READ (ADR #33: ROLE short-circuit + resource grant fallback)
+  6. SearchPage 빌드
+
+  out-of-scope (ADR #33로 박제):
+  - tsvector full-text / pg_trgm fuzzy match (별도 마이그레이션 트랙)
+  - owner / modifiedFrom / modifiedTo 필터 (frontend 미사용 — 추가 시 controller param + service overload hook)
+  - 검색 audit emission (SEARCH_QUERIED enum 정의 0, 보안 트랙)
+
+  Response: 200 application/json
+    {
+      items: SearchResultDto[],
+      nextCursor?: string,                  // 다음 페이지 존재 시
+      totalEstimate: long                   // 첫 페이지 only — cursor 페이지에서는 -1
+    }
+
+  SearchResultDto (discriminated union by `type`):
+    {
+      type: "file" | "folder",
+      id: UUID,
+      name: string,                         // displayName (정규화 전 원본)
+      parentId?: UUID | null,               // type="folder"일 때 (root면 null)
+      folderId?: UUID,                      // type="file"일 때
+      sizeBytes?: long,                     // type="file"일 때
+      mimeType?: string,                    // type="file"일 때
+      updatedAt: ISO8601                    // 정렬/cursor key
+    }
 ```
 
 ### 7.9 공유 (Shares)
