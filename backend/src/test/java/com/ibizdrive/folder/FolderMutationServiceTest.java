@@ -379,6 +379,7 @@ class FolderMutationServiceTest {
         assertThat(folderRepository.findByIdAndDeletedAtIsNull(child.getId())).isEmpty();
         assertThat(countDeleted(parent.getId())).isEqualTo(1);
         assertThat(countDeleted(child.getId())).isEqualTo(1);
+        assertThat(originalParentId(child.getId())).isEqualTo(parent.getId());
         verifyAuditEmitted(AuditEventType.FOLDER_DELETED, parent.getId(), owner);
     }
 
@@ -405,6 +406,19 @@ class FolderMutationServiceTest {
         assertThat(folderRepository.findByIdAndDeletedAtIsNull(folder.getId())).isPresent();
         assertThat(countDeleted(folder.getId())).isZero();
         verifyAuditEmitted(AuditEventType.FOLDER_RESTORED, folder.getId(), owner);
+    }
+
+    @Test
+    void restore_cascadeDeletedChildWithoutActiveParent_throwsNotFound() {
+        UUID owner = insertUser("rs3@test", "rs3");
+        Folder parent = service.create(null, "ParentRs3", owner, "standard", owner);
+        Folder child = service.create(parent.getId(), "ChildRs3", owner, "standard", owner);
+        service.delete(parent.getId(), owner);
+        reset(auditService);
+
+        assertThatThrownBy(() -> service.restore(child.getId(), owner))
+            .isInstanceOf(FolderNotFoundException.class);
+        verify(auditService, never()).record(any());
     }
 
     @Test
@@ -451,6 +465,14 @@ class FolderMutationServiceTest {
             folderId
         );
         return count == null ? 0 : count;
+    }
+
+    private UUID originalParentId(UUID folderId) {
+        return jdbc.queryForObject(
+            "SELECT original_parent_id FROM folders WHERE id = ?",
+            (rs, rowNum) -> (UUID) rs.getObject(1),
+            folderId
+        );
     }
 
     private static AuditEvent any() {

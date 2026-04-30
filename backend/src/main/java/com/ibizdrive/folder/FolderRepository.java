@@ -112,7 +112,8 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
      * 다시 갱신해 audit 일관성이 깨지는 것을 방지.
      */
     @Modifying
-    @Query("UPDATE Folder f SET f.deletedAt = :deletedAt, f.purgeAfter = :purgeAfter, f.updatedAt = :deletedAt "
+    @Query("UPDATE Folder f SET f.deletedAt = :deletedAt, f.purgeAfter = :purgeAfter, "
+         + "f.originalParentId = f.parentId, f.updatedAt = :deletedAt "
          + "WHERE f.id IN :ids AND f.deletedAt IS NULL")
     int softDeleteByIds(@Param("ids") Collection<UUID> ids,
                         @Param("deletedAt") Instant deletedAt,
