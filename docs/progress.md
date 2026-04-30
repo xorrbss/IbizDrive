@@ -5,6 +5,59 @@
 
 ---
 
+## 2026-04-30 — 🏁 A7 마일스톤 종료 (Hard Purge Job — purge.expired)
+
+### 범위
+
+A7.0 (docs/00 ADR #31 + docs/02 line 37 + §7.11.1 + docs/04 §13 patch) → A7.1 (Repository 8메서드 + Testcontainers 7건 GREEN) → A7.2 (`HardPurgeService` 트랜잭션 본체 + audit `SYSTEM_PURGE_EXECUTED` summary emit + Kahn's algorithm leaf-first 위상정렬 + 7건 테스트) → A7.3 (`HardPurgeProperties` + `SchedulingConfig` + `HardPurgeJob` + 통합 4건 + `application.yml` `app.purge` 섹션) → A7.4 (PR #17 squash-merge `5c22e23` + dev-docs archive).
+
+### 회고
+
+- **commits**: 4 on top of A6 close `fdeb610` (worktree branch `feature/a7-hard-purge`) → squash-merge `5c22e23` on `master`. PR #17 single, CI green (backend junit 3m6s + frontend vitest 1m6s 모두 SUCCESS).
+- **production 파일**: 6 신설 + 4 수정 — `purge/HardPurgeService.java` NEW, `purge/PurgeResult.java` NEW (record), `purge/HardPurgeJob.java` NEW, `purge/HardPurgeProperties.java` NEW, `config/SchedulingConfig.java` NEW, `application.yml` `app.purge` 섹션 추가, `FileRepository`/`FolderRepository`/`FileVersionRepository` 각각 hard purge 보조 메서드 확장.
+- **test 파일**: 4 신설 — `HardPurgeRepositoryTest` (7건, V5 schema + cascade 정합), `HardPurgeServiceTest` (7건, 트랜잭션 본체 + audit JSON), `HardPurgeJobIntegrationTest` (3건, enabled 시나리오), `HardPurgeJobDisabledIntegrationTest` (1건, disabled 빈 미등록).
+- **ADR 신설**: #31 — A7 = DB-only, S3 객체 삭제는 storage 모듈 milestone 으로 deferred.
+- **A6 회귀 0**: 전체 `./gradlew test` BUILD SUCCESSFUL.
+
+### 핵심 결정 (A7 트랙, 확정)
+
+1. **DB-only (ADR #31)** — backend storage 모듈 0개 시점. `purge_after` 경과 row의 DB hard delete만 A7 범위. orphan storage_keys는 audit `after_state.orphanStorageKeys`(cap=1000)에 기록만 — storage 모듈 도입 시 `orphan.detect` 잡(docs/04 §13)이 storage_key cross-check로 정리.
+2. **Audit summary-only** — A6 root-only 패턴 일관. 1 run = 1 `SYSTEM_PURGE_EXECUTED` audit. per-row `FILE_PURGED`/`FOLDER_PURGED` enum은 정의되어 있으나 발행 없이 A8 manual purge `/api/trash/:id` 트랙으로 reserve.
+3. **file_versions cascade hard delete** — docs/02 line 37 정책 갱신: 일반은 영구 보존이지만 file row hard purge 시점에는 cascade 삭제 (FK `ON DELETE RESTRICT` 만족). storage_key는 audit orphan 기록 후 삭제.
+4. **Kahn's algorithm in-memory** — schema에 depth 컬럼 부재. parent_id 그래프로 batch 내 leaf-first 위상정렬. cycle 발생 시 ordered list 길이 < 입력으로 자연스러운 skip.
+5. **MAX_PURGE_PER_RUN 합산 한도** — files+folders 합산 (기본 10000). 초과 시 `truncated=true`로 다음 run 이월 (잡 자체는 정상 완료, 가장 오래된 row 우선).
+6. **단일 트랜잭션** — `@Transactional` 본체. partial purge 미허용. 예외 시 전체 rollback → audit 미발행 → 다음 cron 재시도. audit emit만 REQUIRES_NEW.
+7. **운영 기본 비활성** — `app.purge.enabled=false`. staging/prod에서 명시적으로 `true` 설정 후 투입. dev/test는 `@TestPropertySource` override 패턴.
+8. **No ShedLock** — 단일 인스턴스 운영 가정. 다중 인스턴스 도입 시 별도 ADR.
+
+### accepted-deviation (후속 backlog)
+
+- **S3 객체 삭제** — storage 모듈 도입 + `orphan.detect` 잡 (ADR #31).
+- **A8 manual purge** — `/api/trash/:id` 단건 hard delete endpoint + per-row `FILE_PURGED`/`FOLDER_PURGED` audit emit.
+- **Legal Hold 통합** — A7 cron 트랜잭션이 legal_holds 테이블 조회 후 hold된 row 제외 (docs/03 §6.3 후속).
+- **Monitoring metric** — `purge.expired` 잡 실행 횟수 / 처리 row / 실패 카운터 (별도 backlog).
+
+### DoD 10/10
+
+1. ✅ Repository 확장 — `findExpiredFileIds/FolderIds`, `hardDeleteByIds`, `findStorageKeysByFileIds`, `deleteByFileIds`, `findIdAndParentIdByIds` (8 메서드).
+2. ✅ `HardPurgeService.runDailyPurge` 단일 트랜잭션 본체 + 위상정렬 + audit summary emit (`PurgeResult` record).
+3. ✅ Kahn's algorithm leaf-first 위상정렬 (parent_id 그래프, cycle 안전).
+4. ✅ `HardPurgeProperties` + `SchedulingConfig` + `HardPurgeJob` (`@ConditionalOnProperty` 이중 가드) + cron 트리거 → service 위임.
+5. ✅ `application.yml` `app.purge` 섹션 (운영 기본 enabled=false).
+6. ✅ Repository 7건 + Service 7건 + Job 통합 4건 GREEN (총 18건 신규).
+7. ✅ 회귀 0 — `./gradlew test` BUILD SUCCESSFUL.
+8. ✅ ADR #31 본문 게재 + status: accepted, docs/02 line 37 cascade 정책 갱신, §7.11.1 신설, docs/04 §13 footnote.
+9. ✅ PR #17 CI green (backend junit + frontend vitest) + master squash-merge `5c22e23`.
+10. ✅ dev-docs `dev/active/a7-hard-purge/` → `dev/completed/a7-hard-purge/` archive.
+
+### 다음 단계
+
+- **A8 후보**: manual purge `/api/trash/:id` endpoint + frontend 휴지통 UI (docs/01 §13).
+- **docs/03 §5~§8**: 저장소 보안 / Legal Hold / 데이터 보호 / 보안 회귀 가드.
+- **docs/04 본문**: 관리자 페이지 / 쿼터 / 백업.
+
+---
+
 ## 2026-04-30 — 🏁 A6 마일스톤 종료 (Folder Delete/Restore + Descendant Cascade)
 
 ### 범위
