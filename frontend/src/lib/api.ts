@@ -4,7 +4,7 @@ import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit
 import type { Permission } from '@/types/permission'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
-import { normalizedNameForDedup, normalizeForSearch } from './normalize'
+import { normalizedNameForDedup } from './normalize'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -404,13 +404,20 @@ export const api = {
   },
 
   /**
-   * M11 검색 — MOCK_FILES 전체에서 normalizeForSearch 매칭.
+   * M11 / F1.1 검색 — 백엔드 GET /api/search 직접 호출 (ADR #33, docs/02 §7.8).
    *
    * 호출자(useSearch)는 이미 normalizeForSearch + 최소 2자 게이트를 통과한 query를 넘김.
-   * 빈 query는 호출 자체가 안 됨(useQuery enabled=false). 방어적으로 빈 결과 반환.
+   * 1자 이하/빈 query는 방어적으로 즉시 빈 결과 (useQuery enabled=false 보조).
    *
-   * signal: TanStack Query AbortSignal. setTimeout 도중 abort 가능 → DOMException 던짐.
-   * useQuery는 AbortError를 cancellation으로 인식해 결과 폐기.
+   * filters는 현재 backend 미지원 (ADR #33 — type/mime/owner 등은 후속 트랙). 시그니처는
+   * 호출부 drift 회피 위해 보존.
+   *
+   * 응답 SearchPage{items,nextCursor,totalEstimate}를 FileItem[]로 매핑. file은
+   * folderId→parentId, sizeBytes→size; folder는 parentId 그대로(null→'' root). updatedBy는
+   * backend 미반환이므로 ''.
+   *
+   * 에러 envelope: 비-OK 응답은 status 필드 가진 Error throw → QueryCache.onError 401/403 분기.
+   * AbortSignal은 fetch에 그대로 전달 (DOMException AbortError → useQuery cancellation).
    */
   async searchFiles(
     params: { q: string; filters: Record<string, unknown> },
@@ -418,31 +425,67 @@ export const api = {
   ): Promise<{ items: FileItem[] }> {
     const { signal } = options
     const q = params.q
-    if (!q) return { items: [] }
+    if (!q || q.length < 2) return { items: [] }
 
-    await new Promise<void>((resolve, reject) => {
-      const t = setTimeout(resolve, 200)
-      if (signal) {
-        if (signal.aborted) {
-          clearTimeout(t)
-          reject(new DOMException('Aborted', 'AbortError'))
-          return
+    const qs = new URLSearchParams({ q })
+
+    const res = await fetch(`/api/search?${qs.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+      signal,
+    })
+    if (!res.ok) {
+      const err = new Error(`search fetch failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const page = (await res.json()) as {
+      items: Array<
+        | {
+            type: 'file'
+            id: string
+            name: string
+            folderId: string
+            sizeBytes: number | null
+            mimeType: string | null
+            updatedAt: string
+          }
+        | {
+            type: 'folder'
+            id: string
+            name: string
+            parentId: string | null
+            updatedAt: string
+          }
+      >
+      nextCursor: string | null
+      totalEstimate: number
+    }
+    const items: FileItem[] = page.items.map((dto) => {
+      if (dto.type === 'folder') {
+        return {
+          id: dto.id,
+          name: dto.name,
+          type: 'folder',
+          mimeType: null,
+          size: null,
+          updatedAt: dto.updatedAt,
+          updatedBy: '',
+          parentId: dto.parentId ?? '',
         }
-        signal.addEventListener(
-          'abort',
-          () => {
-            clearTimeout(t)
-            reject(new DOMException('Aborted', 'AbortError'))
-          },
-          { once: true },
-        )
+      }
+      return {
+        id: dto.id,
+        name: dto.name,
+        type: 'file',
+        mimeType: dto.mimeType,
+        size: dto.sizeBytes,
+        updatedAt: dto.updatedAt,
+        updatedBy: '',
+        parentId: dto.folderId,
       }
     })
-
-    // M9: 휴지통 항목은 검색 결과에서 제외
-    const items = MOCK_FILES.filter(
-      (f) => !f.deletedAt && normalizeForSearch(f.name).includes(q),
-    )
     return { items }
   },
 

@@ -37,19 +37,11 @@ describe('api.deleteBulk (soft delete) + listTrash', () => {
     expect(trashed.originalParentId).toBe('root')
   })
 
-  it('searchFiles는 휴지통 항목을 제외한다', async () => {
-    const id = 'file_proposal' // 이름: 제안서_2026.pdf
-    track(id)
-    const before = await api.searchFiles({ q: '제안서', filters: {} })
-    expect(before.items.some((f) => f.id === id)).toBe(true)
+  // F1.1: searchFiles가 fetch('/api/search') 직접 호출로 전환. 휴지통 항목 제외는
+  // backend SearchQueryService가 deleted_at IS NULL 필터로 보장 (a9-search-endpoint).
+  // 본 통합 시나리오는 의미가 없어 제거 — 단위 검증은 api.search.test.ts.
 
-    await api.deleteBulk([id])
-
-    const after = await api.searchFiles({ q: '제안서', filters: {} })
-    expect(after.items.some((f) => f.id === id)).toBe(false)
-  })
-
-  it('이미 trashed인 항목 재호출은 originalParentId를 덮어쓰지 않는다', async () => {
+it('이미 trashed인 항목 재호출은 originalParentId를 덮어쓰지 않는다', async () => {
     const id = 'file_budget'
     track(id)
     await api.deleteBulk([id])
