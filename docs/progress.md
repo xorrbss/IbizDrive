@@ -5,6 +5,58 @@
 
 ---
 
+## 2026-04-30 — 🏁 A6 마일스톤 종료 (Folder Delete/Restore + Descendant Cascade)
+
+### 범위
+
+A6.0 (docs/02 §7.5 cascade 정책 + restore-self 본문 정합, no-code) → A6.1+A6.2+A6.3 통합 (`FolderMutationService.delete/restore` + 후손 BFS cascade(folder + file batch UPDATE) + `FolderController` DELETE/restore endpoint + `FolderRestoreConflictException` + `RESTORE_CONFLICT` envelope) → refactor (cascade 후손 `originalParentId` 스냅샷 + restore가 soft-deleted parent 위로 시도 시 일관 NotFound) → A6.4 (PR #15 squash-merge `4111990` + dev-docs archive).
+
+### 회고
+
+- **commits**: 4 on top of A5 close `d23270e` (worktree branch `feature/a6-folder-mutation-delete`) → squash-merge `4111990` on `master`. PR #15 single, CI green (backend junit 3m9s + frontend vitest 1m10s 모두 SUCCESS).
+- **production 파일**: 5 수정 + 1 신설 (`FolderMutationService` +182 lines, `FolderRepository` +36, `FolderController` +endpoints, `FileRepository` +24, `GlobalExceptionHandler` +handler, `FolderRestoreConflictException` NEW). frontend 무수정.
+- **test 파일**: 2 수정 (`FolderMutationServiceTest` +5 cases — cascade/not-found/restore/conflict/cascade-child-restore-not-found, `FolderControllerTest` +2 cases — delete/restore endpoint).
+- **endpoint 신규**: 2개 — `DELETE /api/folders/{id}` (204) + `POST /api/folders/{id}/restore` (200).
+- **envelope code**: `RESTORE_CONFLICT` 매핑 신설 (docs/02 §8 line 1221에 이미 등록되어 있어 본문 patch 불필요).
+- **A4 회귀 0**: PermissionEvaluatorIntegrationTest 13/13 GREEN 유지.
+
+### 핵심 결정 (A6 트랙, 확정)
+
+1. **Audit root만** — cascade 후손 FOLDER_DELETED 미발행, root 1건에 `descendantFolders/Files` 카운트 보존 (audit_log 폭증 회피, docs/02 §7.5 + CLAUDE.md §3 원칙 8).
+2. **Restore self만** — 자기 자신만 복원, 후손 휴지통 잔존. `original_parent_id`가 soft-deleted면 404 ("부모 먼저 복원" UX 강제).
+3. **Service 레벨 BFS** — `assertNoCycle` 패턴 일관성, MAX_CASCADE_NODES=100k 안전 한도. 성능 이슈 시 WITH RECURSIVE 전환 + ADR.
+4. **Cascade 후손 originalParentId 스냅샷** — `FileRepository.softDeleteByFolderIds`가 `originalFolderId = folderId`를 set하는 것과 대칭. 후손 폴더도 개별 restore 시도 가능 (소프트-삭제된 부모 위로 복원 시도하면 `FolderNotFoundException`).
+5. **Integration class 미신설 (KISS)** — `FolderControllerIntegrationTest` 별도 작성 안 함. PermissionEvaluatorIntegrationTest 13/13가 SpEL `hasPermission(folder, DELETE)` 동일 evaluator 경로 보장 + 회귀 0이 곧 권한 매트릭스 정합.
+6. **단일 PR / 통합 commit** — A6.1~A6.3 테스트 상호의존(controller endpoint 미구현 시 controller test 컴파일 실패) → 단일 feature commit으로 처리.
+7. **File mutation 트랙은 cascade 미참여** — A4.8(`4e720eb`)에서 닫힘. `FileMutationService.delete` 미호출, `FileRepository.softDeleteByFolderIds` batch UPDATE만 사용 (audit 정책 일관성).
+
+### accepted-deviation (후속 backlog)
+
+- **Hard purge job** — `purge_after` 경과 row 영구 삭제 + S3 객체 삭제. docs/04 §13 배치 트랙.
+- **후손 cascade restore endpoint** — `?cascade=true` 또는 별도 path. UX 결정 후 신설.
+- **Frontend 휴지통 UI** (docs/01 §13) — backend 계약 안정화 완료, 진입 가능.
+
+### DoD 10/10
+
+1. ✅ `FolderMutationService.delete` + 후손 BFS cascade + `MAX_CASCADE_NODES` 안전 한도
+2. ✅ `FolderRepository.softDeleteByIds` (`originalParentId` 스냅샷 포함) + `FileRepository.softDeleteByFolderIds`
+3. ✅ Audit root만 발행, `after_state.descendantFolders/Files` 카운트 보존
+4. ✅ `FolderMutationService.restore` + parent 활성 검증 + `existsActiveByParentAndNormalizedNameExcludingId` 충돌 검사
+5. ✅ `FolderRestoreConflictException` 신설 + `GlobalExceptionHandler` → 409 `RESTORE_CONFLICT` 매핑
+6. ✅ `FolderController.delete` (204) + `restore` (200) endpoint + `@PreAuthorize("hasPermission(#id, 'folder', 'DELETE')")`
+7. ✅ FolderMutationServiceTest 5 cases + FolderControllerTest 2 cases GREEN
+8. ✅ A4 PermissionEvaluatorIntegrationTest 13/13 GREEN, frontend test 회귀 0
+9. ✅ docs/02 §7.5 cascade 정책 + restore-self 본문 정합 (line 881~922)
+10. ✅ PR #15 CI green + master squash-merge `4111990` + dev-docs `dev/active/a6-folder-mutation-delete/` → `dev/completed/`
+
+### 다음 단계
+
+- **A7 후보**: hard purge job (docs/04 §13) 또는 frontend 휴지통/탐색기 UI (docs/01 §13).
+- **docs/03 §5~§8**: 저장소 보안 / Legal Hold / 데이터 보호 / 보안 회귀 가드 (코드 0줄 트랙).
+- **docs/04 본문**: 관리자 페이지 / 쿼터 / 백업.
+
+---
+
 ## 2026-04-29 — A6.0 docs/02 §7.5 cascade 정책 + restore-self 명시 (no-code)
 
 ### 범위
