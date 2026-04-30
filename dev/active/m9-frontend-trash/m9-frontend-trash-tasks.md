@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 ACTIVE — 게이트 4 통과 → M9.4 진입 대기
+Status: 🟢 ACTIVE — 게이트 5 통과 → M9.5 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Tasks
@@ -14,8 +14,8 @@ Status: 🟢 ACTIVE — 게이트 4 통과 → M9.4 진입 대기
 | M9.1 | API client 확장 + types | ✅ done (게이트 2 통과 2026-05-01) |
 | M9.2 | TanStack Query hooks + 단위 테스트 | ✅ done (게이트 3 통과 2026-05-01) |
 | M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | ✅ done (게이트 4 통과 2026-05-01) |
-| M9.4 | Undo toast wiring (BulkActionBar 5초) | 📋 ready |
-| M9.5 | closure (PR + archive) | ⏸ blocked by M9.4 |
+| M9.4 | Undo toast wiring (BulkActionBar 5초) | ✅ done (게이트 5 통과 2026-05-01) |
+| M9.5 | closure (PR + archive) | 📋 ready |
 
 ---
 
@@ -172,7 +172,7 @@ Status: 🟢 ACTIVE — 게이트 4 통과 → M9.4 진입 대기
 
 ---
 
-## M9.4 — Undo toast wiring (BulkActionBar 5초) [📋 ready]
+## M9.4 — Undo toast wiring (BulkActionBar 5초) [✅ done]
 
 **작업 전 필독**:
 - M9.3 결과 — `/trash` + restore mutation
@@ -185,14 +185,15 @@ Status: 🟢 ACTIVE — 게이트 4 통과 → M9.4 진입 대기
 - sonner action 사양: `toast.success(msg, { action: { label, onClick }, duration: 5000 })`
 
 **구현 대상**:
-- [ ] (1) `BulkActionBar.tsx` 소프트 삭제 성공 토스트 — `action: { label: '되돌리기', onClick: () => undoDelete(ids) }` + `duration: 5000`
-- [ ] (2) `undoDelete` 헬퍼 — 폴더 + 파일 분기 호출 (`api.restoreFile` × n + `api.restoreFolder` × m). MVP: 단일 항목 우선, bulk는 Promise.all
-- [ ] (3) (분기 A시) `useDeleteBulk` Mock 제거 후이면 onSuccess에서 변수로 ids + types 모두 노출
-- [ ] (4) Undo 성공 시 `qk.trash()` + `qk.filesListPrefix(folderId)` + `qk.folderTree()` invalidate (또는 `invalidations.afterTrashAction`)
-- [ ] (5) 단위 테스트:
-  - `BulkActionBar.test.tsx` — 토스트 action 클릭 시 restore 호출 + invalidate
-  - 5초 후 자동 dismiss — sonner 내부 동작은 mock으로 verify
-  - 총 ≥3건 GREEN
+- [x] (1) `BulkActionBar.tsx` 소프트 삭제 성공 토스트 — `action: { label: '되돌리기', onClick: () => undoDelete(items, folderIdAtStart, qc) }` + `duration: 5000`
+- [x] (2) `undoDelete` 헬퍼 — type별 `api.restoreFile` / `api.restoreFolder` Promise.all + RESTORE_CONFLICT 분기 toast
+- [x] (3) `useDeleteBulk` 분기 (A) 후이므로 onSuccess vars `{items: {id,type}[], folderIdAtStart}` 그대로 활용
+- [x] (4) Undo 성공 시 `invalidations.afterRestore(qc, { folderIds: [folderId] })` (filesListPrefix + trash + folderTree + search 4건 일괄)
+- [x] (5) 단위 테스트 — 4건 GREEN (요건 ≥3 초과):
+  - duration:5000 + action.label:'되돌리기' 검증
+  - action.onClick → api.restoreFile/restoreFolder type 분기 호출
+  - Undo 성공 → 후속 toast.success("복원했습니다")
+  - Undo 실패(RESTORE_CONFLICT) → toast.error("같은 이름")
 - [ ] (6) commit: `feat(M9.4): soft-delete Undo toast (5초, sonner action) — A6 restore wiring`
 
 **검증 참조**:
@@ -202,11 +203,11 @@ Status: 🟢 ACTIVE — 게이트 4 통과 → M9.4 진입 대기
 **문서 반영**:
 - (없음)
 
-**게이트 5**: 3건 GREEN + Undo 동작 검증 → M9.5 진입.
+**게이트 5**: ✅ 통과 (2026-05-01) — 4 tests GREEN (요건 ≥3 초과), Undo 토스트 5초 + action 동작 검증, RESTORE_CONFLICT 분기 검증. 회귀 0 (364 tests). typecheck/lint 통과. M9.5 진입.
 
 ---
 
-## M9.5 — closure (PR + archive) [⏸ blocked by M9.4]
+## M9.5 — closure (PR + archive) [📋 ready]
 
 **작업 전 필독**:
 - `dev/completed/a8-trash-manage/` closure 패턴 mirror

@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 ACTIVE — 게이트 4 통과 (M9.3 /trash 페이지 + TrashTable + TrashLink) → M9.4 진입 대기
+Status: 🟢 ACTIVE — 게이트 5 통과 (M9.4 Undo toast wiring) → M9.5 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Context
@@ -46,6 +46,12 @@ Status: 🟢 ACTIVE — 게이트 4 통과 (M9.3 /trash 페이지 + TrashTable +
   - 신설: `frontend/src/lib/api.trash.test.ts` — 15 tests GREEN (요건 ≥6 초과). `useDeleteBulk.test.ts`는 mock을 softDelete*로 교체.
   - 검증: pnpm test 36 files / 337 tests GREEN, 회귀 0. typecheck/lint 통과.
   - **lesson**: useDeleteBulk 호출부가 BulkActionBar 외에 FileTable 키보드 단축키에도 있어 두 곳 동시 마이그가 필요했다. 다음 마이그 시 호출부 grep 선행.
+- **2026-05-01 M9.4 완료** — 게이트 5 통과 (Undo toast wiring 4 tests GREEN, 회귀 0).
+  - 변경: `BulkActionBar.tsx` `useDeleteBulk` onSuccess에 `toast.success(msg, { duration:5000, action:{ label:'되돌리기', onClick:() => undoDelete(items, folderIdAtStart, qc) } })` 추가.
+  - 신설 헬퍼: `undoDelete(items, folderId, qc)` — type별 `Promise.all([api.restoreFile|restoreFolder])` + `invalidations.afterRestore(qc, {folderIds:[folderId]})` + 성공/실패 toast (RESTORE_CONFLICT → '같은 이름의 항목이 이미 존재합니다').
+  - 신설 테스트 4건: duration+action.label / action.onClick type 분기 / Undo 성공 후 복원 toast / 409 RESTORE_CONFLICT 분기. 기존 4 rename 테스트 유지 → 8 total in BulkActionBar.test.tsx.
+  - 검증: pnpm test 41 files / 364 tests GREEN, 회귀 0. typecheck/lint 통과.
+  - **lesson**: 본 프로젝트는 `vi.mocked(toast).success.mock.calls` 패턴이 TS narrow 실패 — `@/test/mocks/sonner`의 `toastSpy('success').mock.calls`가 표준. 다음 toast 호출 검증 시 toastSpy helper 선행.
 
 ## Current Execution Contract
 
@@ -58,9 +64,9 @@ Status: 🟢 ACTIVE — 게이트 4 통과 (M9.3 /trash 페이지 + TrashTable +
 
 ## 현재 active task
 
-- **Phase**: 게이트 4 통과 → M9.4 진입 대기
-- **선행 완료**: M9.0 (`6e67785`) — qk.trash + 무효화 헬퍼. M9.1 (`7bd63f2`) — API client. M9.2 (`d52b4d6`) — hooks. M9.3 — /trash 페이지 + 컴포넌트 + Sidebar 통합 + 9 GREEN.
-- **다음**: M9.4 — Undo toast wiring (BulkActionBar 5초 sonner action). 단위 테스트 ≥3건 GREEN.
+- **Phase**: 게이트 5 통과 → M9.5 진입 대기
+- **선행 완료**: M9.0 (`6e67785`) — qk.trash + 무효화 헬퍼. M9.1 (`7bd63f2`) — API client. M9.2 (`d52b4d6`) — hooks. M9.3 — /trash 페이지 + 컴포넌트 + Sidebar 통합 + 9 GREEN. M9.4 — Undo toast wiring (BulkActionBar) + 4 GREEN.
+- **다음**: M9.5 — closure (PR 생성 + CI green + squash merge + dev-docs archive + worktree 정리).
 
 ## 다음 세션 읽기 순서
 
