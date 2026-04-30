@@ -11,8 +11,8 @@ Status: 🟢 OPEN — A9.0 완료 (commit 09d434a), A9.1 active
 |---|---|---|
 | A9.0 | ADR #33 + docs/02 §7.8 정합 + docs/01 §10 backlink | ✅ done (09d434a) |
 | A9.1 | DTO + cursor codec | ✅ done (5e1710b) |
-| A9.2 | SearchQueryService + repository LIKE + 권한 후처리 | 🟢 active |
-| A9.3 | SearchController + 400/401/403 + 통합 테스트 | ⬜ pending |
+| A9.2 | SearchQueryService + repository LIKE + 권한 후처리 | ✅ done (657478a) |
+| A9.3 | SearchController + 400/401/403 + 통합 테스트 | 🟢 active |
 | A9.4 | closure (PR + dev-docs archive) | ⬜ pending |
 
 ---
