@@ -1,5 +1,5 @@
 'use client'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useFileDetail } from '@/hooks/useFileDetail'
 import type { FileItem } from '@/types/file'
@@ -10,12 +10,28 @@ import type { FileItem } from '@/types/file'
  * - URL query param이 진실 출처 (docs/01 §2.3)
  * - Esc 전역 리스너로 닫기 (§12.1)
  * - Parallel route 대신 query param 사용 (§19 원칙 2)
+ * - M15: 4-tab 도입 (세부정보/버전/활동/권한). 세부정보 외는 placeholder
  *
- * 설계: docs/01 §11 (로딩/에러/빈 상태), §17.5 (useOpenFile)
+ * 설계: docs/01 §11 (로딩/에러/빈 상태), §17.5 (useOpenFile), §18 row 15 (M15)
  */
+type TabId = 'detail' | 'versions' | 'activity' | 'permissions'
+
+const TABS: { id: TabId; label: string }[] = [
+  { id: 'detail', label: '세부정보' },
+  { id: 'versions', label: '버전' },
+  { id: 'activity', label: '활동' },
+  { id: 'permissions', label: '권한' },
+]
+
 export function RightPanel() {
   const { fileId, close } = useOpenFile()
   const { data, isLoading, error } = useFileDetail(fileId)
+  const [tab, setTab] = useState<TabId>('detail')
+
+  // 파일이 바뀌면 detail 탭으로 리셋
+  useEffect(() => {
+    setTab('detail')
+  }, [fileId])
 
   // Esc 전역 핸들러 — 포커스 위치와 무관하게 패널 닫기
   useEffect(() => {
@@ -52,12 +68,58 @@ export function RightPanel() {
         </button>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-3.5 py-3 text-[12px]">
-        {isLoading && <PanelSkeleton />}
-        {!isLoading && error && <PanelError />}
-        {!isLoading && !error && data && <PanelBody file={data} />}
+      <div
+        role="tablist"
+        aria-label="상세 탭"
+        className="flex items-center gap-0 px-2 border-b border-border bg-surface-1"
+      >
+        {TABS.map((t) => {
+          const active = tab === t.id
+          return (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              aria-controls={`right-panel-tab-${t.id}`}
+              onClick={() => setTab(t.id)}
+              className={`px-2.5 py-1.5 text-[12px] -mb-px border-b-2 transition-colors ${
+                active
+                  ? 'border-accent text-fg'
+                  : 'border-transparent text-fg-muted hover:text-fg'
+              }`}
+            >
+              {t.label}
+            </button>
+          )
+        })}
+      </div>
+
+      <div
+        id={`right-panel-tab-${tab}`}
+        role="tabpanel"
+        className="flex-1 overflow-y-auto px-3.5 py-3 text-[12px]"
+      >
+        {tab === 'detail' && (
+          <>
+            {isLoading && <PanelSkeleton />}
+            {!isLoading && error && <PanelError />}
+            {!isLoading && !error && data && <PanelBody file={data} />}
+          </>
+        )}
+        {tab === 'versions' && <ComingSoon label="버전 히스토리" />}
+        {tab === 'activity' && <ComingSoon label="활동 타임라인" />}
+        {tab === 'permissions' && <ComingSoon label="권한 관리" />}
       </div>
     </aside>
+  )
+}
+
+function ComingSoon({ label }: { label: string }) {
+  return (
+    <div className="text-fg-muted text-[12px] py-4 text-center">
+      {label} — 준비 중
+    </div>
   )
 }
 

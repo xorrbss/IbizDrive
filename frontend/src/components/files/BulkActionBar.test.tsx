@@ -115,7 +115,7 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
   })
 
   it('단일 선택 시 활성: 클릭하면 RenameDialog가 열린다 (id, name 전달)', () => {
@@ -197,7 +197,7 @@ describe('BulkActionBar — 공유 버튼 (M8)', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
   })
 
   it('단일 파일 선택 시 활성 — 클릭하면 ShareDialog 열림 (id, name)', () => {
@@ -249,7 +249,7 @@ describe('BulkActionBar — 휴지통 Undo 토스트 (M9)', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
     deleteOptionsCapture.current = null
     restoreMutateSpy.mockReset()
     resetSonnerToastMock()

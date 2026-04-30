@@ -41,7 +41,7 @@ beforeEach(() => {
     isLoading: false,
     error: null,
   } as unknown as ReturnType<typeof useCurrentFolder>)
-  vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+  vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
   act(() => useSelectionStore.getState().clear())
 })
 
