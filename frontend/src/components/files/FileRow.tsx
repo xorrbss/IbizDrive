@@ -4,6 +4,7 @@ import { useDraggable } from '@dnd-kit/core'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
+import { fileIconFor } from '@/lib/fileIcon'
 import type { FileItem } from '@/types/file'
 
 type Props = {
@@ -32,15 +33,6 @@ function formatDate(iso: string): string {
     month: '2-digit',
     day: '2-digit',
   })
-}
-
-function fileIcon(item: FileItem): string {
-  if (item.type === 'folder') return '📁'
-  if (item.mimeType?.startsWith('image/')) return '🖼️'
-  if (item.mimeType?.includes('pdf')) return '📄'
-  if (item.mimeType?.includes('spreadsheet') || item.mimeType?.includes('excel')) return '📊'
-  if (item.mimeType?.includes('word') || item.mimeType?.includes('document')) return '📝'
-  return '📎'
 }
 
 export function FileRow({
@@ -121,7 +113,12 @@ export function FileRow({
       onKeyDown={onKeyDown}
       data-file-id={item.id}
     >
-      <span className="text-center" role="gridcell" aria-hidden="true">{fileIcon(item)}</span>
+      <span className="flex items-center justify-center" role="gridcell" aria-hidden="true">
+        {(() => {
+          const { Icon, className } = fileIconFor(item)
+          return <Icon size={16} className={className} />
+        })()}
+      </span>
       <span
         className="truncate font-medium text-fg"
         role="gridcell"

@@ -5,13 +5,30 @@ import type { ReactNode } from 'react'
 import { BulkActionBar } from './BulkActionBar'
 import { useSelectionStore } from '@/stores/selection'
 import { useRenameUiStore } from '@/stores/renameUi'
+import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useSortParams } from '@/hooks/useSortParams'
+import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 import type { FileItem } from '@/types/file'
 
 vi.mock('@/hooks/useFilesInFolder', () => ({
   useFilesInFolder: vi.fn(),
+}))
+
+// M8: usePermission은 useQuery 기반 — 테스트는 권한 검증과 무관하므로 admin preset 8 권한으로 고정.
+vi.mock('@/hooks/usePermission', () => ({
+  usePermission: () => ({
+    READ: true,
+    UPLOAD: true,
+    EDIT: true,
+    MOVE: true,
+    DOWNLOAD: true,
+    DELETE: true,
+    SHARE: true,
+    PERMISSION_ADMIN: true,
+    PURGE: false,
+  }),
 }))
 
 vi.mock('@/hooks/useCurrentFolder', () => ({
@@ -22,8 +39,20 @@ vi.mock('@/hooks/useSortParams', () => ({
   useSortParams: vi.fn(),
 }))
 
+const { deleteOptionsCapture, restoreMutateSpy } = vi.hoisted(() => ({
+  deleteOptionsCapture: { current: null as null | { onSuccess?: (v: { ids: string[]; folderIdAtStart: string }) => void; onError?: (e: unknown, v: { ids: string[]; folderIdAtStart: string }) => void } },
+  restoreMutateSpy: vi.fn(),
+}))
+
 vi.mock('@/hooks/useDeleteBulk', () => ({
-  useDeleteBulk: () => ({ mutate: vi.fn(), isPending: false }),
+  useDeleteBulk: (opts?: typeof deleteOptionsCapture.current) => {
+    deleteOptionsCapture.current = opts ?? null
+    return { mutate: vi.fn(), isPending: false }
+  },
+}))
+
+vi.mock('@/hooks/useRestoreBulk', () => ({
+  useRestoreBulk: () => ({ mutate: restoreMutateSpy, isPending: false }),
 }))
 
 const ITEMS: FileItem[] = [
@@ -86,7 +115,7 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
   })
 
   it('단일 선택 시 활성: 클릭하면 RenameDialog가 열린다 (id, name 전달)', () => {
@@ -148,5 +177,138 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
     })
     expect(useRenameUiStore.getState().targetId).toBe('fo1')
     expect(useRenameUiStore.getState().targetName).toBe('폴더A')
+  })
+})
+
+describe('BulkActionBar — 공유 버튼 (M8)', () => {
+  beforeEach(() => {
+    act(() => {
+      useSelectionStore.getState().clear()
+      useShareUiStore.getState().close()
+    })
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: ITEMS,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    vi.mocked(useCurrentFolder).mockReturnValue({
+      folderId: 'root',
+      folder: { id: 'root', name: 'root', slugPath: [] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCurrentFolder>)
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
+  })
+
+  it('단일 파일 선택 시 활성 — 클릭하면 ShareDialog 열림 (id, name)', () => {
+    act(() => useSelectionStore.getState().selectOnly('f1'))
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    act(() => fireEvent.click(btn))
+    const s = useShareUiStore.getState()
+    expect(s.isOpen).toBe(true)
+    expect(s.fileId).toBe('f1')
+    expect(s.fileName).toBe('alpha.txt')
+  })
+
+  it('다중 선택 시 비활성 + tooltip', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+      useSelectionStore.getState().toggle('f2')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    expect(btn.getAttribute('title')).toBe('단일 파일 선택 시 사용 가능')
+    act(() => fireEvent.click(btn))
+    expect(useShareUiStore.getState().isOpen).toBe(false)
+  })
+
+  it('단일 폴더 선택 시 비활성 (폴더 공유는 v1.x)', () => {
+    act(() => useSelectionStore.getState().selectOnly('fo1'))
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('BulkActionBar — 휴지통 Undo 토스트 (M9)', () => {
+  beforeEach(() => {
+    act(() => {
+      useSelectionStore.getState().clear()
+    })
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: ITEMS,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    vi.mocked(useCurrentFolder).mockReturnValue({
+      folderId: 'root',
+      folder: { id: 'root', name: 'root', slugPath: [] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCurrentFolder>)
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
+    deleteOptionsCapture.current = null
+    restoreMutateSpy.mockReset()
+    resetSonnerToastMock()
+  })
+
+  it('delete 성공 시 toast.success가 5초 + 되돌리기 액션과 함께 호출', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+      useSelectionStore.getState().toggle('f2')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    expect(deleteOptionsCapture.current?.onSuccess).toBeTypeOf('function')
+
+    // 시뮬레이션: useDeleteBulk가 mutate 성공 후 onSuccess 호출
+    act(() => {
+      deleteOptionsCapture.current?.onSuccess?.({ ids: ['f1', 'f2'], folderIdAtStart: 'root' })
+    })
+
+    const success = toastSpy('success')
+    expect(success).toHaveBeenCalledTimes(1)
+    expect(success).toHaveBeenCalledWith(
+      '2개 항목을 휴지통으로 이동했습니다',
+      expect.objectContaining({
+        duration: 5000,
+        action: expect.objectContaining({ label: '되돌리기' }),
+      }),
+    )
+  })
+
+  it('Undo 액션 클릭 시 useRestoreBulk.mutate가 originalParentIds 포함하여 호출', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+
+    act(() => {
+      deleteOptionsCapture.current?.onSuccess?.({ ids: ['f1'], folderIdAtStart: 'folder_sales' })
+    })
+
+    const success = toastSpy('success')
+    const opts = success.mock.calls[0][1] as { action?: { onClick: () => void } }
+    act(() => {
+      opts.action?.onClick?.()
+    })
+
+    expect(restoreMutateSpy).toHaveBeenCalledWith({
+      ids: ['f1'],
+      originalParentIds: ['folder_sales'],
+    })
+  })
+
+  it('delete 실패 시 toast.error', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    act(() => {
+      deleteOptionsCapture.current?.onError?.(new Error('boom'), { ids: ['f1'], folderIdAtStart: 'root' })
+    })
+    expect(toastSpy('error')).toHaveBeenCalledWith('삭제에 실패했습니다. 다시 시도해 주세요.')
   })
 })

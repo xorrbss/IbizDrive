@@ -1,9 +1,10 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
+import type { Permission } from '@/types/permission'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
-import { normalizedNameForDedup } from './normalize'
+import { normalizedNameForDedup, normalizeForSearch } from './normalize'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -183,7 +184,8 @@ export const api = {
     dir: 'asc' | 'desc' = 'asc'
   ): Promise<FileItem[]> {
     await new Promise((r) => setTimeout(r, 150))
-    const items = MOCK_FILES.filter((f) => f.parentId === folderId)
+    // M9: deletedAt != null 인 항목은 active 목록에서 제외 (휴지통 라우트로 분리)
+    const items = MOCK_FILES.filter((f) => f.parentId === folderId && !f.deletedAt)
     return items.sort((a, b) => {
       let cmp = 0
       if (sort === 'name') {
@@ -204,13 +206,70 @@ export const api = {
     return found
   },
 
+  /**
+   * M9 휴지통: hard delete가 아니라 soft delete (deletedAt + originalParentId 세팅).
+   *
+   * 동일 id를 두 번 호출해도 originalParentId는 최초 호출 값을 보존
+   * (이미 deletedAt 있으면 noop). 영구 삭제는 purgeBulk로 분리.
+   */
   async deleteBulk(ids: string[]): Promise<{ deletedIds: string[] }> {
     await new Promise((r) => setTimeout(r, 500))
+    const now = new Date().toISOString()
     for (const id of ids) {
-      const idx = MOCK_FILES.findIndex((f) => f.id === id)
-      if (idx !== -1) MOCK_FILES.splice(idx, 1)
+      const f = MOCK_FILES.find((x) => x.id === id)
+      if (!f || f.deletedAt) continue
+      f.deletedAt = now
+      f.originalParentId = f.parentId
     }
     return { deletedIds: ids }
+  },
+
+  /**
+   * M9 휴지통 목록. deletedAt NOT NULL인 항목, deletedAt 내림차순 (최근 삭제 우선).
+   */
+  async listTrash(): Promise<{ items: FileItem[] }> {
+    await new Promise((r) => setTimeout(r, 150))
+    const items = MOCK_FILES.filter((f) => f.deletedAt).sort((a, b) =>
+      (b.deletedAt ?? '').localeCompare(a.deletedAt ?? ''),
+    )
+    return { items }
+  },
+
+  /**
+   * M9 복원: deletedAt/originalParentId clear + parentId를 originalParentId로 복귀.
+   * 원위치 폴더가 사라진 경우 root로 복원 (백엔드 backend-A6 정책과는 다름 — frontend mock은 단순화).
+   * 이미 active(또는 미존재)인 id는 무시.
+   */
+  async restoreBulk(ids: string[]): Promise<{ restoredIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 300))
+    const restored: string[] = []
+    for (const id of ids) {
+      const f = MOCK_FILES.find((x) => x.id === id)
+      if (!f || !f.deletedAt) continue
+      const target = f.originalParentId ?? 'root'
+      const parentExists = target === 'root' || !!findNode(MOCK_TREE, target)
+      f.parentId = parentExists ? target : 'root'
+      f.deletedAt = null
+      f.originalParentId = null
+      restored.push(id)
+    }
+    return { restoredIds: restored }
+  },
+
+  /**
+   * M9 영구 삭제(purge): MOCK_FILES에서 hard splice. trashed가 아니어도 호출 가능
+   * (mock 단순화 — 실제 백엔드는 deletedAt NOT NULL인 row만 허용).
+   */
+  async purgeBulk(ids: string[]): Promise<{ purgedIds: string[] }> {
+    await new Promise((r) => setTimeout(r, 300))
+    const purged: string[] = []
+    for (const id of ids) {
+      const idx = MOCK_FILES.findIndex((f) => f.id === id)
+      if (idx === -1) continue
+      MOCK_FILES.splice(idx, 1)
+      purged.push(id)
+    }
+    return { purgedIds: purged }
   },
 
   async moveFiles(
@@ -342,6 +401,76 @@ export const api = {
     xhr.open('POST', url)
     xhr.send(form)
     return xhr
+  },
+
+  /**
+   * M11 검색 — MOCK_FILES 전체에서 normalizeForSearch 매칭.
+   *
+   * 호출자(useSearch)는 이미 normalizeForSearch + 최소 2자 게이트를 통과한 query를 넘김.
+   * 빈 query는 호출 자체가 안 됨(useQuery enabled=false). 방어적으로 빈 결과 반환.
+   *
+   * signal: TanStack Query AbortSignal. setTimeout 도중 abort 가능 → DOMException 던짐.
+   * useQuery는 AbortError를 cancellation으로 인식해 결과 폐기.
+   */
+  async searchFiles(
+    params: { q: string; filters: Record<string, unknown> },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ items: FileItem[] }> {
+    const { signal } = options
+    const q = params.q
+    if (!q) return { items: [] }
+
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, 200)
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(t)
+          reject(new DOMException('Aborted', 'AbortError'))
+          return
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t)
+            reject(new DOMException('Aborted', 'AbortError'))
+          },
+          { once: true },
+        )
+      }
+    })
+
+    // M9: 휴지통 항목은 검색 결과에서 제외
+    const items = MOCK_FILES.filter(
+      (f) => !f.deletedAt && normalizeForSearch(f.name).includes(q),
+    )
+    return { items }
+  },
+
+  /**
+   * M8 — 사용자의 노드별 effective 권한 (docs/01 §14.2 + docs/03 §3.1).
+   *
+   * 백엔드 미존재. mock은 admin preset 8 권한(PURGE 제외, docs/03 §3.2 line 331).
+   * `nodeId` 미지정 시 전역 effective 권한 (RightPanel 컨텍스트 외) 반환.
+   *
+   * 백엔드 endpoint 신설 시 본 mock만 fetch로 교체 — hook/UI 무수정.
+   */
+  async getEffectivePermissions(nodeId?: string): Promise<Permission[]> {
+    void nodeId
+    await new Promise((r) => setTimeout(r, 80))
+    // admin preset (PURGE 제외) — docs/03 §3.2 노드 admin 행
+    return ['READ', 'UPLOAD', 'EDIT', 'MOVE', 'DOWNLOAD', 'DELETE', 'SHARE', 'PERMISSION_ADMIN']
+  },
+
+  /**
+   * M15 — 저장 용량 (docs/01 §18 row 15 — StorageBar).
+   *
+   * 백엔드 미존재. mock은 75% 사용 placeholder. 실제 quota API 신설 시 본 mock만 fetch로 교체.
+   */
+  async getStorageQuota(): Promise<{ usedBytes: number; totalBytes: number }> {
+    await new Promise((r) => setTimeout(r, 80))
+    const totalBytes = 50 * 1024 * 1024 * 1024 // 50 GB
+    const usedBytes = Math.round(totalBytes * 0.75) // 75% placeholder
+    return { usedBytes, totalBytes }
   },
 
   async getAuditLogs(

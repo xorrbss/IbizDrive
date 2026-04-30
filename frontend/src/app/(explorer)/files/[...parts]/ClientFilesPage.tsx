@@ -13,6 +13,7 @@ import { UploadQueueDock } from '@/components/upload/UploadQueueDock'
 import { UploadConflictDialog } from '@/components/upload/UploadConflictDialog'
 import { MoveFolderDialog } from '@/components/files/MoveFolderDialog'
 import { RenameDialog } from '@/components/files/RenameDialog'
+import { ShareDialog } from '@/components/files/ShareDialog'
 import { useUploadBeforeUnload } from '@/hooks/useUploadBeforeUnload'
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
 
@@ -60,6 +61,7 @@ export function ClientFilesPage({ parts }: { parts: string[] }) {
       <UploadConflictDialog />
       <MoveFolderDialog />
       <RenameDialog />
+      <ShareDialog />
     </div>
   )
 }

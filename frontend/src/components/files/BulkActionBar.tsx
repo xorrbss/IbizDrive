@@ -3,9 +3,11 @@ import { toast } from 'sonner'
 import { useSelectionStore } from '@/stores/selection'
 import { usePermission } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
+import { useRestoreBulk } from '@/hooks/useRestoreBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useRenameUiStore } from '@/stores/renameUi'
+import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
 
@@ -19,13 +21,27 @@ export function BulkActionBar() {
   const ids = Array.from(selectedIds)
   const can = usePermission()
   const { folderId } = useCurrentFolder()
+  const restoreMut = useRestoreBulk()
+  // M9: 삭제 직후 5초 Undo 토스트. 복원 시 originalParentId는 현재 폴더 (deleteBulk가 set).
   const deleteMut = useDeleteBulk({
-    onSuccess: (vars) =>
-      toast.success(`${vars.ids.length}개 항목을 휴지통으로 이동했습니다`),
+    onSuccess: (vars) => {
+      toast.success(`${vars.ids.length}개 항목을 휴지통으로 이동했습니다`, {
+        duration: 5000,
+        action: {
+          label: '되돌리기',
+          onClick: () =>
+            restoreMut.mutate({
+              ids: vars.ids,
+              originalParentIds: [vars.folderIdAtStart],
+            }),
+        },
+      })
+    },
     onError: () => toast.error('삭제에 실패했습니다. 다시 시도해 주세요.'),
   })
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
   const openRename = useRenameUiStore((s) => s.open)
+  const openShare = useShareUiStore((s) => s.open)
   const { sort, dir } = useSortParams()
   // 단일 선택 시 RenameDialog에 넘길 이름을 현재 폴더 캐시에서 찾는다.
   // 다중/없음일 때는 비활성이라 조회 결과가 비어 있어도 무방.
@@ -37,6 +53,8 @@ export function BulkActionBar() {
   // 양쪽을 모두 지원하므로 BulkActionBar에서 추가로 막을 이유가 없다.
   // 캐시 미스(items 미로딩)는 disabled로 안전하게 폴백.
   const renameEnabled = count === 1 && !!singleItem
+  // M8: 공유는 단일 파일만 (폴더 공유는 v1.x). 캐시 미스 시 disabled 폴백.
+  const shareEnabled = count === 1 && !!singleItem && singleItem.type === 'file'
 
   if (count === 0) return null
 
@@ -58,6 +76,11 @@ export function BulkActionBar() {
     deleteMut.mutate({ ids, folderIdAtStart: folderId })
   }
 
+  const handleShare = () => {
+    if (!shareEnabled || !singleItem) return
+    openShare(singleItem.id, singleItem.name)
+  }
+
   return (
     <div
       role="toolbar"
@@ -69,7 +92,7 @@ export function BulkActionBar() {
         <span className="text-[12.5px] font-semibold text-accent">{count}개 선택</span>
       </div>
       <div className="flex items-center gap-1">
-        {can.download && (
+        {can.DOWNLOAD && (
           <button
             type="button"
             onClick={handleDownload}
@@ -78,7 +101,7 @@ export function BulkActionBar() {
             다운로드
           </button>
         )}
-        {can.move && (
+        {can.MOVE && (
           <button
             type="button"
             onClick={handleMove}
@@ -87,7 +110,7 @@ export function BulkActionBar() {
             이동
           </button>
         )}
-        {can.edit && (
+        {can.EDIT && (
           <button
             type="button"
             onClick={handleRename}
@@ -99,7 +122,19 @@ export function BulkActionBar() {
             이름 변경
           </button>
         )}
-        {can.delete && (
+        {can.SHARE && (
+          <button
+            type="button"
+            onClick={handleShare}
+            disabled={!shareEnabled}
+            title={shareEnabled ? undefined : '단일 파일 선택 시 사용 가능'}
+            aria-disabled={!shareEnabled || undefined}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+          >
+            공유
+          </button>
+        )}
+        {can.DELETE && (
           <button
             type="button"
             onClick={handleDelete}

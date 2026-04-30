@@ -19,6 +19,11 @@ export const qk = {
   folderTree: () => [...qk.folders(), 'tree'] as const,
   folder: (id: string) => [...qk.folders(), 'detail', id] as const,
   effectivePermissions: () => [...qk.all, 'permissions', 'effective'] as const,
+  /** 노드(폴더/파일)별 effective 권한 (M8 docs/01 §14.2). nodeId 없으면 effectivePermissions(전역). */
+  permissions: (nodeId?: string) =>
+    nodeId
+      ? ([...qk.all, 'permissions', 'node', nodeId] as const)
+      : qk.effectivePermissions(),
 
   files: () => [...qk.all, 'files'] as const,
   /** sort/dir까지 포함된 정확한 단일 키. 직접 캐시 read/write 시에만 사용. */
@@ -30,6 +35,23 @@ export const qk = {
    */
   filesListPrefix: (folderId: string) => [...qk.files(), 'list', folderId] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
+
+  // ── 휴지통 (M9) ──
+  trash: () => [...qk.all, 'trash'] as const,
+  trashList: () => [...qk.trash(), 'list'] as const,
+
+  // ── 검색 (M11) ──
+  search: () => [...qk.all, 'search'] as const,
+  /**
+   * 검색 결과 키 — normalized query + filters 객체.
+   * normalized는 normalizeForSearch() 출력값 (NFC + lowercase + collapse).
+   * filters는 빈 객체로 시작 (MVP), 추가 시그니처 호환 유지.
+   */
+  searchResults: (normalized: string, filters: Record<string, unknown>) =>
+    [...qk.search(), 'results', normalized, filters] as const,
+
+  // ── 저장 용량 (M15, mock) ──
+  storageQuota: () => [...qk.all, 'storage', 'quota'] as const,
 
   // ── 감사 로그 (M12, mock) ──
   audit: () => [...qk.all, 'audit'] as const,
@@ -87,13 +109,52 @@ export const invalidations = {
 
   /**
    * 휴지통 이동(soft delete) 후 무효화.
-   * - 해당 폴더의 파일 목록만. 트리는 폴더 자체가 삭제된 게 아니므로 건드리지 않음.
-   *   (휴지통 라우트의 trashList 무효화는 휴지통 마일스톤에서 별도 헬퍼로 추가)
+   * - 해당 폴더의 파일 목록 (제외됨 → 새로고침)
+   * - 휴지통 라우트 (새 항목 표시)
+   * - 검색 결과 (휴지통 항목 제외 — `qk.search` prefix 전체)
    */
   afterDelete(
     qc: QueryClient,
     opts: { folderId: string },
   ): Promise<void> {
-    return qc.invalidateQueries({ queryKey: qk.filesListPrefix(opts.folderId) })
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: qk.filesListPrefix(opts.folderId) }),
+      qc.invalidateQueries({ queryKey: qk.trash() }),
+      qc.invalidateQueries({ queryKey: qk.search() }),
+    ]).then(() => undefined)
+  },
+
+  /**
+   * 휴지통 복원 후 무효화 (M9).
+   * - 복원 대상의 originalParent 폴더 목록 (있다면)
+   * - 휴지통 라우트 (해당 항목 사라짐)
+   * - 검색 결과 (다시 노출 가능)
+   * 호출자는 originalParent가 다양할 수 있으니 prefix 전체(`qk.files()`) 보수 무효화도 옵션으로 허용.
+   */
+  afterRestore(
+    qc: QueryClient,
+    opts: { folderIds?: string[] } = {},
+  ): Promise<void> {
+    const tasks: Promise<void>[] = [
+      qc.invalidateQueries({ queryKey: qk.trash() }),
+      qc.invalidateQueries({ queryKey: qk.search() }),
+    ]
+    if (opts.folderIds && opts.folderIds.length > 0) {
+      for (const fid of opts.folderIds) {
+        tasks.push(qc.invalidateQueries({ queryKey: qk.filesListPrefix(fid) }))
+      }
+    } else {
+      // 원본 폴더 모름 → 모든 files 목록 prefix 보수 무효화
+      tasks.push(qc.invalidateQueries({ queryKey: qk.files() }))
+    }
+    return Promise.all(tasks).then(() => undefined)
+  },
+
+  /**
+   * 영구 삭제(purge) 후 무효화 (M9).
+   * - 휴지통 라우트만. 다른 keyspace는 이미 deletedAt!=null로 제외 중.
+   */
+  afterPurge(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.trash() })
   },
 } as const

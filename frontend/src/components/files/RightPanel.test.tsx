@@ -99,6 +99,45 @@ describe('RightPanel', () => {
     expect(replaceMock).toHaveBeenCalledWith('/files/root', { scroll: false })
   })
 
+  it('M15.4 — 4 탭 렌더 (세부정보/버전/활동/권한)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    const tablist = screen.getByRole('tablist', { name: '상세 탭' })
+    expect(tablist).toBeTruthy()
+    expect(screen.getByRole('tab', { name: '세부정보' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByRole('tab', { name: '버전' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByRole('tab', { name: '활동' }).getAttribute('aria-selected')).toBe('false')
+    expect(screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected')).toBe('false')
+  })
+
+  it('M15.4 — 탭 클릭 시 active 변경 + placeholder 표시', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '버전' }))
+    expect(screen.getByRole('tab', { name: '버전' }).getAttribute('aria-selected')).toBe('true')
+    expect(screen.getByText(/버전 히스토리.*준비 중/)).toBeTruthy()
+  })
+
   it('에러 시 에러 메시지 표시', async () => {
     mockQuery = 'file=missing'
     getFileDetailMock.mockRejectedValue({ status: 404 })

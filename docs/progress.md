@@ -159,6 +159,201 @@ A7.0 (docs/00 ADR #31 + docs/02 line 37 + §7.11.1 + docs/04 §13 patch) → A7.
 
 ---
 
+## 2026-04-29 — 🏁 M16 Grid View (FileCard + FileTable view 분기)
+
+### 범위
+docs/01 §18 row 16 — `FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글`. M15.2의 `?view=grid`를 FileTable이 소비.
+
+### 변경
+- **lib/fileIcon.ts (M16.1 사전)**: M14에서 FileRow에 인라인이던 `fileIconFor(item)` 추출. FileRow는 import으로 교체. KISS — FileCard와의 중복 방지.
+- **FileCard (M16.1)**: 신규. `Lucide 아이콘(36px) + 이름(line-clamp-2) + 메타(폴더|크기)`. selection ring(`ring-2 ring-accent` + `bg-accent-soft`), `onClick`/`onDoubleClick`, `aria-selected`/`aria-disabled`(pending). 가상화/DnD 없음 (KISS, MVP).
+- **FileTable (M16.2)**: `useViewParam` 통합. `view==='grid'`일 때 새 분기 — `role=grid` `aria-label="파일 그리드"` 컨테이너 + `grid-cols-[repeat(auto-fill,minmax(140px,1fr))]` + `items.map(FileCard)`. 키보드 핸들러는 list와 동일 (`handleKeyDown` 재사용 — 1D index ArrowUp/Down 동작). list 분기 무수정.
+
+### 검증
+- `npx vitest run`: **55 files / 415 tests passed** (M16 신규 7 — FileCard 5 + FileTable view 분기 2, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint`: clean.
+
+### 핵심 결정
+- **`fileIconFor` lib 추출**: M14에선 FileRow 내 헬퍼였음. M16에서 FileCard와 공유 필요 → DRY. `lib/fileIcon.ts`로 분리, FileRow 재import.
+- **FileCard는 별도 컴포넌트 (FileRow 재사용 X)**: gridCols 5-col table layout이 정사각 카드와 호환 안됨. FileRow 분기 추가는 가독성 ↓ → KISS, 분리.
+- **Grid 모드 가상화 없음 (MVP)**: 폴더 당 100+ 항목 시 성능 이슈 가능 → v1.x 트랙. 현재 mock 데이터/실사용 패턴은 50 미만이므로 충분.
+- **Grid 모드 키보드는 1D**: 좌/우 wrap navigation은 v1.x. M16 시점엔 list와 동일하게 ArrowUp/Down만 동작 (인덱스 ±1).
+- **Grid 모드 DnD 없음**: list 모드에서만 이동 가능 — Grid는 마우스 클릭 + 더블클릭만. M15.2 ViewSwitch는 단순 토글이므로 DnD 필요시 list로 전환 권장.
+
+### 비범위 (후속)
+- Grid 모드 가상화 (TanStack Virtual grid) — v1.x
+- Grid 모드 2D 키보드 wrap (좌우 + 상하) — v1.x
+- Grid 모드 DnD — v1.x
+- 썸네일 미리보기 (실제 이미지) — backend thumbnail API 후
+- Grid `aria-rowcount`/`aria-rowindex` — 1D 인덱스라 부적합. v1.x grid 2D 네비 도입 시 재검토
+
+### 다음 세션 컨텍스트
+- 시퀀스 M11→M9→M8→M14→M15→M16 **전부 완료**. PR #16 6-마일스톤 번들.
+- 다음 사용자 지시 대기. (자율 실행 모드 시퀀스 끝)
+
+---
+
+## 2026-04-29 — 🏁 M15 Layout Extras (SortChip + ViewSwitch + StorageBar + RightPanel 탭)
+
+### 범위
+docs/01 §18 row 15 — `SortChip + ViewSwitch + StorageBar + RightPanel 탭`. 모두 docs/01 §1.1 진실 출처 규칙 (URL 우선) 준수.
+
+### 변경
+- **useSortParams (M15.1)**: 기존 read-only → `setSort(key, dir?)` 추가. 같은 key 재선택 시 asc/desc 토글, 다른 key 선택 시 asc reset. `router.replace` + `URLSearchParams` 보존.
+- **SortChip (M15.1)**: 신규. FolderToolbar 우측 정렬 드롭다운. `name/updatedAt/size`, `aria-haspopup="menu"` + `menuitemradio`. outside click 시 닫힘. label "정렬: {sort} {dir}".
+- **useViewParam + ViewSwitch (M15.2)**: 신규. URL `?view=list|grid` (default list 시 param 제거). `aria-pressed` + `aria-label`. Grid 본체는 M16.
+- **api.getStorageQuota + useStorageQuota + StorageBar (M15.3)**: mock — 50 GB total / 75% used 고정 placeholder. Sidebar 하단 (TrashLink 아래) 마운트. `role=progressbar` + `aria-valuenow`. 80%+ warn / 95%+ danger 색.
+- **RightPanel 4-tab (M15.4)**: 헤더 아래 `role=tablist` 추가. detail/versions/activity/permissions. detail은 기존 `dl` 그대로(회귀 보호). 나머지는 `<ComingSoon>` placeholder. fileId 변경 시 detail 탭으로 자동 리셋.
+- **qk.storageQuota 추가**, **api.ts getStorageQuota 추가**, **(explorer)/layout.tsx StorageBar 마운트**.
+- **회귀 정합**: BulkActionBar.test.tsx 3곳 / StatusBar.test.tsx 1곳 — `useSortParams` mock에 `setSort: vi.fn()` 보강 (typecheck 호환).
+
+### 검증
+- `npx vitest run`: **53 files / 408 tests passed** (M15 신규 11 — SortChip 3 + ViewSwitch 3 + StorageBar 3 + RightPanel 탭 2, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint`: clean (변경 파일 17개 0 issue).
+
+### 핵심 결정
+- **URL 진실 출처**: SortChip/ViewSwitch 모두 `router.replace` + searchParams. Zustand 복제 X (docs/01 §1.1).
+- **정렬 토글 규칙**: 같은 key 재선택 → dir 토글, 다른 key → asc reset. KISS, 명시적 dir override 가능.
+- **ViewSwitch state는 URL 단독**: 새로고침/공유 시 view 보존. M15 시점엔 FileTable이 무관심하게 통과 → M16에서 소비.
+- **StorageBar는 mock placeholder**: 75% 고정. 실제 quota API 신설 시 `api.getStorageQuota`만 fetch로 교체 (UI/hook 무수정). invalidate(업로드/삭제) 미구현 — staleTime 5분으로 우회.
+- **RightPanel 탭은 단일 컴포넌트 useState**: KISS — 별도 파일 분리 X. URL 동기화 X (패널 자체가 `?file`에 종속이고 탭 상태 deep-link 요구는 v1.x).
+- **세부정보 외 탭은 명확한 "준비 중" placeholder**: 가짜 컨텐츠 X — 백엔드 API(versions: A5 진행중 / audit: 기존 / permissions: 임시 mock) 통합은 별도 트랙.
+
+### 비범위 (후속)
+- Grid View 본체 (FileRow 카드 모드, FileTable 분기) — **M16**
+- 버전/활동/권한 탭 실내용 — 백엔드 API 별도 트랙
+- StorageBar 실수치 + 업로드/삭제 후 invalidate — 백엔드 quota API 후
+- SortChip/ViewSwitch 키보드 단축키 — KISS
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M16 Grid View** (FileTable grid 모드 + ViewSwitch 토글 통합).
+
+---
+
+## 2026-04-29 — 🏁 M14 Visual Identity (Lucide + Avatar + StatusBar)
+
+### 범위
+docs/01 §4 트리 + 시각적 통일. SearchBar 아이콘 / TopBar Avatar / FileRow 이모지 → Lucide / 하단 StatusBar.
+
+### 변경
+- **SearchBar (M14.1)**: input prefix `Search` Lucide 아이콘 (16px, fg-muted). `pl-8` padding 조정.
+- **Avatar (M14.2)**: 신규 컴포넌트 — `initial`/`displayName` props (default `"U"`/`"사용자"`). 28px circle, accent bg, `aria-label=displayName`. TopBar 우측 액션 영역에 마운트.
+- **FileRow (M14.3)**: 이모지(`📁/📄/...`) → Lucide (`Folder`(accent) / `File` / `FileText` / `FileImage` / `FileSpreadsheet`(fg-muted)). mime 기반 분기 함수 `fileIconFor`. size 16, currentColor.
+- **StatusBar (M14.4)**: 신규 — `<footer role="contentinfo">` 좌측 항목 수(`useFilesInFolder`) + 우측 선택 카운트(`useSelectionStore`, 0일 때 숨김, `aria-live=polite`). h-7 / border-t / surface-1 bg.
+- **(explorer)/layout.tsx**: `<StatusBar />` main 하단 마운트.
+
+### 검증
+- `npx vitest run`: 50 files / 397 tests passed (M14 신규 6 — Avatar 2 + StatusBar 4, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint`: clean (변경 파일 8개 0 issue).
+
+### 핵심 결정
+- **Lucide 단일 아이콘 라이브러리**: 이모지/SVG 혼재 제거. 색상은 `currentColor` + `text-*` 유틸로 일관 제어. 폴더만 `text-accent` 강조.
+- **Avatar는 stub만**: 실제 user/session API 미정 → props 기반 placeholder. M16+ 또는 백엔드 auth 후 교체.
+- **StatusBar 최소 정보**: 항목 수 + 선택 카운트만. 저장 용량/SSE 동기화/정렬 표시는 M15+에서 확장.
+- **선택 카운트 aria-live**: 선택 변동을 스크린리더에 안내. 0일 땐 DOM 자체에서 숨겨 카운트 음성 잡음 방지.
+
+### 비범위 (후속)
+- StorageBar / SortChip / ViewSwitch — M15
+- Avatar 실제 사용자 데이터 연결 — auth 백엔드 후
+- StatusBar 동기화 상태(SSE) — M15+
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M15 Layout Extras** (SortChip + ViewSwitch + StorageBar + RightPanel 탭).
+
+---
+
+## 2026-04-29 — 🏁 M8 권한 UI + ShareDialog
+
+### 범위
+docs/01 §14 권한 훅 + 조건부 렌더링 + 단일 파일 공유. M8.0 bootstrap → M8.1 api/qk → M8.2 usePermission useQuery + BulkActionBar 마이그레이션 → M8.3 ShareDialog.
+
+### 변경
+- **api/qk (M8.1)**: `qk.permissions(nodeId)` (nodeId 없으면 `qk.effectivePermissions()`와 동일). `api.getEffectivePermissions(nodeId?)` mock — admin preset 8 권한(`READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN`, `PURGE` 제외 — docs/03 §3.2).
+- **usePermission (M8.2)**: 기존 stub(lowercase 모두 true) → `useQuery` 기반, `Record<Permission, boolean>` 반환 (UPPER_SNAKE_CASE — `types/permission.ts` 미러). 로딩 중 모든 플래그 false (보수 디폴트, 깜빡임 방지). staleTime 60s.
+- **BulkActionBar (M8.2/M8.3)**: 4개 필드 `download/move/edit/delete` → `DOWNLOAD/MOVE/EDIT/DELETE` 마이그레이션. 신규 SHARE 버튼 (단일 **파일** 선택 시만 활성, 폴더 공유는 v1.x).
+- **stores/shareUi (M8.3)**: `useShareUiStore` (open/close + fileId + fileName).
+- **ShareDialog (M8.3)**: focus trap (close 버튼) + Esc + 닫기. 링크 placeholder `https://ibiz.example/share/{fileId}` + `navigator.clipboard.writeText` + sonner 토스트. 만료/권한 옵션은 v1.x.
+- **ClientFilesPage**: ShareDialog 마운트.
+
+### 검증
+- `npx vitest run`: 48 files / 391 tests passed (M8 신규 20 — api.permissions 4 + usePermission 4 + shareUi 3 + ShareDialog 6 + BulkActionBar 공유 3, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint .`: clean.
+
+### 핵심 결정
+- **권한 enum 단일 진실**: `types/permission.ts` (UPPER_SNAKE_CASE 백엔드 미러)가 계약. usePermission이 그 enum 그대로 키로 노출. 기존 lowercase API는 정리.
+- **로딩 중 모든 false**: docs/01 §14.3 보수적 패턴. 깜빡임은 staleTime 60s + admin preset mock 80ms로 거의 없음.
+- **vi.mock 권장 패턴**: 기존 컴포넌트 테스트는 `vi.mock('@/hooks/usePermission')`로 admin preset 고정 → 권한 검증과 무관한 본 테스트 의도 보존. usePermission 자체는 별도 dedicated test.
+- **단일 파일만 공유**: 폴더/다중 공유는 v1.x — 백엔드 endpoint 미정.
+- **clipboard 폴백**: `navigator.clipboard?.writeText` optional chaining + try/catch — jsdom safe.
+
+### 비범위 (후속)
+- 403 글로벌 핸들러 (toast + qk.permissions invalidate) — api fetch wrapper 정리 후 별도 PR
+- ShareDialog 만료/권한 옵션 — 백엔드 `POST /api/files/:id/share` endpoint 신설 후
+- 폴더 공유 / 다중 파일 공유 — v1.x
+- FileRow 우클릭/단축키 공유 진입점 — KISS
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M14 Visual Identity** (TopBar 정비 + Lucide 아이콘 + StatusBar + FileRow 밀도).
+
+---
+
+## 2026-04-29 — 🏁 M9 휴지통 + 5초 Undo + /trash 페이지
+
+### 범위
+soft-delete 기반 휴지통 (frontend-only mock). M9.0 bootstrap → M9.1 mock api soft-delete → M9.2 hooks → M9.3 BulkActionBar Undo → M9.4 /trash + Sidebar TrashLink.
+
+### 변경
+- **types/api (M9.1)**: `FileItem.deletedAt? + originalParentId?` 추가. `api.deleteBulk` hard splice → soft delete (`deletedAt = now`, `originalParentId = parentId` 스냅샷). `api.listTrash` (deletedAt 내림차순) / `restoreBulk` (clear deletedAt + parentId restore from originalParentId, root fallback if parent missing) / `purgeBulk` (hard splice) 신설. `getFilesInFolder`/`searchFiles`에 `!f.deletedAt` 필터 추가.
+- **queryKeys (M9.1)**: `qk.trash() / qk.trashList()` 추가. `invalidations.afterDelete` → `[filesListPrefix(folder), trash(), search()]` 확장. `afterRestore(opts.folderIds[])` / `afterPurge` 신설.
+- **hooks (M9.2)**: `useTrashList` (staleTime: 0) + `useRestoreBulk({ids, originalParentIds?})` + `usePurgeBulk({ids})` — 옵션 onSuccess/onError forward, invalidations 자동 호출.
+- **UI (M9.3)**: `BulkActionBar` Delete onSuccess 시 `toast.success(..., {duration: 5000, action: {label: '되돌리기', onClick: restoreMut.mutate({ids, originalParentIds:[folderIdAtStart]})}})`. onError 시 `toast.error`.
+- **UI (M9.4)**: `/app/(explorer)/trash/page.tsx` (section header + TrashTable) + `TrashTable` (role=grid, 컬럼: 이름/삭제 시각/원위치/액션, 로딩/에러/빈 분기, 복원 + 영구삭제 confirm) + `TrashLink` (Sidebar 하단, usePathname 기반 active aria-current). `(explorer)/layout.tsx`에 `<TrashLink />` 추가 (mt-auto pt-2 border-t).
+
+### 검증
+- `npm run test`: 44 files / 371 tests passed (M9 신규 27 — api.trash 7 + qk/invalidations 4 + hooks 4 + BulkActionBar Undo 3 + TrashTable 6 + TrashLink 3).
+- `npm run typecheck`: clean.
+- `npm run lint`: clean.
+
+### 핵심 결정
+- **소프트 삭제 = mock 한정** — backend A6 cascade 정책(folder 단위)과 frontend mock(file 단위)은 별개 트랙. 백엔드 file delete endpoint 신설 시 api.deleteBulk fetch만 교체, hook/UI 무수정.
+- **Undo는 BulkActionBar 경유 시만** — FileTable Delete 단축키 Undo는 KISS로 분리 (별도 PR).
+- **restoreBulk parent fallback** — `originalParentId` 가리키는 폴더가 (사용자 액션으로) 사라진 경우 root로 복원. backend는 `FolderNotFoundException`(A6)으로 강제하지만 frontend mock은 UX 우선.
+- **vi.hoisted로 옵션 캡처** — `useDeleteBulk(opts)` 내부에서 `optionsCapture.current = opts`로 저장 → 테스트가 onSuccess 콜백 직접 트리거 가능 (mutate spy + onSuccess 분리 검증).
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M8 share dialog + 권한 확장** (docs/01 §14, backend A3 권한 매트릭스 활용).
+
+---
+
+## 2026-04-29 — 🏁 M11 검색 (debounce + normalize + AbortController)
+
+### 범위
+TopBar 글로벌 검색 (frontend-only). M11.0 bootstrap → M11.1 lib infra → M11.2 useSearch → M11.3 SearchBar/SearchResults UI.
+
+### 변경
+- **lib infra (M11.1)**: `qk.search()` / `qk.searchResults(normalized, filters)` 추가; `api.searchFiles({q, filters}, {signal})` mock (200ms latency + `normalizeForSearch` + AbortSignal); `useDebounce<T>(value, delayMs)` 신설.
+- **useSearch (M11.2)**: 300ms debounce → `normalizeForSearch` → `useQuery` (`enabled: normalized.length>=2`, `placeholderData: keepPreviousData`, `staleTime: 30s`, signal forward).
+- **UI (M11.3)**: `SearchBar` (searchbox role, `/` 단축키 focus via `FOCUS_SEARCH_EVENT`, Esc → clear+close, blur 120ms 지연); `SearchResults` (1자/에러/로딩/빈/파일·폴더 분기 — 파일 → `useOpenFile().open(id)`, 폴더 → `router.push(buildCanonicalPath)`); `TopBar` 좌측 슬롯 통합 (justify-end → justify-between).
+
+### 검증
+- `npm run test`: 40 files / 344 tests passed (신규 28 — useDebounce 4 + api.search 6 + qk.search 2 + useSearch 5 + SearchBar 4 + SearchResults 7).
+- `npm run typecheck`: clean.
+- `npm run lint`: clean (eslint exit 0).
+
+### 핵심 결정
+- mock api는 setTimeout 200ms + AbortSignal 처리 → fake-timer 환경에서는 `vi.spyOn(api, 'searchFiles').mockResolvedValue(...)`로 즉시 resolve, 별도 integration 1건만 real timers로 실제 mock 동작 검증.
+- `useGlobalShortcuts`는 이미 `/` 키 → `FOCUS_SEARCH_EVENT` 디스패치 + input focus 가드 보유 → 추가 작업 없음.
+- 백엔드 `/api/search` 도입 시 api 내부 fetch 교체만으로 호환 (계약 동일).
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: M9 휴지통 페이지 + Undo (api.listTrash mock 이미 존재 가능성 확인 필요).
+
+---
+
 ## 2026-04-30 — 🏁 A6 마일스톤 종료 (Folder Delete/Restore + Descendant Cascade)
 
 ### 범위
