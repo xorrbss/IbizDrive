@@ -31,6 +31,16 @@ export const qk = {
   filesListPrefix: (folderId: string) => [...qk.files(), 'list', folderId] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
 
+  // ── 검색 (M11) ──
+  search: () => [...qk.all, 'search'] as const,
+  /**
+   * 검색 결과 키 — normalized query + filters 객체.
+   * normalized는 normalizeForSearch() 출력값 (NFC + lowercase + collapse).
+   * filters는 빈 객체로 시작 (MVP), 추가 시그니처 호환 유지.
+   */
+  searchResults: (normalized: string, filters: Record<string, unknown>) =>
+    [...qk.search(), 'results', normalized, filters] as const,
+
   // ── 감사 로그 (M12, mock) ──
   audit: () => [...qk.all, 'audit'] as const,
   /** 페이지/필터까지 포함된 정확한 단일 키. 필터 변경 시 자동 재요청. */

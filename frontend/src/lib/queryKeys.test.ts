@@ -2,6 +2,24 @@ import { describe, it, expect, vi } from 'vitest'
 import { QueryClient } from '@tanstack/react-query'
 import { qk, invalidations } from './queryKeys'
 
+describe('qk.searchResults', () => {
+  it('normalized + filters를 키에 포함', () => {
+    expect(qk.searchResults('계약', {})).toEqual([
+      'explorer',
+      'search',
+      'results',
+      '계약',
+      {},
+    ])
+  })
+
+  it('search()는 prefix로 일치', () => {
+    const full = qk.searchResults('a', { mime: 'pdf' })
+    const prefix = qk.search()
+    expect(full.slice(0, prefix.length)).toEqual([...prefix])
+  })
+})
+
 describe('qk.filesListPrefix', () => {
   it('sort/dir 없이 prefix 키 반환', () => {
     expect(qk.filesListPrefix('root')).toEqual(['explorer', 'files', 'list', 'root'])

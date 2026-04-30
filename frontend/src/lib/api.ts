@@ -3,7 +3,7 @@ import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
-import { normalizedNameForDedup } from './normalize'
+import { normalizedNameForDedup, normalizeForSearch } from './normalize'
 
 // MOCK DATA — 실제 API 붙이면 제거
 const MOCK_TREE: FolderNode = {
@@ -342,6 +342,46 @@ export const api = {
     xhr.open('POST', url)
     xhr.send(form)
     return xhr
+  },
+
+  /**
+   * M11 검색 — MOCK_FILES 전체에서 normalizeForSearch 매칭.
+   *
+   * 호출자(useSearch)는 이미 normalizeForSearch + 최소 2자 게이트를 통과한 query를 넘김.
+   * 빈 query는 호출 자체가 안 됨(useQuery enabled=false). 방어적으로 빈 결과 반환.
+   *
+   * signal: TanStack Query AbortSignal. setTimeout 도중 abort 가능 → DOMException 던짐.
+   * useQuery는 AbortError를 cancellation으로 인식해 결과 폐기.
+   */
+  async searchFiles(
+    params: { q: string; filters: Record<string, unknown> },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ items: FileItem[] }> {
+    const { signal } = options
+    const q = params.q
+    if (!q) return { items: [] }
+
+    await new Promise<void>((resolve, reject) => {
+      const t = setTimeout(resolve, 200)
+      if (signal) {
+        if (signal.aborted) {
+          clearTimeout(t)
+          reject(new DOMException('Aborted', 'AbortError'))
+          return
+        }
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(t)
+            reject(new DOMException('Aborted', 'AbortError'))
+          },
+          { once: true },
+        )
+      }
+    })
+
+    const items = MOCK_FILES.filter((f) => normalizeForSearch(f.name).includes(q))
+    return { items }
   },
 
   async getAuditLogs(
