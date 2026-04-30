@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: ✅ A8.1 완료 — A8.2 진입 대기
+Status: ✅ A8.2 완료 — A8.3 closure 대기
 ---
 
 # A8 — Trash Listing + Manual Purge — Context
@@ -27,6 +27,17 @@ Status: ✅ A8.1 완료 — A8.2 진입 대기
 - 패키지-protected 생성자 우회용 fixture: `com.ibizdrive.file.FileTestFixtures` + `com.ibizdrive.folder.FolderTestFixtures` 2개 — 같은 패키지에 두어 entity no-arg 생성자 호출. 프로덕션 코드 visibility 변경 회피.
 - full `./gradlew test` GREEN — A1~A7 회귀 0.
 
+### 2026-04-30 (A8.2 완료)
+- `TrashPurgeService` 신설 — `purgeFile` / `purgeFolder` 양쪽 메서드 단위 `@Transactional`. SSE TODO 주석 hook으로 인프라 milestone 활성화 지점 표시.
+- `purgeFile`: `lockByIdAndDeletedAtIsNotNull` → file_versions storage_keys 수집(cap 1000 truncate flag) → versions delete → file hardDelete → audit `FILE_PURGED` (before_state에 name/folderId/originalFolderId/deletedAt/storageKeys 포함).
+- `purgeFolder`: root lock → BFS `findIdsByParentIdAndDeletedAtIsNotNull`로 후손 folder 수집 → 모든 folder별 `findIdsByFolderIdAndDeletedAtIsNotNull`로 file 수집 → versions cascade → files hardDelete → leaf-first 위상정렬(A7 `HardPurgeService.leafFirstOrder`와 동형 inline) → folders hardDelete → 단일 root `FOLDER_PURGED` audit (descendantFolders/Files + storageKeys).
+- A6 root-only audit 패턴 일관 — cascade 1회 = audit 1건. after_state.descendantFolders/Files로 추적 가능.
+- `AuditEventType.FOLDER_PURGED` enum 추가 — 기존에 `FILE_PURGED`만 있고 `FOLDER_PURGED`는 누락이었음(A7 enum 코멘트도 reserve 표시). enum 38→39개. frontend `types/audit.ts` + `docs/03 §4.1` mirror 동기(CLAUDE.md §4 계약).
+- Repository 보조 query 2건 — `FolderRepository.findIdsByParentIdAndDeletedAtIsNotNull` + `FileRepository.findIdsByFolderIdAndDeletedAtIsNotNull`. JPQL native 아님(소규모, JPA 자체 호환).
+- `TrashController.purge` — `@DeleteMapping("/{type}/{id}")` + `@PreAuthorize("hasRole('ADMIN')")` + `TrashItemType.from(type)` validation → switch dispatch → 204 NO_CONTENT. invalid type → 400 BAD_REQUEST(GlobalExceptionHandler).
+- pure Mockito 8건 GREEN: `TrashPurgeServiceTest`(5) + `TrashControllerTest` purge 추가(3). trash 테스트 총 20건. full suite **448 tests, 0 failures, 0 errors**.
+- Testcontainers IT는 채택 안 함 — KISS: A6/A7 IT가 이미 FK/cascade 검증. service boundary + audit emit은 Mockito로 충분.
+
 ## Current Execution Contract
 
 - **자율 모드**: 사용자가 "물어보지 말고 자율 수행해" 유지 지시. 게이트 통과 시 자동 다음 phase 진입. PR 생성 직전 게이트만 사용자 승인 대기.
@@ -37,8 +48,8 @@ Status: ✅ A8.1 완료 — A8.2 진입 대기
 
 ## 현재 active task
 
-- **A8.2** — `DELETE /api/trash/:type/:id` manual purge. `TrashPurgeService.purgeFile` / `purgeFolder` 신설 + `TrashController.purge` + per-row `FILE_PURGED`/`FOLDER_PURGED` audit emit. A7 leaf-first topo helper 재사용.
-- 게이트 조건: 8개 테스트 GREEN + 회귀 0 + commit `feat(A8.2): ...`.
+- **A8.3** — closure. PR 생성(squash merge 대기) + 사용자 승인 → CI green → master merge → dev-docs archive(`dev/active/` → `dev/completed/`) + closure commit + MEMORY 갱신.
+- 게이트 조건: PR 생성 후 사용자 OK + CI green + merge → archive commit.
 
 ## 다음 세션 읽기 순서
 

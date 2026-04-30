@@ -38,13 +38,15 @@ class TrashControllerTest {
     private static final UUID ACTOR = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     private TrashQueryService service;
+    private TrashPurgeService purgeService;
     private TrashController controller;
     private IbizDriveUserDetails adminPrincipal;
 
     @BeforeEach
     void setUp() {
         service = mock(TrashQueryService.class);
-        controller = new TrashController(service);
+        purgeService = mock(TrashPurgeService.class);
+        controller = new TrashController(service, purgeService);
 
         User u = new User(
             ACTOR, "admin@example.com", "Admin", "{bcrypt}$2a$12$dummy",
@@ -121,5 +123,34 @@ class TrashControllerTest {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().nextCursor()).isEqualTo("next");
         verify(service).list(ACTOR, Role.ADMIN, cursor, null, 25);
+    }
+
+    // ── DELETE /api/trash/{type}/{id} ──────────────────────────────────
+
+    @Test
+    void purge_typeFile_delegatesToPurgeFile() {
+        UUID fileId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+        ResponseEntity<Void> res = controller.purge("file", fileId, adminPrincipal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        verify(purgeService).purgeFile(fileId, ACTOR);
+    }
+
+    @Test
+    void purge_typeFolder_delegatesToPurgeFolder() {
+        UUID folderId = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+        ResponseEntity<Void> res = controller.purge("folder", folderId, adminPrincipal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        verify(purgeService).purgeFolder(folderId, ACTOR);
+    }
+
+    @Test
+    void purge_invalidType_throwsIllegalArgument() {
+        UUID id = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        assertThatThrownBy(() -> controller.purge("image", id, adminPrincipal))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 }

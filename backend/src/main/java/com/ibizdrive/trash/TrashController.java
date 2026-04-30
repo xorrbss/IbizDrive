@@ -4,10 +4,14 @@ import com.ibizdrive.user.IbizDriveUserDetails;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.UUID;
 
 /**
  * 휴지통 REST endpoint — A8 (docs/02 §7.11, ADR #32).
@@ -29,9 +33,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class TrashController {
 
     private final TrashQueryService trashQueryService;
+    private final TrashPurgeService trashPurgeService;
 
-    public TrashController(TrashQueryService trashQueryService) {
+    public TrashController(TrashQueryService trashQueryService,
+                           TrashPurgeService trashPurgeService) {
         this.trashQueryService = trashQueryService;
+        this.trashPurgeService = trashPurgeService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -69,5 +76,32 @@ public class TrashController {
             return null;
         }
         return TrashItemType.from(wire); // invalid → IllegalArgumentException → 400
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // DELETE /api/trash/{type}/{id}
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 휴지통 단건 manual purge — A8.2 (ADR #32). ADMIN 전용. {@code type}이 invalid이거나
+     * 휴지통에 row가 부재하면 각각 400/404로 매핑(GlobalExceptionHandler).
+     *
+     * <p>folder cascade는 후손까지 hard delete되며 audit는 root 기준 1건만 발행된다 (A6 root-only
+     * 패턴 일관). SSE FILE_PURGED/FOLDER_PURGED는 SSE 인프라 milestone 도입 시 1줄 추가로 활성화.
+     */
+    @DeleteMapping("/{type}/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> purge(
+        @PathVariable("type") String type,
+        @PathVariable("id") UUID id,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        TrashItemType parsed = TrashItemType.from(type); // invalid → 400
+        UUID actorId = principal.getUser().getId();
+        switch (parsed) {
+            case FILE -> trashPurgeService.purgeFile(id, actorId);
+            case FOLDER -> trashPurgeService.purgeFolder(id, actorId);
+        }
+        return ResponseEntity.noContent().build();
     }
 }

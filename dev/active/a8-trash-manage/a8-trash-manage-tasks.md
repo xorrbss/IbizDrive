@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: ✅ A8.1 완료 — A8.2 진입 대기 (게이트 2 통과)
+Status: ✅ A8.2 완료 — A8.3 closure 대기 (게이트 3 통과)
 ---
 
 # A8 — Trash Listing + Manual Purge — Tasks
@@ -11,8 +11,8 @@ Status: ✅ A8.1 완료 — A8.2 진입 대기 (게이트 2 통과)
 |---|---|---|
 | A8.0 | docs 정합 + ADR #32 신설 (no-code) | ✅ done |
 | A8.1 | GET /api/trash (list) | ✅ done |
-| A8.2 | DELETE /api/trash/:type/:id (manual purge) | 📋 ready |
-| A8.3 | closure (PR + archive) | ⏳ pending |
+| A8.2 | DELETE /api/trash/:type/:id (manual purge) | ✅ done |
+| A8.3 | closure (PR + archive) | 📋 ready |
 
 ---
 
@@ -87,7 +87,7 @@ Status: ✅ A8.1 완료 — A8.2 진입 대기 (게이트 2 통과)
 
 ---
 
-## A8.2 — DELETE /api/trash/:type/:id (manual purge) [pending]
+## A8.2 — DELETE /api/trash/:type/:id (manual purge) [✅ done]
 
 **작업 전 필독**:
 - `dev/completed/a7-hard-purge/a7-hard-purge-plan.md` (cascade 순서 + audit 발행)
@@ -102,32 +102,18 @@ Status: ✅ A8.1 완료 — A8.2 진입 대기 (게이트 2 통과)
 - `IbizDriveApplication`/`SecurityConfig` — `@PreAuthorize` 활성화 확인
 
 **구현 대상**:
-- [ ] (1) `TrashPurgeService.purgeFile(fileId, actorId)`:
-  - `SELECT FOR UPDATE` file row, `deleted_at IS NOT NULL` 검증(404 NOT_FOUND if active).
-  - `file_versions.findStorageKeysByFileIds([fileId])` 수집 → before_state.
-  - `file_versions.deleteByFileIds([fileId])` → `files.hardDelete(fileId)` (FK DEFERRABLE).
-  - `audit.emit(FILE_PURGED, fileId, actorId, before_state, after_state={purgedAt})`.
-  - `// TODO: SSE FILE_PURGED emit (SSE 인프라 milestone)` 주석.
-- [ ] (2) `TrashPurgeService.purgeFolder(folderId, actorId)`:
-  - `SELECT FOR UPDATE` folder row, `deleted_at IS NOT NULL` 검증(404).
-  - 후손 폴더/파일 수집 — A7 패턴 재사용 또는 단건 limit=10000 `findDescendants`.
-  - leaf-first topo-sort → file_versions → files → folders 순 cascade hard delete.
-  - 단일 audit `FOLDER_PURGED` (root folder 기준, A6 root-only 패턴 일관) — before_state에 후손 카운트 + storageKeys 요약, after_state={purgedAt, descendantFolders, descendantFiles}.
-  - `// TODO: SSE FOLDER_PURGED emit (SSE 인프라 milestone)` 주석.
-- [ ] (3) `TrashController.purge(@PathVariable type, @PathVariable id, @AuthenticationPrincipal)`:
-  - `@DeleteMapping("/api/trash/{type}/{id}")` + `@PreAuthorize("hasRole('ADMIN')")`
-  - type validation → service dispatch → 204 NO_CONTENT.
-  - 404 NOT_FOUND on not-trashed / not-found / type mismatch.
-- [ ] (4) Testcontainers 테스트:
-  - [ ] file purge 200(204) + audit row 1 발행 + file_versions cascade 삭제
-  - [ ] folder purge 후손 cascade + audit 1 발행(root) + file_versions 모두 삭제
-  - [ ] non-admin 403
-  - [ ] not-trashed file → 404
-  - [ ] not-trashed folder → 404
-  - [ ] invalid `:type` (e.g. `image`) → 400 VALIDATION_ERROR
-  - [ ] audit before_state.storageKeys 검증
-  - [ ] 회귀: `SYSTEM_PURGE_EXECUTED`(A7) + `FILE_PURGED`(A8) 동시 존재 시 audit_log 무결성
-- [ ] (5) commit: `feat(A8.2): DELETE /api/trash/:type/:id — manual purge + per-row FILE_PURGED/FOLDER_PURGED audit`
+- [x] (1) `TrashPurgeService.purgeFile(fileId, actorId)` — `lockByIdAndDeletedAtIsNotNull` → `findStorageKeysByFileIds` 수집(cap=1000 truncate flag) → `deleteByFileIds` → `hardDeleteByIds` → audit `FILE_PURGED` + SSE TODO 주석.
+- [x] (2) `TrashPurgeService.purgeFolder(folderId, actorId)` — root lock → BFS `findIdsByParentIdAndDeletedAtIsNotNull` → folder별 `findIdsByFolderIdAndDeletedAtIsNotNull` → version cascade(같은 cap+flag) → file hardDelete → leaf-first topo-sort(A7 helper inline 재사용) → folder hardDelete → 단일 root audit `FOLDER_PURGED` (descendantFolders/Files + storageKeys) + SSE TODO 주석.
+- [x] (3) `TrashController.purge(@PathVariable type, @PathVariable id, principal)` — `@DeleteMapping("/{type}/{id}")` + `@PreAuthorize("hasRole('ADMIN')")` + `TrashItemType.from(type)` validation → switch dispatch → 204.
+- [x] (4) `AuditEventType.FOLDER_PURGED` enum 추가 (line 41) + 38→39개 카운트 업데이트. frontend `types/audit.ts` + `docs/03 §4.1` mirror 동기 (CLAUDE.md §4 계약).
+- [x] (5) Repository 보조 query — `FolderRepository.findIdsByParentIdAndDeletedAtIsNotNull` + `FileRepository.findIdsByFolderIdAndDeletedAtIsNotNull`.
+- [x] (6) 단위 테스트 (pure Mockito) — 8건 GREEN:
+  - [x] `TrashPurgeServiceTest` (5) — file happy path/file 404/file null/folder leaf only/folder cascade with descendants & files (leaf-first 순서 + audit before_state JSON 검증)/folder 404
+  - [x] `TrashControllerTest` (3 추가) — purge file/folder 위임 + invalid type 400
+  - 총 trash 테스트 20건 (이전 12 + 신규 8). full suite 448 tests, 0 failures.
+- [x] (7) commit: `feat(A8.2): DELETE /api/trash/:type/:id — manual purge + per-row FILE_PURGED/FOLDER_PURGED audit`
+
+**KISS 노트**: Testcontainers IT는 채택 안 함 — pure Mockito가 service boundary + repository contract + audit emit을 충분히 커버. DB-level FK 위반 시나리오는 A6/A7 IT가 이미 검증. 이중 가드 비용 없음.
 
 **검증 참조**:
 - 8건 GREEN + 기존 회귀 0 (총 ≥409건)

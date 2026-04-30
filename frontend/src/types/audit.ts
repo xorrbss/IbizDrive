@@ -25,6 +25,7 @@ export type AuditEventType =
   | 'folder.moved'
   | 'folder.deleted'
   | 'folder.restored'
+  | 'folder.purged'
   | 'folder.audit_level_changed'
   // 권한 / 공유
   | 'permission.granted'

@@ -151,6 +151,14 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     List<Object[]> findIdAndParentIdByIds(@Param("ids") Collection<UUID> ids);
 
     /**
+     * A8.2 manual purge cascade — soft-deleted root의 직접 자식 중 soft-deleted folder id 반환.
+     * BFS frontier expansion으로 후손 트리 전체 수집에 사용. 정상 운영에서는 cascade soft-delete가
+     * 트리 전체를 함께 soft-delete하므로 결과는 root subtree 전체와 일치한다.
+     */
+    @Query("SELECT f.id FROM Folder f WHERE f.parentId = :parentId AND f.deletedAt IS NOT NULL")
+    List<UUID> findIdsByParentIdAndDeletedAtIsNotNull(@Param("parentId") UUID parentId);
+
+    /**
      * A8.1 — 휴지통 listing용 page query. {@code deleted_at DESC, id DESC} 정렬.
      * 동작 규약은 {@link com.ibizdrive.file.FileRepository#findTrashedPage} 와 동일 — 두 source를
      * service에서 merge sort하여 union 응답을 구성.

@@ -135,6 +135,15 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     int hardDeleteByIds(@Param("ids") Collection<UUID> ids);
 
     /**
+     * A8.2 manual folder purge cascade — soft-deleted folder 안에 있는 soft-deleted file id 반환.
+     * cascade 시점에 동일 트랜잭션에서 함께 soft-delete됐으므로 정상 운영에서는 folder의 모든 file을 포함한다.
+     * active file이 soft-deleted folder에 남아 있는 corruption 상태는 purge에서 의도적으로 미포함 →
+     * 후속 hardDeleteByIds 시 FK ON DELETE RESTRICT 위반으로 fail-fast (감지 경로 보존).
+     */
+    @Query("SELECT f.id FROM FileItem f WHERE f.folderId = :folderId AND f.deletedAt IS NOT NULL")
+    List<UUID> findIdsByFolderIdAndDeletedAtIsNotNull(@Param("folderId") UUID folderId);
+
+    /**
      * A8.1 — 휴지통 listing용 page query. {@code deleted_at DESC, id DESC} 정렬.
      *
      * <p>{@code cursorDeletedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지(전체 trash). NOT NULL이면

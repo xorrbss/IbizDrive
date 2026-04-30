@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * 감사 이벤트 타입 (docs/03 §4.1, ADR #24).
  *
- * <p>총 38개 값. {@code frontend/src/types/audit.ts}의 {@code AuditEventType} 유니언과 1:1 동기 —
+ * <p>총 39개 값. {@code frontend/src/types/audit.ts}의 {@code AuditEventType} 유니언과 1:1 동기 —
  * 변경 시 docs/03 §4.1 + frontend types/audit.ts 양쪽 갱신 (계약).
  *
  * <p>Java enum 이름은 {@code UPPER_SNAKE_CASE}, JSON wire format은 {@code lower.dot.notation}.
@@ -32,12 +32,13 @@ public enum AuditEventType {
     VERSION_RESTORED("version.restored"),
     VERSION_DOWNLOADED("version.downloaded"),
 
-    // 폴더 (6)
+    // 폴더 (7)
     FOLDER_CREATED("folder.created"),
     FOLDER_RENAMED("folder.renamed"),
     FOLDER_MOVED("folder.moved"),
     FOLDER_DELETED("folder.deleted"),
     FOLDER_RESTORED("folder.restored"),
+    FOLDER_PURGED("folder.purged"),
     FOLDER_AUDIT_LEVEL_CHANGED("folder.audit_level_changed"),
 
     // 권한 / 공유 (6)
