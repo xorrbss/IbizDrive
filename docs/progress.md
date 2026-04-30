@@ -5,6 +5,23 @@
 
 ---
 
+## 2026-04-29 — A6.0 docs/02 §7.5 cascade 정책 + restore-self 명시 (no-code)
+
+### 범위
+A6 마일스톤 진입점. folder delete/restore 트랙의 §7.5 응답 본문 정합 patch.
+
+### 변경
+- `docs/02 §7.5` `DELETE /api/folders/:id` 행 SoftDel 컬럼에 `(재귀: 후손 폴더/파일 cascade — root 1회 audit)` 보강.
+- `docs/02 §7.5` `POST /api/folders/:id/restore` 행 SoftDel 컬럼에 `(자기 자신만 복원, 후손 잔존)` 보강.
+- `docs/02 §7.5` 응답 본문(line ~915) DELETE/restore TX 의사코드에 cascade BFS + audit root-only + restore-self 정책 명시.
+
+### 검증
+- A6.0 commit 자체는 docs 1파일만 staged (코드 0줄).
+- §8 `RESTORE_CONFLICT`는 line 1221에 이미 등록(A4 마일스톤 closure 시점) — 별도 patch 불필요.
+- 다음 phase A6.1 `FolderMutationService.delete` 구현이 본 §7.5 본문과 1:1 정합.
+
+---
+
 ## 2026-04-29 — 🏁 A5 마일스톤 종료 (FileVersion Domain — entity + GET /versions)
 
 ### 범위

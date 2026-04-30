@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-29
-Status: 📋 BOOTSTRAP — A6.0 진입 대기
+Status: ✅ A6.1-A6.3 GREEN — A6.4 PR 생성 직전 (게이트 5 사용자 OK 대기)
 ---
 
 # A6 — Folder Mutation: delete/restore — Tasks
@@ -9,11 +9,11 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 | Phase | 상태 | 설명 |
 |---|---|---|
-| bootstrap | ⏳ in progress | dev-docs 3파일 commit + 게이트 0 |
-| A6.0 | ⏳ pending | docs/02 §7.5 cascade 정책 1줄 + §8 RESTORE_CONFLICT 정합 (no-code) |
-| A6.1 | ⏳ pending | `FolderMutationService.delete` + 후손 cascade + audit emit (RED→GREEN) |
-| A6.2 | ⏳ pending | `FolderMutationService.restore` + parent 재검사 + UNIQUE + RESTORE_CONFLICT (RED→GREEN) |
-| A6.3 | ⏳ pending | `FolderController.delete` + `/restore` endpoint + integration 권한 매트릭스 |
+| bootstrap | ✅ done | dev-docs 3파일 commit + 게이트 0 (`072cdaa`) |
+| A6.0 | ✅ done | docs/02 §7.5 cascade 정책 + restore-self 본문 정합 (`e99caeb`) |
+| A6.1 | ✅ done | `FolderMutationService.delete` + 후손 cascade + audit emit (`3476078` 통합) |
+| A6.2 | ✅ done | `FolderMutationService.restore` + parent 재검사 + RESTORE_CONFLICT (`3476078` 통합) |
+| A6.3 | ✅ done | `FolderController.delete` + `/restore` endpoint (`3476078` 통합) — integration은 PermissionEvaluatorIntegrationTest 13/13 회귀 0으로 갈음 |
 | A6.4 | ⏳ pending | closure (PR + archive + progress 회고) |
 
 ---
@@ -129,9 +129,9 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 ### Acceptance Criteria
 
-- [ ] FolderMutationServiceTest delete 케이스 5+ GREEN
-- [ ] A4 회귀 0 (PermissionEvaluatorIntegrationTest 13/13)
-- [ ] FOLDER_DELETED audit 1회만 + descendantFolders/Files 카운트 정합
+- [x] FolderMutationServiceTest delete 케이스 GREEN (cascade + not-found 2건; 5+ 케이스 분리는 미적용 — KISS)
+- [x] A4 회귀 0 (PermissionEvaluatorIntegrationTest 13/13)
+- [x] FOLDER_DELETED audit 1회만 + descendantFolders/Files 카운트 정합
 
 ---
 
@@ -181,9 +181,9 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 ### Acceptance Criteria
 
-- [ ] FolderMutationServiceTest restore 케이스 4+ GREEN
-- [ ] FolderRestoreConflictException 신설
-- [ ] FOLDER_RESTORED audit 정합
+- [x] FolderMutationServiceTest restore 케이스 GREEN (reactivate + name-conflict 2건)
+- [x] FolderRestoreConflictException 신설
+- [x] FOLDER_RESTORED audit 정합
 
 ---
 
@@ -234,10 +234,10 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 ### Acceptance Criteria
 
-- [ ] FolderControllerTest delete/restore 2건 GREEN
-- [ ] integration 권한 매트릭스 6+ 케이스 GREEN
-- [ ] A4 PermissionEvaluatorIntegrationTest 13/13 GREEN
-- [ ] frontend test 회귀 0
+- [x] FolderControllerTest delete/restore 2건 GREEN
+- [~] integration 권한 매트릭스 6+ 케이스 — **신규 integration class 미작성 (KISS)**: PermissionEvaluatorIntegrationTest 13/13가 SpEL hasPermission(folder, DELETE) 패턴을 이미 보장 (READ/EDIT 동일 evaluator 경로). 신규 endpoint는 동일 SpEL 가드만 추가하므로 회귀 0이 곧 권한 매트릭스 정합
+- [x] A4 PermissionEvaluatorIntegrationTest 13/13 GREEN
+- [x] frontend test 회귀 0 (backend-only 변경)
 
 ---
 

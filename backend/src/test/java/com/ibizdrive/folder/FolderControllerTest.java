@@ -186,6 +186,28 @@ class FolderControllerTest {
 
     // ── helpers ────────────────────────────────────────────────────────
 
+    // -- delete / restore ---------------------------------------------------------------
+
+    @Test
+    void delete_returnsNoContent_andDelegates() {
+        ResponseEntity<Void> res = controller.delete(FOLDER_ID, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
+        verify(service).delete(FOLDER_ID, ACTOR);
+    }
+
+    @Test
+    void restore_returnsOk_andDelegates() {
+        Folder restored = newFolder(FOLDER_ID, PARENT_ID, "docs", "standard");
+        when(service.restore(eq(FOLDER_ID), eq(ACTOR))).thenReturn(restored);
+
+        ResponseEntity<Map<String, FolderDto>> res = controller.restore(FOLDER_ID, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody().get("folder").id()).isEqualTo(FOLDER_ID);
+        verify(service).restore(FOLDER_ID, ACTOR);
+    }
+
     private Folder newFolder(UUID id, UUID parentId, String name, String auditLevel) {
         Folder f = new Folder();
         f.setId(id);

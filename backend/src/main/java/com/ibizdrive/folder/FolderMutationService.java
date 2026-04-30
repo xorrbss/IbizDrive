@@ -8,14 +8,19 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
+import com.ibizdrive.file.FileRepository;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Deque;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -59,14 +64,23 @@ public class FolderMutationService {
     /** cycle walk 안전 한도 — 데이터 corruption 시 무한 루프 방어 (정상 트리 깊이는 수십 이내). */
     private static final int MAX_ANCESTOR_WALK = 1000;
 
+    /** cascade BFS 안전 한도 — 비정상 트리 폭에 대한 트랜잭션 timeout/OOM 방어 (A6.1). */
+    private static final int MAX_CASCADE_NODES = 100_000;
+
+    /** 휴지통 보존 기간 — 30일 (docs/02 §6.5, FileMutationService와 동일). */
+    private static final int PURGE_DAYS = 30;
+
     private final FolderRepository folderRepository;
+    private final FileRepository fileRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
 
     public FolderMutationService(FolderRepository folderRepository,
+                                 FileRepository fileRepository,
                                  AuditService auditService,
                                  ObjectMapper objectMapper) {
         this.folderRepository = folderRepository;
+        this.fileRepository = fileRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
     }
@@ -249,6 +263,148 @@ public class FolderMutationService {
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // delete (soft, cascade)
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 활성 폴더와 그 후손(폴더 + 파일)을 휴지통으로 이동(soft-delete).
+     *
+     * <p><b>cascade 전략 (A6.1, plan §A6.1.a)</b>: service 레벨 BFS — {@link #assertNoCycle}와 동일
+     * 일관성. 후손 폴더 id를 frontier expansion으로 수집한 뒤 {@link FolderRepository#softDeleteByIds}
+     * 1회로 batch UPDATE. WITH RECURSIVE native query로의 전환은 성능 이슈 발견 시 ADR로 기록 후 적용.
+     *
+     * <p><b>audit 정책 (A6.1, plan §A6.1.b)</b>: cascade 전체에 대해 root {@code FOLDER_DELETED}
+     * 1건만 발행. 후손 폴더/파일은 audit 발행 안 함 — audit_log 폭증 회피. after_state에
+     * descendantFolders/descendantFiles 카운트가 보존되어 추적 가능.
+     *
+     * <p><b>originalParentId 정책</b>: root는 {@code parentId}를 {@code originalParentId}로 보존
+     * (restore destination 스냅샷). 후손은 NULL 유지 — 자기 자신만 복원 정책에서는 후손 일괄 복원이
+     * 없어 originalParentId 사용 경로가 없다 (KISS).
+     *
+     * @throws FolderNotFoundException folderId가 활성 폴더가 아님 (이미 휴지통 또는 미존재)
+     */
+    public void delete(UUID folderId, UUID actorId) {
+        if (folderId == null) throw new IllegalArgumentException("folderId is required");
+
+        Folder root = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
+            .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
+
+        // BFS frontier expansion: root → 후손 ids 수집. visited Set은 데이터 corruption 방어.
+        // root 자체는 별도 처리(originalParentId 보존 + entity 단 update + saveAndFlush)이므로
+        // descendantIds에는 포함하지 않는다.
+        List<UUID> descendantIds = collectDescendantFolderIds(root.getId());
+
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        Instant purgeAfter = now.plus(PURGE_DAYS, ChronoUnit.DAYS);
+
+        // 후손 폴더 batch UPDATE — 비어 있으면 skip (Hibernate가 빈 IN(...)을 거부하는 환경 보호).
+        if (!descendantIds.isEmpty()) {
+            folderRepository.softDeleteByIds(descendantIds, now, purgeAfter);
+        }
+
+        // root + 후손 모두를 포함한 folder id 집합 — 파일 cascade 대상.
+        List<UUID> allFolderIds = new ArrayList<>(descendantIds.size() + 1);
+        allFolderIds.add(root.getId());
+        allFolderIds.addAll(descendantIds);
+
+        int descendantFiles = fileRepository.softDeleteByFolderIds(allFolderIds, now, purgeAfter);
+
+        // root entity — originalParentId 스냅샷 + tombstone 컬럼 set + flush. lock된 entity이므로
+        // dirty checking으로도 가능하지만 명시적 saveAndFlush로 audit 발행 직전 상태 확정.
+        UUID parentSnapshot = root.getParentId();
+        root.setOriginalParentId(parentSnapshot);
+        root.setDeletedAt(now);
+        root.setPurgeAfter(purgeAfter);
+        root.setUpdatedAt(now);
+        Folder saved = folderRepository.saveAndFlush(root);
+
+        Map<String, Object> beforeState = new LinkedHashMap<>();
+        beforeState.put("name", saved.getName());
+        beforeState.put("parentId", parentSnapshot);
+        Map<String, Object> afterState = new LinkedHashMap<>();
+        afterState.put("deletedAt", now.toString());
+        afterState.put("purgeAfter", purgeAfter.toString());
+        afterState.put("originalParentId", parentSnapshot);
+        afterState.put("descendantFolders", descendantIds.size());
+        afterState.put("descendantFiles", descendantFiles);
+        emitAudit(AuditEventType.FOLDER_DELETED, saved.getId(), actorId, beforeState, afterState);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // restore
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 휴지통 폴더를 {@code original_parent_id}로 복원한다. tombstone 컬럼 3종을 모두 NULL로 클리어.
+     *
+     * <p><b>복원 범위 (A6.2, plan §A6.1.b)</b>: 자기 자신만 복원. 후손은 휴지통 잔존 — 후손 일괄
+     * 복원은 별도 endpoint 트랙. 사용자에게 "부모 먼저 복원" 흐름을 강제(KISS).
+     *
+     * <p>{@code originalParentId == null}이면 root였던 폴더로 정상 처리 (parent active 검사 skip).
+     * non-null이면 원래 parent가 여전히 active인지 확인 — soft-deleted parent 아래로의 복원은 불허.
+     *
+     * <p>UNIQUE 재검사: V5 partial unique index가 {@code deleted_at IS NULL}인 행만 대상으로 하므로,
+     * tombstone NULL 클리어 시점에 동일 (parent, normalized_name) 충돌 가능 — 사전 native query +
+     * UPDATE 시점 {@code DataIntegrityViolationException} 이중 가드.
+     *
+     * @throws FolderNotFoundException     folderId가 휴지통 폴더가 아님 (이미 활성 또는 미존재) 또는
+     *                                     {@code originalParentId}가 활성 폴더가 아님
+     * @throws FolderRestoreConflictException 원위치에 동일 normalized_name 활성 폴더 존재
+     */
+    public Folder restore(UUID folderId, UUID actorId) {
+        if (folderId == null) throw new IllegalArgumentException("folderId is required");
+
+        Folder target = folderRepository.lockByIdAndDeletedAtIsNotNull(folderId)
+            .orElseThrow(() -> new FolderNotFoundException("trashed folder not found: " + folderId));
+
+        UUID originalParentSnapshot = target.getOriginalParentId();
+        UUID restoreParentId = originalParentSnapshot != null
+            ? originalParentSnapshot
+            : target.getParentId();
+        if (restoreParentId != null) {
+            // 원래 parent가 활성인지 확인. soft-deleted parent로의 복원은 불허 — 사용자가 parent부터
+            // 복원해야 한다는 UX 강제 (자기 자신만 복원 정책의 일관성).
+            folderRepository.findByIdAndDeletedAtIsNull(restoreParentId)
+                .orElseThrow(() -> new FolderNotFoundException(
+                    "original parent is not active: " + restoreParentId));
+        }
+
+        if (folderRepository.existsActiveByParentAndNormalizedNameExcludingId(
+                restoreParentId, target.getNormalizedName(), target.getId())) {
+            throw new FolderRestoreConflictException(
+                "folder name already exists at restore destination: " + target.getNormalizedName());
+        }
+
+        Instant deletedAtBefore = target.getDeletedAt();
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        target.setParentId(restoreParentId);
+        target.setDeletedAt(null);
+        target.setPurgeAfter(null);
+        target.setOriginalParentId(null);
+        target.setUpdatedAt(now);
+
+        Folder saved;
+        try {
+            saved = folderRepository.saveAndFlush(target);
+        } catch (DataIntegrityViolationException ex) {
+            // partial unique index가 deleted_at IS NULL인 행에만 적용되므로 NULL로 클리어하는
+            // UPDATE 시점에 race로 충돌 가능 — 사전 검사 이중 가드 (CLAUDE.md §3 원칙 6).
+            throw new FolderRestoreConflictException(
+                "folder name conflict at restore: " + target.getNormalizedName(), ex);
+        }
+
+        Map<String, Object> beforeState = new LinkedHashMap<>();
+        beforeState.put("deletedAt", deletedAtBefore == null ? null : deletedAtBefore.toString());
+        beforeState.put("originalParentId", originalParentSnapshot);
+        beforeState.put("restoreParentId", restoreParentId);
+        Map<String, Object> afterState = new LinkedHashMap<>();
+        afterState.put("parentId", restoreParentId);
+        afterState.put("deletedAt", null);
+        emitAudit(AuditEventType.FOLDER_RESTORED, saved.getId(), actorId, beforeState, afterState);
+        return saved;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // helpers
     // ──────────────────────────────────────────────────────────────────
 
@@ -281,6 +437,36 @@ public class FolderMutationService {
                 .orElseThrow(() -> new FolderNotFoundException("ancestor folder not found: " + currentCursor));
             cursor = ancestor.getParentId();
         }
+    }
+
+    /**
+     * cascade 대상 후손 폴더 id를 BFS로 수집한다 ({@code rootId} 자체는 결과에 포함하지 않음).
+     *
+     * <p>visited Set은 정상 트리에서는 동작에 영향이 없으나, 데이터 corruption(orphan cycle)
+     * 시나리오에서 무한 루프를 차단한다. {@link #MAX_CASCADE_NODES}는 트랜잭션 timeout/OOM 대비
+     * 안전 한도 — 정상 운영에서 도달하지 않는다.
+     */
+    private List<UUID> collectDescendantFolderIds(UUID rootId) {
+        List<UUID> descendants = new ArrayList<>();
+        Set<UUID> visited = new HashSet<>();
+        visited.add(rootId);
+        Deque<UUID> frontier = new ArrayDeque<>();
+        frontier.add(rootId);
+
+        while (!frontier.isEmpty()) {
+            UUID current = frontier.pollFirst();
+            List<UUID> children = folderRepository.findIdsByParentIdAndDeletedAtIsNull(current);
+            for (UUID childId : children) {
+                if (!visited.add(childId)) continue;            // corruption guard
+                descendants.add(childId);
+                frontier.addLast(childId);
+                if (descendants.size() > MAX_CASCADE_NODES) {
+                    throw new IllegalStateException(
+                        "cascade descendant count exceeded safety limit at " + childId);
+                }
+            }
+        }
+        return descendants;
     }
 
     /**

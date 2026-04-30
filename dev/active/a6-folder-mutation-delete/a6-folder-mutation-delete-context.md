@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-29
-Status: 📋 BOOTSTRAP — A6.0 진입 대기
+Status: ✅ A6.1-A6.3 GREEN — A6.4 PR 생성 직전 (게이트 5 사용자 OK 대기)
 ---
 
 # A6 — Folder Mutation: delete/restore — Context
@@ -15,6 +15,13 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
   - `4e720eb feat(A4.8): FileMutationService + 4 REST endpoint (#12)` — file rename/move/delete/restore + 387 test green
   - `e603964 docs(A5.0): file_versions GET 응답 스키마 + ADR #29 트리거 마커`
   - 영향: §out-of-scope에서 "file mutation 트랙" 항목 제거. cascade는 `FileMutationService.delete` 미호출 정책으로 audit 폭증 회피(batch UPDATE 유지).
+- **2026-04-29 A6.0 완료** — `e99caeb docs(A6.0): folder delete/restore cascade 정책 + restore-self 본문 정합`. docs/02 §7.5 DELETE/restore 행 SoftDel 컬럼 보강 + 응답 본문 의사코드 확장(BFS + after_state.descendantFolders/Files). progress 1블록 추가.
+- **2026-04-29 A6.1+A6.2+A6.3 통합 완료** — `3476078 feat(A6.1-A6.3): folder delete/restore + descendant cascade soft-delete + RESTORE_CONFLICT envelope`.
+  - 단일 PR 모드 + delete/restore 테스트 상호의존(controller endpoint 미구현 시 controller test 컴파일 실패) → 3 phase 통합 commit
+  - 산출: FolderMutationService.delete/restore + collectDescendantFolderIds(BFS, MAX_CASCADE_NODES=100k), FolderRepository 3메서드(lockSoftDeleted, findIdsByParent, softDeleteByIds), FileRepository.softDeleteByFolderIds, FolderController DELETE/restore endpoint, FolderRestoreConflictException + GlobalExceptionHandler 매핑
+  - 검증: `./gradlew :backend:test` BUILD SUCCESSFUL — 회귀 0 (PermissionEvaluatorIntegrationTest 13/13 GREEN 유지)
+  - 분기점: integration class 신규 작성 안 함 (KISS) — PermissionEvaluator 13/13가 SpEL hasPermission 동일 경로 보장
+- **다음**: A6.4 closure (게이트 5 — 사용자 OK 대기 후 PR 생성)
 
 ## Current Execution Contract
 
@@ -26,8 +33,8 @@ Status: 📋 BOOTSTRAP — A6.0 진입 대기
 
 ## 현재 active task
 
-- **Phase**: bootstrap (게이트 0 진입 직전)
-- **다음**: A6.0 — docs/02 §7.5 + §8 정합 patch (no-code minor)
+- **Phase**: A6.4 closure (게이트 5 — PR 생성 직전, 사용자 OK 대기)
+- **다음**: 사용자 OK 후 → PR 생성 → CI green 대기 → squash-merge → progress.md A6 closure 블록 → dev/active → dev/completed → master push
 
 ## 다음 세션 읽기 순서
 

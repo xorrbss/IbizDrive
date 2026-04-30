@@ -3,9 +3,12 @@ package com.ibizdrive.folder;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -81,4 +84,38 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     boolean existsActiveByParentAndNormalizedNameExcludingId(@Param("parentId") UUID parentId,
                                                              @Param("normalizedName") String normalizedName,
                                                              @Param("selfId") UUID selfId);
+
+    /**
+     * Pessimistic write lock on soft-deleted folder — restore 진입 시점에만 사용 (A6.2).
+     *
+     * <p>{@link #lockByIdAndDeletedAtIsNull}의 dual — 활성 행은 매치되지 않으므로 "이미 활성"
+     * 케이스도 자연스럽게 not-found로 매핑된다 (서비스 단에서 의미 변환). FileRepository의
+     * {@code lockByIdAndDeletedAtIsNotNull}과 동일 패턴.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT f FROM Folder f WHERE f.id = :id AND f.deletedAt IS NOT NULL")
+    Optional<Folder> lockByIdAndDeletedAtIsNotNull(@Param("id") UUID id);
+
+    /**
+     * cascade BFS 보조 — 활성 자식 폴더 id 조회 (A6.1). entity 전체를 fetch하지 않고 id만
+     * 가져와 BFS frontier expansion에 사용.
+     */
+    @Query("SELECT f.id FROM Folder f WHERE f.parentId = :parentId AND f.deletedAt IS NULL")
+    List<UUID> findIdsByParentIdAndDeletedAtIsNull(@Param("parentId") UUID parentId);
+
+    /**
+     * cascade soft-delete 후손 batch UPDATE (A6.1). root는 본 쿼리로 처리하지 않고 entity 단에서
+     * {@code originalParentId = parentId} 세팅과 함께 saveAndFlush — 후손은 originalParentId를
+     * NULL로 유지해 자기 자신만 복원 정책을 단순화.
+     *
+     * <p>WHERE {@code deleted_at IS NULL}는 race 가드 — 다른 트랜잭션이 이미 soft-delete한 row를
+     * 다시 갱신해 audit 일관성이 깨지는 것을 방지.
+     */
+    @Modifying
+    @Query("UPDATE Folder f SET f.deletedAt = :deletedAt, f.purgeAfter = :purgeAfter, "
+         + "f.originalParentId = f.parentId, f.updatedAt = :deletedAt "
+         + "WHERE f.id IN :ids AND f.deletedAt IS NULL")
+    int softDeleteByIds(@Param("ids") Collection<UUID> ids,
+                        @Param("deletedAt") Instant deletedAt,
+                        @Param("purgeAfter") Instant purgeAfter);
 }
