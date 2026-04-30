@@ -1,6 +1,7 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
+import type { Permission } from '@/types/permission'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup, normalizeForSearch } from './normalize'
@@ -443,6 +444,21 @@ export const api = {
       (f) => !f.deletedAt && normalizeForSearch(f.name).includes(q),
     )
     return { items }
+  },
+
+  /**
+   * M8 — 사용자의 노드별 effective 권한 (docs/01 §14.2 + docs/03 §3.1).
+   *
+   * 백엔드 미존재. mock은 admin preset 8 권한(PURGE 제외, docs/03 §3.2 line 331).
+   * `nodeId` 미지정 시 전역 effective 권한 (RightPanel 컨텍스트 외) 반환.
+   *
+   * 백엔드 endpoint 신설 시 본 mock만 fetch로 교체 — hook/UI 무수정.
+   */
+  async getEffectivePermissions(nodeId?: string): Promise<Permission[]> {
+    void nodeId
+    await new Promise((r) => setTimeout(r, 80))
+    // admin preset (PURGE 제외) — docs/03 §3.2 노드 admin 행
+    return ['READ', 'UPLOAD', 'EDIT', 'MOVE', 'DOWNLOAD', 'DELETE', 'SHARE', 'PERMISSION_ADMIN']
   },
 
   async getAuditLogs(

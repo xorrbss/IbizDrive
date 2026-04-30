@@ -19,6 +19,11 @@ export const qk = {
   folderTree: () => [...qk.folders(), 'tree'] as const,
   folder: (id: string) => [...qk.folders(), 'detail', id] as const,
   effectivePermissions: () => [...qk.all, 'permissions', 'effective'] as const,
+  /** 노드(폴더/파일)별 effective 권한 (M8 docs/01 §14.2). nodeId 없으면 effectivePermissions(전역). */
+  permissions: (nodeId?: string) =>
+    nodeId
+      ? ([...qk.all, 'permissions', 'node', nodeId] as const)
+      : qk.effectivePermissions(),
 
   files: () => [...qk.all, 'files'] as const,
   /** sort/dir까지 포함된 정확한 단일 키. 직접 캐시 read/write 시에만 사용. */
