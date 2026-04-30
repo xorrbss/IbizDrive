@@ -5,6 +5,31 @@
 
 ---
 
+## 2026-04-29 — 🏁 M11 검색 (debounce + normalize + AbortController)
+
+### 범위
+TopBar 글로벌 검색 (frontend-only). M11.0 bootstrap → M11.1 lib infra → M11.2 useSearch → M11.3 SearchBar/SearchResults UI.
+
+### 변경
+- **lib infra (M11.1)**: `qk.search()` / `qk.searchResults(normalized, filters)` 추가; `api.searchFiles({q, filters}, {signal})` mock (200ms latency + `normalizeForSearch` + AbortSignal); `useDebounce<T>(value, delayMs)` 신설.
+- **useSearch (M11.2)**: 300ms debounce → `normalizeForSearch` → `useQuery` (`enabled: normalized.length>=2`, `placeholderData: keepPreviousData`, `staleTime: 30s`, signal forward).
+- **UI (M11.3)**: `SearchBar` (searchbox role, `/` 단축키 focus via `FOCUS_SEARCH_EVENT`, Esc → clear+close, blur 120ms 지연); `SearchResults` (1자/에러/로딩/빈/파일·폴더 분기 — 파일 → `useOpenFile().open(id)`, 폴더 → `router.push(buildCanonicalPath)`); `TopBar` 좌측 슬롯 통합 (justify-end → justify-between).
+
+### 검증
+- `npm run test`: 40 files / 344 tests passed (신규 28 — useDebounce 4 + api.search 6 + qk.search 2 + useSearch 5 + SearchBar 4 + SearchResults 7).
+- `npm run typecheck`: clean.
+- `npm run lint`: clean (eslint exit 0).
+
+### 핵심 결정
+- mock api는 setTimeout 200ms + AbortSignal 처리 → fake-timer 환경에서는 `vi.spyOn(api, 'searchFiles').mockResolvedValue(...)`로 즉시 resolve, 별도 integration 1건만 real timers로 실제 mock 동작 검증.
+- `useGlobalShortcuts`는 이미 `/` 키 → `FOCUS_SEARCH_EVENT` 디스패치 + input focus 가드 보유 → 추가 작업 없음.
+- 백엔드 `/api/search` 도입 시 api 내부 fetch 교체만으로 호환 (계약 동일).
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: M9 휴지통 페이지 + Undo (api.listTrash mock 이미 존재 가능성 확인 필요).
+
+---
+
 ## 2026-04-30 — 🏁 A6 마일스톤 종료 (Folder Delete/Restore + Descendant Cascade)
 
 ### 범위
