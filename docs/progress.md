@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-04-29 — 🏁 M9 휴지통 + 5초 Undo + /trash 페이지
+
+### 범위
+soft-delete 기반 휴지통 (frontend-only mock). M9.0 bootstrap → M9.1 mock api soft-delete → M9.2 hooks → M9.3 BulkActionBar Undo → M9.4 /trash + Sidebar TrashLink.
+
+### 변경
+- **types/api (M9.1)**: `FileItem.deletedAt? + originalParentId?` 추가. `api.deleteBulk` hard splice → soft delete (`deletedAt = now`, `originalParentId = parentId` 스냅샷). `api.listTrash` (deletedAt 내림차순) / `restoreBulk` (clear deletedAt + parentId restore from originalParentId, root fallback if parent missing) / `purgeBulk` (hard splice) 신설. `getFilesInFolder`/`searchFiles`에 `!f.deletedAt` 필터 추가.
+- **queryKeys (M9.1)**: `qk.trash() / qk.trashList()` 추가. `invalidations.afterDelete` → `[filesListPrefix(folder), trash(), search()]` 확장. `afterRestore(opts.folderIds[])` / `afterPurge` 신설.
+- **hooks (M9.2)**: `useTrashList` (staleTime: 0) + `useRestoreBulk({ids, originalParentIds?})` + `usePurgeBulk({ids})` — 옵션 onSuccess/onError forward, invalidations 자동 호출.
+- **UI (M9.3)**: `BulkActionBar` Delete onSuccess 시 `toast.success(..., {duration: 5000, action: {label: '되돌리기', onClick: restoreMut.mutate({ids, originalParentIds:[folderIdAtStart]})}})`. onError 시 `toast.error`.
+- **UI (M9.4)**: `/app/(explorer)/trash/page.tsx` (section header + TrashTable) + `TrashTable` (role=grid, 컬럼: 이름/삭제 시각/원위치/액션, 로딩/에러/빈 분기, 복원 + 영구삭제 confirm) + `TrashLink` (Sidebar 하단, usePathname 기반 active aria-current). `(explorer)/layout.tsx`에 `<TrashLink />` 추가 (mt-auto pt-2 border-t).
+
+### 검증
+- `npm run test`: 44 files / 371 tests passed (M9 신규 27 — api.trash 7 + qk/invalidations 4 + hooks 4 + BulkActionBar Undo 3 + TrashTable 6 + TrashLink 3).
+- `npm run typecheck`: clean.
+- `npm run lint`: clean.
+
+### 핵심 결정
+- **소프트 삭제 = mock 한정** — backend A6 cascade 정책(folder 단위)과 frontend mock(file 단위)은 별개 트랙. 백엔드 file delete endpoint 신설 시 api.deleteBulk fetch만 교체, hook/UI 무수정.
+- **Undo는 BulkActionBar 경유 시만** — FileTable Delete 단축키 Undo는 KISS로 분리 (별도 PR).
+- **restoreBulk parent fallback** — `originalParentId` 가리키는 폴더가 (사용자 액션으로) 사라진 경우 root로 복원. backend는 `FolderNotFoundException`(A6)으로 강제하지만 frontend mock은 UX 우선.
+- **vi.hoisted로 옵션 캡처** — `useDeleteBulk(opts)` 내부에서 `optionsCapture.current = opts`로 저장 → 테스트가 onSuccess 콜백 직접 트리거 가능 (mutate spy + onSuccess 분리 검증).
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M8 share dialog + 권한 확장** (docs/01 §14, backend A3 권한 매트릭스 활용).
+
+---
+
 ## 2026-04-29 — 🏁 M11 검색 (debounce + normalize + AbortController)
 
 ### 범위
