@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-04-29 — 🏁 M15 Layout Extras (SortChip + ViewSwitch + StorageBar + RightPanel 탭)
+
+### 범위
+docs/01 §18 row 15 — `SortChip + ViewSwitch + StorageBar + RightPanel 탭`. 모두 docs/01 §1.1 진실 출처 규칙 (URL 우선) 준수.
+
+### 변경
+- **useSortParams (M15.1)**: 기존 read-only → `setSort(key, dir?)` 추가. 같은 key 재선택 시 asc/desc 토글, 다른 key 선택 시 asc reset. `router.replace` + `URLSearchParams` 보존.
+- **SortChip (M15.1)**: 신규. FolderToolbar 우측 정렬 드롭다운. `name/updatedAt/size`, `aria-haspopup="menu"` + `menuitemradio`. outside click 시 닫힘. label "정렬: {sort} {dir}".
+- **useViewParam + ViewSwitch (M15.2)**: 신규. URL `?view=list|grid` (default list 시 param 제거). `aria-pressed` + `aria-label`. Grid 본체는 M16.
+- **api.getStorageQuota + useStorageQuota + StorageBar (M15.3)**: mock — 50 GB total / 75% used 고정 placeholder. Sidebar 하단 (TrashLink 아래) 마운트. `role=progressbar` + `aria-valuenow`. 80%+ warn / 95%+ danger 색.
+- **RightPanel 4-tab (M15.4)**: 헤더 아래 `role=tablist` 추가. detail/versions/activity/permissions. detail은 기존 `dl` 그대로(회귀 보호). 나머지는 `<ComingSoon>` placeholder. fileId 변경 시 detail 탭으로 자동 리셋.
+- **qk.storageQuota 추가**, **api.ts getStorageQuota 추가**, **(explorer)/layout.tsx StorageBar 마운트**.
+- **회귀 정합**: BulkActionBar.test.tsx 3곳 / StatusBar.test.tsx 1곳 — `useSortParams` mock에 `setSort: vi.fn()` 보강 (typecheck 호환).
+
+### 검증
+- `npx vitest run`: **53 files / 408 tests passed** (M15 신규 11 — SortChip 3 + ViewSwitch 3 + StorageBar 3 + RightPanel 탭 2, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint`: clean (변경 파일 17개 0 issue).
+
+### 핵심 결정
+- **URL 진실 출처**: SortChip/ViewSwitch 모두 `router.replace` + searchParams. Zustand 복제 X (docs/01 §1.1).
+- **정렬 토글 규칙**: 같은 key 재선택 → dir 토글, 다른 key → asc reset. KISS, 명시적 dir override 가능.
+- **ViewSwitch state는 URL 단독**: 새로고침/공유 시 view 보존. M15 시점엔 FileTable이 무관심하게 통과 → M16에서 소비.
+- **StorageBar는 mock placeholder**: 75% 고정. 실제 quota API 신설 시 `api.getStorageQuota`만 fetch로 교체 (UI/hook 무수정). invalidate(업로드/삭제) 미구현 — staleTime 5분으로 우회.
+- **RightPanel 탭은 단일 컴포넌트 useState**: KISS — 별도 파일 분리 X. URL 동기화 X (패널 자체가 `?file`에 종속이고 탭 상태 deep-link 요구는 v1.x).
+- **세부정보 외 탭은 명확한 "준비 중" placeholder**: 가짜 컨텐츠 X — 백엔드 API(versions: A5 진행중 / audit: 기존 / permissions: 임시 mock) 통합은 별도 트랙.
+
+### 비범위 (후속)
+- Grid View 본체 (FileRow 카드 모드, FileTable 분기) — **M16**
+- 버전/활동/권한 탭 실내용 — 백엔드 API 별도 트랙
+- StorageBar 실수치 + 업로드/삭제 후 invalidate — 백엔드 quota API 후
+- SortChip/ViewSwitch 키보드 단축키 — KISS
+
+### 다음 세션 컨텍스트
+- 시퀀스 다음: **M16 Grid View** (FileTable grid 모드 + ViewSwitch 토글 통합).
+
+---
+
 ## 2026-04-29 — 🏁 M14 Visual Identity (Lucide + Avatar + StatusBar)
 
 ### 범위
