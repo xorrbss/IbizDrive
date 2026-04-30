@@ -50,6 +50,9 @@ export const qk = {
   searchResults: (normalized: string, filters: Record<string, unknown>) =>
     [...qk.search(), 'results', normalized, filters] as const,
 
+  // ── 저장 용량 (M15, mock) ──
+  storageQuota: () => [...qk.all, 'storage', 'quota'] as const,
+
   // ── 감사 로그 (M12, mock) ──
   audit: () => [...qk.all, 'audit'] as const,
   /** 페이지/필터까지 포함된 정확한 단일 키. 필터 변경 시 자동 재요청. */

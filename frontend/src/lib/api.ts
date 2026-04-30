@@ -461,6 +461,18 @@ export const api = {
     return ['READ', 'UPLOAD', 'EDIT', 'MOVE', 'DOWNLOAD', 'DELETE', 'SHARE', 'PERMISSION_ADMIN']
   },
 
+  /**
+   * M15 — 저장 용량 (docs/01 §18 row 15 — StorageBar).
+   *
+   * 백엔드 미존재. mock은 75% 사용 placeholder. 실제 quota API 신설 시 본 mock만 fetch로 교체.
+   */
+  async getStorageQuota(): Promise<{ usedBytes: number; totalBytes: number }> {
+    await new Promise((r) => setTimeout(r, 80))
+    const totalBytes = 50 * 1024 * 1024 * 1024 // 50 GB
+    const usedBytes = Math.round(totalBytes * 0.75) // 75% placeholder
+    return { usedBytes, totalBytes }
+  },
+
   async getAuditLogs(
     filters: AuditLogFilters = {},
     page = 1,
