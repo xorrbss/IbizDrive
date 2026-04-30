@@ -5,9 +5,11 @@ import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRouter } from 'next/navigation'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
+import { useViewParam } from '@/hooks/useViewParam'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useSelectionStore } from '@/stores/selection'
 import { FileRow } from './FileRow'
+import { FileCard } from './FileCard'
 import { FileTableSkeleton } from './FileTableSkeleton'
 import { FileTableEmpty } from './FileTableEmpty'
 import { FileTableError } from './FileTableError'
@@ -30,6 +32,7 @@ type Props = {
 
 export function FileTable({ folderId }: Props) {
   const { sort, dir } = useSortParams()
+  const { view } = useViewParam()
   const { data: items, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -262,6 +265,32 @@ export function FileTable({ folderId }: Props) {
   else if (status === 403) body = <FileTableForbidden />
   else if (error) body = <FileTableError onRetry={refetch} />
   else if (!items || items.length === 0) body = <FileTableEmpty />
+  else if (view === 'grid') body = (
+    <div
+      role="grid"
+      aria-rowcount={items.length}
+      aria-multiselectable={true}
+      aria-label="파일 그리드"
+      className="flex-1 min-h-0 overflow-auto outline-none p-4"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      ref={scrollRef}
+    >
+      <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
+        {items.map((item, idx) => (
+          <FileCard
+            key={item.id}
+            item={item}
+            isFocused={focusedIndex === idx}
+            isSelected={selectedIds.has(item.id)}
+            isPending={pendingIds.has(item.id)}
+            onClick={handleRowClick}
+            onDoubleClick={handleOpen}
+          />
+        ))}
+      </div>
+    </div>
+  )
   else body = (
     <div
       role="grid"
