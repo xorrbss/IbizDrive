@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-30
-Status: 🟢 OPEN — F1.0 완료, F1.1 active
+Last Updated: 2026-05-01
+Status: ✅ CLOSED — PR #20 squash-merge `f9200dc`, dev-docs archived
 ---
 
 # F1 — Frontend Search 실연결 — Tasks
@@ -10,8 +10,8 @@ Status: 🟢 OPEN — F1.0 완료, F1.1 active
 | Phase | Title | Status |
 |---|---|---|
 | F1.0 | dev-docs bootstrap | ✅ done |
-| F1.1 | api.searchFiles 실연결 + 매핑 + test | 🟢 active |
-| F1.2 | vitest GREEN + PR + closure | ⬜ pending |
+| F1.1 | api.searchFiles 실연결 + 매핑 + test | ✅ done (`6475952`) |
+| F1.2 | vitest GREEN + PR + closure | ✅ done (PR #20 → `f9200dc`) |
 
 ---
 

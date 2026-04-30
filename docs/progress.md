@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-01 — 🏁 F1 마일스톤 종료 (Frontend Search 실연결)
+
+### 범위
+
+F1.0 (dev-docs bootstrap — `dev/active/frontend-search-realconnect/` plan/context/tasks 3 파일) → F1.1 (`api.searchFiles` 본체 MOCK_FILES filter mock → `fetch('/api/search?q=...')` 직접 호출 교체 + `SearchPage{items,nextCursor,totalEstimate}` → `{items: FileItem[]}` inline 매핑 + `api.search.test.ts` fetch mock 패턴 14 케이스 GREEN + `useSearch.test.tsx` integration fetch stub 갱신 + `api.trash.test.ts` 휴지통 제외 시나리오 제거) → F1.2 (PR #20 squash-merge `f9200dc` + dev-docs archive).
+
+### 회고
+
+- **commits**: 1 on top of PR #16 close `f77f886` (worktree branch `feature/f1-frontend-search-realconnect`) → squash-merge `f9200dc` on `master`. PR #20 single, CI green (backend junit 28s + frontend vitest 1m32s 모두 SUCCESS).
+- **production 파일**: 1 수정 — `frontend/src/lib/api.ts` `searchFiles` 본체 교체 + `normalizeForSearch` import 정리. 시그니처 무수정(`{q,filters},{signal}→{items: FileItem[]}`) — 호출부 drift 0.
+- **test 파일**: 3 갱신 — `api.search.test.ts` 전면 재작성(fetch wire 계약 + 매핑 file/folder/mixed/null edge + 401/403/5xx + abort 14건), `useSearch.test.tsx` integration `vi.stubGlobal('fetch', ...)`로 전환, `api.trash.test.ts` 휴지통 제외 시나리오 제거(이제 backend `deleted_at IS NULL` 책임).
+- **frontend 회귀 0**: 전체 `pnpm test` 422/422 GREEN (55 suites). `pnpm typecheck` + `pnpm lint` clean.
+
+### 핵심 결정 (F1 트랙, 확정)
+
+1. **호출부 시그니처 무수정** (drift 0) — `useSearch` / `SearchBar` / `SearchResults` / `FileItem` 타입 전부 무수정. `api.searchFiles` 본체만 교체. 후속 endpoint mock→real 전환 시 동일 패턴 적용.
+2. **filters 인자는 보존하되 무시** — backend가 `type` 외 필터(mime/owner/date) 미지원 (ADR #33). 향후 추가 시 `searchFiles` 내부 `URLSearchParams`만 확장.
+3. **매핑 inline (KISS)** — 별도 `searchMapper.ts` 파일 신설 회피. `api.ts` 내부 단일 화살표 함수로 처리(50줄 이하).
+4. **`updatedBy: ''` 빈 문자열** — backend `SearchResultDto` actor 필드 미반환. SearchResults UI는 secondary info(아이콘 옆 작은 텍스트)이므로 빈 표시 허용. 후속 backend 확장(`updatedByName`) 시 매핑만 보강.
+5. **에러 envelope 일관** — audit 패턴 그대로(`Error & {status}` throw). `QueryCache` 글로벌 onError가 401/403 분기 — endpoint별 분기 코드 추가 0.
+6. **AbortSignal 전파 = fetch native** — 기존 mock의 setTimeout+manual abort hookup 폐기. `fetch(..., { signal })` 사용으로 코드량 감소 + DOMException AbortError 자연 전파.
+7. **휴지통 제외 = backend 책임** — `SearchQueryService` repo 쿼리에 `deleted_at IS NULL` WHERE 절 박제. frontend api.ts 경계에서 더 이상 검증 안 함.
+
+### 다음 트랙 후보
+
+- **F2 — useEffectivePermissions 실연결** (`api.getEffectivePermissions` mock → backend endpoint). 백엔드 미존재 — A10 또는 별도 트랙으로 endpoint 신설 선행 필요.
+- **F3 — useStorageQuota 실연결** (M15 StorageBar). backend quota API 미존재 — endpoint 신설 선행.
+- **A10 — Shares §7.9** (backend share/permission API 신설). 권한 매트릭스 docs/03 §3 + share endpoint family.
+- **B1 — full-text/trigram 검색** (ADR #33 후속 트랙, postponed). `pg_trgm` extension + GIN index 마이그레이션 + `tsvector` 또는 trigram 전환. 항목 수 임계 도달 시 활성화.
+
+---
+
 ## 2026-04-30 — 🏁 A9 마일스톤 종료 (Search Endpoint Backend)
 
 ### 범위

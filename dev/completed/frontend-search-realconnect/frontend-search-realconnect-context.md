@@ -1,6 +1,6 @@
 ---
-Last Updated: 2026-04-30
-Status: 🟢 OPEN — F1.0 부트스트랩 완료, F1.1 active
+Last Updated: 2026-05-01
+Status: ✅ CLOSED — PR #20 squash-merge `f9200dc`, dev-docs archived
 ---
 
 # F1 — Frontend Search 실연결 — Context
