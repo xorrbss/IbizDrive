@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: 🟢 OPEN — bootstrap 완료, A9.0 active
+Status: 🟢 OPEN — A9.0 완료 (commit 09d434a), A9.1 active
 ---
 
 # A9 — Search Endpoint Backend — Tasks
@@ -9,8 +9,8 @@ Status: 🟢 OPEN — bootstrap 완료, A9.0 active
 
 | Phase | Title | Status |
 |---|---|---|
-| A9.0 | ADR #33 + docs/02 §7.8 정합 + docs/01 §10 backlink | 🟢 active |
-| A9.1 | DTO + cursor codec | ⬜ pending |
+| A9.0 | ADR #33 + docs/02 §7.8 정합 + docs/01 §10 backlink | ✅ done (09d434a) |
+| A9.1 | DTO + cursor codec | 🟢 active |
 | A9.2 | SearchQueryService + repository LIKE + 권한 후처리 | ⬜ pending |
 | A9.3 | SearchController + 400/401/403 + 통합 테스트 | ⬜ pending |
 | A9.4 | closure (PR + dev-docs archive) | ⬜ pending |
@@ -21,10 +21,10 @@ Status: 🟢 OPEN — bootstrap 완료, A9.0 active
 
 ### 작업 항목
 
-- [ ] `docs/00-overview.md` §5에 ADR #33 본문 추가
-- [ ] `docs/02-backend-data-model.md` §7.8 표/의사코드 보강 (filters MVP scope, response shape 구체화)
-- [ ] `docs/01-frontend-design.md` §10에 backend `/api/search` backlink footnote 추가
-- [ ] commit `docs(A9.0): ADR #33 search algorithm + docs/02 §7.8 정합 + docs/01 §10 backlink`
+- [x] `docs/00-overview.md` §5에 ADR #33 본문 추가
+- [x] `docs/02-backend-data-model.md` §7.8 표/의사코드 보강 (filters MVP scope, response shape 구체화)
+- [x] `docs/01-frontend-design.md` §10에 backend `/api/search` backlink footnote 추가
+- [x] commit `docs(A9.0): ADR #33 search algorithm + docs/02 §7.8 정합 + docs/01 §10 backlink` (09d434a)
 
 ### 작업 전 필독
 
