@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-04-29 — 🏁 M16 Grid View (FileCard + FileTable view 분기)
+
+### 범위
+docs/01 §18 row 16 — `FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글`. M15.2의 `?view=grid`를 FileTable이 소비.
+
+### 변경
+- **lib/fileIcon.ts (M16.1 사전)**: M14에서 FileRow에 인라인이던 `fileIconFor(item)` 추출. FileRow는 import으로 교체. KISS — FileCard와의 중복 방지.
+- **FileCard (M16.1)**: 신규. `Lucide 아이콘(36px) + 이름(line-clamp-2) + 메타(폴더|크기)`. selection ring(`ring-2 ring-accent` + `bg-accent-soft`), `onClick`/`onDoubleClick`, `aria-selected`/`aria-disabled`(pending). 가상화/DnD 없음 (KISS, MVP).
+- **FileTable (M16.2)**: `useViewParam` 통합. `view==='grid'`일 때 새 분기 — `role=grid` `aria-label="파일 그리드"` 컨테이너 + `grid-cols-[repeat(auto-fill,minmax(140px,1fr))]` + `items.map(FileCard)`. 키보드 핸들러는 list와 동일 (`handleKeyDown` 재사용 — 1D index ArrowUp/Down 동작). list 분기 무수정.
+
+### 검증
+- `npx vitest run`: **55 files / 415 tests passed** (M16 신규 7 — FileCard 5 + FileTable view 분기 2, 회귀 0).
+- `npx tsc --noEmit`: clean.
+- `npx eslint`: clean.
+
+### 핵심 결정
+- **`fileIconFor` lib 추출**: M14에선 FileRow 내 헬퍼였음. M16에서 FileCard와 공유 필요 → DRY. `lib/fileIcon.ts`로 분리, FileRow 재import.
+- **FileCard는 별도 컴포넌트 (FileRow 재사용 X)**: gridCols 5-col table layout이 정사각 카드와 호환 안됨. FileRow 분기 추가는 가독성 ↓ → KISS, 분리.
+- **Grid 모드 가상화 없음 (MVP)**: 폴더 당 100+ 항목 시 성능 이슈 가능 → v1.x 트랙. 현재 mock 데이터/실사용 패턴은 50 미만이므로 충분.
+- **Grid 모드 키보드는 1D**: 좌/우 wrap navigation은 v1.x. M16 시점엔 list와 동일하게 ArrowUp/Down만 동작 (인덱스 ±1).
+- **Grid 모드 DnD 없음**: list 모드에서만 이동 가능 — Grid는 마우스 클릭 + 더블클릭만. M15.2 ViewSwitch는 단순 토글이므로 DnD 필요시 list로 전환 권장.
+
+### 비범위 (후속)
+- Grid 모드 가상화 (TanStack Virtual grid) — v1.x
+- Grid 모드 2D 키보드 wrap (좌우 + 상하) — v1.x
+- Grid 모드 DnD — v1.x
+- 썸네일 미리보기 (실제 이미지) — backend thumbnail API 후
+- Grid `aria-rowcount`/`aria-rowindex` — 1D 인덱스라 부적합. v1.x grid 2D 네비 도입 시 재검토
+
+### 다음 세션 컨텍스트
+- 시퀀스 M11→M9→M8→M14→M15→M16 **전부 완료**. PR #16 6-마일스톤 번들.
+- 다음 사용자 지시 대기. (자율 실행 모드 시퀀스 끝)
+
+---
+
 ## 2026-04-29 — 🏁 M15 Layout Extras (SortChip + ViewSwitch + StorageBar + RightPanel 탭)
 
 ### 범위
