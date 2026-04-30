@@ -15,7 +15,8 @@ Status: 🟢 OPEN — A10.0~A10.3 done, A10.4 active
 - **A10.0** (`c28bea3` + `e0a74f0`): ADR #34 본문 + docs/02 §2.7 expires_at 컬럼 + §7.9 wire format(preset 4값 lower-case + subjects 4종 + revoke SpEL) + docs/03 §3 backlink. Preset.SHARE → enum-only(persistable 아님) 정합.
 - **A10.1** (`3064667`): V6__shares.sql + Share JPA entity + ShareRepository(by-me/with-me cursor query) + V6MigrationIT 9 schema tests. 485 tests GREEN.
 - **A10.2** (`e924aea`): ShareDto/ShareCreateRequest/ShareCreatedEvent + ShareCommandService.createShares (single TX, N subjects → N shares) + 10 Mockito tests. 495 tests GREEN.
-- **A10.3** (this turn): ShareRevokedEvent + ShareRepository.lockByIdAndRevokedAtIsNull + ShareCommandService.revokeShare(snapshot → revoke set → permission delete CASCADE) + canRevoke SpEL + ShareAuditListener(SHARE_CREATED/REVOKED first activation). +13 tests → 508 GREEN.
+- **A10.3** (`ec75af8`): ShareRevokedEvent + ShareRepository.lockByIdAndRevokedAtIsNull + ShareCommandService.revokeShare(snapshot → revoke set → permission delete CASCADE) + canRevoke SpEL + ShareAuditListener(SHARE_CREATED/REVOKED first activation). +13 tests → 508 GREEN.
+- **A10.4** (this turn): ShareCursor (`{createdAt iso8601}|{id}` base64 url-safe, TrashCursor 동형) + SharePage record + ShareQueryService.listByMe/listWithMe (limit+1 over-fetch, default 50/cap 100) + ShareCursorTest 7건 + ShareQueryServiceTest 9건. +16 tests → 524 GREEN.
 - 핵심 발견 (bootstrap):
   - `shares` 테이블은 docs/02 §2.7에만 존재, V1~V5 마이그레이션에 미도입 → V6 신규 작성 필요. (A10.1에서 해결)
   - `AuditEventType.SHARE_CREATED/REVOKED/EXPIRED` 정의됨, 사용처 0 → A10.3이 첫 활성화.
@@ -31,8 +32,8 @@ Status: 🟢 OPEN — A10.0~A10.3 done, A10.4 active
 
 ## 현재 active task
 
-- **A10.4** — `ShareQueryService` (by-me / with-me) + `ShareCursor` (`{createdAtEpochMs}|{id}` base64 url-safe codec).
-- 게이트 조건: Mockito 단위 ≥5건 + 회귀 GREEN → 자동 A10.5 진입.
+- **A10.5** — `ShareController` 4 endpoints (POST `/api/files/:fileId/share` + DELETE `/api/shares/:shareId` + GET `/api/shares/by-me` + GET `/api/shares/with-me`) + `@PreAuthorize` (`hasPermission('file', #fileId, 'SHARE')` for POST, `@shareCommandService.canRevoke` for DELETE, `isAuthenticated()` for GETs) + 400/403/404/409 envelope.
+- 게이트 조건: Mockito MockMvc 통합 테스트 ≥7건 + 회귀 GREEN → 자동 A10.6 (PR 생성, 사용자 게이트).
 
 ## 다음 세션 읽기 순서
 
@@ -88,11 +89,12 @@ Status: 🟢 OPEN — A10.0~A10.3 done, A10.4 active
 ## 빠른 재개
 
 ```text
-1. 현재 phase = A10.4 (ShareQueryService + ShareCursor)
-2. 다음 commit = "feat(A10.4): ShareQueryService by-me/with-me + ShareCursor"
-3. ShareCursor: A8 TrashCursor / A9 SearchCursor 패턴 변형 — `{createdAt epoch ms}|{uuid}` Base64.getUrlEncoder().withoutPadding()
-4. ShareRepository.findActiveBySharedBy / findActiveWithMeBySubjectUser 이미 cursor query로 작성됨 (A10.1) — service 레이어만 추가
-5. limit+1 패턴 (A8 일관) — pageSize+1 row 받아 hasMore 판정 + nextCursor 발급
-6. SharePage record(items, nextCursor)
-7. Mockito ≥5: by-me 빈 리스트 / by-me 페이지(nextCursor 발급) / with-me 빈 / with-me 페이지 / cursor round-trip
+1. 현재 phase = A10.5 (ShareController 4 endpoints)
+2. 다음 commit = "feat(A10.5): ShareController 4 endpoints + AuthZ + envelope"
+3. 패턴 base = SearchController (A9.3) + PermissionController (A4.4) + TrashController (A8)
+4. POST /api/files/{fileId}/share → @PreAuthorize("hasPermission(#fileId, 'file', 'SHARE')") → 201 + { shares: ShareDto[] }
+5. DELETE /api/shares/{shareId} → @PreAuthorize("@shareCommandService.canRevoke(#shareId, principal)") → 204
+6. GET /api/shares/by-me?cursor=&limit= → isAuthenticated → 200 + SharePage
+7. GET /api/shares/with-me?cursor=&limit= → isAuthenticated → 200 + SharePage
+8. Mockito MockMvc + @MockBean ShareCommandService/ShareQueryService — 7+ 케이스 (POST 201/403/404/409, DELETE 204/403, GET by-me/with-me 200, invalid cursor 400)
 ```

@@ -12,9 +12,9 @@ Status: 🟢 OPEN — A10.4 active (A10.0~A10.3 done)
 | A10.0 | ADR #34 + docs/02 §2.7/§7.9 정합 + docs/03 §3 backlink | ✅ done | `c28bea3` + `e0a74f0` |
 | A10.1 | V6 마이그레이션 + Share entity + ShareRepository | ✅ done | `3064667` |
 | A10.2 | ShareDto + ShareCreateRequest + ShareCommandService.createShares | ✅ done | `e924aea` |
-| A10.3 | ShareCommandService.revokeShare + canRevoke SpEL helper + ShareAuditListener | ✅ done | (pending commit this turn) |
-| A10.4 | ShareQueryService (by-me / with-me) + ShareCursor | 🟢 active | — |
-| A10.5 | ShareController (4 endpoints) + 400/403/404 + 통합 테스트 | ⬜ pending | — |
+| A10.3 | ShareCommandService.revokeShare + canRevoke SpEL helper + ShareAuditListener | ✅ done | `ec75af8` |
+| A10.4 | ShareQueryService (by-me / with-me) + ShareCursor | ✅ done | (pending commit this turn) |
+| A10.5 | ShareController (4 endpoints) + 400/403/404 + 통합 테스트 | 🟢 active | — |
 | A10.6 | closure (PR + dev-docs archive) | ⬜ pending | — |
 
 ---
