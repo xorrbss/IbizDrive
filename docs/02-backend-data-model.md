@@ -1113,11 +1113,12 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
 POST /api/files/:fileId/share                              (ADR #34)
   Guard:    hasPermission(#fileId, 'file', 'SHARE')
   Request:  { subjects: [{ type: 'user'|'department'|'role'|'everyone', id?: UUID }],
-              preset:    'read'|'upload'|'edit'|'share'|'admin',
+              preset:    'read'|'upload'|'edit'|'admin',
               expiresAt? : ISO8601 (미래),
               message?   : string (max 1000) }
               # subjects[].id 는 type='everyone' 일 때만 NULL (V5 idx_permissions_unique CHECK 동형)
-              # preset wire format 은 backend Preset.java 와 1:1 일관 (lower-case 5 값)
+              # preset wire format = V5 permissions_preset_check 4 값 (read|upload|edit|admin).
+              #   Preset.SHARE 는 enum 정의 존재하나 V5 CHECK 미지원 → controller 진입 시 거부 (400 BAD_REQUEST). ADR #34 backlog.
   Response: 201 { shares: ShareDto[] }
               # ShareDto = { id, fileId, permissionId, sharedBy, subjectType, subjectId,
               #              preset, expiresAt?, message?, createdAt }
