@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: ✅ A8.0 완료 — A8.1 진입 대기 (게이트 1 통과)
+Status: ✅ A8.1 완료 — A8.2 진입 대기 (게이트 2 통과)
 ---
 
 # A8 — Trash Listing + Manual Purge — Tasks
@@ -10,8 +10,8 @@ Status: ✅ A8.0 완료 — A8.1 진입 대기 (게이트 1 통과)
 | Phase | 제목 | 상태 |
 |---|---|---|
 | A8.0 | docs 정합 + ADR #32 신설 (no-code) | ✅ done |
-| A8.1 | GET /api/trash (list) | 📋 ready |
-| A8.2 | DELETE /api/trash/:type/:id (manual purge) | ⏳ pending |
+| A8.1 | GET /api/trash (list) | ✅ done |
+| A8.2 | DELETE /api/trash/:type/:id (manual purge) | 📋 ready |
 | A8.3 | closure (PR + archive) | ⏳ pending |
 
 ---
@@ -50,7 +50,7 @@ Status: ✅ A8.0 완료 — A8.1 진입 대기 (게이트 1 통과)
 
 ---
 
-## A8.1 — GET /api/trash (list endpoint) [pending]
+## A8.1 — GET /api/trash (list endpoint) [✅ done]
 
 **작업 전 필독**:
 - 본 tasks.md의 A8.0 결과(ADR #32 + docs §7.11 패치)
@@ -64,29 +64,15 @@ Status: ✅ A8.0 완료 — A8.1 진입 대기 (게이트 1 통과)
 - `@PreAuthorize("isAuthenticated()")` 사용 controller — `AuthController`/`FileController` 등
 
 **구현 대상**:
-- [ ] (1) `TrashItemDto` record — `{ String id, String name, String type, Instant deletedAt, Instant purgeAfter, String originalPath }`
-- [ ] (2) `TrashItemType` enum — `FILE("file")`, `FOLDER("folder")`. URL `:type` 변환 + validation.
-- [ ] (3) Repository 메서드 추가 (또는 별도 `TrashRepository`):
-  - `FileRepository.findTrashedPage(cursor, limit)` — `WHERE deleted_at IS NOT NULL` + 정렬(`deleted_at DESC, id DESC`).
-  - `FolderRepository.findTrashedPage(cursor, limit)` — 동일.
-  - cursor 인코딩: opaque base64(`{deletedAt}|{id}`).
-- [ ] (4) `TrashQueryService.listForActor(actor, cursor, type, limit)`:
-  - type 필터 분기(file-only/folder-only/both).
-  - both인 경우 두 쿼리 결과를 deletedAt 기준 merge sort.
-  - per-row 권한 평가(`PermissionEvaluator.hasPermission(actor, id, type, "DELETE")`) 후처리 필터.
-  - nextCursor 계산.
-- [ ] (5) `TrashController.list(@AuthenticationPrincipal, cursor, type)`:
-  - `@GetMapping("/api/trash")` + `@PreAuthorize("isAuthenticated()")`
-  - 응답 `200 { items: TrashItemDto[], nextCursor?: String }`.
-- [ ] (6) Testcontainers 테스트:
-  - [ ] empty list → `{ items: [], nextCursor: null }`
-  - [ ] file + folder 혼합 page (정렬 + nextCursor)
-  - [ ] type=file 필터
-  - [ ] type=folder 필터
-  - [ ] MEMBER actor — DELETE 권한 보유 항목만 노출(권한 후처리 필터)
-  - [ ] ADMIN actor — 전체 노출
-  - [ ] cursor 페이지네이션 round-trip
-- [ ] (7) commit: `feat(A8.1): GET /api/trash — list with cursor + type filter + permission post-filter`
+- [x] (1) `TrashItemDto` record — `{ UUID id, String name, TrashItemType type, Instant deletedAt, Instant purgeAfter, UUID originalParentId }`. KISS 정정: `originalPath`(string)는 N+1 query 발생 → frontend folderTree 캐시로 path 해석.
+- [x] (2) `TrashItemType` enum — `FILE("file")`, `FOLDER("folder")` + `@JsonValue` + `from(wire)` validation.
+- [x] (3) Repository 메서드 — `FileRepository.findTrashedPage(cursorDeletedAt, cursorId, limit)` + `FolderRepository.findTrashedPage(cursorDeletedAt, cursorId, limit)`. `(deletedAt, id) DESC` tuple cursor + native query (Postgres NULL OR 단축평가). Cursor codec은 `TrashCursor.encode/decode` (base64 url-safe `{deletedAt}|{id}`).
+- [x] (4) `TrashQueryService.list(actorId, role, cursor, type, limit)` — fetchSize=limit+1 over-fetch, in-memory merge sort `deletedAt DESC, id DESC`, ROLE 경로 short-circuit + `PermissionResolver.isGranted(...)` resource-level fallback, hasMore 감지 후 `nextCursor` emit.
+- [x] (5) `TrashController.list(cursor, type, limit, principal)` — `@GetMapping("/api/trash")` + `@PreAuthorize("isAuthenticated()")` + `parseType` 헬퍼(blank → null, invalid → 400 via GlobalExceptionHandler).
+- [x] (6) 단위 테스트 — Testcontainers 대신 pure Mockito (FolderControllerTest 패턴 준수). 12 테스트 GREEN:
+  - [x] `TrashControllerTest` (6) — type null/blank/file/folder/invalid + cursor/limit echo
+  - [x] `TrashQueryServiceTest` (6) — empty repos / type 필터 분기 2건 / ADMIN 전체 노출(merge sort) / MEMBER per-row grant 필터 / cursor round-trip / invalid cursor 400
+- [x] (7) commit: `feat(A8.1): GET /api/trash — list with cursor + type filter + permission post-filter`
 
 **검증 참조**:
 - 7건 GREEN + 기존 401건+ 회귀 0

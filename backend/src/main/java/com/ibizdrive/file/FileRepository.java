@@ -133,4 +133,30 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     @Modifying
     @Query("DELETE FROM FileItem f WHERE f.id IN :ids")
     int hardDeleteByIds(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * A8.1 — 휴지통 listing용 page query. {@code deleted_at DESC, id DESC} 정렬.
+     *
+     * <p>{@code cursorDeletedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지(전체 trash). NOT NULL이면
+     * 그 tuple보다 strictly less than인 row만 반환 — 즉 직전 페이지 마지막 row의 tuple을 받아 다음
+     * 페이지를 가져오는 cursor pagination. Postgres에서 NULL OR 조건은 short-circuit되어
+     * planner가 first page에는 cursor predicate를 무시한다.
+     *
+     * <p>partial index는 별도로 정의되어 있지 않으나 (V5 schema는 {@code idx_files_purge}만 partial),
+     * MVP 데이터 규모 가정({@code WHERE deleted_at IS NOT NULL} row가 수만건 미만, ADR #32)에서 충분.
+     */
+    @Query(value = """
+        SELECT * FROM files
+        WHERE deleted_at IS NOT NULL
+          AND (
+            CAST(:cursorDeletedAt AS timestamptz) IS NULL
+            OR deleted_at < CAST(:cursorDeletedAt AS timestamptz)
+            OR (deleted_at = CAST(:cursorDeletedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<FileItem> findTrashedPage(@Param("cursorDeletedAt") Instant cursorDeletedAt,
+                                   @Param("cursorId") UUID cursorId,
+                                   @Param("limit") int limit);
 }

@@ -149,4 +149,24 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
      */
     @Query("SELECT f.id, f.parentId FROM Folder f WHERE f.id IN :ids")
     List<Object[]> findIdAndParentIdByIds(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * A8.1 — 휴지통 listing용 page query. {@code deleted_at DESC, id DESC} 정렬.
+     * 동작 규약은 {@link com.ibizdrive.file.FileRepository#findTrashedPage} 와 동일 — 두 source를
+     * service에서 merge sort하여 union 응답을 구성.
+     */
+    @Query(value = """
+        SELECT * FROM folders
+        WHERE deleted_at IS NOT NULL
+          AND (
+            CAST(:cursorDeletedAt AS timestamptz) IS NULL
+            OR deleted_at < CAST(:cursorDeletedAt AS timestamptz)
+            OR (deleted_at = CAST(:cursorDeletedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Folder> findTrashedPage(@Param("cursorDeletedAt") Instant cursorDeletedAt,
+                                 @Param("cursorId") UUID cursorId,
+                                 @Param("limit") int limit);
 }

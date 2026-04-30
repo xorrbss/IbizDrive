@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: ✅ A8.0 완료 — A8.1 진입 대기
+Status: ✅ A8.1 완료 — A8.2 진입 대기
 ---
 
 # A8 — Trash Listing + Manual Purge — Context
@@ -15,7 +15,17 @@ Status: ✅ A8.0 완료 — A8.1 진입 대기
 - SSE infra 부재 확인(`sse`/`Sse`/`EventBus` 클래스 0) → A8도 audit-only. SSE emission은 별도 milestone deferred로 docs 명시.
 - ADR #32 신설 — manual purge URL `:type/:id` + per-row audit 활성화 + bulk 미구현/별도 트랙 + SSE deferred + GET 권한 후처리 + restore drift 정정. 6개 핵심 결정 박제.
 - bootstrap commit `7391547` (게이트 0 통과).
-- A8.0 commit (게이트 1 통과 예정) — docs/00 §5 #32 추가 + docs/02 §7.11 재작성 + docs/02 §7.13.1 footnote + docs/01 §13.2 backend backlink.
+- A8.0 commit `27d42f6` (게이트 1 통과) — docs/00 §5 #32 추가 + docs/02 §7.11 재작성 + docs/02 §7.13.1 footnote + docs/01 §13.2 backend backlink.
+
+### 2026-04-30 (A8.1 완료)
+- Trash 도메인 신규 패키지 `com.ibizdrive.trash`: `TrashItemType` enum + `TrashItemDto` record + `TrashPage` record + `TrashCursor` record(base64 url-safe codec) + `TrashQueryService` + `TrashController`.
+- `FileRepository.findTrashedPage` / `FolderRepository.findTrashedPage` 추가 — `(deletedAt, id) DESC` tuple cursor + native query (Postgres NULL OR 단축평가로 첫 페이지 short-circuit).
+- DTO field 정정: 계획상 `originalPath`(string)였으나 N+1 query 발생 → `originalParentId`(UUID)로 수정. frontend가 folderTree 캐시로 path 해석 (KISS).
+- 권한 후처리 — `PermissionService.effectivePermissions(role)` ROLE 경로 short-circuit + `PermissionResolver.isGranted(actorId, "file"|"folder", id, DELETE)` resource-level fallback. ADMIN → 전부, MEMBER → grant 보유분만.
+- merge sort: type=null 시 file/folder 두 결과를 in-memory `deletedAt DESC, id DESC` 정렬. 동일 ms timestamp 충돌은 frontend dedup으로 흡수(ADR #32 박제).
+- pure Mockito 단위 테스트 12건 GREEN — `TrashControllerTest`(6: type 파싱 5 + cursor echo 1) + `TrashQueryServiceTest`(6: empty/type filter ×2/ADMIN 전체/MEMBER 후처리/cursor round-trip/invalid cursor 400). FolderControllerTest 패턴 따름.
+- 패키지-protected 생성자 우회용 fixture: `com.ibizdrive.file.FileTestFixtures` + `com.ibizdrive.folder.FolderTestFixtures` 2개 — 같은 패키지에 두어 entity no-arg 생성자 호출. 프로덕션 코드 visibility 변경 회피.
+- full `./gradlew test` GREEN — A1~A7 회귀 0.
 
 ## Current Execution Contract
 
@@ -27,8 +37,8 @@ Status: ✅ A8.0 완료 — A8.1 진입 대기
 
 ## 현재 active task
 
-- **A8.1** — `GET /api/trash` list endpoint. `TrashController`/`TrashQueryService`/`TrashItemDto`/`TrashItemType` enum 신설 + Repository 확장 + Testcontainers 7건.
-- 게이트 조건: 7개 테스트 GREEN + 회귀 0 + commit.
+- **A8.2** — `DELETE /api/trash/:type/:id` manual purge. `TrashPurgeService.purgeFile` / `purgeFolder` 신설 + `TrashController.purge` + per-row `FILE_PURGED`/`FOLDER_PURGED` audit emit. A7 leaf-first topo helper 재사용.
+- 게이트 조건: 8개 테스트 GREEN + 회귀 0 + commit `feat(A8.2): ...`.
 
 ## 다음 세션 읽기 순서
 
