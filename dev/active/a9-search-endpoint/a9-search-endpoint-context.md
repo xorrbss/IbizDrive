@@ -1,11 +1,19 @@
 ---
 Last Updated: 2026-04-30
-Status: 🟢 OPEN — bootstrap 직후 (A9.0 진입 대기)
+Status: 🟡 PR-OPEN — A9.0~A9.3 완료, PR #19 사용자 머지 대기 (A9.4 archive 보류)
 ---
 
 # A9 — Search Endpoint Backend — Context
 
 ## SESSION PROGRESS
+
+### 2026-04-30 (A9.0~A9.3 완료, PR #19)
+- A9.0 docs(09d434a): ADR #33 + docs/02 §7.8 (q/type/cursor/limit + 6단계 처리 + SearchResultDto schema) + docs/01 §10 backlink
+- A9.1 DTO+cursor(5e1710b): SearchResultDto(file/folder discriminator) + SearchPage(items/nextCursor/totalEstimate) + SearchCursor(`{updatedAtEpochMs}|{type}|{id}` base64). SearchCursorTest 11 GREEN.
+- A9.2 service+repo(657478a): FileRepository/FolderRepository.searchByNormalizedName + countByNormalizedName, SearchQueryService(q normalize→minLen 2→escapeLike→LIKE→merge sort→READ 후처리→cursor), totalEstimate -1 on cursor pages. SearchQueryServiceTest 12 GREEN.
+- A9.3 controller(9e2ae9e): SearchController GET /api/search + isAuthenticated + IAE→400. SearchControllerTest 5 GREEN.
+- 회귀: 476 backend tests GREEN (51 suites), Mockito-only 패턴 일관.
+- PR #19 https://github.com/xorrbss/IbizDrive/pull/19 푸시 — 사용자 머지 게이트 대기.
 
 ### 2026-04-30 (bootstrap)
 - A8 closure(`a952f78`) 다음 백엔드 트랙 시작. worktree `.claude/worktrees/a9-search-endpoint` 생성, branch `feature/a9-search-endpoint` master 기준.
