@@ -109,4 +109,63 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     int softDeleteByFolderIds(@Param("folderIds") Collection<UUID> folderIds,
                               @Param("deletedAt") Instant deletedAt,
                               @Param("purgeAfter") Instant purgeAfter);
+
+    /**
+     * A7 hard purge 후보 조회 — {@code purge_after <= now}이고 soft-deleted된 file row id를
+     * 오래된 순(purge_after ASC)으로 limit 만큼 반환. V5 partial index
+     * {@code idx_files_purge ON files(purge_after) WHERE deleted_at IS NOT NULL}를 활용.
+     */
+    @Query(value = """
+        SELECT id FROM files
+        WHERE deleted_at IS NOT NULL
+          AND purge_after <= :now
+        ORDER BY purge_after
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<UUID> findExpiredFileIds(@Param("now") Instant now, @Param("limit") int limit);
+
+    /**
+     * A7 hard purge — file row 영구 삭제. 호출자는 사전에 {@code file_versions}를 삭제해 FK
+     * {@code file_versions.file_id REFERENCES files(id) ON DELETE RESTRICT} 위반을 회피해야 한다
+     * ({@link FileVersionRepository#deleteByFileIds}). {@code current_version_id} self-FK는 V5에서
+     * {@code DEFERRABLE INITIALLY DEFERRED} (docs/02 §2.5 line 177)이므로 트랜잭션 내 순서 자유.
+     */
+    @Modifying
+    @Query("DELETE FROM FileItem f WHERE f.id IN :ids")
+    int hardDeleteByIds(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * A8.2 manual folder purge cascade — soft-deleted folder 안에 있는 soft-deleted file id 반환.
+     * cascade 시점에 동일 트랜잭션에서 함께 soft-delete됐으므로 정상 운영에서는 folder의 모든 file을 포함한다.
+     * active file이 soft-deleted folder에 남아 있는 corruption 상태는 purge에서 의도적으로 미포함 →
+     * 후속 hardDeleteByIds 시 FK ON DELETE RESTRICT 위반으로 fail-fast (감지 경로 보존).
+     */
+    @Query("SELECT f.id FROM FileItem f WHERE f.folderId = :folderId AND f.deletedAt IS NOT NULL")
+    List<UUID> findIdsByFolderIdAndDeletedAtIsNotNull(@Param("folderId") UUID folderId);
+
+    /**
+     * A8.1 — 휴지통 listing용 page query. {@code deleted_at DESC, id DESC} 정렬.
+     *
+     * <p>{@code cursorDeletedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지(전체 trash). NOT NULL이면
+     * 그 tuple보다 strictly less than인 row만 반환 — 즉 직전 페이지 마지막 row의 tuple을 받아 다음
+     * 페이지를 가져오는 cursor pagination. Postgres에서 NULL OR 조건은 short-circuit되어
+     * planner가 first page에는 cursor predicate를 무시한다.
+     *
+     * <p>partial index는 별도로 정의되어 있지 않으나 (V5 schema는 {@code idx_files_purge}만 partial),
+     * MVP 데이터 규모 가정({@code WHERE deleted_at IS NOT NULL} row가 수만건 미만, ADR #32)에서 충분.
+     */
+    @Query(value = """
+        SELECT * FROM files
+        WHERE deleted_at IS NOT NULL
+          AND (
+            CAST(:cursorDeletedAt AS timestamptz) IS NULL
+            OR deleted_at < CAST(:cursorDeletedAt AS timestamptz)
+            OR (deleted_at = CAST(:cursorDeletedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<FileItem> findTrashedPage(@Param("cursorDeletedAt") Instant cursorDeletedAt,
+                                   @Param("cursorId") UUID cursorId,
+                                   @Param("limit") int limit);
 }

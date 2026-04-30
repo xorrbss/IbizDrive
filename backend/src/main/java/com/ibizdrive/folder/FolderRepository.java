@@ -118,4 +118,63 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     int softDeleteByIds(@Param("ids") Collection<UUID> ids,
                         @Param("deletedAt") Instant deletedAt,
                         @Param("purgeAfter") Instant purgeAfter);
+
+    /**
+     * A7 hard purge 후보 조회 — {@code purge_after <= now}이고 soft-deleted된 folder row id를
+     * 오래된 순(purge_after ASC)으로 limit 만큼 반환. V5 partial index
+     * {@code idx_folders_purge ON folders(purge_after) WHERE deleted_at IS NOT NULL}를 활용.
+     */
+    @Query(value = """
+        SELECT id FROM folders
+        WHERE deleted_at IS NOT NULL
+          AND purge_after <= :now
+        ORDER BY purge_after
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<UUID> findExpiredFolderIds(@Param("now") Instant now, @Param("limit") int limit);
+
+    /**
+     * A7 hard purge — folder row 영구 삭제. 호출자는 사전에 (1) 후손 파일 삭제 +
+     * (2) 후손 폴더 삭제(leaf-first 위상정렬)를 완료해 FK
+     * {@code folders.parent_id ON DELETE RESTRICT} / {@code files.folder_id ON DELETE RESTRICT}
+     * 위반을 회피해야 한다.
+     */
+    @Modifying
+    @Query("DELETE FROM Folder f WHERE f.id IN :ids")
+    int hardDeleteByIds(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * A7 leaf-first 위상정렬 보조 — id → parent_id 매핑. parent_id가 batch 외부(활성 폴더 또는
+     * 다른 만료 root)인 경우는 위상정렬에서 leaf로 취급. ID만 fetch하므로 entity load 부담 없음.
+     */
+    @Query("SELECT f.id, f.parentId FROM Folder f WHERE f.id IN :ids")
+    List<Object[]> findIdAndParentIdByIds(@Param("ids") Collection<UUID> ids);
+
+    /**
+     * A8.2 manual purge cascade — soft-deleted root의 직접 자식 중 soft-deleted folder id 반환.
+     * BFS frontier expansion으로 후손 트리 전체 수집에 사용. 정상 운영에서는 cascade soft-delete가
+     * 트리 전체를 함께 soft-delete하므로 결과는 root subtree 전체와 일치한다.
+     */
+    @Query("SELECT f.id FROM Folder f WHERE f.parentId = :parentId AND f.deletedAt IS NOT NULL")
+    List<UUID> findIdsByParentIdAndDeletedAtIsNotNull(@Param("parentId") UUID parentId);
+
+    /**
+     * A8.1 — 휴지통 listing용 page query. {@code deleted_at DESC, id DESC} 정렬.
+     * 동작 규약은 {@link com.ibizdrive.file.FileRepository#findTrashedPage} 와 동일 — 두 source를
+     * service에서 merge sort하여 union 응답을 구성.
+     */
+    @Query(value = """
+        SELECT * FROM folders
+        WHERE deleted_at IS NOT NULL
+          AND (
+            CAST(:cursorDeletedAt AS timestamptz) IS NULL
+            OR deleted_at < CAST(:cursorDeletedAt AS timestamptz)
+            OR (deleted_at = CAST(:cursorDeletedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Folder> findTrashedPage(@Param("cursorDeletedAt") Instant cursorDeletedAt,
+                                 @Param("cursorId") UUID cursorId,
+                                 @Param("limit") int limit);
 }

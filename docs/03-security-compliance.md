@@ -414,6 +414,7 @@ type AuditEventType =
   | 'folder.moved'
   | 'folder.deleted'
   | 'folder.restored'
+  | 'folder.purged'        // A8 manual purge (DELETE /api/trash/folder/:id, ADR #32)
   | 'folder.audit_level_changed'
   // 권한 / 공유
   | 'permission.granted'

@@ -306,14 +306,16 @@ S3 객체:
 
 | 작업 | 주기 | 설명 |
 |---|---|---|
-| `purge.expired` | 매일 00:00 | purge_after 경과 파일 영구 삭제 |
+| `purge.expired` | 매일 00:00 (KST) | `purge_after` 경과 folders/files DB hard delete (A7). **S3 객체 삭제는 별도 잡** (`orphan.detect`, ADR #31). [†] |
 | `cleanup.tmp` | 매일 01:00 | S3 tmp/ 24시간 경과 객체 삭제 |
 | `scan.pending` | 5분마다 | 바이러스 스캔 대기 파일 처리 (v1.x) |
-| `orphan.detect` | 매주 일요일 | S3 orphan 객체 검출 |
+| `orphan.detect` | 매주 일요일 | S3 orphan 객체 검출 (storage 모듈 도입 시 — A7 hard purge 후 잔존하는 storage_key 정리) |
 | `quota.warning` | 매일 08:00 | 쿼터 80%+ 사용자에게 알림 |
 | `backup.snapshot` | 매일 02:00 | DB 스냅샷 |
 | `audit.archive` | 매월 1일 | 감사 로그 월별 파티션 아카이빙 |
 | `share.expire` | 매시간 | 만료된 공유 회수 |
+
+> [†] `purge.expired` (A7) 정책 상세: docs/02 §7.11.1. **DB-only** (storage 모듈 부재) — S3 객체는 orphan으로 잔존, audit `after_state.orphanStorageKeys` (cap=1000)에 기록. Properties: `app.purge.{enabled, max-per-run, cron, zone}`. Audit: `SYSTEM_PURGE_EXECUTED` summary-only 1건/run. ROLE 없음 (system actor).
 
 ---
 

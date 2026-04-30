@@ -5,6 +5,110 @@
 
 ---
 
+## 2026-04-30 — 🏁 A8 마일스톤 종료 (Trash Listing + Manual Purge)
+
+### 범위
+
+A8.0 (docs/00 ADR #32 신설 + docs/02 §7.11 패치 + docs/02 §7.13.1 audit 정합 + docs/01 §13 backlink) → A8.1 (`GET /api/trash` cursor + type filter + 권한 후처리 + `TrashItemDto`/`TrashItemType`/`TrashCursor` + 12건 GREEN) → A8.2 (`DELETE /api/trash/:type/:id` ADMIN-only + `TrashPurgeService` (file: lock→version cascade→hard delete→`FILE_PURGED` audit / folder: BFS+leaf-first topo+single root `FOLDER_PURGED` audit) + 8건 GREEN) → A8.3 (PR #18 squash-merge `0c806c1` + dev-docs archive).
+
+### 회고
+
+- **commits**: 4 on top of A7 close `d539640` (worktree branch `feature/a8-trash-manage`) → squash-merge `0c806c1` on `master`. PR #18 single, CI green (backend junit + frontend vitest 모두 SUCCESS).
+- **production 파일**: 9 신설 + 5 수정 — `trash/TrashController.java` NEW, `trash/TrashQueryService.java` NEW, `trash/TrashPurgeService.java` NEW, `trash/TrashItemDto.java` NEW (record), `trash/TrashItemType.java` NEW (enum), `trash/TrashPage.java` NEW (record), `trash/TrashCursor.java` NEW, `audit/AuditEventType.java` `FOLDER_PURGED("folder.purged")` 추가 (38→39), `FileRepository`/`FolderRepository`/`FileVersionRepository` 보조 query 확장, `frontend/src/types/audit.ts` mirror, `docs/03 §4.1` mirror.
+- **test 파일**: 5 신설 — `TrashControllerTest` (9건, list 6 + purge 3), `TrashQueryServiceTest` (6건, cursor/type/권한), `TrashPurgeServiceTest` (5건, file 3 + folder 2 cascade leaf-first 검증), `FileTestFixtures` / `FolderTestFixtures` (package-protected entity constructor 우회).
+- **ADR 신설**: #32 — manual purge URL `:type/:id`, per-row audit (`FILE_PURGED`/`FOLDER_PURGED`), bulk endpoint deferred, SSE emission infra milestone deferred.
+- **A1~A7 회귀 0**: 전체 `./gradlew test` 448/448 GREEN.
+
+### 핵심 결정 (A8 트랙, 확정)
+
+1. **URL 패턴 `:type/:id`** — REST 자원 명시 (`/api/trash/file/:id`, `/api/trash/folder/:id`). 단일 endpoint `:id`보다 명시적이며, type 분기 dispatch가 service layer에서 단순.
+2. **per-row audit** (ADR #32) — A7 summary-only(`SYSTEM_PURGE_EXECUTED`)와 대비. manual purge는 actor가 명시적 ADMIN 의도이므로 `FILE_PURGED`/`FOLDER_PURGED` 1건씩 발행. before_state에 name/folderId/storageKeys 보존.
+3. **folder cascade audit는 root-only** — A6/A7 패턴 일관. 후손 folder/file은 개별 audit 미발행. root audit before_state에 `descendantFolders`/`descendantFiles` 카운트 + `storageKeys` 리스트(cap=1000+`storageKeysTruncated` flag).
+4. **Leaf-first topo-sort 인라인** — A7 `HardPurgeService` Kahn's algorithm을 service 내부에 인라인 (`leafFirstOrder` + `findIdAndParentIdByIds`). 별도 helper class 미신설 (KISS).
+5. **bulk delete deferred** — `DELETE /api/trash` (전체 비우기) 미구현. 트랜잭션 길이 + 부분 실패 정책 + audit 폭주가 단일 PR 범위 초과. ADR #32에 backlog 박제.
+6. **Cursor opaque base64** — `{deletedAt}|{id}` url-safe base64. `TrashCursor.encode/decode` round-trip 테스트로 계약 고정. invalid → 400 GlobalExceptionHandler.
+7. **Pure Mockito (no Testcontainers)** — A6/A7가 DB-level FK 위반 시나리오 이미 커버. service boundary + repository contract + audit emit verify는 Mockito로 충분. KISS — 이중 가드 비용 회피.
+8. **SSE emission deferred** (ADR #32) — `// TODO: SSE emit` 주석만 박제. 실시간 동기화는 별도 인프라 milestone에서 일괄 회수 (A6/A7/A8 누적 부채).
+
+### accepted-deviation (후속 backlog)
+
+- **Frontend M9 (휴지통 UI 통합)** — 본 closure 직후 진입. backend endpoint(`GET /api/trash`, `DELETE /api/trash/:type/:id`) + restore endpoint(A6) + Undo(5초) 통합.
+- **Bulk purge** — `DELETE /api/trash` 전체 비우기 (ADR #32 deferred).
+- **SSE emission** — `file.purged` / `folder.purged` 실시간 push (별도 인프라 milestone).
+- **Storage key 실삭제** — orphan storage_keys는 audit `before_state`에만 기록, 실제 S3 객체 cleanup은 `orphan.detect` 잡 (ADR #31).
+
+### DoD 7/7
+
+1. ✅ ADR #32 신설 + docs/02 §7.11 patch (per-resource restore + DELETE `:type/:id` + bulk strikethrough) + docs/02 §7.13.1 audit 정합 + docs/01 §13 backlink.
+2. ✅ `GET /api/trash` — `@PreAuthorize("isAuthenticated()")` + cursor base64 + type filter + 권한 후처리 + 응답 스키마 docs/02 정합.
+3. ✅ `DELETE /api/trash/:type/:id` — `@PreAuthorize("hasRole('ADMIN')")` + file/folder dispatch + 204.
+4. ✅ `TrashPurgeService` — file (lock→version→hard delete→audit) + folder (BFS→version→file→leaf-first→folder→single root audit) + 404 매핑.
+5. ✅ Audit `FILE_PURGED`/`FOLDER_PURGED` 발행 + before_state JSON 보존(name, folderId, storageKeys, descendantFolders/Files).
+6. ✅ 테스트 20건 GREEN (controller 9 + query 6 + purge 5) + A1~A7 회귀 0 (총 448 tests).
+7. ✅ PR #18 CI green (backend junit + frontend vitest) + master squash-merge `0c806c1` + dev-docs `dev/active/a8-trash-manage/` → `dev/completed/a8-trash-manage/` archive.
+
+### 다음 단계
+
+- **Frontend M9 bootstrap** — `feature/m9-frontend-trash` worktree + plan/context/tasks 3파일 + 사용자 plan 리뷰 게이트. 본 세션에서 이어서 진입.
+- **SSE 실시간 동기화 (별도 인프라 milestone)** — A6/A7/A8 누적 SSE TODO 일괄 회수.
+- **Search endpoint backend** — M11 frontend search 미연결.
+- **Audit query export** — `/admin/audit-logs` 필터 + CSV.
+
+---
+
+## 2026-04-30 — 🏁 A7 마일스톤 종료 (Hard Purge Job — purge.expired)
+
+### 범위
+
+A7.0 (docs/00 ADR #31 + docs/02 line 37 + §7.11.1 + docs/04 §13 patch) → A7.1 (Repository 8메서드 + Testcontainers 7건 GREEN) → A7.2 (`HardPurgeService` 트랜잭션 본체 + audit `SYSTEM_PURGE_EXECUTED` summary emit + Kahn's algorithm leaf-first 위상정렬 + 7건 테스트) → A7.3 (`HardPurgeProperties` + `SchedulingConfig` + `HardPurgeJob` + 통합 4건 + `application.yml` `app.purge` 섹션) → A7.4 (PR #17 squash-merge `5c22e23` + dev-docs archive).
+
+### 회고
+
+- **commits**: 4 on top of A6 close `fdeb610` (worktree branch `feature/a7-hard-purge`) → squash-merge `5c22e23` on `master`. PR #17 single, CI green (backend junit 3m6s + frontend vitest 1m6s 모두 SUCCESS).
+- **production 파일**: 6 신설 + 4 수정 — `purge/HardPurgeService.java` NEW, `purge/PurgeResult.java` NEW (record), `purge/HardPurgeJob.java` NEW, `purge/HardPurgeProperties.java` NEW, `config/SchedulingConfig.java` NEW, `application.yml` `app.purge` 섹션 추가, `FileRepository`/`FolderRepository`/`FileVersionRepository` 각각 hard purge 보조 메서드 확장.
+- **test 파일**: 4 신설 — `HardPurgeRepositoryTest` (7건, V5 schema + cascade 정합), `HardPurgeServiceTest` (7건, 트랜잭션 본체 + audit JSON), `HardPurgeJobIntegrationTest` (3건, enabled 시나리오), `HardPurgeJobDisabledIntegrationTest` (1건, disabled 빈 미등록).
+- **ADR 신설**: #31 — A7 = DB-only, S3 객체 삭제는 storage 모듈 milestone 으로 deferred.
+- **A6 회귀 0**: 전체 `./gradlew test` BUILD SUCCESSFUL.
+
+### 핵심 결정 (A7 트랙, 확정)
+
+1. **DB-only (ADR #31)** — backend storage 모듈 0개 시점. `purge_after` 경과 row의 DB hard delete만 A7 범위. orphan storage_keys는 audit `after_state.orphanStorageKeys`(cap=1000)에 기록만 — storage 모듈 도입 시 `orphan.detect` 잡(docs/04 §13)이 storage_key cross-check로 정리.
+2. **Audit summary-only** — A6 root-only 패턴 일관. 1 run = 1 `SYSTEM_PURGE_EXECUTED` audit. per-row `FILE_PURGED`/`FOLDER_PURGED` enum은 정의되어 있으나 발행 없이 A8 manual purge `/api/trash/:id` 트랙으로 reserve.
+3. **file_versions cascade hard delete** — docs/02 line 37 정책 갱신: 일반은 영구 보존이지만 file row hard purge 시점에는 cascade 삭제 (FK `ON DELETE RESTRICT` 만족). storage_key는 audit orphan 기록 후 삭제.
+4. **Kahn's algorithm in-memory** — schema에 depth 컬럼 부재. parent_id 그래프로 batch 내 leaf-first 위상정렬. cycle 발생 시 ordered list 길이 < 입력으로 자연스러운 skip.
+5. **MAX_PURGE_PER_RUN 합산 한도** — files+folders 합산 (기본 10000). 초과 시 `truncated=true`로 다음 run 이월 (잡 자체는 정상 완료, 가장 오래된 row 우선).
+6. **단일 트랜잭션** — `@Transactional` 본체. partial purge 미허용. 예외 시 전체 rollback → audit 미발행 → 다음 cron 재시도. audit emit만 REQUIRES_NEW.
+7. **운영 기본 비활성** — `app.purge.enabled=false`. staging/prod에서 명시적으로 `true` 설정 후 투입. dev/test는 `@TestPropertySource` override 패턴.
+8. **No ShedLock** — 단일 인스턴스 운영 가정. 다중 인스턴스 도입 시 별도 ADR.
+
+### accepted-deviation (후속 backlog)
+
+- **S3 객체 삭제** — storage 모듈 도입 + `orphan.detect` 잡 (ADR #31).
+- **A8 manual purge** — `/api/trash/:id` 단건 hard delete endpoint + per-row `FILE_PURGED`/`FOLDER_PURGED` audit emit.
+- **Legal Hold 통합** — A7 cron 트랜잭션이 legal_holds 테이블 조회 후 hold된 row 제외 (docs/03 §6.3 후속).
+- **Monitoring metric** — `purge.expired` 잡 실행 횟수 / 처리 row / 실패 카운터 (별도 backlog).
+
+### DoD 10/10
+
+1. ✅ Repository 확장 — `findExpiredFileIds/FolderIds`, `hardDeleteByIds`, `findStorageKeysByFileIds`, `deleteByFileIds`, `findIdAndParentIdByIds` (8 메서드).
+2. ✅ `HardPurgeService.runDailyPurge` 단일 트랜잭션 본체 + 위상정렬 + audit summary emit (`PurgeResult` record).
+3. ✅ Kahn's algorithm leaf-first 위상정렬 (parent_id 그래프, cycle 안전).
+4. ✅ `HardPurgeProperties` + `SchedulingConfig` + `HardPurgeJob` (`@ConditionalOnProperty` 이중 가드) + cron 트리거 → service 위임.
+5. ✅ `application.yml` `app.purge` 섹션 (운영 기본 enabled=false).
+6. ✅ Repository 7건 + Service 7건 + Job 통합 4건 GREEN (총 18건 신규).
+7. ✅ 회귀 0 — `./gradlew test` BUILD SUCCESSFUL.
+8. ✅ ADR #31 본문 게재 + status: accepted, docs/02 line 37 cascade 정책 갱신, §7.11.1 신설, docs/04 §13 footnote.
+9. ✅ PR #17 CI green (backend junit + frontend vitest) + master squash-merge `5c22e23`.
+10. ✅ dev-docs `dev/active/a7-hard-purge/` → `dev/completed/a7-hard-purge/` archive.
+
+### 다음 단계
+
+- **A8 후보**: manual purge `/api/trash/:id` endpoint + frontend 휴지통 UI (docs/01 §13).
+- **docs/03 §5~§8**: 저장소 보안 / Legal Hold / 데이터 보호 / 보안 회귀 가드.
+- **docs/04 본문**: 관리자 페이지 / 쿼터 / 백업.
+
+---
+
 ## 2026-04-29 — 🏁 M16 Grid View (FileCard + FileTable view 분기)
 
 ### 범위
