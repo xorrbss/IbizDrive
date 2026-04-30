@@ -15,6 +15,21 @@ vi.mock('@/hooks/useFilesInFolder', () => ({
   useFilesInFolder: vi.fn(),
 }))
 
+// M8: usePermission은 useQuery 기반 — 테스트는 권한 검증과 무관하므로 admin preset 8 권한으로 고정.
+vi.mock('@/hooks/usePermission', () => ({
+  usePermission: () => ({
+    READ: true,
+    UPLOAD: true,
+    EDIT: true,
+    MOVE: true,
+    DOWNLOAD: true,
+    DELETE: true,
+    SHARE: true,
+    PERMISSION_ADMIN: true,
+    PURGE: false,
+  }),
+}))
+
 vi.mock('@/hooks/useCurrentFolder', () => ({
   useCurrentFolder: vi.fn(),
 }))

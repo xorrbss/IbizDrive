@@ -83,7 +83,7 @@ export function BulkActionBar() {
         <span className="text-[12.5px] font-semibold text-accent">{count}개 선택</span>
       </div>
       <div className="flex items-center gap-1">
-        {can.download && (
+        {can.DOWNLOAD && (
           <button
             type="button"
             onClick={handleDownload}
@@ -92,7 +92,7 @@ export function BulkActionBar() {
             다운로드
           </button>
         )}
-        {can.move && (
+        {can.MOVE && (
           <button
             type="button"
             onClick={handleMove}
@@ -101,7 +101,7 @@ export function BulkActionBar() {
             이동
           </button>
         )}
-        {can.edit && (
+        {can.EDIT && (
           <button
             type="button"
             onClick={handleRename}
@@ -113,7 +113,7 @@ export function BulkActionBar() {
             이름 변경
           </button>
         )}
-        {can.delete && (
+        {can.DELETE && (
           <button
             type="button"
             onClick={handleDelete}
