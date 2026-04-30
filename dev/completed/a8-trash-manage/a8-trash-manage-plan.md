@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: 📋 BOOTSTRAP — A8.0 진입 대기 (게이트 0)
+Status: 🏁 CLOSED — PR #18 squash-merge `0c806c1` (2026-04-30) — DoD 7/7
 ---
 
 # A8 — Trash Listing + Manual Purge — Plan

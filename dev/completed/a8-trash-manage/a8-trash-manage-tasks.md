@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: ✅ A8.2 완료 — A8.3 closure 대기 (게이트 3 통과)
+Status: 🏁 CLOSED — PR #18 squash-merge `0c806c1` (2026-04-30) — DoD 7/7
 ---
 
 # A8 — Trash Listing + Manual Purge — Tasks
@@ -128,20 +128,20 @@ Status: ✅ A8.2 완료 — A8.3 closure 대기 (게이트 3 통과)
 
 ---
 
-## A8.3 — closure [pending]
+## A8.3 — closure [✅ done]
 
 **작업 전 필독**:
 - `dev/completed/a7-hard-purge/` closure 패턴
 - 본 플랜의 DoD 7개 항목
 
 **구현 대상**:
-- [ ] (1) `pnpm`/`./gradlew test` (또는 동등) full run — A1~A7 회귀 0 확인
-- [ ] (2) PR 생성 — title `feat(A8): trash listing + manual purge (GET /api/trash + DELETE /api/trash/:type/:id) + ADR #32`
-- [ ] (3) 사용자 승인 → CI green → squash-merge
-- [ ] (4) closure commit `chore(A8): closure — A8 마일스톤 종료 + dev-docs archive`:
+- [x] (1) `pnpm`/`./gradlew test` (또는 동등) full run — A1~A7 회귀 0 확인 (448/448 GREEN)
+- [x] (2) PR 생성 — title `feat(A8): trash listing + manual purge (GET /api/trash + DELETE /api/trash/:type/:id) + ADR #32` (PR #18)
+- [x] (3) 사용자 승인 → CI green → squash-merge (`0c806c1`)
+- [x] (4) closure commit `chore(A8): closure — A8 마일스톤 종료 + dev-docs archive`:
   - `dev/active/a8-trash-manage/` → `dev/completed/a8-trash-manage/`
-  - 3파일에 closure 블록 추가(완료일, PR 번호, 머지 SHA, DoD 체크)
-- [ ] (5) MEMORY 항목 — Milestone closure pattern에 A8 줄 추가
+  - 3파일 헤더에 closure 상태 반영 (완료일 / PR #18 / 머지 SHA `0c806c1` / DoD 7/7)
+- [x] (5) MEMORY 항목 — Milestone closure pattern에 A8 줄 추가
 
 **검증 참조**:
 - master HEAD 갱신 + `dev/completed/a8-trash-manage/` 존재 + `dev/active/` 비움

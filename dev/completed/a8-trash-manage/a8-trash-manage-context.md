@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-04-30
-Status: ✅ A8.2 완료 — A8.3 closure 대기
+Status: 🏁 CLOSED — PR #18 squash-merge `0c806c1` (2026-04-30) — archive
 ---
 
 # A8 — Trash Listing + Manual Purge — Context
