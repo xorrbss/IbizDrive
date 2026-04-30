@@ -3,8 +3,12 @@ package com.ibizdrive.share;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
+import com.ibizdrive.user.IbizDriveUserDetails;
+import com.ibizdrive.user.Role;
+import com.ibizdrive.user.User;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -51,6 +55,8 @@ class ShareCommandServiceTest {
     FileRepository fileRepository;
     @Mock
     PermissionService permissionService;
+    @Mock
+    PermissionRepository permissionRepository;
     @Mock
     ShareRepository shareRepository;
     @Mock
@@ -263,5 +269,118 @@ class ShareCommandServiceTest {
         PermissionRow row = mock(PermissionRow.class);
         when(row.getId()).thenReturn(id);
         return row;
+    }
+
+    // ── A10.3 — revokeShare ──────────────────────────────────────────────
+
+    @Test
+    void revokeShare_throwsNotFound_whenShareMissingOrAlreadyRevoked() {
+        UUID shareId = UUID.randomUUID();
+        when(shareRepository.lockByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.revokeShare(shareId, actorId))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(permissionRepository, never()).deleteById(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void revokeShare_setsRevokedAt_deletesPermission_publishesEvent() {
+        UUID shareId = UUID.randomUUID();
+        UUID sharePermissionId = UUID.randomUUID();
+        UUID shareFileId = UUID.randomUUID();
+        UUID sharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
+        Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
+
+        Share share = mock(Share.class);
+        when(share.getFileId()).thenReturn(shareFileId);
+        when(share.getPermissionId()).thenReturn(sharePermissionId);
+        when(share.getSharedBy()).thenReturn(sharedBy);
+        when(share.getCreatedAt()).thenReturn(createdAt);
+        when(share.getExpiresAt()).thenReturn(expiresAt);
+        when(share.getMessage()).thenReturn("orig msg");
+        when(shareRepository.lockByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.of(share));
+
+        service.revokeShare(shareId, actorId);
+
+        // share row UPDATE — revoked_at + revoked_by setter 호출 확인.
+        verify(share).setRevokedAt(any());
+        verify(share).setRevokedBy(actorId);
+        verify(shareRepository).saveAndFlush(share);
+        // permission row 직접 deleteById — PermissionService.revokePermission 우회 (이중 audit 회피).
+        verify(permissionRepository).deleteById(sharePermissionId);
+        verify(permissionService, never()).revokePermission(any(), any());
+
+        ArgumentCaptor<ShareRevokedEvent> evCaptor = ArgumentCaptor.forClass(ShareRevokedEvent.class);
+        verify(eventPublisher).publishEvent(evCaptor.capture());
+        ShareRevokedEvent ev = evCaptor.getValue();
+        assertThat(ev.actorId()).isEqualTo(actorId);
+        assertThat(ev.shareId()).isEqualTo(shareId);
+        assertThat(ev.fileId()).isEqualTo(shareFileId);
+        assertThat(ev.permissionId()).isEqualTo(sharePermissionId);
+        assertThat(ev.originalSharedBy()).isEqualTo(sharedBy);
+        assertThat(ev.originalCreatedAt()).isEqualTo(createdAt);
+        assertThat(ev.originalExpiresAt()).isEqualTo(expiresAt);
+        assertThat(ev.originalMessage()).isEqualTo("orig msg");
+    }
+
+    // ── A10.3 — canRevoke ────────────────────────────────────────────────
+
+    @Test
+    void canRevoke_returnsFalse_whenUserNull() {
+        assertThat(service.canRevoke(UUID.randomUUID(), null)).isFalse();
+    }
+
+    @Test
+    void canRevoke_returnsTrue_whenAdmin_withoutLookup() {
+        IbizDriveUserDetails admin = userDetails(UUID.randomUUID(), Role.ADMIN);
+
+        assertThat(service.canRevoke(UUID.randomUUID(), admin)).isTrue();
+        verify(shareRepository, never()).findByIdAndRevokedAtIsNull(any());
+    }
+
+    @Test
+    void canRevoke_returnsTrue_whenSharedByMatchesPrincipal() {
+        UUID shareId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        IbizDriveUserDetails member = userDetails(userId, Role.MEMBER);
+        Share share = mock(Share.class);
+        when(share.getSharedBy()).thenReturn(userId);
+        when(shareRepository.findByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.of(share));
+
+        assertThat(service.canRevoke(shareId, member)).isTrue();
+    }
+
+    @Test
+    void canRevoke_returnsFalse_whenSharedByDifferentAndNotAdmin() {
+        UUID shareId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID otherUser = UUID.randomUUID();
+        IbizDriveUserDetails member = userDetails(userId, Role.MEMBER);
+        Share share = mock(Share.class);
+        when(share.getSharedBy()).thenReturn(otherUser);
+        when(shareRepository.findByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.of(share));
+
+        assertThat(service.canRevoke(shareId, member)).isFalse();
+    }
+
+    @Test
+    void canRevoke_returnsFalse_whenShareNotFound() {
+        UUID shareId = UUID.randomUUID();
+        IbizDriveUserDetails member = userDetails(UUID.randomUUID(), Role.MEMBER);
+        when(shareRepository.findByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.empty());
+
+        assertThat(service.canRevoke(shareId, member)).isFalse();
+    }
+
+    private IbizDriveUserDetails userDetails(UUID userId, Role role) {
+        User u = mock(User.class);
+        when(u.getId()).thenReturn(userId);
+        when(u.getRole()).thenReturn(role);
+        IbizDriveUserDetails details = mock(IbizDriveUserDetails.class);
+        when(details.getUser()).thenReturn(u);
+        return details;
     }
 }

@@ -1,6 +1,8 @@
 package com.ibizdrive.share;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -27,9 +29,17 @@ import java.util.UUID;
 public interface ShareRepository extends JpaRepository<Share, UUID> {
 
     /**
-     * 단건 조회 — revoke 가드 (canRevoke / DELETE endpoint). 이미 revoke된 share는 404로 매핑.
+     * 단건 조회 — canRevoke SpEL 가드. 이미 revoke된 share는 false로 매핑(403).
      */
     Optional<Share> findByIdAndRevokedAtIsNull(UUID id);
+
+    /**
+     * Pessimistic write lock on active share — DELETE /api/shares/:id 진입 시점 행 잠금
+     * (CLAUDE.md §3 원칙 7 동형). 이미 revoke된 share는 매치되지 않으므로 호출자는 404로 변환.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT s FROM Share s WHERE s.id = :id AND s.revokedAt IS NULL")
+    Optional<Share> lockByIdAndRevokedAtIsNull(@Param("id") UUID id);
 
     /**
      * GET /api/shares/by-me — actor가 만든 active share (revoked_at IS NULL) cursor 페이지.

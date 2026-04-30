@@ -3,9 +3,12 @@ package com.ibizdrive.share;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
 import com.ibizdrive.permission.Preset;
+import com.ibizdrive.user.IbizDriveUserDetails;
+import com.ibizdrive.user.Role;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -53,15 +56,18 @@ public class ShareCommandService {
 
     private final FileRepository fileRepository;
     private final PermissionService permissionService;
+    private final PermissionRepository permissionRepository;
     private final ShareRepository shareRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public ShareCommandService(FileRepository fileRepository,
                                PermissionService permissionService,
+                               PermissionRepository permissionRepository,
                                ShareRepository shareRepository,
                                ApplicationEventPublisher eventPublisher) {
         this.fileRepository = fileRepository;
         this.permissionService = permissionService;
+        this.permissionRepository = permissionRepository;
         this.shareRepository = shareRepository;
         this.eventPublisher = eventPublisher;
     }
@@ -134,6 +140,86 @@ public class ShareCommandService {
             created.add(share);
         }
         return created;
+    }
+
+    /**
+     * DELETE /api/shares/:shareId — share revoke (docs/02 §7.9, ADR #34 결정 1).
+     *
+     * <p>흐름:
+     * <ol>
+     *   <li>{@link ShareRepository#lockByIdAndRevokedAtIsNull}로 row lock + 활성 확인 → 미존재면 404.</li>
+     *   <li>snapshot 캡처 (event publish 시 사용 — V6 ON DELETE CASCADE로 row가 사라지기 때문).</li>
+     *   <li>{@code revoked_at = NOW()}, {@code revoked_by = actor}로 UPDATE — lock 보유 상태에서 의도 표시.</li>
+     *   <li>{@link PermissionRepository#deleteById}로 permissions row 직접 삭제 → V6 CASCADE로 share row도 함께 사라짐.
+     *       {@link PermissionService#revokePermission}을 우회 — {@code PermissionRevokedEvent} 미발행
+     *       (이중 audit 회피, ADR #34 결정 1).</li>
+     *   <li>{@link ShareRevokedEvent} publish → {@code ShareAuditListener}가 {@code share.revoked} INSERT.</li>
+     * </ol>
+     *
+     * <p>권한 가드는 {@link #canRevoke}가 {@code @PreAuthorize}에서 1차 처리. 본 메서드는 권한 검사를
+     * 다시 하지 않는다 — controller-service 분리 일관성.
+     *
+     * @throws ResourceNotFoundException share 미존재 또는 이미 revoke된 share
+     */
+    @Transactional
+    public void revokeShare(UUID shareId, UUID actorId) {
+        if (shareId == null) throw new IllegalArgumentException("shareId must not be null");
+        if (actorId == null) throw new IllegalArgumentException("actorId must not be null");
+
+        Share share = shareRepository.lockByIdAndRevokedAtIsNull(shareId)
+            .orElseThrow(() -> new ResourceNotFoundException("share not found or already revoked: " + shareId));
+
+        // V6 CASCADE 직전 snapshot — event payload용. share row는 곧 삭제됨.
+        UUID fileId = share.getFileId();
+        UUID permissionId = share.getPermissionId();
+        UUID originalSharedBy = share.getSharedBy();
+        Instant originalCreatedAt = share.getCreatedAt();
+        Instant originalExpiresAt = share.getExpiresAt();
+        String originalMessage = share.getMessage();
+
+        // 의도 표시 — lock 안에서 revoked_at/revoked_by set. 다음 줄의 permission delete가 CASCADE로 row를 지움.
+        share.setRevokedAt(Instant.now());
+        share.setRevokedBy(actorId);
+        shareRepository.saveAndFlush(share);
+
+        // permission row 직접 삭제 → V6 ON DELETE CASCADE → share row 함께 사라짐.
+        // PermissionService.revokePermission 우회 — PermissionRevokedEvent 미발행 (이중 audit 회피).
+        permissionRepository.deleteById(permissionId);
+
+        eventPublisher.publishEvent(new ShareRevokedEvent(
+            actorId,
+            shareId,
+            fileId,
+            permissionId,
+            originalSharedBy,
+            originalCreatedAt,
+            originalExpiresAt,
+            originalMessage
+        ));
+    }
+
+    /**
+     * DELETE /api/shares/:shareId의 SpEL 가드. {@link com.ibizdrive.permission.PermissionService#canRevokePermission}
+     * 패턴 동형.
+     *
+     * <p>호출 형태: {@code @PreAuthorize("@shareCommandService.canRevoke(#shareId, principal)")}.
+     *
+     * <p>평가 (ADR #34 결정 4):
+     * <ul>
+     *   <li>{@code share.shared_by == principal.userId} — 자기가 만든 share는 revoke 가능.</li>
+     *   <li>OR {@code principal.role == ADMIN} — 관리자는 모든 share revoke 가능.</li>
+     * </ul>
+     *
+     * <p>{@code shareId}가 존재하지 않거나 이미 revoke된 share는 false 반환 — Spring Security가 403으로 매핑.
+     * 404는 controller 본체에서 분리 판정.
+     */
+    public boolean canRevoke(UUID shareId, IbizDriveUserDetails currentUser) {
+        if (currentUser == null || shareId == null) return false;
+        Role role = currentUser.getUser().getRole();
+        if (role == Role.ADMIN) return true;
+        return shareRepository.findByIdAndRevokedAtIsNull(shareId)
+            .map(s -> s.getSharedBy() != null && s.getSharedBy().equals(currentUser.getUser().getId()))
+            .orElse(false);
     }
 
     private static Preset parsePreset(String wire) {
