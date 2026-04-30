@@ -168,4 +168,43 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     List<FileItem> findTrashedPage(@Param("cursorDeletedAt") Instant cursorDeletedAt,
                                    @Param("cursorId") UUID cursorId,
                                    @Param("limit") int limit);
+
+    /**
+     * A9.2 — search by normalized_name LIKE (docs/02 §7.8, ADR #33).
+     *
+     * <p>{@code pattern}은 호출자가 사전 escape + wildcard wrap 완료 (예: {@code "%foo%"}). ESCAPE
+     * 문자는 backslash. 정렬은 {@code updated_at DESC, id DESC} — cursor pagination key.
+     *
+     * <p>{@code cursorUpdatedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지. NOT NULL이면 그 tuple
+     * 보다 strictly less than인 row만 반환. {@code WHERE deleted_at IS NULL}로 휴지통 항목 제외.
+     *
+     * <p>현재 schema에 {@code normalized_name} 단독 인덱스가 없어 row scan 발생 — ADR #33 가정
+     * (활성 row 수 < 10k MVP). 큰 데이터셋 시 trigram/tsvector 마이그레이션 트랙.
+     */
+    @Query(value = """
+        SELECT * FROM files
+        WHERE deleted_at IS NULL
+          AND normalized_name LIKE :pattern ESCAPE '\\'
+          AND (
+            CAST(:cursorUpdatedAt AS timestamptz) IS NULL
+            OR updated_at < CAST(:cursorUpdatedAt AS timestamptz)
+            OR (updated_at = CAST(:cursorUpdatedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY updated_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<FileItem> searchByNormalizedName(@Param("pattern") String pattern,
+                                          @Param("cursorUpdatedAt") Instant cursorUpdatedAt,
+                                          @Param("cursorId") UUID cursorId,
+                                          @Param("limit") int limit);
+
+    /**
+     * A9.2 — search totalEstimate 보조. 첫 페이지에서만 호출 — cursor 페이지에서는 비용 회피.
+     */
+    @Query(value = """
+        SELECT COUNT(*) FROM files
+        WHERE deleted_at IS NULL
+          AND normalized_name LIKE :pattern ESCAPE '\\'
+        """, nativeQuery = true)
+    long countByNormalizedName(@Param("pattern") String pattern);
 }
