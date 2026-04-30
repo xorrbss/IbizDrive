@@ -1,8 +1,8 @@
 import { Suspense } from 'react'
 import { FolderTree } from '@/components/folders/FolderTree'
+import { TrashLink } from '@/components/trash/TrashLink'
 import { DndProvider } from '@/components/dnd/DndProvider'
 import { TopBar } from '@/components/topbar/TopBar'
-import { TrashLink } from '@/components/trash/TrashLink'
 import { StatusBar } from '@/components/statusbar/StatusBar'
 import { StorageBar } from '@/components/storage/StorageBar'
 

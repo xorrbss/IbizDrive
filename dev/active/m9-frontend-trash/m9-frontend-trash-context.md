@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 ACTIVE — 게이트 3 통과 (M9.2 hooks 14 GREEN) → M9.3 진입 대기
+Status: 🟢 ACTIVE — 게이트 4 통과 (M9.3 /trash 페이지 + TrashTable + TrashLink) → M9.4 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Context
@@ -23,6 +23,15 @@ Status: 🟢 ACTIVE — 게이트 3 통과 (M9.2 hooks 14 GREEN) → M9.3 진입
   - **lesson**: 이 worktree(`feature/m9-frontend-trash`)에서 작업 시 frontend 편집 경로는 반드시 `.claude/worktrees/m9-frontend-trash/frontend/...`. main repo `C:/project/IbizDrive/frontend/...`이 아님. 헷갈리면 `git rev-parse --show-toplevel`로 확인.
 - **다음**: M9.1 — types/trash.ts + api.getTrash/restoreFile/restoreFolder/purgeTrashItem + (분기 A) api.deleteBulk Mock 제거 + 실 fetch 마이그 + api.trash.test.ts ≥6 GREEN.
 - **2026-05-01 M9.1 완료 (`7bd63f2`)** — 게이트 2 통과 (사용자 OK → commit + dev/process 정리).
+- **2026-05-01 M9.3 완료** — 게이트 4 통과 (/trash 페이지 + TrashTable + TrashLink 9 tests GREEN, 회귀 0).
+  - 신설: `app/(explorer)/trash/{page,ClientTrashPage}.tsx` (server entry → client 분리, files 라우트 패턴 mirror).
+  - 신설: `components/trash/{TrashTable,TrashRowActions,TrashLink}.tsx`.
+  - 신설: `lib/folderTreeUtils.ts`에 `findFolderPath(node, id): FolderNode[] | null` 추가 (M9.3 originalParentId path 해석 + 향후 재사용).
+  - 통합: `app/(explorer)/layout.tsx` `<aside>` 하단에 `TrashLink` mount (mt-auto + border-top).
+  - **ADMIN 가드는 `usePermission().admin` 사용** — useEffectivePermissions hook 미구현. M7 권한 hook 도입 시 1줄 교체. plan §의사결정 #3 정합.
+  - 4상태: isLoading=로딩 / isError=에러 alert / items.length===0=Empty "휴지통이 비어있습니다" / success=row 렌더.
+  - 검증: pnpm test 41 files / 360 tests GREEN, 회귀 0. typecheck/lint 통과.
+  - **lesson**: 본 프로젝트는 jest-dom 미설정. 컴포넌트 테스트 단언은 `toBeTruthy/toBeNull/getAttribute/textContent` 패턴 사용 (audit/AuditTable.test 따름).
 - **2026-05-01 M9.2 완료** — 게이트 3 통과 (TanStack Query hooks 14 tests GREEN, 회귀 0).
   - 신설: `frontend/src/hooks/useTrashList.ts` (`useInfiniteQuery` + cursor + type 필터; queryKey는 hook 사이트에서 `[...qk.trashList(), type]` 인라인 — qk 미수정).
   - 신설: `frontend/src/hooks/useRestoreItem.ts` — type 분기 + `invalidations.afterRestore({folderIds:[sourceFolderId]})` 정밀/보수 무효화.
@@ -49,9 +58,9 @@ Status: 🟢 ACTIVE — 게이트 3 통과 (M9.2 hooks 14 GREEN) → M9.3 진입
 
 ## 현재 active task
 
-- **Phase**: 게이트 3 통과 → M9.3 진입 대기
-- **선행 완료**: M9.0 (`6e67785`) — qk.trash + 무효화 헬퍼. M9.1 (`7bd63f2`) — trash API client + types. M9.2 — TanStack Query hooks (useTrashList/useRestoreItem/usePurgeTrashItem) + 14 GREEN.
-- **다음**: M9.3 — `/trash` 페이지 + TrashTable + TrashLink + 4상태 + ADMIN 가드. 단위 테스트 ≥7건 GREEN.
+- **Phase**: 게이트 4 통과 → M9.4 진입 대기
+- **선행 완료**: M9.0 (`6e67785`) — qk.trash + 무효화 헬퍼. M9.1 (`7bd63f2`) — API client. M9.2 (`d52b4d6`) — hooks. M9.3 — /trash 페이지 + 컴포넌트 + Sidebar 통합 + 9 GREEN.
+- **다음**: M9.4 — Undo toast wiring (BulkActionBar 5초 sonner action). 단위 테스트 ≥3건 GREEN.
 
 ## 다음 세션 읽기 순서
 

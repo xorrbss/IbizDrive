@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 ACTIVE — 게이트 3 통과 → M9.3 진입 대기
+Status: 🟢 ACTIVE — 게이트 4 통과 → M9.4 진입 대기
 ---
 
 # M9 — Frontend 휴지통 통합 — Tasks
@@ -13,8 +13,8 @@ Status: 🟢 ACTIVE — 게이트 3 통과 → M9.3 진입 대기
 | M9.0 | docs 정합 + queryKeys `qk.trash()` (no-code/1줄) | ✅ done (게이트 1 통과 2026-05-01) |
 | M9.1 | API client 확장 + types | ✅ done (게이트 2 통과 2026-05-01) |
 | M9.2 | TanStack Query hooks + 단위 테스트 | ✅ done (게이트 3 통과 2026-05-01) |
-| M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | 📋 ready |
-| M9.4 | Undo toast wiring (BulkActionBar 5초) | ⏸ blocked by M9.3 |
+| M9.3 | `/trash` 페이지 + TrashTable + TrashLink + 4상태 | ✅ done (게이트 4 통과 2026-05-01) |
+| M9.4 | Undo toast wiring (BulkActionBar 5초) | 📋 ready |
 | M9.5 | closure (PR + archive) | ⏸ blocked by M9.4 |
 
 ---
@@ -133,7 +133,7 @@ Status: 🟢 ACTIVE — 게이트 3 통과 → M9.3 진입 대기
 
 ---
 
-## M9.3 — `/trash` 페이지 + TrashTable + TrashLink [📋 ready]
+## M9.3 — `/trash` 페이지 + TrashTable + TrashLink [✅ done]
 
 **작업 전 필독**:
 - M9.2 결과 — hooks GREEN
@@ -148,17 +148,16 @@ Status: 🟢 ACTIVE — 게이트 3 통과 → M9.3 진입 대기
 - `useEffectivePermissions` 또는 `useRoleStore` — ADMIN 가드 위치
 
 **구현 대상**:
-- [ ] (1) `app/(explorer)/trash/page.tsx` — `useTrashList()` + 4상태 분기 + Empty 메시지 ("휴지통이 비어있습니다")
-- [ ] (2) `components/trash/TrashTable.tsx` — 가상화 또는 단순 list (MVP는 단순 list 50건/page) + aria-rowcount/rowindex + 컬럼: 이름, 타입(아이콘), 원위치(folderTree로 path 해석), 삭제 시각, 영구 삭제 예정, 행 액션
-- [ ] (3) `components/trash/TrashRowActions.tsx` — 복원 버튼 + 영구 삭제 버튼(ADMIN-only `useEffectivePermissions().isAdmin` 가드) + onClick → `useRestoreItem` / `usePurgeTrashItem`
-- [ ] (4) `components/trash/TrashLink.tsx` — Sidebar 하단 진입 링크 (`<aside>` 하단)
-- [ ] (5) Sidebar 통합 — 기존 `components/folders/FolderTree.tsx` 또는 layout 위치에 `TrashLink` 추가
-- [ ] (6) `originalParentId` → path 해석 헬퍼: `useFolderTree()` 캐시 + `findNodeAndPath` 재사용. 부모 trashed면 "원위치 폴더 삭제됨" 폴백
-- [ ] (7) 단위 테스트:
-  - `TrashTable.test.tsx` — 4상태 + 행 렌더 + ADMIN/non-ADMIN 영구 삭제 버튼 가시성
-  - `TrashLink.test.tsx` — 클릭 시 `/trash` navigate
-  - `app/(explorer)/trash/page.test.tsx` — 페이지 렌더 + Empty/Loading/Error
-  - 총 ≥7건 GREEN
+- [x] (1) `app/(explorer)/trash/page.tsx` (server entry) + `ClientTrashPage.tsx` — 헤더 + TrashTable. 4상태 분기는 TrashTable 내부에서 처리.
+- [x] (2) `components/trash/TrashTable.tsx` — 단순 list (가상화 X — MVP 충분) + `aria-rowcount/rowindex` + 6 컬럼 (이름/타입/원위치/삭제 시각/영구 삭제 예정/액션) + `hasNextPage` 더 보기 버튼.
+- [x] (3) `components/trash/TrashRowActions.tsx` — 복원 + (ADMIN-only) 영구 삭제. ADMIN 가드는 `usePermission().admin` (M7 자리) — useEffectivePermissions hook은 미구현이라 기존 placeholder 사용. 변경 시 docs/03 §3 권한 hook 도입과 함께.
+- [x] (4) `components/trash/TrashLink.tsx` — Sidebar 하단 링크. `usePathname` 기반 `aria-current` 분기.
+- [x] (5) Sidebar 통합 — `app/(explorer)/layout.tsx`의 `<aside>` 안 `FolderTree` 아래 `mt-auto` border-top 영역에 `TrashLink` 추가.
+- [x] (6) `originalParentId` path 해석 — `lib/folderTreeUtils.ts`에 `findFolderPath` 신설. `useFolderTree()` 캐시 사용. 부모 트리에 없으면 "원위치 폴더 삭제됨" 폴백, originalParentId=null이면 "최상위" 표기.
+- [x] (7) 단위 테스트 9건 GREEN (요건 ≥7 초과):
+  - TrashTable(7): isLoading / isError alert / Empty / 행 렌더 + 원위치 path + aria-rowcount / orphan 폴백 / ADMIN 버튼 가시 / non-ADMIN 버튼 숨김
+  - TrashLink(2): href="/trash" / 비활성 라우트에서 aria-current 미지정
+  - **page.test.tsx 생략** — 4상태가 TrashTable에서 직접 검증되어 page는 헤더만(중복 회피, KISS).
 - [ ] (8) commit: `feat(M9.3): /trash 페이지 + TrashTable + TrashLink + 4상태`
 
 **검증 참조**:
@@ -169,11 +168,11 @@ Status: 🟢 ACTIVE — 게이트 3 통과 → M9.3 진입 대기
 **문서 반영**:
 - `docs/01-frontend-design.md` §13.2 본문에 component 경로 backlink (`app/(explorer)/trash/page.tsx`, `components/trash/TrashTable.tsx`)
 
-**게이트 4**: 7건 GREEN + 4상태 + ADMIN 가드 + Sidebar 진입 → M9.4 진입.
+**게이트 4**: ✅ 통과 (2026-05-01) — 9 tests GREEN (요건 ≥7), 4상태 + ADMIN 가드 + Sidebar 진입 모두 충족. 회귀 0 (360 tests). typecheck/lint 통과. M9.4 진입.
 
 ---
 
-## M9.4 — Undo toast wiring (BulkActionBar 5초) [⏸ blocked by M9.3]
+## M9.4 — Undo toast wiring (BulkActionBar 5초) [📋 ready]
 
 **작업 전 필독**:
 - M9.3 결과 — `/trash` + restore mutation
