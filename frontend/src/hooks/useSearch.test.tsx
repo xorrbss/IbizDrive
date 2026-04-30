@@ -125,26 +125,52 @@ describe('useSearch', () => {
     expect(lastCall[0].q).toBe('계약서')
   })
 
-  // 실제 mock api (setTimeout 200ms 포함)와 통합 동작 — 실제 타이머 사용
-  // (fake timer + react-query 데이터 propagation은 까다로워 통합 테스트로 대체)
-  it('integration: 실제 api.searchFiles와 동작 (real timers)', async () => {
+  // F1.1 — 실제 api.searchFiles는 /api/search fetch를 호출. 통합 테스트에서는 fetch를
+  // 직접 stub해서 SearchPage 응답을 반환하고, useSearch가 매핑된 FileItem[]을 노출하는지 검증.
+  it('integration: 실제 api.searchFiles와 동작 (real timers, fetch stub)', async () => {
     vi.useRealTimers()
     vi.restoreAllMocks()
 
-    const { result, rerender } = renderHook(
-      ({ q }: { q: string }) => useSearch(q),
-      {
-        initialProps: { q: '' },
-        wrapper: wrapper(freshClient()),
-      },
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          items: [
+            {
+              type: 'file',
+              id: 'f1',
+              name: '계약서_A사.pdf',
+              folderId: 'folder-1',
+              sizeBytes: 100,
+              mimeType: 'application/pdf',
+              updatedAt: '2026-04-30T10:00:00Z',
+            },
+          ],
+          nextCursor: null,
+          totalEstimate: 1,
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
     )
-    rerender({ q: '계약' })
+    vi.stubGlobal('fetch', fetchMock)
 
-    await waitFor(
-      () => {
-        expect(result.current.data?.items.some((f) => f.name.includes('계약'))).toBe(true)
-      },
-      { timeout: 2000 },
-    )
+    try {
+      const { result, rerender } = renderHook(
+        ({ q }: { q: string }) => useSearch(q),
+        {
+          initialProps: { q: '' },
+          wrapper: wrapper(freshClient()),
+        },
+      )
+      rerender({ q: '계약' })
+
+      await waitFor(
+        () => {
+          expect(result.current.data?.items.some((f) => f.name.includes('계약'))).toBe(true)
+        },
+        { timeout: 2000 },
+      )
+    } finally {
+      vi.unstubAllGlobals()
+    }
   })
 })
