@@ -64,6 +64,15 @@ app:
       batch-size: 200
       cron: "0 */5 * * * *" # 매 5분
       zone: Asia/Seoul
+  # PERMISSION_EXPIRED cron (docs/04 §13, permissions-expired-cron).
+  # permissions.expires_at <= NOW() row를 hard delete + permission.expired audit 기록.
+  # 평가(findEffective)는 이미 만료 row를 무시하므로 cron의 역할은 DB cleanup + audit trail.
+  permission:
+    expiration:
+      enabled: false
+      batch-size: 200
+      cron: "0 */5 * * * *" # 매 5분
+      zone: Asia/Seoul
 
 ibizdrive:
   storage:

@@ -419,6 +419,7 @@ type AuditEventType =
   // 권한 / 공유
   | 'permission.granted'
   | 'permission.revoked'
+  | 'permission.expired'   // 활성화 (`permissions-expired-cron`, 2026-05-01) — actor_id=NULL, metadata.trigger='system.expiration', docs/02 §7.10.1
   | 'permission.changed'
   | 'share.created'        // A10 활성화 (`a10-shares`)
   | 'share.revoked'        // A10 활성화 (`a10-shares`)

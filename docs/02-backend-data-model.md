@@ -210,6 +210,8 @@ CREATE INDEX idx_permissions_expires ON permissions(expires_at) WHERE expires_at
 ```
 
 > **효율적 권한 조회**: 파일/폴더의 effective permission 계산은 재귀 CTE로 상위 폴더까지 순회. 성능이 문제면 materialized view 또는 상속된 권한을 비정규화.
+>
+> **만료 grant 처리**: `expires_at <= NOW()` row는 `permissions-expired-cron` 트랙(2026-05-01 closure, ADR #34)이 정기 cleanup + `permission.expired` audit 기록. `findEffective`가 이미 `expires_at > NOW()` 필터링하므로 cron의 가치는 (a) DB cleanup, (b) audit trail. 정책 표는 §7.10.1 참조.
 
 ### 2.7 shares (V6 마이그레이션 — A10, ADR #34)
 
@@ -1237,6 +1239,23 @@ GET /api/me/effective-permissions[?nodeId={uuid}]
             frontend `api.getEffectivePermissions(nodeId?)`의 Promise<Permission[]> 시그니처와 1:1 매핑.
             staleTime 60s (usePermission) — 빈도 낮음, 9× CTE 비용 MVP 허용.
 ```
+
+#### 7.10.1 만료 cron (`permissions-expired-cron`, ADR #34 backlog closure)
+
+> `permissions.expires_at <= NOW()` row를 자동 cleanup. 운영 기본 비활성, staging/prod에서 명시적 활성화. `findEffective`가 이미 `expires_at > NOW()` 필터링하므로 보안 측면에서는 cron이 없어도 만료 grant는 평가에서 제외 — cron의 가치는 (a) DB cleanup, (b) `permission.expired` audit row.
+
+| 항목 | 정책 |
+|---|---|
+| 빈 등록 | `app.permission.expiration.enabled=true`일 때만 (`@ConditionalOnProperty`, default `false`) |
+| 스케줄 | `@Scheduled(cron, zone)` — default `0 */5 * * * *` Asia/Seoul (`app.permission.expiration.cron`/`zone`) |
+| 한 회 한도 | `app.permission.expiration.batch-size` (default `200`). repository `findExpiredActiveIds(now, PageRequest.of(0, batchSize))` |
+| 처리 단위 | 후보 id 1건당 별도 트랜잭션 — `PermissionService.expirePermission(permissionId)` |
+| 만료 동작 | revoke와 동형: `lockById(permissionId)` (PESSIMISTIC_WRITE) → snapshot → `permissions.delete(row)` (DELETE — `permissions`에는 `revoked_at` 컬럼 부재, soft-delete 불가) |
+| 이벤트 | `PermissionExpiredEvent`(record, `actorId` 부재) — `PermissionAuditListener.onPermissionExpired`가 `AuditEventType.PERMISSION_EXPIRED`로 매핑 |
+| audit row | `actor_id=NULL`, IP/UA 부재, `metadata.trigger='system.expiration'`, `before_state=permission snapshot` (revoke와 동일 — DELETE로 row 사라짐). §03 §4.1 참조 |
+| 다중 인스턴스 | row-level pessimistic lock이 동시 `expirePermission(sameId)` 호출을 직렬화. 두 번째 호출(또는 사용자 직접 revoke와 race)은 `ResourceNotFoundException`으로 swallow — 분산락 별도 도입 불요 |
+| 실패 격리 | per-row `RuntimeException`은 ERROR 로그 + 다음 row 진행 (배치 전체 차단 없음). scan 단계 실패는 다음 cron으로 재시도 |
+| 로그 | run summary INFO `total=N ok=O failed=F`, `failed > 0`이면 WARN |
 
 ### 7.11 휴지통 (Trash, A6/A8)
 
