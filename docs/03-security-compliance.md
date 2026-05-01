@@ -344,7 +344,7 @@
 ### 3.3 Subject 유형
 
 - `user`: 개인 (`users.id`)
-- `department`: 부서. LTREE 기반 — 하위 부서 자동 포함 옵션 (`includeDescendants: bool`)
+- `department`: 부서 (`departments.id`). A16(ADR #36)에서 도메인 도입 — V7 마이그레이션 + `users.department_id` FK. **MVP 매칭은 flat** (LTREE 후손 자동 포함 미사용, v1.x deferred).
 - `role`: 시스템 역할 (`MEMBER` / `AUDITOR` / `ADMIN`) — §3.2.5
 - `everyone`: 전사
 
@@ -354,12 +354,21 @@
 - 자식에 명시적 권한 정의 시 → override
 - 계산 로직: 재귀 CTE로 root까지 순회, **deny 우선** (deny가 한 번이라도 나오면 최종 deny) — *(v1 deferred — preset 단일 컬럼만 도입, 명시 deny semantics는 v1.x 이월. ADR #28 참조. v1 evaluator는 explicit grant lookup = "grant 우선"으로 동작.)*
 - `PermissionService.check(userId, resource, resourceId, permission)`이 단일 진입점.
+- **Subject 매칭 (PermissionRepository.findEffective, A16 ADR #36 dept 분기 추가)**: 단일 SQL이 아래 OR 분기로 effective grant 집합을 반환:
+  - `subject_type='user'   AND subject_id=:userId`
+  - `subject_type='everyone' AND subject_id IS NULL`
+  - `subject_type='role'   AND subject_id::text = :role` (role-grant)
+  - `subject_type='department' AND subject_id = (SELECT department_id FROM users WHERE id=:userId AND is_active)` *(A16 추가)*
+  - `users.department_id` NULL → dept 매칭 unmatched(false). 비활성(`is_active=FALSE`) → 동일.
+  - dept 후손 자동 포함은 v1.x deferred (LTREE descendant join).
 
 ### 3.5 권한 매트릭스 (엔드포인트 × 권한)
 
 각 endpoint의 권한 요구는 **`docs/02-backend-data-model.md §7.4~§7.14` Guard 컬럼**에 명시 (단일 진실 출처). 본 문서는 권한 enum과 preset 정의만 담당, endpoint 매핑은 02 문서 참조.
 
 > **사용자 검색 (`/api/users/search`, ADR #35)**: `isAuthenticated()` 공개 — 사용자 명단 자체가 trust boundary 내부 정보(ADR #18 admin-invitation only 등록). share subject picker가 ADMIN 외 EDIT 보유자에게도 노출되어야 하므로 ROLE 가드 부적절.
+>
+> **부서 검색 (`/api/departments/search`, ADR #36)**: 동일 정책 — `isAuthenticated()` 공개. 부서 명단도 trust boundary 내부 정보. A14와 동형.
 
 `@PreAuthorize` 표현식 패턴:
 

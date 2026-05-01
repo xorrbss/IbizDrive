@@ -869,39 +869,44 @@ export function usePermission(nodeId?: string) {
 | **파괴적** (삭제, 영구 삭제) | 숨김 | 비활성이 오히려 유인 |
 | **조회 불가** (읽기 권한 없음) | 애초에 리스트/트리에 안 뜸 | 백엔드 필터링 |
 
-### 14.4 ShareDialog (F4 → F5 → A13 → F6)
+### 14.4 ShareDialog (F4 → F5 → A13 → F6 → A16)
 
-`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활 → **F6(2026-05-01)** A14 `GET /api/users/search` (docs/02 §7.14, ADR #35)을 활용해 subject picker에 user 옵션 추가.
+`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활 → F6(2026-05-01) A14 `GET /api/users/search`로 user picker 추가 → **A16(2026-05-01~02)** A16 `GET /api/departments/search` (docs/02 §7.15, ADR #36)을 활용해 subject picker에 **department 옵션** 추가 + ShareDto.subjectName surface.
 
 - **트리거**:
   - 파일: `BulkActionBar` 단일 선택 시 `공유` 버튼 → `useShareUiStore.open({kind:'file', id, name})`.
   - 폴더: `Breadcrumb` 우측 `공유` 버튼(현재 폴더 = URL `folderId`, 비루트만) → `open({kind:'folder', id, name})`.
 - **store 형상**: `target: ShareTarget = {kind:'file'|'folder', id, name}` discriminated. ShareDialog는 `target` 단일 선택자로 일반화.
 - **mutation**: `useCreateShare` Vars `{target, req}` → target.kind === 'folder' ? POST `/api/folders/{id}/share` : POST `/api/files/{id}/share` (api.createFolderShares / createFileShares 분리).
-- **subject picker (F6)** — `subjectType` 라디오 (`everyone` | `user`), default `everyone`. department/role은 도메인 부재로 backlog.
+- **subject picker (F6 → A16)** — `subjectType` 라디오 3종 (`everyone` | `user` | `department`), default `everyone`. **role은 v1.x backlog** — schema impedance(role enum vs role-grant lookup, ADR #36 결정 #5)로 UI 미노출. backend는 `subject_type='role'` persistable이므로 v1.x 활성화 시 frontend만 변경.
   - `user` 라디오 선택 시 `<UserSearchCombobox value={selectedUser} onChange={setSelectedUser}/>` 마운트.
-  - `everyone` 토글 시 Combobox 언마운트 + `selectedUser=null` 리셋.
+  - `department` 라디오 선택 시 `<DepartmentSearchCombobox value={selectedDept} onChange={setSelectedDept}/>` 마운트 (A16).
+  - 라디오 토글 시 inactive subject 리셋 (everyone 선택 → user/dept 둘 다 null, user 선택 → dept null, dept 선택 → user null).
   - submit 분기:
     - `everyone` → `subjects:[{type:'everyone'}]`
-    - `user` + `selectedUser=null` → `toast.error('공유할 사용자를 선택해 주세요')` + 차단 (mutate 호출 안 함)
+    - `user` + `selectedUser=null` → `toast.error('공유할 사용자를 선택해 주세요')` + 차단
     - `user` + `selectedUser` → `subjects:[{type:'user', id:selectedUser.id}]`
-  - dialog 재오픈 시 `subjectType='everyone'` + `selectedUser=null` reset (preset/expires/message와 동일 라이프사이클).
-- **UserSearchCombobox** (`components/shares/UserSearchCombobox.tsx`, F6.3):
+    - `department` + `selectedDept=null` → `toast.error('공유할 부서를 선택해 주세요')` + 차단 (A16)
+    - `department` + `selectedDept` → `subjects:[{type:'department', id:selectedDept.id}]` (A16)
+  - dialog 재오픈 시 `subjectType='everyone'` + `selectedUser=null` + `selectedDept=null` reset.
+- **UserSearchCombobox** (`components/shares/UserSearchCombobox.tsx`, F6.3) / **DepartmentSearchCombobox** (`components/shares/DepartmentSearchCombobox.tsx`, A16.6):
   - WAI-ARIA 1.2 Combobox + Listbox 패턴 — `<input role="combobox" aria-expanded aria-controls aria-activedescendant>` + `<ul role="listbox">` + `<li role="option" aria-selected>`.
+  - DepartmentSearchCombobox = UserSearchCombobox **1:1 답습**, 차이는 표시 필드만 (user: `displayName + email`, dept: `name` 단일).
+  - **별도 컴포넌트 유지 (일반화 거부)** — KISS / ULTIMATE INVARIANT 5 (확장 전 검토). 추상화 정당화 3+ 규칙 (ADR #28 동형) 미충족 + 표시 필드 차이가 generic 도입 비용보다 작음.
   - 외부 a11y 라이브러리 거부 (KISS / ULTIMATE INVARIANT 5/3).
   - 키보드: ArrowDown/Up wrap-around, Enter 선택, Esc close (input 값 보존).
-  - `useUserSearch(rawInput)` (F6.2) — debounce 300ms + minLen 2 + keepPreviousData + AbortSignal. normalize는 `q.trim().toLowerCase()` (A14 ADR #35: NFC collapse 미적용).
+  - `useUserSearch`/`useDepartmentSearch` — debounce 300ms + minLen 2 + keepPreviousData + AbortSignal + staleTime 30s. normalize는 `q.trim().toLowerCase()` (NFC collapse 미적용).
   - 선택 후 input 변경 → `onChange(null)` (RenameDialog input-as-state 패턴).
-  - **out-of-scope**: multi-chip / department / role / role 라벨 — A14 wire에 없음 + MVP 단일 사용자 공유로 충분.
+  - **out-of-scope**: multi-chip / role 라벨 — backend wire에 없음 + MVP 단일 subject 공유로 충분.
 - preset: `read | upload | edit | admin` 4값 (ADR #34, V5 CHECK는 SHARE 미지원).
 - expiresAt: HTML5 datetime-local → `new Date(v).toISOString()`.
 - 기존 by-me share 목록 매칭: `(s.fileId ?? s.folderId) === target.id` (wire `shares` 행은 file_id/folder_id XOR — V6 CHECK).
-- 기존 share 행 표시 (A13): `subjectLabel(subjectType, subjectId) · presetLabel(preset) · 만료/무기한 + 해제`. subject UUID는 머릿8자만(가독성). everyone은 "모든 사용자".
+- 기존 share 행 표시 (A13 → A16): `subjectLabel(subjectType, subjectId, subjectName) · presetLabel(preset) · 만료/무기한 + 해제`. **subjectName 우선** (A16, ADR #36) — `subjectName != null`이면 그대로 표시. null fallback 시 subject UUID 머릿8자(가독성). everyone은 "모든 사용자".
 - `해제` → `useRevokeShare`. 백엔드 `canRevoke`(sharedBy==me ‖ ADMIN)가 진실의 출처.
 - 에러 envelope: 409 PERMISSION_CONFLICT / 403 PERMISSION_DENIED / 404 NOT_FOUND(파일|폴더 분기) / 그 외 → 한국어 toast.error.
 - 무효화: §6.1 `qk.shares()` prefix 1회로 by-me/with-me 동시 갱신 (file/folder 무관 동일).
-- **ShareDto wire** (13필드, backend `com.ibizdrive.share.ShareDto` record와 1:1):
-  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface.
+- **ShareDto wire** (14필드, backend `com.ibizdrive.share.ShareDto` record와 1:1):
+  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset, subjectName|null}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface. **A16(ADR #36)**에서 `subjectName` 추가 — user→display_name, department→name, everyone/lookup miss → null.
 - **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. A13에서 컬럼 4열로 복원: `항목 | 공유한 사람 | 권한 | 만료`. preset은 한국어 라벨(읽기/업로드/편집/관리). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
 
 ---

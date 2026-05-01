@@ -51,7 +51,7 @@ CREATE TABLE users (
   email            VARCHAR(254) NOT NULL,                  -- RFC 5321 max
   display_name     VARCHAR(100) NOT NULL,                  -- 표시용 이름 (Google/MS 컨벤션)
   password_hash    VARCHAR(100),                           -- DelegatingPasswordEncoder 호환 ({bcrypt}/{argon2id} 프리픽스, 미래 Argon2id 마이그레이션). SSO 사용자는 NULL
-  department_id    UUID REFERENCES departments(id),        -- A2 이후 도입
+  department_id    UUID REFERENCES departments(id),        -- A16 도입 (V7), nullable
   role             VARCHAR(50) NOT NULL DEFAULT 'MEMBER',  -- MEMBER|AUDITOR|ADMIN (docs/03 §3.2.5)
   storage_quota    BIGINT NOT NULL DEFAULT 10737418240,    -- 10GB. A4 이후 사용
   storage_used     BIGINT NOT NULL DEFAULT 0,              -- A4 이후 사용
@@ -73,19 +73,36 @@ CREATE UNIQUE INDEX users_email_unique
 CREATE INDEX idx_users_department ON users(department_id) WHERE is_active = TRUE;
 ```
 
-### 2.2 departments
+### 2.2 departments (V7 마이그레이션 — A16, ADR #36)
 
 ```sql
+-- V7__departments_users_dept.sql (A16, ADR #36)
+CREATE EXTENSION IF NOT EXISTS ltree;
+
 CREATE TABLE departments (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        VARCHAR(100) NOT NULL,
+  name        CITEXT NOT NULL,
   parent_id   UUID REFERENCES departments(id),
-  path        LTREE,                 -- 계층 쿼리용 (조직도 전체 조회)
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  path        LTREE,                 -- v1.x 조직도 트리용 schema 도입만, MVP는 flat
+  active      BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
 CREATE INDEX idx_departments_path ON departments USING GIST (path);
+CREATE INDEX idx_departments_active_name ON departments (lower(name)) WHERE active;
+
+-- users.department_id FK 활성화 (V2의 deferred 컬럼)
+ALTER TABLE users
+  ADD CONSTRAINT fk_users_department
+  FOREIGN KEY (department_id) REFERENCES departments(id);
 ```
+
+**A16 정책**:
+- `name`은 CITEXT(케이스 무관 unique 검색용). LIKE 검색은 `LOWER(name) LIKE :p ESCAPE '\\'`로 A14 user search와 동형.
+- `path` LTREE 컬럼은 **schema 도입만** — application은 flat 사용(parent_id 무시). 조직도 트리 v1.x deferred (KISS, ADR #36).
+- `active=FALSE`인 부서는 검색·share subject 모두에서 제외 (`WHERE active = TRUE`).
+- `users.department_id` NULL 허용 — 미배정 사용자 가능. NULL인 사용자는 dept 권한 매칭에서 unmatched(false).
 
 ### 2.3 folders
 
@@ -1100,9 +1117,9 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
     }
 ```
 
-### 7.9 공유 (Shares, ADR #34)
+### 7.9 공유 (Shares, ADR #34, A16 ADR #36 subjectName)
 
-> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST), A13 트랙 `a13-shares-permissions-join`(2026-05-01) — `ShareDto` ↔ `permissions` row join 복원: 응답에 `subjectType`/`subjectId`/`preset` 3 필드를 포함. POST 응답은 트랜잭션 내 `PermissionRow` 그대로 사용, by-me/with-me 응답은 페이지 결정 후 `permissionRepository.findAllById(ids)` 1회 IN 절 batch (N+1 회피, MAX_LIMIT=100 → 페이지 당 최대 100 IN). V6 FK CASCADE가 active share row의 permission 존재를 보증 — 누락 시 `IllegalStateException`. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화. `SHARE_EXPIRED` cron 트랙 `share-expired-cron`(2026-05-01)에서 활성화 — §7.9.1. SSE emission은 별도 트랙(deferred).
+> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST), A13 트랙 `a13-shares-permissions-join`(2026-05-01) — `ShareDto` ↔ `permissions` row join 복원: 응답에 `subjectType`/`subjectId`/`preset` 3 필드를 포함. POST 응답은 트랜잭션 내 `PermissionRow` 그대로 사용, by-me/with-me 응답은 페이지 결정 후 `permissionRepository.findAllById(ids)` 1회 IN 절 batch (N+1 회피, MAX_LIMIT=100 → 페이지 당 최대 100 IN). V6 FK CASCADE가 active share row의 permission 존재를 보증 — 누락 시 `IllegalStateException`. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화. `SHARE_EXPIRED` cron 트랙 `share-expired-cron`(2026-05-01)에서 활성화 — §7.9.1. SSE emission은 별도 트랙(deferred). **A16 트랙 `a16-department-subject-picker`(2026-05-01~02, ADR #36)** — `ShareDto`에 nullable `subjectName: String|null` 필드 추가. user → `users.display_name`, department → `departments.name`, everyone/lookup miss → null fallback. POST 응답은 트랜잭션 내 단건 helper(`resolveSubjectName`, type별 N=subjects.size lookup), by-me/with-me는 페이지 결정 후 batch helper(`fetchSubjectNames`, 페이지 당 type별 1회 IN 절). 단건 lookup endpoint 미추가.
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
@@ -1125,9 +1142,11 @@ POST /api/files/:fileId/share                              (ADR #34)
   Response: 201 { shares: ShareDto[] }
               # ShareDto = { id, fileId, folderId(=null on file POST), permissionId, sharedBy,
               #              message?, expiresAt?, createdAt, revokedAt(=null), revokedBy(=null),
-              #              subjectType, subjectId, preset }
+              #              subjectType, subjectId, preset, subjectName }
               # subjectType/subjectId/preset 는 A13에서 permissions row join으로 surface.
-              # POST 응답은 INSERT 직후 PermissionRow 그대로 매핑 (별도 SELECT 없음).
+              # subjectName 은 A16(ADR #36)에서 추가 — user→users.display_name, department→departments.name,
+              #              everyone/lookup miss → null. role 은 v1.x backlog 까지 null.
+              # POST 응답은 INSERT 직후 PermissionRow 그대로 매핑 (별도 SELECT 없음). subjectName 은 트랜잭션 내 단건 lookup.
   TX:       for each subject:
               (1) INSERT permissions(preset) → PermissionGrantedEvent → audit `permission.granted`
               (2) INSERT shares(permission_id 참조) → ShareCreatedEvent → audit `share.created`
@@ -1456,6 +1475,42 @@ GET /api/users/search?q=alice&limit=20
 ```
 
 **근거**: ADR #35.
+
+---
+
+### 7.15 부서 검색 (Department Search, ADR #36)
+
+공유 subject picker에서 부서 lookup 용도. A14 user search(§7.14, ADR #35) 1:1 답습 — 인증된 모든 사용자에 공개.
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/departments/search?q=&limit=` | `isAuthenticated()` | — | q→trim+lowercase | `WHERE active = TRUE` | 400 INVALID_SEARCH_QUERY (q 길이/형식), 401 UNAUTHORIZED |
+
+```text
+GET /api/departments/search?q=eng&limit=20
+  Validation:
+    - q: required, trim+lowercase 후 minLength 2자, blank/null 거부 → 400 INVALID_SEARCH_QUERY (A9/A14 일관)
+    - limit: 1~50 (default=20, hard cap=50, 0/음수→default)
+  Algorithm:
+    - LIKE escape: % _ \ → backslash prefix (literal 매칭)
+    - 패턴: '%' + escaped(lowercased(q)) + '%'
+    - SQL: LOWER(name) LIKE :p ESCAPE '\\'
+    - ORDER BY name ASC, id ASC  LIMIT :limit
+  Response: 200 {
+              items: [
+                { id: string (UUID), name: string }
+              ]
+            }
+  Errors:
+    400 INVALID_SEARCH_QUERY  { } — q normalize 후 minLength 미달/blank/null
+    401 UNAUTHORIZED          { } — 비인증
+  Note:
+    - cursor 미지원 (ADR #36) — A14 일관. 결과는 limit 절단(최대 50).
+    - LTREE path 컬럼 필터 미사용 (ADR #36, MVP flat). 조직도 트리 v1.x deferred.
+    - audit emission 없음 — A9/A14와 동일 정책.
+```
+
+**근거**: ADR #36.
 
 ---
 
