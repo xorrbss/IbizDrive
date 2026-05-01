@@ -14,6 +14,7 @@ Last Updated: 2026-05-01
   - 사용자 승인 (옵션 C 채택). worktree `feature/a16-department-subject-picker` 생성, baseline GREEN.
   - **A16.0 완료** (commit `7ac09d8`).
   - **A16.1 완료**: V7 SQL + Department 도메인 6파일 (entity/Repository/Service/Controller/2 DTOs) + tests 4파일 (V7MigrationIT 9 + DepartmentRepositoryTest 5 + DepartmentSearchServiceTest 11 + DepartmentSearchControllerTest 4) + User.departmentId nullable. `./gradlew test` BUILD SUCCESSFUL — 회귀 0.
+  - **A16.2 완료**: `PermissionRepository.findEffective` SQL에 dept 매칭 subquery 추가 (`p.subject_id = (SELECT department_id FROM users WHERE id=:userId AND active)`). PermissionRepositoryTest +6 (dept match / wrong dept / null dept / inherit / file chain / combined regression). `./gradlew test` GREEN.
   - master HEAD baseline: `ab45e7d` (BulkActionBar fix, 2026-05-01).
 
 ## Current Execution Contract
@@ -25,9 +26,9 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-- **A16.2 PermissionRepository.findEffective dept 분기 (RED→GREEN)**
-- A16.1 완료 — dept lookup endpoint + entity/repo + V7 SQL + User.departmentId 매핑.
-- 다음: PermissionRepositoryTest에 dept grant 케이스 추가 → SQL 갱신 → IbizDrivePermissionEvaluator 통합 회귀.
+- **A16.3 ShareDto subjectName 추가 + caller 갱신 (TDD)**
+- A16.1 / A16.2 완료 — backend는 dept lookup + 권한 매트릭스 dept 매칭까지 활성.
+- 다음: ShareDto 14필드 (subjectName), ShareCommandService/QueryService caller에 batch lookup, ShareControllerTest wire JSON 케이스.
 
 ## 다음 세션 읽기 순서
 

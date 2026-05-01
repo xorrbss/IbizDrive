@@ -10,8 +10,8 @@ Last Updated: 2026-05-01
 |---|---|
 | A16.0 bootstrap | ✅ 완료 (commit `7ac09d8`, frontend 533/533 + backend BUILD SUCCESSFUL) |
 | A16.1 backend wire (V7 + Department 도메인) | ✅ 완료 (department 패키지 6개 + tests 4개 + V7 SQL + User.departmentId) |
-| A16.2 PermissionRepository.findEffective dept 분기 | 🟡 ACTIVE |
-| A16.3 ShareDto subjectName 추가 + caller 갱신 | ⏸ blocked by A16.2 |
+| A16.2 PermissionRepository.findEffective dept 분기 | ✅ 완료 (subquery `users.department_id` 매칭, 6 신규 테스트, 회귀 0) |
+| A16.3 ShareDto subjectName 추가 + caller 갱신 | 🟡 ACTIVE |
 | A16.4 Frontend wire backbone | ⏸ blocked by A16.3 |
 | A16.5 useDepartmentSearch 훅 | ⏸ blocked by A16.4 |
 | A16.6 DepartmentSearchCombobox | ⏸ blocked by A16.5 |
@@ -128,13 +128,15 @@ WHERE
 **대안**: subquery `WHERE p.subject_id IN (SELECT department_id FROM users WHERE id=:userId)` — JOIN 회피 가능. 결정은 phase 진입 시 explain plan 비교 후.
 
 ### 구현 대상
-- [ ] **A16.2.0 RED** — PermissionRepositoryTest에 케이스:
-  - dept grant + user `department_id=:deptId` → effective에 grant 포함
+- [x] **A16.2.0 RED** — PermissionRepositoryTest에 6 케이스 추가:
+  - dept grant + user `department_id=:deptId` → 포함
   - dept grant + user `department_id ≠ :deptId` → 미포함
   - dept grant + user `department_id IS NULL` → 미포함
-  - 회귀: 기존 user grant + everyone grant 결과 동일
-- [ ] **A16.2.1 GREEN** — `findEffective` SQL 갱신
-- [ ] **A16.2.2 검증** — `IbizDrivePermissionEvaluator` 통합 테스트 (file/folder 양쪽 dept grant 인식)
+  - dept grant 폴더 상속 (parent → child)
+  - dept grant file 리소스 (folder chain inherit)
+  - combined: user + dept + everyone 동시 매칭 (회귀 가드)
+- [x] **A16.2.1 GREEN** — `findEffective` SQL 갱신: subquery 방식 (`p.subject_id = (SELECT department_id FROM users WHERE id=:userId AND deleted_at IS NULL AND is_active=TRUE)`). NULL 비교 안전 (NULL = NULL → false).
+- [x] **A16.2.2 검증** — `./gradlew test` GREEN (PermissionRepositoryTest 18 case skip baseline 동일; IbizDrivePermissionEvaluatorTest 20 + PermissionEvaluatorIntegrationTest 10 회귀 0).
 
 ### 검증 참조
 - AC backend #3.
