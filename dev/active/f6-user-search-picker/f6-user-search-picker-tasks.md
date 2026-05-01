@@ -9,11 +9,11 @@ Last Updated: 2026-05-01
 | Phase | 상태 |
 |---|---|
 | F6.0 bootstrap | ✅ 완료 |
-| F6.1 wire backbone (types/user, queryKeys, api.searchUsers) | 🟡 active |
-| F6.2 useUserSearch 훅 | ⏳ pending |
-| F6.3 UserSearchCombobox 컴포넌트 | ⏳ pending |
-| F6.4 ShareDialog 통합 | ⏳ pending |
-| F6.5 docs sync + PR + archive | ⏳ pending |
+| F6.1 wire backbone (types/user, queryKeys, api.searchUsers) | ✅ 완료 (commit `87cd517`, 7 tests GREEN) |
+| F6.2 useUserSearch 훅 | ✅ 완료 (commit `96ab0ee`, 5 tests GREEN) |
+| F6.3 UserSearchCombobox 컴포넌트 | ✅ 완료 (commit `0e1e3a0`, 12 tests GREEN) |
+| F6.4 ShareDialog 통합 | ✅ 완료 (commit `e8db794`, 5 tests GREEN, 전체 524→529) |
+| F6.5 docs sync + PR + archive | 🟡 active |
 
 ---
 
