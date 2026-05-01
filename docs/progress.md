@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-01 — 🏁 A11 마일스톤 종료 (Effective Permissions Endpoint Backend)
+
+### 범위
+
+A11.0 (dev-docs bootstrap — `dev/active/a11-effective-permissions-endpoint/` plan/context/tasks 3파일, F2 트랙 분리 결정 — 백엔드 endpoint 부재 발견 후 A11→F2 직렬화) → A11.1 (`IbizDrivePermissionEvaluator.resolveAll(user, resourceType, resourceId): Set<Permission>` 추가, role∪resource grant 합산 + ADMIN early return + role-already-granted skip + PURGE skip — TDD 9 케이스 RED→GREEN) → A11.2 (`PermissionController.myEffectivePermissions(@RequestParam UUID nodeId)` 신설, `GET /api/me/effective-permissions` `@PreAuthorize("isAuthenticated()")` + folder/file 양 테이블 lookup + 404/401 envelope — TDD 5 케이스 RED→GREEN) → A11.3 (docs/02 §7.10 응답 schema 본문 보강 + 에러 코드 `404` → `400, 401, 404` 정정) → A11.4 (PR #23 squash-merge `13b8c45` + dev-docs archive).
+
+### 회고
+
+- **commits**: 4 on top of A10 close `3b6906a` (worktree branch `feature/a11-effective-permissions-endpoint`) → squash-merge `13b8c45` on `master`. PR #23 single, CI green (backend junit 3m16s + frontend vitest 1m40s 모두 SUCCESS).
+- **production 파일**: 2 수정 — `permission/IbizDrivePermissionEvaluator.java` `resolveAll` 메서드 추가(EnumSet 도입), `permission/PermissionController.java` `myEffectivePermissions` endpoint + 4-arg 생성자(evaluator 주입). 기존 grant/revoke endpoint 무수정.
+- **test 파일**: 2 갱신 — `IbizDrivePermissionEvaluatorTest` 9 케이스(`resolveAll` null/ADMIN/AUDITOR/MEMBER × role-only/resource-level), `PermissionControllerTest` 5 케이스(noNodeId MEMBER/ADMIN, folder/file lookup, both-missing 404).
+- **A1~A10 회귀 0**: 전체 백엔드 GREEN. F2 frontend 트랙은 별도 PR로 분리(다음 트랙).
+- **F2 분리 결정**: 원래 사용자 요청은 F2 (frontend mock→fetch swap)였으나, 사전조사에서 `GET /api/me/effective-permissions` 백엔드 endpoint 부재 발견 → A11 백엔드 트랙으로 분리 후 F2 frontend 트랙 후속화. A9→F1 패턴과 동일한 직렬화.
+
+### 핵심 결정 (A11 트랙, 확정)
+
+1. **`resolveAll` 위치는 evaluator** — `PermissionService`에 두면 `PermissionResolver` 의존 추가로 순환 위험. evaluator는 이미 양쪽 의존이라 자연스러움. service는 ROLE 단계 진실의 출처로 유지.
+2. **9× CTE 호출 최적화** — role이 이미 grant한 권한 + `PURGE`(Preset 미포함, docs/03 line 331~334) 는 resolver 미호출. ADMIN=0 / AUDITOR=7 / MEMBER=8 호출.
+3. **node 존재 검증 — folder 우선 short-circuit** — `folderRepository.findByIdAndDeletedAtIsNull` 먼저, 부재 시 `fileRepository`. 양 테이블 모두 부재 → 404. V5 별도 시퀀스로 UUID 충돌은 운용상 불가능.
+4. **401/400은 Spring 기본에 위임** — `@PreAuthorize("isAuthenticated()")` 미인증 401, `@RequestParam UUID` 변환 실패 400. KISS — `GlobalExceptionHandler` 추가 분기 회피.
+5. **응답 정렬 = Permission enum natural order** — `set.stream().sorted().toList()` 단일 라인. 프론트는 set 비교만 해도 결정적.
+6. **`PermissionDenyContext` 미기록** — read-only 정보 조회는 deny envelope 미생성. evaluator `hasPermission` 경로와 분리.
+7. **frontend 시그니처 contract 확정** — `api.getEffectivePermissions(nodeId?: string): Promise<Permission[]>`. F2에서 mock body를 fetch+inline mapping으로 교체만 하면 호출부(`usePermission.ts`) drift 0.
+
+### 다음 트랙 후보
+
+- **F2 — useEffectivePermissions 실연결** (즉시 진입 가능). `frontend/src/lib/api.ts` `getEffectivePermissions` mock body → `fetch('/api/me/effective-permissions?nodeId=...')` 교체. `usePermission.ts` 무수정. F1 패턴(PR #20) 미러.
+- **F4 — Frontend Shares UI** (A10 share endpoint 노출). 별도 트랙.
+- **A12 — folder 공유** (A10 ADR #34 backlog).
+
+---
+
 ## 2026-05-01 — 🏁 A10 마일스톤 종료 (Shares Endpoint Backend)
 
 ### 범위
