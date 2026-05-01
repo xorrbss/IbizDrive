@@ -21,14 +21,14 @@ function wrap(qc: QueryClient) {
 const SHARE: ShareDto = {
   id: 'sh-1',
   fileId: 'file-1',
+  folderId: null,
   permissionId: 'perm-1',
   sharedBy: 'someone',
-  subjectType: 'user',
-  subjectId: 'me',
-  preset: 'read',
-  expiresAt: null,
   message: null,
+  expiresAt: null,
   createdAt: '2026-04-30T12:00:00Z',
+  revokedAt: null,
+  revokedBy: null,
 }
 
 describe('useSharesWithMe', () => {

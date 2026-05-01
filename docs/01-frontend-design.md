@@ -869,17 +869,26 @@ export function usePermission(nodeId?: string) {
 | **파괴적** (삭제, 영구 삭제) | 숨김 | 비활성이 오히려 유인 |
 | **조회 불가** (읽기 권한 없음) | 애초에 리스트/트리에 안 뜸 | 백엔드 필터링 |
 
-### 14.4 ShareDialog (F4)
+### 14.4 ShareDialog (F4 → F5)
 
-`components/files/ShareDialog.tsx` — 단일 파일 공유 + by-me 목록 + revoke. F4 트랙(2026-05-01).
+`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01).
 
-- 트리거: FileTable/RightPanel 컨텍스트 메뉴 → `useShareUiStore.open(fileId, fileName)`.
+- **트리거**:
+  - 파일: `BulkActionBar` 단일 선택 시 `공유` 버튼 → `useShareUiStore.open({kind:'file', id, name})`.
+  - 폴더: `Breadcrumb` 우측 `공유` 버튼(현재 폴더 = URL `folderId`, 비루트만) → `open({kind:'folder', id, name})`.
+- **store 형상**: `target: ShareTarget = {kind:'file'|'folder', id, name}` discriminated. ShareDialog는 `target` 단일 선택자로 일반화.
+- **mutation**: `useCreateShare` Vars `{target, req}` → target.kind === 'folder' ? POST `/api/folders/{id}/share` : POST `/api/files/{id}/share` (api.createFolderShares / createFileShares 분리).
 - subject: **'everyone' 고정 (MVP)** — user/department/role 목록 endpoint 부재. 백로그.
 - preset: `read | upload | edit | admin` 4값 (ADR #34, V5 CHECK는 SHARE 미지원).
 - expiresAt: HTML5 datetime-local → `new Date(v).toISOString()`.
-- 기존 by-me share 목록(파일 ID 필터) + `해제` 버튼 → `useRevokeShare`. 백엔드 `canRevoke`(sharedBy==me ‖ ADMIN)가 진실의 출처.
-- 에러 envelope: 409 PERMISSION_CONFLICT / 403 PERMISSION_DENIED / 404 NOT_FOUND / 그 외 → 한국어 toast.error.
-- 무효화: §6.1 `qk.shares()` prefix 1회로 by-me/with-me 동시 갱신.
+- 기존 by-me share 목록 매칭: `(s.fileId ?? s.folderId) === target.id` (wire `shares` 행은 file_id/folder_id XOR — V6 CHECK).
+- 기존 share 행 표시: 만료 시각 + `해제` 버튼만. **subject/preset 필드는 backend `ShareDto` record에 부재 (wire drift, A13 backlog 등록 후 복원 예정).**
+- `해제` → `useRevokeShare`. 백엔드 `canRevoke`(sharedBy==me ‖ ADMIN)가 진실의 출처.
+- 에러 envelope: 409 PERMISSION_CONFLICT / 403 PERMISSION_DENIED / 404 NOT_FOUND(파일|폴더 분기) / 그 외 → 한국어 toast.error.
+- 무효화: §6.1 `qk.shares()` prefix 1회로 by-me/with-me 동시 갱신 (file/folder 무관 동일).
+- **ShareDto wire** (10필드, backend `com.ibizdrive.share.ShareDto` record와 1:1):
+  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null}` — active 행에서 revoked* 항상 null.
+- **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. F5에서 컬럼은 `항목 | 공유한 사람 | 만료` 3열로 단순화 (preset 컬럼은 wire 부재로 제거). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
 
 ---
 

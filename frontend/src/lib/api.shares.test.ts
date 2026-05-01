@@ -3,9 +3,12 @@ import { api } from './api'
 import type { ShareCreateRequest, ShareDto } from '@/types/share'
 
 /**
- * F4.2 — 공유 API client (docs/02 §7.9, ADR #34) wire 계약 검증.
+ * F4 + F5 — 공유 API client (docs/02 §7.9, ADR #34) wire 계약 검증.
  * api.trash.test.ts 패턴 mirror — vi.stubGlobal('fetch', ...)로 fetch URL/method/body/응답 변환만 검증.
  * 권한·트랜잭션·UNIQUE 충돌 같은 비즈니스 로직은 backend ShareControllerTest 책임.
+ *
+ * F5 wire 정렬: backend `ShareDto` record와 1:1. subjectType/subjectId/preset 부재(추가 join 필요),
+ * folderId/revokedAt/revokedBy 노출. fixture는 active row(by-me/with-me) 형상.
  */
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -19,20 +22,33 @@ function emptyResponse(status = 204): Response {
   return new Response(null, { status })
 }
 
-const SHARE_FIXTURE: ShareDto = {
+const FILE_SHARE_FIXTURE: ShareDto = {
   id: 'sh-1',
   fileId: 'file-1',
+  folderId: null,
   permissionId: 'perm-1',
   sharedBy: 'user-actor',
-  subjectType: 'everyone',
-  subjectId: null,
-  preset: 'read',
-  expiresAt: null,
   message: null,
+  expiresAt: null,
   createdAt: '2026-04-30T12:00:00Z',
+  revokedAt: null,
+  revokedBy: null,
 }
 
-describe('api.createShares', () => {
+const FOLDER_SHARE_FIXTURE: ShareDto = {
+  id: 'sh-fol-1',
+  fileId: null,
+  folderId: 'fol-1',
+  permissionId: 'perm-fol-1',
+  sharedBy: 'user-actor',
+  message: null,
+  expiresAt: null,
+  createdAt: '2026-04-30T13:00:00Z',
+  revokedAt: null,
+  revokedBy: null,
+}
+
+describe('api.createFileShares', () => {
   let fetchMock: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -45,13 +61,13 @@ describe('api.createShares', () => {
   })
 
   it('단일 subject(everyone) — POST /api/files/:fileId/share + JSON body + credentials include', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [SHARE_FIXTURE] }, 201))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [FILE_SHARE_FIXTURE] }, 201))
     const req: ShareCreateRequest = {
       subjects: [{ type: 'everyone' }],
       preset: 'read',
     }
-    const out = await api.createShares('file-1', req)
-    expect(out).toEqual([SHARE_FIXTURE])
+    const out = await api.createFileShares('file-1', req)
+    expect(out).toEqual([FILE_SHARE_FIXTURE])
     const [url, init] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/files/file-1/share')
     expect(init).toMatchObject({
@@ -63,7 +79,7 @@ describe('api.createShares', () => {
   })
 
   it('다중 subject + preset edit — body가 그대로 직렬화', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [SHARE_FIXTURE, SHARE_FIXTURE] }, 201))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [FILE_SHARE_FIXTURE, FILE_SHARE_FIXTURE] }, 201))
     const req: ShareCreateRequest = {
       subjects: [
         { type: 'user', id: 'u1' },
@@ -71,7 +87,7 @@ describe('api.createShares', () => {
       ],
       preset: 'edit',
     }
-    await api.createShares('file-1', req)
+    await api.createFileShares('file-1', req)
     const init = fetchMock.mock.calls[0][1] as RequestInit
     expect(JSON.parse(init.body as string)).toEqual(req)
   })
@@ -84,7 +100,7 @@ describe('api.createShares', () => {
       expiresAt: '2026-12-31T23:59:00Z',
       message: '안녕하세요',
     }
-    await api.createShares('file-1', req)
+    await api.createFileShares('file-1', req)
     const init = fetchMock.mock.calls[0][1] as RequestInit
     const body = JSON.parse(init.body as string)
     expect(body.expiresAt).toBe('2026-12-31T23:59:00Z')
@@ -93,7 +109,7 @@ describe('api.createShares', () => {
 
   it('fileId 슬래시/특수문자 encodeURIComponent', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [] }, 201))
-    await api.createShares('a/b c', { subjects: [{ type: 'everyone' }], preset: 'read' })
+    await api.createFileShares('a/b c', { subjects: [{ type: 'everyone' }], preset: 'read' })
     const [url] = fetchMock.mock.calls[0]
     expect(url).toBe('/api/files/a%2Fb%20c/share')
   })
@@ -106,14 +122,14 @@ describe('api.createShares', () => {
       ),
     )
     await expect(
-      api.createShares('file-1', { subjects: [], preset: 'read' }),
+      api.createFileShares('file-1', { subjects: [], preset: 'read' }),
     ).rejects.toMatchObject({ status: 400, code: 'BAD_REQUEST' })
   })
 
   it('404 NOT_FOUND', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ error: { code: 'NOT_FOUND' } }, 404))
     await expect(
-      api.createShares('missing', { subjects: [{ type: 'everyone' }], preset: 'read' }),
+      api.createFileShares('missing', { subjects: [{ type: 'everyone' }], preset: 'read' }),
     ).rejects.toMatchObject({ status: 404, code: 'NOT_FOUND' })
   })
 
@@ -122,8 +138,55 @@ describe('api.createShares', () => {
       jsonResponse({ error: { code: 'PERMISSION_CONFLICT' } }, 409),
     )
     await expect(
-      api.createShares('file-1', { subjects: [{ type: 'everyone' }], preset: 'read' }),
+      api.createFileShares('file-1', { subjects: [{ type: 'everyone' }], preset: 'read' }),
     ).rejects.toMatchObject({ status: 409, code: 'PERMISSION_CONFLICT' })
+  })
+})
+
+describe('api.createFolderShares (F5)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('POST /api/folders/:folderId/share + body 그대로 + 응답 fileId=null/folderId=set', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [FOLDER_SHARE_FIXTURE] }, 201))
+    const req: ShareCreateRequest = {
+      subjects: [{ type: 'everyone' }],
+      preset: 'read',
+    }
+    const out = await api.createFolderShares('fol-1', req)
+    expect(out).toEqual([FOLDER_SHARE_FIXTURE])
+    expect(out[0].fileId).toBeNull()
+    expect(out[0].folderId).toBe('fol-1')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/folders/fol-1/share')
+    expect(init).toMatchObject({
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+    })
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual(req)
+  })
+
+  it('folderId 슬래시/특수문자 encodeURIComponent', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ shares: [] }, 201))
+    await api.createFolderShares('a/b c', { subjects: [{ type: 'everyone' }], preset: 'read' })
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/folders/a%2Fb%20c/share')
+  })
+
+  it('403 PERMISSION_DENIED — folder SHARE 권한 미보유', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: { code: 'PERMISSION_DENIED' } }, 403))
+    await expect(
+      api.createFolderShares('fol-1', { subjects: [{ type: 'everyone' }], preset: 'read' }),
+    ).rejects.toMatchObject({ status: 403, code: 'PERMISSION_DENIED' })
   })
 })
 
@@ -198,10 +261,12 @@ describe('api.listSharesByMe', () => {
     expect(u.searchParams.get('limit')).toBe('50')
   })
 
-  it('응답 매핑 + nextCursor 누락은 null 폴백', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [SHARE_FIXTURE] }))
+  it('응답 매핑 + nextCursor 누락은 null 폴백 + file/folder row 혼재 보존', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({ items: [FILE_SHARE_FIXTURE, FOLDER_SHARE_FIXTURE] }),
+    )
     const r = await api.listSharesByMe()
-    expect(r.items).toEqual([SHARE_FIXTURE])
+    expect(r.items).toEqual([FILE_SHARE_FIXTURE, FOLDER_SHARE_FIXTURE])
     expect(r.nextCursor).toBeNull()
   })
 
@@ -246,9 +311,9 @@ describe('api.listSharesWithMe', () => {
   })
 
   it('응답 매핑 + nextCursor 폴백', async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [SHARE_FIXTURE] }))
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [FILE_SHARE_FIXTURE] }))
     const r = await api.listSharesWithMe()
-    expect(r.items).toEqual([SHARE_FIXTURE])
+    expect(r.items).toEqual([FILE_SHARE_FIXTURE])
     expect(r.nextCursor).toBeNull()
   })
 })
