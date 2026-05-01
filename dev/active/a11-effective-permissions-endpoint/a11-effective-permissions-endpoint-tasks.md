@@ -10,10 +10,10 @@ Status: 🟡 ACTIVE — A11.0 done
 | Phase | Title | Status |
 |---|---|---|
 | A11.0 | dev-docs bootstrap | ✅ done |
-| A11.1 | service layer — `resolveAll(user, [type, id]) → Set<Permission>` + unit test | ⏳ ready |
-| A11.2 | controller endpoint — `GET /api/me/effective-permissions[?nodeId=]` + MockMvc test | ⏸ blocked by A11.1 |
-| A11.3 | docs/02 §7.10 응답 schema 본문 보강 | ⏸ blocked by A11.2 |
-| A11.4 | full GREEN + PR + closure | ⏸ blocked by A11.3 |
+| A11.1 | service layer — `resolveAll(user, [type, id]) → Set<Permission>` + unit test | ✅ done (`31cd31f`) |
+| A11.2 | controller endpoint — `GET /api/me/effective-permissions[?nodeId=]` + unit test | ✅ done (`bce4c24`) |
+| A11.3 | docs/02 §7.10 응답 schema 본문 보강 | ✅ done (`387eb27`) |
+| A11.4 | full GREEN + PR + closure | ⏳ PR 게이트 대기 |
 
 ---
 
