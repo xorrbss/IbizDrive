@@ -20,7 +20,8 @@ Last Updated: 2026-05-02
 - 2026-05-02:
   - **A16.4 완료** (commit `67c1f69`): `frontend/src/types/department.ts` 신설(`DepartmentSummary { id, name }`), `lib/api.ts:searchDepartments` 추가(A14 1:1 답습), `lib/queryKeys.ts:qk.departments()`+`qk.departmentsSearch(normalized, limit)` 추가, `types/share.ts ShareDto`에 `subjectName: string|null` 필드 추가(backend wire 정합), 기존 ShareDto fixture 8개에 `subjectName: null` 보강. `api.departments.test.ts` 7/7 GREEN. `pnpm test --run` 540/540 GREEN, typecheck/lint clean.
   - **A16.5 완료** (commit `ee36fa7`): `useDepartmentSearch.ts`/`useDepartmentSearch.test.tsx` 신설 — useUserSearch 1:1 답습(debounce 300ms / minLen 2 / keepPreviousData / signal / staleTime 30s). 5 tests GREEN. 회귀 0(545/545).
-  - **A16.6 완료**: `DepartmentSearchCombobox.tsx`/`.test.tsx` 신설 — UserSearchCombobox 1:1 답습, 차이는 표시 필드(name만). 12 tests GREEN. 회귀 0(557/557), typecheck/lint clean.
+  - **A16.6 완료** (commit `2ae77df`): `DepartmentSearchCombobox.tsx`/`.test.tsx` 신설 — UserSearchCombobox 1:1 답습, 차이는 표시 필드(name만). 12 tests GREEN. 회귀 0(557/557), typecheck/lint clean.
+  - **A16.7 완료**: ShareDialog 통합 — subjectType state를 `everyone|user|department` 3-way로 확장, dept 라디오 + DepartmentSearchCombobox 마운트, submit branch 추가(미선택 차단 toast "공유할 부서를 선택해 주세요"), `subjectLabel(type, id, subjectName)` 시그니처에 subjectName 우선 fallback 적용. ShareDialog.test +7 cases (3-way / dept combobox / submit payload / 차단 / user↔dept 토글 / user displayName / dept name / null fallback). 565 tests GREEN, typecheck/lint clean, `pnpm build` OK. 회귀 0.
 
 ## Current Execution Contract
 
@@ -31,9 +32,9 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-- **A16.7 ShareDialog 통합 + subjectLabel 실 이름**.
-- A16.1~A16.6 완료 — backend dept wire + permission SQL + ShareDto.subjectName + frontend api/types/qk + useDepartmentSearch + DepartmentSearchCombobox 모두 활성.
-- 다음: ShareDialog.test/component 갱신 — subjectType 라디오 3종(everyone|user|department) + dept Combobox 마운트 + submit `subjects:[{type:'department', id}]` + 차단 검증 + subjectLabel에 subjectName 우선 노출.
+- **A16.8 docs sync + PR + master squash-merge + closure archive**.
+- A16.1~A16.7 완료 — backend(dept wire + permission SQL + ShareDto.subjectName) + frontend(api/types/qk + useDepartmentSearch + DepartmentSearchCombobox + ShareDialog 3-way picker) 모두 활성, build OK.
+- 다음: docs/00 ADR #36 / docs/02 §2.x §7.9 §7.15 / docs/03 §3 / docs/01 §14 / docs/progress.md 일괄 갱신 → PR 생성 → 사용자 승인 게이트(master squash-merge) → closure archive.
 
 ## 다음 세션 읽기 순서
 

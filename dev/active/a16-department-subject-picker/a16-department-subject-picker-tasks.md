@@ -15,8 +15,8 @@ Last Updated: 2026-05-02
 | A16.4 Frontend wire backbone | ✅ 완료 (commit `67c1f69`, DepartmentSummary + searchDepartments + qk.departments + ShareDto.subjectName, 540 tests GREEN) |
 | A16.5 useDepartmentSearch 훅 | ✅ 완료 (commit `ee36fa7`, 5 tests GREEN) |
 | A16.6 DepartmentSearchCombobox | ✅ 완료 (12 tests GREEN, UserSearchCombobox 1:1) |
-| A16.7 ShareDialog 통합 + subjectLabel 실 이름 | 🟡 ACTIVE |
-| A16.8 docs sync + PR + master squash-merge + closure archive | ⏸ blocked by A16.7 |
+| A16.7 ShareDialog 통합 + subjectLabel 실 이름 | ✅ 완료 (23 tests GREEN, 3-way radio + dept Combobox + subjectName fallback) |
+| A16.8 docs sync + PR + master squash-merge + closure archive | 🟡 ACTIVE |
 
 ---
 
@@ -227,19 +227,14 @@ WHERE
 - `frontend/src/components/shares/ShareDialog.test.tsx`.
 
 ### 구현 대상
-- [ ] **A16.7.0 RED** — ShareDialog.test.tsx 케이스:
-  - subjectType 라디오 3종(everyone | user | department) + role 미노출
-  - department 선택 → DepartmentSearchCombobox 마운트
-  - dept 선택 후 submit → `subjects:[{type:'department', id}]`
-  - dept 미선택 submit → 차단 + "공유할 부서를 선택해 주세요" toast
-  - 기존공유 행에 subjectName 노출 (dept 실 이름 + user displayName)
-- [ ] **A16.7.1 GREEN**:
-  - subjectType state type: `Extract<ShareSubjectType, 'everyone'|'user'|'department'>`.
-  - 라디오 3종 + dept Combobox 마운트.
-  - selectedDept state.
-  - submit 분기 추가.
-  - subjectLabel: subjectName 우선, fallback `${type} ${head}`.
-- [ ] **A16.7.2 검증** — pnpm test/typecheck/lint/build GREEN. 회귀 0.
+- [x] **A16.7.0 RED** — ShareDialog.test.tsx +7 cases (3-way radio / dept combobox 마운트 / dept submit / 차단 toast / user→dept 토글 / subjectName user / subjectName dept / subjectName null fallback).
+- [x] **A16.7.1 GREEN**:
+  - `subjectType` state: `Extract<ShareSubjectType, 'everyone'|'user'|'department'>`.
+  - 라디오 3종 + dept Combobox 마운트 (user/dept 상호 배타 — 다른 선택 시 cross-clear).
+  - `selectedDept` state.
+  - submit branch: department 선택 시 `subjects:[{type:'department', id}]`.
+  - `subjectLabel(type, id, subjectName)`: subjectName 우선, fallback type+head8.
+- [x] **A16.7.2 검증** — 565 tests GREEN, typecheck/lint clean, build OK, 회귀 0.
 
 ### 검증 참조
 - AC frontend #4, #5, #6, #7.
