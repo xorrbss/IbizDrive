@@ -11,8 +11,8 @@ Last Updated: 2026-05-01
 | A16.0 bootstrap | ✅ 완료 (commit `7ac09d8`, frontend 533/533 + backend BUILD SUCCESSFUL) |
 | A16.1 backend wire (V7 + Department 도메인) | ✅ 완료 (department 패키지 6개 + tests 4개 + V7 SQL + User.departmentId) |
 | A16.2 PermissionRepository.findEffective dept 분기 | ✅ 완료 (subquery `users.department_id` 매칭, 6 신규 테스트, 회귀 0) |
-| A16.3 ShareDto subjectName 추가 + caller 갱신 | 🟡 ACTIVE |
-| A16.4 Frontend wire backbone | ⏸ blocked by A16.3 |
+| A16.3 ShareDto subjectName 추가 + caller 갱신 | ✅ 완료 (ShareDto 14필드 + ShareCommandService 단건 lookup + ShareQueryService batch fetch, 신규 7 테스트, 회귀 0) |
+| A16.4 Frontend wire backbone | 🟡 ACTIVE |
 | A16.5 useDepartmentSearch 훅 | ⏸ blocked by A16.4 |
 | A16.6 DepartmentSearchCombobox | ⏸ blocked by A16.5 |
 | A16.7 ShareDialog 통합 + subjectLabel 실 이름 | ⏸ blocked by A16.6 |
@@ -154,14 +154,14 @@ WHERE
 - ShareQueryService.toPage — A13 batch fetch (`permissionRepository.findAllById(ids)`).
 
 ### 구현 대상
-- [ ] **A16.3.0 RED** — ShareControllerTest wire JSON: subjectName이 dept share에서 dept name, user share에서 user displayName, everyone에서 null.
-- [ ] **A16.3.1 GREEN**:
+- [x] **A16.3.0 RED** — ShareControllerTest wire JSON: subjectName이 dept share에서 dept name, user share에서 user displayName, everyone에서 null.
+- [x] **A16.3.1 GREEN**:
   - ShareDto record 14필드(subjectName: String).
   - factory: `from(Share, PermissionRow, String subjectName)`.
   - ShareCommandService: createShares/createFolderShares가 grant 후 단건 lookup으로 subjectName resolve(트랜잭션 내).
   - ShareQueryService: 페이지 dept-id/user-id 분리 수집 → `departmentRepository.findAllById(ids)` + `userRepository.findAllById(ids)` batch fetch → Map merge → toPage 시 type별 lookup.
   - everyone subject → subjectName=null.
-- [ ] **A16.3.2 검증** — ShareCommandServiceTest, ShareQueryServiceTest, ShareControllerTest GREEN. 회귀 0.
+- [x] **A16.3.2 검증** — ShareCommandServiceTest +2, ShareQueryServiceTest +6, ShareControllerTest 갱신. `./gradlew test` BUILD SUCCESSFUL — 666 tests, 0 failures, 188 skipped (Testcontainers baseline 동일).
 
 ### 검증 참조
 - AC backend #4.

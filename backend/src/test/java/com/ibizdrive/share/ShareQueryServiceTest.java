@@ -1,7 +1,11 @@
 package com.ibizdrive.share;
 
+import com.ibizdrive.department.Department;
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
+import com.ibizdrive.user.User;
+import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -37,13 +41,18 @@ class ShareQueryServiceTest {
 
     private ShareRepository shareRepository;
     private PermissionRepository permissionRepository;
+    private UserRepository userRepository;
+    private DepartmentRepository departmentRepository;
     private ShareQueryService service;
 
     @BeforeEach
     void setUp() {
         shareRepository = mock(ShareRepository.class);
         permissionRepository = mock(PermissionRepository.class);
-        service = new ShareQueryService(shareRepository, permissionRepository);
+        userRepository = mock(UserRepository.class);
+        departmentRepository = mock(DepartmentRepository.class);
+        service = new ShareQueryService(
+            shareRepository, permissionRepository, userRepository, departmentRepository);
         // 기본 stub: 어떤 id 집합이 와도 자동으로 매칭되는 grant 하나씩 만들어서 반환.
         // 케이스에서 명시적으로 stubbing이 필요하면 override.
         when(permissionRepository.findAllById(anyIterable())).thenAnswer(inv -> {
@@ -52,6 +61,10 @@ class ShareQueryServiceTest {
             for (UUID id : ids) rows.add(grantRow(id, "user", UUID.randomUUID(), "read"));
             return rows;
         });
+        // A16: user/department repos 기본 stub — 빈 결과 반환 (lookup miss).
+        // 케이스에서 명시적으로 override하여 실 displayName/name 반환.
+        when(userRepository.findAllById(anyIterable())).thenReturn(Collections.emptyList());
+        when(departmentRepository.findAllById(anyIterable())).thenReturn(Collections.emptyList());
     }
 
     // ----------------- listByMe -----------------
@@ -252,6 +265,133 @@ class ShareQueryServiceTest {
         assertThat(dto.subjectType()).isEqualTo("everyone");
         assertThat(dto.subjectId()).isNull();
         assertThat(dto.preset()).isEqualTo("read");
+    }
+
+    // ----------------- A16 — subjectName batch fetch -----------------
+
+    @Test
+    void listByMe_userSubject_resolvesDisplayNameViaBatchFetch() {
+        Share s = makeShare("2026-04-30T12:00:00Z");
+        UUID permId = s.getPermissionId();
+        UUID userSubjectId = UUID.randomUUID();
+        PermissionRow grant = grantRow(permId, "user", userSubjectId, "read");
+        when(permissionRepository.findAllById(anyIterable())).thenReturn(List.of(grant));
+        User u = mock(User.class);
+        when(u.getId()).thenReturn(userSubjectId);
+        when(u.getDisplayName()).thenReturn("Alice");
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(u));
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(s));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).subjectName()).isEqualTo("Alice");
+        // department 분기에는 dept-id가 없어 호출되지 않아야.
+        verify(departmentRepository, times(0)).findAllById(anyIterable());
+    }
+
+    @Test
+    void listByMe_departmentSubject_resolvesDeptNameViaBatchFetch() {
+        Share s = makeShare("2026-04-30T12:00:00Z");
+        UUID permId = s.getPermissionId();
+        UUID deptId = UUID.randomUUID();
+        PermissionRow grant = grantRow(permId, "department", deptId, "read");
+        when(permissionRepository.findAllById(anyIterable())).thenReturn(List.of(grant));
+        Department d = mock(Department.class);
+        when(d.getId()).thenReturn(deptId);
+        when(d.getName()).thenReturn("Engineering");
+        when(departmentRepository.findAllById(anyIterable())).thenReturn(List.of(d));
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(s));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).subjectName()).isEqualTo("Engineering");
+        // user 분기에는 user-id가 없어 호출되지 않아야.
+        verify(userRepository, times(0)).findAllById(anyIterable());
+    }
+
+    @Test
+    void listByMe_everyoneSubject_subjectNameNull_andNoLookupCalls() {
+        Share s = makeShare("2026-04-30T12:00:00Z");
+        UUID permId = s.getPermissionId();
+        PermissionRow grant = grantRow(permId, "everyone", null, "read");
+        when(permissionRepository.findAllById(anyIterable())).thenReturn(List.of(grant));
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(s));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).subjectName()).isNull();
+        // everyone 한정 페이지는 user/dept lookup 미호출.
+        verify(userRepository, times(0)).findAllById(anyIterable());
+        verify(departmentRepository, times(0)).findAllById(anyIterable());
+    }
+
+    @Test
+    void listByMe_mixedSubjects_batchFetchesUserAndDeptOncePerType() {
+        // 페이지 3건: user / department / everyone — userRepo.findAllById, deptRepo.findAllById 각 1회.
+        Share s1 = makeShare("2026-04-30T12:00:00Z");
+        Share s2 = makeShare("2026-04-29T12:00:00Z");
+        Share s3 = makeShare("2026-04-28T12:00:00Z");
+        UUID userSubjectId = UUID.randomUUID();
+        UUID deptId = UUID.randomUUID();
+        PermissionRow g1 = grantRow(s1.getPermissionId(), "user", userSubjectId, "read");
+        PermissionRow g2 = grantRow(s2.getPermissionId(), "department", deptId, "read");
+        PermissionRow g3 = grantRow(s3.getPermissionId(), "everyone", null, "read");
+        when(permissionRepository.findAllById(anyIterable())).thenReturn(List.of(g1, g2, g3));
+        User u = mock(User.class);
+        when(u.getId()).thenReturn(userSubjectId);
+        when(u.getDisplayName()).thenReturn("Alice");
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(u));
+        Department d = mock(Department.class);
+        when(d.getId()).thenReturn(deptId);
+        when(d.getName()).thenReturn("Engineering");
+        when(departmentRepository.findAllById(anyIterable())).thenReturn(List.of(d));
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(s1, s2, s3));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(3);
+        assertThat(page.items().get(0).subjectName()).isEqualTo("Alice");
+        assertThat(page.items().get(1).subjectName()).isEqualTo("Engineering");
+        assertThat(page.items().get(2).subjectName()).isNull();
+        // type별 1회 batch (N+1 회피 보장).
+        verify(userRepository, times(1)).findAllById(anyIterable());
+        verify(departmentRepository, times(1)).findAllById(anyIterable());
+    }
+
+    @Test
+    void listByMe_lookupMiss_subjectNameNull_doesNotThrow() {
+        // soft-delete 등으로 user를 못찾아도 page는 정상 (subjectName=null).
+        Share s = makeShare("2026-04-30T12:00:00Z");
+        UUID permId = s.getPermissionId();
+        UUID userSubjectId = UUID.randomUUID();
+        PermissionRow grant = grantRow(permId, "user", userSubjectId, "read");
+        when(permissionRepository.findAllById(anyIterable())).thenReturn(List.of(grant));
+        when(userRepository.findAllById(anyIterable())).thenReturn(Collections.emptyList());
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(s));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).subjectName()).isNull();
+    }
+
+    @Test
+    void listByMe_emptyPage_doesNotCallUserOrDeptRepos() {
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(51)))
+            .thenReturn(Collections.emptyList());
+
+        service.listByMe(ACTOR, null, null);
+
+        verify(userRepository, times(0)).findAllById(anyIterable());
+        verify(departmentRepository, times(0)).findAllById(anyIterable());
     }
 
     // ----------------- A12 — folder share natural exposure -----------------

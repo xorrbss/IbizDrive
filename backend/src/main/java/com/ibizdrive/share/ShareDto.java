@@ -21,6 +21,11 @@ import java.util.UUID;
  * row에서 join으로 채운다. {@code shares.permission_id} → {@code permissions.id} 1:1 매칭. {@code subjectId}는
  * {@code subjectType='everyone'}일 때 NULL (V5 CHECK). 이 3필드 덕분에 frontend는 별도 API 호출 없이
  * "누구에게 / 어떤 권한으로" 공유되었는지 한 row로 표시할 수 있다 (ShareDialog 기존공유 행 + SharesTable preset 컬럼).
+ *
+ * <p><strong>A16</strong> — {@code subjectName} 추가 (ADR #36). subject 표시명을 backend에서 join하여
+ * frontend가 별도 lookup 없이 한 row로 표시 가능. {@code subject_type='user'} → {@code users.display_name},
+ * {@code subject_type='department'} → {@code departments.name}, {@code subject_type='everyone'} → null.
+ * 호출자(ShareCommandService 단건 lookup, ShareQueryService 페이지 batch lookup)가 resolve 책임.
  */
 public record ShareDto(
     UUID id,
@@ -35,16 +40,19 @@ public record ShareDto(
     UUID revokedBy,
     String subjectType,
     UUID subjectId,
-    String preset
+    String preset,
+    String subjectName
 ) {
 
     /**
-     * Share + 매칭된 permission grant로 wire DTO를 생성한다.
+     * Share + 매칭된 permission grant + subject 표시명으로 wire DTO를 생성한다.
      *
-     * @param share share row (active 또는 revoked).
-     * @param grant share.permissionId 와 1:1 매칭된 permission row. 호출자가 보장한다 (V6 FK).
+     * @param share       share row (active 또는 revoked).
+     * @param grant       share.permissionId 와 1:1 매칭된 permission row. 호출자가 보장한다 (V6 FK).
+     * @param subjectName subject 표시명 — user면 displayName, department면 dept.name, everyone이면 null.
+     *                    user/department인데 lookup 실패(soft-delete 등) 시에도 null 허용.
      */
-    public static ShareDto from(Share share, PermissionRow grant) {
+    public static ShareDto from(Share share, PermissionRow grant, String subjectName) {
         return new ShareDto(
             share.getId(),
             share.getFileId(),
@@ -58,7 +66,8 @@ public record ShareDto(
             share.getRevokedBy(),
             grant.getSubjectType(),
             grant.getSubjectId(),
-            grant.getPreset()
+            grant.getPreset(),
+            subjectName
         );
     }
 }

@@ -80,6 +80,8 @@ class ShareControllerTest {
         assertThat(out.subjectType()).isEqualTo("user");
         assertThat(out.subjectId()).isEqualTo(subjectId);
         assertThat(out.preset()).isEqualTo("edit");
+        // A16 — subjectName 14번째 필드 envelope 노출.
+        assertThat(out.subjectName()).isEqualTo("Display Name");
         verify(commandService).createShares(fileId, req, ACTOR);
     }
 
@@ -108,6 +110,8 @@ class ShareControllerTest {
         assertThat(res.getBody().get("shares").get(1).id()).isEqualTo(d2.id());
         // A13 — 두번째 row의 department subject 노출 확인.
         assertThat(res.getBody().get("shares").get(1).subjectType()).isEqualTo("department");
+        // A16 — dept share row에 dept name이 envelope에 노출.
+        assertThat(res.getBody().get("shares").get(1).subjectName()).isEqualTo("Engineering");
     }
 
     @Test
@@ -309,7 +313,10 @@ class ShareControllerTest {
 
     // ── helpers ────────────────────────────────────────────────────────
 
-    /** A13 — service 반환이 ShareDto이므로 controller 테스트 fixture도 DTO로 직접 구성. file XOR (folderId=null). */
+    /**
+     * A13 — service 반환이 ShareDto이므로 controller 테스트 fixture도 DTO로 직접 구성. file XOR (folderId=null).
+     * A16 — subjectName 14번째 필드 (user면 displayName, dept면 dept.name, everyone이면 null).
+     */
     private static ShareDto makeFileDto(UUID fileId, String subjectType, UUID subjectId, String preset) {
         return new ShareDto(
             UUID.randomUUID(),  // id
@@ -324,11 +331,14 @@ class ShareControllerTest {
             null,               // revokedBy
             subjectType,
             subjectId,
-            preset
+            preset,
+            "user".equals(subjectType) ? "Display Name"
+                : "department".equals(subjectType) ? "Engineering"
+                : null
         );
     }
 
-    /** folder XOR (fileId=null). */
+    /** folder XOR (fileId=null). A16 — subjectName 14번째 필드. */
     private static ShareDto makeFolderDto(UUID folderId, String subjectType, UUID subjectId, String preset) {
         return new ShareDto(
             UUID.randomUUID(),  // id
@@ -343,7 +353,10 @@ class ShareControllerTest {
             null,               // revokedBy
             subjectType,
             subjectId,
-            preset
+            preset,
+            "user".equals(subjectType) ? "Display Name"
+                : "department".equals(subjectType) ? "Engineering"
+                : null
         );
     }
 }
