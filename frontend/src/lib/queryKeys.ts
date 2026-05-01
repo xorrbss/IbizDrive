@@ -112,6 +112,7 @@ export const invalidations = {
    * - 해당 폴더의 파일 목록 (제외됨 → 새로고침)
    * - 휴지통 라우트 (새 항목 표시)
    * - 검색 결과 (휴지통 항목 제외 — `qk.search` prefix 전체)
+   * - folderTree (폴더 soft-delete 시 트리에서 제거; file-only 호출에도 보수적 무효화)
    */
   afterDelete(
     qc: QueryClient,
@@ -121,6 +122,7 @@ export const invalidations = {
       qc.invalidateQueries({ queryKey: qk.filesListPrefix(opts.folderId) }),
       qc.invalidateQueries({ queryKey: qk.trash() }),
       qc.invalidateQueries({ queryKey: qk.search() }),
+      qc.invalidateQueries({ queryKey: qk.folderTree() }),
     ]).then(() => undefined)
   },
 
@@ -129,6 +131,7 @@ export const invalidations = {
    * - 복원 대상의 originalParent 폴더 목록 (있다면)
    * - 휴지통 라우트 (해당 항목 사라짐)
    * - 검색 결과 (다시 노출 가능)
+   * - folderTree (folder cascade restore 시 트리에 재등장; file-only 호출에도 보수적 무효화)
    * 호출자는 originalParent가 다양할 수 있으니 prefix 전체(`qk.files()`) 보수 무효화도 옵션으로 허용.
    */
   afterRestore(
@@ -138,6 +141,7 @@ export const invalidations = {
     const tasks: Promise<void>[] = [
       qc.invalidateQueries({ queryKey: qk.trash() }),
       qc.invalidateQueries({ queryKey: qk.search() }),
+      qc.invalidateQueries({ queryKey: qk.folderTree() }),
     ]
     if (opts.folderIds && opts.folderIds.length > 0) {
       for (const fid of opts.folderIds) {

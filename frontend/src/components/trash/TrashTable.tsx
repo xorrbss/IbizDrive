@@ -1,106 +1,142 @@
 'use client'
-import { toast } from 'sonner'
 import { useTrashList } from '@/hooks/useTrashList'
-import { useRestoreBulk } from '@/hooks/useRestoreBulk'
-import { usePurgeBulk } from '@/hooks/usePurgeBulk'
-import type { FileItem } from '@/types/file'
+import { useFolderTree } from '@/hooks/useFolderTree'
+import { findFolderPath } from '@/lib/folderTreeUtils'
+import { TrashRowActions } from './TrashRowActions'
+import type { TrashItem } from '@/types/trash'
 
 /**
- * /trash 라우트 본문 (M9 docs/01 §13).
+ * 휴지통 테이블 (M9.3). 단순 list (MVP는 가상화 없음 — 휴지통은 일반적으로 ≤ 수백건).
+ * docs/01 §11 (4상태) + §12 (aria-rowcount/rowindex) + §13 UX.
  *
- * - 행 액션: "원위치로 복원" / "영구 삭제"
- * - 영구 삭제는 confirm 1단계로 단순화 (관리자 권한 분리는 backend 도입 시 추가)
- * - 빈 상태/로딩/에러는 작은 placeholder만 (FileTable과 다른 컨텍스트 — 별도 디자인)
+ * 컬럼: 이름 / 타입 / 원위치 / 삭제 시각 / 영구 삭제 예정 / 행 액션
  */
-export function TrashTable() {
-  const { data, isLoading, isError } = useTrashList()
-  const restoreMut = useRestoreBulk({
-    onSuccess: (vars) => toast.success(`${vars.ids.length}개 항목을 복원했습니다`),
-    onError: () => toast.error('복원에 실패했습니다.'),
-  })
-  const purgeMut = usePurgeBulk({
-    onSuccess: (vars) => toast.success(`${vars.ids.length}개 항목을 영구 삭제했습니다`),
-    onError: () => toast.error('영구 삭제에 실패했습니다.'),
-  })
+const GRID_COLS =
+  'grid grid-cols-[1fr_60px_180px_140px_140px_160px] gap-3 items-center px-4'
 
-  if (isLoading) {
+export function TrashTable() {
+  const query = useTrashList()
+  const tree = useFolderTree().data
+
+  if (query.isLoading) {
     return (
-      <p className="px-4 py-6 text-sm text-fg-muted" role="status">
-        휴지통을 불러오는 중…
-      </p>
+      <div role="status" aria-live="polite" className="p-6 text-[13px] text-fg-muted">
+        로딩…
+      </div>
     )
   }
-  if (isError) {
+  if (query.isError) {
     return (
-      <p className="px-4 py-6 text-sm text-danger" role="alert">
-        휴지통을 불러오지 못했습니다.
-      </p>
+      <div role="alert" className="p-6 text-[13px] text-danger">
+        휴지통을 불러올 수 없습니다.
+      </div>
     )
   }
-  const items = data?.items ?? []
+  const items: TrashItem[] = query.data?.pages.flatMap((p) => p.items) ?? []
   if (items.length === 0) {
     return (
-      <p className="px-4 py-6 text-sm text-fg-muted">휴지통이 비어 있습니다.</p>
+      <div className="p-6 text-[13px] text-fg-muted" role="status">
+        휴지통이 비어있습니다
+      </div>
     )
-  }
-
-  const handleRestore = (item: FileItem) => {
-    restoreMut.mutate({
-      ids: [item.id],
-      originalParentIds: item.originalParentId ? [item.originalParentId] : undefined,
-    })
-  }
-
-  const handlePurge = (item: FileItem) => {
-    const ok = window.confirm(`'${item.name}'을(를) 영구 삭제할까요? 되돌릴 수 없습니다.`)
-    if (!ok) return
-    purgeMut.mutate({ ids: [item.id] })
   }
 
   return (
-    <div role="grid" aria-label="휴지통 항목" className="flex flex-col">
+    <div
+      role="grid"
+      aria-rowcount={items.length + 1}
+      aria-label="휴지통 항목"
+      className="flex flex-col flex-1 min-h-0 overflow-hidden"
+    >
       <div
         role="row"
-        className="flex items-center gap-3 px-4 py-2 text-[12px] font-medium text-fg-muted border-b border-border"
+        aria-rowindex={1}
+        className={`${GRID_COLS} h-[30px] bg-surface-1 border-y border-border text-[11px] uppercase tracking-[0.04em] font-medium text-fg-muted`}
       >
-        <span role="columnheader" className="flex-1">이름</span>
-        <span role="columnheader" className="w-44">삭제 시각</span>
-        <span role="columnheader" className="w-44">원위치</span>
-        <span role="columnheader" className="w-44 text-right">액션</span>
+        <span role="columnheader">이름</span>
+        <span role="columnheader">타입</span>
+        <span role="columnheader">원위치</span>
+        <span role="columnheader">삭제 시각</span>
+        <span role="columnheader">영구 삭제 예정</span>
+        <span role="columnheader" className="text-right">
+          액션
+        </span>
       </div>
-      {items.map((item) => (
-        <div
-          key={item.id}
-          role="row"
-          className="flex items-center gap-3 px-4 py-2 text-[13px] border-b border-border hover:bg-surface-2"
-        >
-          <span role="gridcell" className="flex-1 truncate">{item.name}</span>
-          <span role="gridcell" className="w-44 text-fg-muted">
-            {item.deletedAt ? new Date(item.deletedAt).toLocaleString() : '-'}
-          </span>
-          <span role="gridcell" className="w-44 text-fg-muted truncate">
-            {item.originalParentId ?? '-'}
-          </span>
-          <span role="gridcell" className="w-44 flex items-center justify-end gap-1.5">
-            <button
-              type="button"
-              onClick={() => handleRestore(item)}
-              disabled={restoreMut.isPending}
-              className="h-7 px-2.5 inline-flex items-center rounded text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50"
+
+      <div className="flex-1 overflow-auto">
+        {items.map((it, idx) => {
+          let originalPath = '최상위'
+          if (it.originalParentId) {
+            const path = tree ? findFolderPath(tree, it.originalParentId) : null
+            if (path) {
+              originalPath = path.map((n) => (n.id === 'root' ? '내 드라이브' : n.name)).join(' / ')
+            } else {
+              originalPath = '원위치 폴더 삭제됨'
+            }
+          }
+          return (
+            <div
+              key={`${it.type}:${it.id}`}
+              role="row"
+              aria-rowindex={idx + 2}
+              data-trash-id={it.id}
+              data-trash-type={it.type}
+              className={`${GRID_COLS} h-[40px] border-b border-border text-[13px] hover:bg-surface-2`}
             >
-              복원
-            </button>
-            <button
-              type="button"
-              onClick={() => handlePurge(item)}
-              disabled={purgeMut.isPending}
-              className="h-7 px-2.5 inline-flex items-center rounded text-fg-2 text-[12.5px] font-medium hover:bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] hover:text-danger disabled:opacity-50"
-            >
-              영구 삭제
-            </button>
-          </span>
+              <span className="truncate" role="gridcell">
+                <span aria-hidden className="mr-1.5">
+                  {it.type === 'folder' ? '📁' : '📄'}
+                </span>
+                {it.name}
+              </span>
+              <span role="gridcell" className="text-fg-muted">
+                {it.type === 'folder' ? '폴더' : '파일'}
+              </span>
+              <span role="gridcell" className="truncate text-fg-muted">
+                {originalPath}
+              </span>
+              <span role="gridcell" className="text-fg-muted">
+                {formatDate(it.deletedAt)}
+              </span>
+              <span role="gridcell" className="text-fg-muted">
+                {formatDate(it.purgeAfter)}
+              </span>
+              <span role="gridcell">
+                <TrashRowActions item={it} />
+              </span>
+            </div>
+          )
+        })}
+      </div>
+
+      {query.hasNextPage && (
+        <div className="p-3 text-center">
+          <button
+            type="button"
+            onClick={() => query.fetchNextPage()}
+            disabled={query.isFetchingNextPage}
+            className="px-3 py-1.5 text-[12px] rounded-sm border border-border bg-surface-1 hover:bg-surface-2 disabled:opacity-50"
+          >
+            {query.isFetchingNextPage ? '불러오는 중…' : '더 보기'}
+          </button>
         </div>
-      ))}
+      )}
     </div>
   )
+}
+
+function formatDate(iso: string): string {
+  try {
+    const d = new Date(iso)
+    if (Number.isNaN(d.getTime())) return iso
+    return d.toLocaleString('ko-KR', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    })
+  } catch {
+    return iso
+  }
 }

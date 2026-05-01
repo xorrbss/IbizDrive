@@ -3,22 +3,22 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 /**
- * 사이드바 하단 휴지통 링크 (M9 docs/01 §13).
- *
- * usePathname으로 active 강조. /trash 시작 시 active.
+ * 사이드바 하단 휴지통 진입 링크 (M9.3, docs/01 §13).
+ * 활성 라우트(`/trash`)에서는 시각적으로 강조.
  */
 export function TrashLink() {
   const pathname = usePathname()
-  const isActive = pathname?.startsWith('/trash') ?? false
+  const active = pathname?.startsWith('/trash') ?? false
   return (
     <Link
       href="/trash"
-      aria-current={isActive ? 'page' : undefined}
-      className={`flex items-center gap-2 px-2 h-8 rounded text-[13px] font-medium transition-colors ${
-        isActive
-          ? 'bg-accent-soft text-accent'
-          : 'text-fg-2 hover:bg-surface-2 hover:text-fg'
-      }`}
+      aria-current={active ? 'page' : undefined}
+      className={[
+        'flex items-center gap-2 px-2 py-1.5 rounded-sm text-[13px]',
+        active
+          ? 'bg-accent-soft text-accent font-medium'
+          : 'text-fg-muted hover:bg-surface-2',
+      ].join(' ')}
     >
       <span aria-hidden>🗑</span>
       <span>휴지통</span>

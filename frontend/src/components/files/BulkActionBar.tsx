@@ -1,15 +1,19 @@
 'use client'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { useSelectionStore } from '@/stores/selection'
 import { usePermission } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
-import { useRestoreBulk } from '@/hooks/useRestoreBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
+import { api } from '@/lib/api'
+import { invalidations } from '@/lib/queryKeys'
+
+type DeletedItem = { id: string; type: 'file' | 'folder' }
 
 export function BulkActionBar() {
   // Set 자체를 구독 (stable ref). Array.from은 render에서 변환.
@@ -21,19 +25,16 @@ export function BulkActionBar() {
   const ids = Array.from(selectedIds)
   const can = usePermission()
   const { folderId } = useCurrentFolder()
-  const restoreMut = useRestoreBulk()
-  // M9: 삭제 직후 5초 Undo 토스트. 복원 시 originalParentId는 현재 폴더 (deleteBulk가 set).
+  const qc = useQueryClient()
   const deleteMut = useDeleteBulk({
     onSuccess: (vars) => {
-      toast.success(`${vars.ids.length}개 항목을 휴지통으로 이동했습니다`, {
+      toast.success(`${vars.items.length}개 항목을 휴지통으로 이동했습니다`, {
         duration: 5000,
         action: {
           label: '되돌리기',
-          onClick: () =>
-            restoreMut.mutate({
-              ids: vars.ids,
-              originalParentIds: [vars.folderIdAtStart],
-            }),
+          onClick: () => {
+            void undoDelete(vars.items, vars.folderIdAtStart, qc)
+          },
         },
       })
     },
@@ -73,7 +74,14 @@ export function BulkActionBar() {
   }
 
   const handleDelete = () => {
-    deleteMut.mutate({ ids, folderIdAtStart: folderId })
+    // M9.1 — backend는 file/folder 분기 endpoint이므로 선택 항목의 type을 cache(items)에서
+    // 조회해 함께 전달. items 미로딩(캐시 미스) 항목은 보수적으로 'file'로 폴백 — backend가
+    // 404를 돌려주면 onError에서 selection 복원되어 사용자 재시도 가능.
+    const itemsArg = ids.map((id) => {
+      const found = items?.find((it) => it.id === id)
+      return { id, type: (found?.type ?? 'file') as 'file' | 'folder' }
+    })
+    deleteMut.mutate({ items: itemsArg, folderIdAtStart: folderId })
   }
 
   const handleShare = () => {
@@ -154,4 +162,32 @@ export function BulkActionBar() {
       </div>
     </div>
   )
+}
+
+/**
+ * Undo soft-delete: 삭제된 items 각각을 backend restore endpoint로 복원하고
+ * 무효화 매트릭스(filesListPrefix + trash + folderTree + search) 적용.
+ * 일부 실패는 첫 rejection으로 전체 실패 surface — toast.error 폴백.
+ */
+async function undoDelete(
+  items: DeletedItem[],
+  folderId: string,
+  qc: ReturnType<typeof useQueryClient>,
+): Promise<void> {
+  try {
+    await Promise.all(
+      items.map((it) =>
+        it.type === 'folder' ? api.restoreFolder(it.id) : api.restoreFile(it.id),
+      ),
+    )
+    await invalidations.afterRestore(qc, { folderIds: [folderId] })
+    toast.success(`${items.length}개 항목을 복원했습니다`)
+  } catch (err) {
+    const code = (err as Error & { code?: string })?.code
+    if (code === 'RESTORE_CONFLICT') {
+      toast.error('같은 이름의 항목이 이미 존재합니다')
+    } else {
+      toast.error('복원에 실패했습니다')
+    }
+  }
 }

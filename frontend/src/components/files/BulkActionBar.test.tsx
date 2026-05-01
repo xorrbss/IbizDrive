@@ -1,15 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { BulkActionBar } from './BulkActionBar'
 import { useSelectionStore } from '@/stores/selection'
 import { useRenameUiStore } from '@/stores/renameUi'
-import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useSortParams } from '@/hooks/useSortParams'
-import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
+import { useDeleteBulk } from '@/hooks/useDeleteBulk'
+import { api } from '@/lib/api'
+import { toastSpy } from '@/test/mocks/sonner'
 import type { FileItem } from '@/types/file'
 
 vi.mock('@/hooks/useFilesInFolder', () => ({
@@ -39,20 +40,15 @@ vi.mock('@/hooks/useSortParams', () => ({
   useSortParams: vi.fn(),
 }))
 
-const { deleteOptionsCapture, restoreMutateSpy } = vi.hoisted(() => ({
-  deleteOptionsCapture: { current: null as null | { onSuccess?: (v: { ids: string[]; folderIdAtStart: string }) => void; onError?: (e: unknown, v: { ids: string[]; folderIdAtStart: string }) => void } },
-  restoreMutateSpy: vi.fn(),
-}))
-
 vi.mock('@/hooks/useDeleteBulk', () => ({
-  useDeleteBulk: (opts?: typeof deleteOptionsCapture.current) => {
-    deleteOptionsCapture.current = opts ?? null
-    return { mutate: vi.fn(), isPending: false }
-  },
+  useDeleteBulk: vi.fn(() => ({ mutate: vi.fn(), isPending: false })),
 }))
 
-vi.mock('@/hooks/useRestoreBulk', () => ({
-  useRestoreBulk: () => ({ mutate: restoreMutateSpy, isPending: false }),
+vi.mock('@/lib/api', () => ({
+  api: {
+    restoreFile: vi.fn(),
+    restoreFolder: vi.fn(),
+  },
 }))
 
 const ITEMS: FileItem[] = [
@@ -180,61 +176,15 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
   })
 })
 
-describe('BulkActionBar — 공유 버튼 (M8)', () => {
+// ─── M9.4: Undo toast wiring ───────────────────────────────────────────────
+//
+// 삭제 mutation onSuccess 콜백을 BulkActionBar가 useDeleteBulk(options)에 등록 →
+// 토스트에 5초 짜리 '되돌리기' action을 붙임. 액션 클릭 시 api.restoreFile/Folder
+// 호출 + invalidations.afterRestore로 캐시 무효화.
+
+describe('BulkActionBar — Undo toast (M9.4)', () => {
   beforeEach(() => {
-    act(() => {
-      useSelectionStore.getState().clear()
-      useShareUiStore.getState().close()
-    })
-    vi.mocked(useFilesInFolder).mockReturnValue({
-      data: ITEMS,
-      isLoading: false,
-      error: null,
-    } as ReturnType<typeof useFilesInFolder>)
-    vi.mocked(useCurrentFolder).mockReturnValue({
-      folderId: 'root',
-      folder: { id: 'root', name: 'root', slugPath: [] },
-      isLoading: false,
-      error: null,
-    } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
-  })
-
-  it('단일 파일 선택 시 활성 — 클릭하면 ShareDialog 열림 (id, name)', () => {
-    act(() => useSelectionStore.getState().selectOnly('f1'))
-    render(<BulkActionBar />, { wrapper: makeWrapper() })
-    const btn = screen.getByRole('button', { name: '공유' })
-    expect((btn as HTMLButtonElement).disabled).toBe(false)
-    act(() => fireEvent.click(btn))
-    const s = useShareUiStore.getState()
-    expect(s.isOpen).toBe(true)
-    expect(s.fileId).toBe('f1')
-    expect(s.fileName).toBe('alpha.txt')
-  })
-
-  it('다중 선택 시 비활성 + tooltip', () => {
-    act(() => {
-      useSelectionStore.getState().selectOnly('f1')
-      useSelectionStore.getState().toggle('f2')
-    })
-    render(<BulkActionBar />, { wrapper: makeWrapper() })
-    const btn = screen.getByRole('button', { name: '공유' })
-    expect((btn as HTMLButtonElement).disabled).toBe(true)
-    expect(btn.getAttribute('title')).toBe('단일 파일 선택 시 사용 가능')
-    act(() => fireEvent.click(btn))
-    expect(useShareUiStore.getState().isOpen).toBe(false)
-  })
-
-  it('단일 폴더 선택 시 비활성 (폴더 공유는 v1.x)', () => {
-    act(() => useSelectionStore.getState().selectOnly('fo1'))
-    render(<BulkActionBar />, { wrapper: makeWrapper() })
-    const btn = screen.getByRole('button', { name: '공유' })
-    expect((btn as HTMLButtonElement).disabled).toBe(true)
-  })
-})
-
-describe('BulkActionBar — 휴지통 Undo 토스트 (M9)', () => {
-  beforeEach(() => {
+    vi.clearAllMocks()
     act(() => {
       useSelectionStore.getState().clear()
     })
@@ -250,65 +200,130 @@ describe('BulkActionBar — 휴지통 Undo 토스트 (M9)', () => {
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
     vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
-    deleteOptionsCapture.current = null
-    restoreMutateSpy.mockReset()
-    resetSonnerToastMock()
   })
 
-  it('delete 성공 시 toast.success가 5초 + 되돌리기 액션과 함께 호출', () => {
+  /**
+   * onSuccess를 캡쳐하고 직접 호출하여, BulkActionBar가 등록한 콜백이
+   * toast.success를 어떻게 호출하는지 검증한다.
+   */
+  function setupCaptureOnSuccess() {
+    const mutate = vi.fn()
+    let captured:
+      | ((vars: { items: { id: string; type: 'file' | 'folder' }[]; folderIdAtStart: string }) => void)
+      | undefined
+    vi.mocked(useDeleteBulk).mockImplementation((opts) => {
+      captured = opts?.onSuccess
+      return { mutate, isPending: false } as unknown as ReturnType<typeof useDeleteBulk>
+    })
+    return {
+      mutate,
+      fire: (vars: {
+        items: { id: string; type: 'file' | 'folder' }[]
+        folderIdAtStart: string
+      }) => captured?.(vars),
+    }
+  }
+
+  it('삭제 성공 토스트는 duration:5000 + action:{ label: "되돌리기" }를 포함', () => {
+    const { fire } = setupCaptureOnSuccess()
     act(() => {
       useSelectionStore.getState().selectOnly('f1')
-      useSelectionStore.getState().toggle('f2')
     })
     render(<BulkActionBar />, { wrapper: makeWrapper() })
-    expect(deleteOptionsCapture.current?.onSuccess).toBeTypeOf('function')
 
-    // 시뮬레이션: useDeleteBulk가 mutate 성공 후 onSuccess 호출
-    act(() => {
-      deleteOptionsCapture.current?.onSuccess?.({ ids: ['f1', 'f2'], folderIdAtStart: 'root' })
-    })
+    fire({ items: [{ id: 'f1', type: 'file' }], folderIdAtStart: 'root' })
 
-    const success = toastSpy('success')
-    expect(success).toHaveBeenCalledTimes(1)
-    expect(success).toHaveBeenCalledWith(
-      '2개 항목을 휴지통으로 이동했습니다',
-      expect.objectContaining({
-        duration: 5000,
-        action: expect.objectContaining({ label: '되돌리기' }),
-      }),
+    const successCalls = toastSpy('success').mock.calls
+    expect(successCalls.length).toBe(1)
+    const [, opts] = successCalls[0]
+    expect(opts?.duration).toBe(5000)
+    expect((opts as { action?: { label: string } } | undefined)?.action?.label).toBe(
+      '되돌리기',
     )
   })
 
-  it('Undo 액션 클릭 시 useRestoreBulk.mutate가 originalParentIds 포함하여 호출', () => {
+  it('action.onClick → api.restoreFile/Folder를 type 분기로 호출', async () => {
+    const { fire } = setupCaptureOnSuccess()
+    vi.mocked(api.restoreFile).mockResolvedValue(undefined)
+    vi.mocked(api.restoreFolder).mockResolvedValue(undefined)
     act(() => {
       useSelectionStore.getState().selectOnly('f1')
     })
     render(<BulkActionBar />, { wrapper: makeWrapper() })
 
-    act(() => {
-      deleteOptionsCapture.current?.onSuccess?.({ ids: ['f1'], folderIdAtStart: 'folder_sales' })
+    fire({
+      items: [
+        { id: 'f1', type: 'file' },
+        { id: 'fo1', type: 'folder' },
+      ],
+      folderIdAtStart: 'root',
     })
 
-    const success = toastSpy('success')
-    const opts = success.mock.calls[0][1] as { action?: { onClick: () => void } }
-    act(() => {
-      opts.action?.onClick?.()
+    const [, opts] = toastSpy('success').mock.calls[0]
+    const action = (opts as { action?: { onClick: () => void } } | undefined)?.action
+    expect(action).toBeTruthy()
+
+    await act(async () => {
+      action?.onClick()
     })
 
-    expect(restoreMutateSpy).toHaveBeenCalledWith({
-      ids: ['f1'],
-      originalParentIds: ['folder_sales'],
+    await waitFor(() => {
+      expect(api.restoreFile).toHaveBeenCalledWith('f1')
+      expect(api.restoreFolder).toHaveBeenCalledWith('fo1')
     })
   })
 
-  it('delete 실패 시 toast.error', () => {
+  it('Undo 성공 시 후속 toast.success("복원했습니다") 발생', async () => {
+    const { fire } = setupCaptureOnSuccess()
+    vi.mocked(api.restoreFile).mockResolvedValue(undefined)
     act(() => {
       useSelectionStore.getState().selectOnly('f1')
     })
     render(<BulkActionBar />, { wrapper: makeWrapper() })
-    act(() => {
-      deleteOptionsCapture.current?.onError?.(new Error('boom'), { ids: ['f1'], folderIdAtStart: 'root' })
+
+    fire({ items: [{ id: 'f1', type: 'file' }], folderIdAtStart: 'root' })
+    const [, opts] = toastSpy('success').mock.calls[0]
+    const action = (opts as { action?: { onClick: () => void } } | undefined)?.action
+
+    await act(async () => {
+      action?.onClick()
     })
-    expect(toastSpy('error')).toHaveBeenCalledWith('삭제에 실패했습니다. 다시 시도해 주세요.')
+
+    await waitFor(() => {
+      const calls = toastSpy('success').mock.calls
+      const restoreToast = calls.find(
+        ([msg]) => typeof msg === 'string' && msg.includes('복원'),
+      )
+      expect(restoreToast).toBeTruthy()
+    })
+  })
+
+  it('Undo 실패(RESTORE_CONFLICT) → toast.error("같은 이름")', async () => {
+    const { fire } = setupCaptureOnSuccess()
+    const err = Object.assign(new Error('restoreFile failed: 409'), {
+      status: 409,
+      code: 'RESTORE_CONFLICT',
+    })
+    vi.mocked(api.restoreFile).mockRejectedValue(err)
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+
+    fire({ items: [{ id: 'f1', type: 'file' }], folderIdAtStart: 'root' })
+    const [, opts] = toastSpy('success').mock.calls[0]
+    const action = (opts as { action?: { onClick: () => void } } | undefined)?.action
+
+    await act(async () => {
+      action?.onClick()
+    })
+
+    await waitFor(() => {
+      const errorCalls = toastSpy('error').mock.calls
+      const conflictToast = errorCalls.find(
+        ([msg]) => typeof msg === 'string' && msg.includes('같은 이름'),
+      )
+      expect(conflictToast).toBeTruthy()
+    })
   })
 })

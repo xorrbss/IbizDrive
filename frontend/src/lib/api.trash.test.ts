@@ -1,107 +1,208 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { api } from './api'
 
 /**
- * MOCK_FILES는 module-level 가변 배열. 테스트 간 격리 위해 afterEach에서
- * 본 테스트가 trashed로 만든 id를 모두 restore해 active 상태로 되돌린다.
- * (purge로 비우면 다른 테스트의 fixture가 사라지므로 restore 사용)
+ * M9.1 — 휴지통 API client (docs/02 §7.11, ADR #32) wire 계약 검증.
+ * `api.audit.test.ts` 패턴 mirror — vi.stubGlobal('fetch', ...)로 fetch URL/method/credentials/응답 변환만 검증.
+ * 페이지네이션/권한 후처리/cascade 같은 비즈니스 로직은 backend TrashControllerTest 책임.
  */
-const TRASHED_IN_TEST = new Set<string>()
-function track(id: string) {
-  TRASHED_IN_TEST.add(id)
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  })
 }
 
-afterEach(async () => {
-  if (TRASHED_IN_TEST.size > 0) {
-    await api.restoreBulk([...TRASHED_IN_TEST])
-    TRASHED_IN_TEST.clear()
-  }
-})
+function emptyResponse(status = 204): Response {
+  return new Response(null, { status })
+}
 
-describe('api.deleteBulk (soft delete) + listTrash', () => {
-  it('deleteBulk 후 active listFiles에는 사라지고 listTrash에만 보인다', async () => {
-    const id = 'file_minutes' // root 폴더의 파일
-    track(id)
-    const beforeActive = await api.getFilesInFolder('root')
-    expect(beforeActive.some((f) => f.id === id)).toBe(true)
+describe('api.getTrash', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
 
-    await api.deleteBulk([id])
-
-    const afterActive = await api.getFilesInFolder('root')
-    expect(afterActive.some((f) => f.id === id)).toBe(false)
-
-    const trash = await api.listTrash()
-    expect(trash.items.some((f) => f.id === id)).toBe(true)
-    const trashed = trash.items.find((f) => f.id === id)!
-    expect(trashed.deletedAt).toBeTruthy()
-    expect(trashed.originalParentId).toBe('root')
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue(jsonResponse({ items: [] }))
+    vi.stubGlobal('fetch', fetchMock)
   })
 
-  // F1.1: searchFiles가 fetch('/api/search') 직접 호출로 전환. 휴지통 항목 제외는
-  // backend SearchQueryService가 deleted_at IS NULL 필터로 보장 (a9-search-endpoint).
-  // 본 통합 시나리오는 의미가 없어 제거 — 단위 검증은 api.search.test.ts.
-
-it('이미 trashed인 항목 재호출은 originalParentId를 덮어쓰지 않는다', async () => {
-    const id = 'file_budget'
-    track(id)
-    await api.deleteBulk([id])
-    const t1 = (await api.listTrash()).items.find((f) => f.id === id)!
-    expect(t1.originalParentId).toBe('root')
-
-    // 두 번째 호출 — noop이어야 함
-    await api.deleteBulk([id])
-    const t2 = (await api.listTrash()).items.find((f) => f.id === id)!
-    expect(t2.originalParentId).toBe('root')
-    expect(t2.deletedAt).toBe(t1.deletedAt) // 시각 보존
+  afterEach(() => {
+    vi.unstubAllGlobals()
   })
 
-  it('listTrash는 deletedAt 내림차순 정렬', async () => {
-    const a = 'file_minutes'
-    const b = 'file_budget'
-    track(a)
-    track(b)
-    await api.deleteBulk([a])
-    await new Promise((r) => setTimeout(r, 5)) // ISO 8601 ms 차이 보장
-    await api.deleteBulk([b])
-
-    const trash = await api.listTrash()
-    const idxA = trash.items.findIndex((f) => f.id === a)
-    const idxB = trash.items.findIndex((f) => f.id === b)
-    expect(idxB).toBeGreaterThanOrEqual(0)
-    expect(idxA).toBeGreaterThanOrEqual(0)
-    expect(idxB).toBeLessThan(idxA) // b가 더 최근 → 먼저 등장
-  })
-})
-
-describe('api.restoreBulk', () => {
-  it('restore 후 active 목록 복귀 + deletedAt clear', async () => {
-    const id = 'file_minutes'
-    track(id)
-    await api.deleteBulk([id])
-    expect((await api.getFilesInFolder('root')).some((f) => f.id === id)).toBe(false)
-
-    await api.restoreBulk([id])
-    TRASHED_IN_TEST.delete(id) // 이미 복원했으므로 cleanup에서 제외
-
-    const active = await api.getFilesInFolder('root')
-    const restored = active.find((f) => f.id === id)
-    expect(restored).toBeTruthy()
-    expect(restored?.deletedAt ?? null).toBe(null)
-    expect(restored?.originalParentId ?? null).toBe(null)
+  it('cursor/type 미지정 시 /api/trash 그대로 + credentials include', async () => {
+    await api.getTrash()
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/trash')
+    expect(init).toMatchObject({ method: 'GET', credentials: 'include' })
   })
 
-  it('active 항목 restore 호출은 무시', async () => {
-    const r = await api.restoreBulk(['file_minutes']) // 이미 active
-    expect(r.restoredIds).toEqual([])
+  it('cursor + type 모두 쿼리 파라미터로 전달', async () => {
+    await api.getTrash({ cursor: 'abc==', type: 'folder' })
+    const [url] = fetchMock.mock.calls[0]
+    const u = new URL(url, 'http://x')
+    expect(u.pathname).toBe('/api/trash')
+    expect(u.searchParams.get('cursor')).toBe('abc==')
+    expect(u.searchParams.get('type')).toBe('folder')
+  })
+
+  it('응답을 TrashPage로 매핑 (originalParentId 누락 시 null 폴백)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          {
+            id: 'f-1',
+            name: '회의록.docx',
+            type: 'file',
+            deletedAt: '2026-04-30T12:00:00Z',
+            purgeAfter: '2026-05-30T12:00:00Z',
+            originalParentId: 'folder-x',
+          },
+          {
+            // backend NON_NULL 직렬화 → originalParentId 키 자체 부재 (root였던 폴더)
+            id: 'd-1',
+            name: '루트백업',
+            type: 'folder',
+            deletedAt: '2026-04-29T12:00:00Z',
+            purgeAfter: '2026-05-29T12:00:00Z',
+          },
+        ],
+        nextCursor: 'next-page-token',
+      }),
+    )
+    const r = await api.getTrash()
+    expect(r.items).toHaveLength(2)
+    expect(r.items[0].originalParentId).toBe('folder-x')
+    expect(r.items[1].originalParentId).toBeNull()
+    expect(r.items[1].type).toBe('folder')
+    expect(r.nextCursor).toBe('next-page-token')
+  })
+
+  it('마지막 페이지 nextCursor 누락은 null로 폴백', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ items: [] }))
+    const r = await api.getTrash()
+    expect(r.nextCursor).toBeNull()
+  })
+
+  it('비-OK 응답은 status 필드 surface', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 401))
+    await expect(api.getTrash()).rejects.toMatchObject({ status: 401 })
   })
 })
 
-describe('api.purgeBulk', () => {
-  it('purge는 hard splice — 이후 listTrash/listFiles 모두에서 사라짐', async () => {
-    // 격리 위해 임시 파일 생성: deleteBulk → purge 사이클로 영구 제거되면 다른 테스트 영향
-    // → 본 테스트는 회피: 먼저 restore 보장, 안전 id 'file_contract_b' 대상으로 trash + 즉시 restore.
-    // 실제 purge 검증은 미존재 id가 idempotent하다는 케이스로 대체.
-    const r = await api.purgeBulk(['__nonexistent__'])
-    expect(r.purgedIds).toEqual([])
+describe('api.restoreFile / api.restoreFolder', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('POST /api/files/:id/restore + credentials include + 200 OK void', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ file: { id: 'f-1' } }, 200))
+    await expect(api.restoreFile('f-1')).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/files/f-1/restore')
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include' })
+  })
+
+  it('POST /api/folders/:id/restore', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ folder: { id: 'd-1' } }, 200))
+    await api.restoreFolder('d-1')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/folders/d-1/restore')
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include' })
+  })
+
+  it('409 envelope { error: { code: RESTORE_CONFLICT } } → err.status=409 + err.code 매핑', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        { error: { code: 'RESTORE_CONFLICT', message: 'conflict', details: null } },
+        409,
+      ),
+    )
+    await expect(api.restoreFolder('d-1')).rejects.toMatchObject({
+      status: 409,
+      code: 'RESTORE_CONFLICT',
+    })
+  })
+
+  it('id에 슬래시/특수문자가 들어와도 encodeURIComponent로 인코딩', async () => {
+    fetchMock.mockResolvedValueOnce(emptyResponse(200))
+    await api.restoreFile('a/b c')
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/files/a%2Fb%20c/restore')
+  })
+})
+
+describe('api.purgeTrashItem', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('DELETE /api/trash/:type/:id + 204 NO_CONTENT void', async () => {
+    fetchMock.mockResolvedValueOnce(emptyResponse(204))
+    await expect(api.purgeTrashItem('file', 'f-1')).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/trash/file/f-1')
+    expect(init).toMatchObject({ method: 'DELETE', credentials: 'include' })
+  })
+
+  it('folder type 분기', async () => {
+    fetchMock.mockResolvedValueOnce(emptyResponse(204))
+    await api.purgeTrashItem('folder', 'd-1')
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/trash/folder/d-1')
+  })
+
+  it('비-ADMIN 사용자 호출 → 403 status surface', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 403))
+    await expect(api.purgeTrashItem('file', 'f-1')).rejects.toMatchObject({ status: 403 })
+  })
+})
+
+describe('api.softDeleteFile / api.softDeleteFolder (M9.1 마이그)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('softDeleteFile: DELETE /api/files/:id + credentials include + 204 void', async () => {
+    fetchMock.mockResolvedValueOnce(emptyResponse(204))
+    await expect(api.softDeleteFile('f-1')).resolves.toBeUndefined()
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/files/f-1')
+    expect(init).toMatchObject({ method: 'DELETE', credentials: 'include' })
+  })
+
+  it('softDeleteFolder: DELETE /api/folders/:id + 204 void', async () => {
+    fetchMock.mockResolvedValueOnce(emptyResponse(204))
+    await api.softDeleteFolder('d-1')
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/folders/d-1')
+    expect(init).toMatchObject({ method: 'DELETE', credentials: 'include' })
+  })
+
+  it('softDeleteFile: 403 PERMISSION_DENIED → status surface', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 403))
+    await expect(api.softDeleteFile('f-1')).rejects.toMatchObject({ status: 403 })
   })
 })
