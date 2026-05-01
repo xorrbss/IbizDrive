@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-01 — 🏁 SHARE_EXPIRED cron 트랙 종료 (ADR #34 backlog closure)
+
+### 범위
+
+SE.0 (worktree `feature/share-expired-cron` from `7c179d1` F4 closure + dev-docs bootstrap `dev/active/share-expired-cron/`) → SE.1 (`ShareCommandService.expireShare` 신규 + `lockAndCascadeRevoke` + `Snapshot` record helper 추출 + `revokeShare` helper 사용형 재작성 + `ShareExpiredEvent` record + `ShareAuditListener.onShareExpired`) → SE.2 (`ShareRepository.findExpiredActiveIds(Instant, Pageable)` JPQL + `ShareExpirationProperties` + `ShareExpirationJob @Scheduled(cron, zone) @ConditionalOnProperty` + `application.yml` `app.share.expiration.*` block + `SchedulingConfig` 다중 잡 진입점화 — `@ConditionalOnProperty(app.purge.enabled)` 제거) → SE.3 (`ShareCommandServiceTest` +4 / `ShareAuditListenerTest` +3 / `ShareExpirationJobTest` 신규) → SE.4 (00 §5 ADR #34 closure marker + 02 §7.9.1 만료 cron 정책 표 신규 + 03 §4.1 `share.expired` 활성화 마커 + 04 §13 `share.expire` 행 정정/footnote) → SE.5 (PR #28 squash-merge `bda5158` + dev-docs archive).
+
+### 회고
+
+- **commits**: 2 on top of `7c179d1` F4 close (worktree branch `feature/share-expired-cron`) → squash-merge `bda5158` on `master`. PR #28 single, CI green (backend junit 3m17s + frontend vitest 1m32s 모두 SUCCESS, fix commit 1회 — `HardPurgeJobDisabledIntegrationTest` SchedulingConfig 단언 정합).
+- **production 파일**: 수정 5 / 신설 3.
+  - 수정: `ShareCommandService.java`(expireShare + lockAndCascadeRevoke + Snapshot + revokeShare 재작성), `ShareAuditListener.java`(onShareExpired 추가), `ShareRepository.java`(findExpiredActiveIds), `SchedulingConfig.java`(다중 잡 진입점화), `application.yml`(app.share.expiration block).
+  - 신설: `ShareExpiredEvent.java`(record, actorId 부재), `ShareExpirationProperties.java`(`@ConfigurationProperties("app.share.expiration")` record + 기본값 sanitization), `ShareExpirationJob.java`(`@Scheduled` + per-row 트랜잭션 + 실패 격리).
+- **test 파일**: 수정 3 / 신설 1 — `ShareCommandServiceTest.java`(+4 expireShare 정상/race/folder/null guard), `ShareAuditListenerTest.java`(+3 onShareExpired 시스템 메타/folder variant/audit failure swallow), `HardPurgeJobDisabledIntegrationTest.java`(SchedulingConfig 빈 단언 → 존재 단언 정정), `ShareExpirationJobTest.java`(빈/N건/per-row 실패 격리/race ResourceNotFoundException/scan 실패 swallow/batchSize 전달). 회귀 0.
+- **docs sync**: 00 §5 ADR #34 본문 closure 표기, 02 §7.9 인용문 수정 + §7.9.1 신규 정책 표(빈 등록/스케줄/한 회 한도/처리 단위/만료 동작/이벤트/audit row/다중 인스턴스/실패 격리/로그 9행), 03 §4.1 enum block에 `share.expired` 활성화 marker(actor_id=NULL/trigger 메모), 04 §13 `share.expire` 행을 default 5분/`share-expired-cron` 트랙으로 정정 + `[‡]` footnote(properties + 단위 처리 + audit + 다중 인스턴스 안전).
+- **frontend 미터치**: `share.expired` audit row는 M12(Audit Log UI)가 자연 노출 — 별도 UI 변경 불요.
+
+### 핵심 결정 (share-expired-cron 트랙, 확정)
+
+1. **별도 `ShareExpiredEvent` record** — `ShareRevokedEvent`에 `bySystem` flag 추가 대안 거부. listener 분기 단순화 + payload 시그니처 의미 명료(시스템 트리거는 `actorId` 부재 = compile-time 보증). file/folder XOR invariant compact constructor 동형.
+2. **`SchedulingConfig` 다중 잡 진입점화** — 기존 `@ConditionalOnProperty(app.purge.enabled)` gate 제거. `@EnableScheduling`은 무조건 활성, 잡-개별 `@ConditionalOnProperty`가 활성화 담당. 잡 빈 0개 시 single-thread scheduler는 idle(비용 무시).
+3. **공통 helper 추출** — `lockAndCascadeRevoke(shareId, revokedBy)` + `Snapshot` private record. `revokeShare`/`expireShare` 두 메서드는 이 helper 호출 + 각자 다른 event publish만 담당 — DRY + 향후 변형(예: 트래시 만료 등) 추가 시 helper 재사용.
+4. **`metadata.trigger='system.expiration'`** — audit consumer가 사용자 revoke(`actor_id` 존재)와 자동 만료(`actor_id=NULL` + `trigger='system.expiration'`)를 구분 가능하도록 보존. 추후 다른 시스템 트리거(예: `legal_hold.released_share_revoke`) 도입 시 trigger value만 분기.
+5. **다중 인스턴스 안전성 = V6 row-level pessimistic lock** — 분산락(SchedulerLock 등) 도입 거부. 두 인스턴스가 동일 `shareId`로 동시 호출 시 한쪽만 lock 통과, 다른 쪽은 `revoked_at IS NOT NULL`로 lock query miss → `ResourceNotFoundException` swallow. 운영 단순화 + 인프라 추가 0.
+6. **per-row 실패 격리** — 단일 row 예외는 ERROR 로그 + 다음 row 진행. 배치 전체 차단 없음. `ResourceNotFoundException`(사용자 동시 revoke race)도 같은 경로로 swallow.
+7. **운영 기본 비활성** — `app.share.expiration.enabled=false`(`HardPurgeJob` 동형). staging/prod에서 명시적 활성화 후 투입. 실수로 dev 환경에서 share 자동 회수 방지.
+8. **`permissions.expires_at`(직접 grant) 만료는 별도 트랙** — A10 scope에 직접 만료 케이스 부재. ShareCommand과 PermissionCommand는 책임 분리(SRP) — share 만료가 permission 만료를 강제하지 않음. 직접 grant 만료 트랙 도입 시 `PermissionCommandService.expirePermission` + 별도 cron 추가.
+
+### 파급 영향
+
+- **frontend**: 미터치. M12 Audit Log UI 트랙이 `share.expired` row 노출 책임 — 단순 enum mirror만 확인하면 됨(이미 03 §4.1 enum에 정의 존재).
+- **backend backlog**: `permissions.expires_at` 만료 cron 트랙 분리(필요 시점에 별도 ADR). SSE `ShareExpiredEvent` emission은 ADR #14 인프라 milestone까지 그대로 deferred(audit-only).
+- **DB/스키마**: 변경 없음. V6 schema 그대로 사용(`shares.expires_at`, `shares.revoked_at`, `shares.revoked_by`).
+- **운영**: staging/prod에서 `app.share.expiration.enabled=true` + 필요 시 cron/zone/batch-size override. 단일 인스턴스 가정 해제(분산락 불요).
+
+### 다음 세션 컨텍스트
+
+- M12 Audit Log UI 트랙은 closure-only로 별도 dev-docs(`dev/active/m12-audit-ui-closure/`) 보존 중 — backend `GET /api/admin/audit` + frontend `api.getAuditLogs` 이미 GREEN, stale docblock 정정 + docs sync + 스모크 테스트만 남음.
+
+---
+
 ## 2026-05-01 — 🏁 F4 마일스톤 종료 (Frontend Shares UI 실연결)
 
 ### 범위

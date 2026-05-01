@@ -13,7 +13,7 @@ Last Updated: 2026-05-01
 | SE.2 repository + job + config | ✅ 완료 |
 | SE.3 tests | ✅ 완료 |
 | SE.4 docs patch | ✅ 완료 |
-| SE.5 PR + closure | 🟡 active |
+| SE.5 PR + closure | ✅ 완료 (PR #28 squash-merge `bda5158`, 2026-05-01) |
 
 ## SE.0 — bootstrap
 
