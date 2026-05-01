@@ -167,3 +167,40 @@ describe('invalidations.afterPurge', () => {
     expect((spy.mock.calls[0][0] as { queryKey: readonly unknown[] }).queryKey).toEqual(qk.trash())
   })
 })
+
+describe('qk.shares (F4)', () => {
+  it('shares() prefix + sharesByMe/sharesWithMe', () => {
+    expect(qk.shares()).toEqual(['explorer', 'shares'])
+    const byMe = qk.sharesByMe()
+    const withMe = qk.sharesWithMe()
+    const prefix = qk.shares()
+    expect(byMe.slice(0, prefix.length)).toEqual([...prefix])
+    expect(withMe.slice(0, prefix.length)).toEqual([...prefix])
+    expect(byMe).toEqual(['explorer', 'shares', 'by-me'])
+    expect(withMe).toEqual(['explorer', 'shares', 'with-me'])
+  })
+})
+
+describe('invalidations.afterShareCreate', () => {
+  it('shares() prefix 단일 호출 — by-me / with-me 동시 무효화', async () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    await invalidations.afterShareCreate(qc)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect((spy.mock.calls[0][0] as { queryKey: readonly unknown[] }).queryKey).toEqual(qk.shares())
+  })
+})
+
+describe('invalidations.afterShareRevoke', () => {
+  it('shares() prefix 단일 호출', async () => {
+    const qc = new QueryClient()
+    const spy = vi.spyOn(qc, 'invalidateQueries')
+
+    await invalidations.afterShareRevoke(qc)
+
+    expect(spy).toHaveBeenCalledTimes(1)
+    expect((spy.mock.calls[0][0] as { queryKey: readonly unknown[] }).queryKey).toEqual(qk.shares())
+  })
+})

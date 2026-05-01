@@ -40,6 +40,13 @@ export const qk = {
   trash: () => [...qk.all, 'trash'] as const,
   trashList: () => [...qk.trash(), 'list'] as const,
 
+  // ── 공유 (F4, docs/02 §7.9) ──
+  shares: () => [...qk.all, 'shares'] as const,
+  /** 내가 공유한 목록 (by-me). cursor는 키에 미포함 — useInfiniteQuery가 pageParam으로 관리. */
+  sharesByMe: () => [...qk.shares(), 'by-me'] as const,
+  /** 받은 공유 목록 (with-me). MVP는 subject_type='user' 매칭만. */
+  sharesWithMe: () => [...qk.shares(), 'with-me'] as const,
+
   // ── 검색 (M11) ──
   search: () => [...qk.all, 'search'] as const,
   /**
@@ -160,5 +167,22 @@ export const invalidations = {
    */
   afterPurge(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.trash() })
+  },
+
+  /**
+   * 공유 생성 후 무효화 (F4, docs/02 §7.9).
+   * - shares() prefix 단일 — by-me / with-me 모두 갱신.
+   * - file `qk.permissions(fileId)` 캐시는 무효화 미발생 (같은 세션 자기→자기 share 케이스 없음, 실용적 불필요).
+   */
+  afterShareCreate(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.shares() })
+  },
+
+  /**
+   * 공유 revoke 후 무효화 (F4).
+   * - shares() prefix 단일. by-me 목록에서 즉시 제거 + 받은 사람 with-me도 갱신.
+   */
+  afterShareRevoke(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.shares() })
   },
 } as const
