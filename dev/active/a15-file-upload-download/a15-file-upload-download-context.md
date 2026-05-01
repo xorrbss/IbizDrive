@@ -11,7 +11,7 @@ Last Updated: 2026-05-01
 | A15.0 bootstrap | ✅ done | dev-docs 3파일 commit `b98b044`. ADR #13 재정정 초안은 A15.7 closure에 포함. |
 | A15.1 StorageClient + LocalFs | ✅ done | interface + LocalFs impl + properties + 9 RED→GREEN tests. `ibizdrive.storage.*` 네임스페이스 (existing convention). |
 | A15.2 FileUploadService RED | ✅ done | UploadResolution + UploadResult + service skeleton(throws UOE) + 7 Testcontainers tests (Docker 미가용 시 skip). audit emission은 listener 미도입 — file/ 패키지 기존 convention(직접 emitAudit) 답습. |
-| A15.3 FileUploadService GREEN | ⬜ pending | — |
+| A15.3 FileUploadService GREEN | ✅ done | upload(...) 구현 (folder lock + conflict 이중 가드 + storage write + INSERT files+versions + current_version_id + emitAudit). FileVersionRepository.findMaxVersionNumberByFileId 추가. FileRepository.lockActiveByFolderAndNormalizedName 추가. RENAME suffix `(N)` 자동. |
 | A15.4 POST /api/files | ⬜ pending | — |
 | A15.5 GET /api/files/:id/download | ⬜ pending | — |
 | A15.6 Frontend api.uploadFile 실 XHR | ⬜ pending | — |
@@ -28,8 +28,8 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-**A15.3 FileUploadService GREEN** — skeleton 구현 채우기 (folder lock + conflict 이중 가드 + storage write + INSERT files/file_versions + current_version_id 갱신 + emitAudit). FileVersionRepository에 `findMaxVersionNumberByFileId` 추가 필요(NEW_VERSION 분기).
-직전 완료: A15.2 (UploadResolution/UploadResult + skeleton + 7 RED 테스트, full suite 회귀 0).
+**A15.4 POST /api/files controller** — multipart 진입점. `@PreAuthorize("hasPermission(#req.folderId, 'folder', 'UPLOAD')")` + `@RequestPart MultipartFile` + 에러 매핑(409/403/415) + `application.yml`의 `spring.servlet.multipart.{enabled, max-file-size, max-request-size}` 갱신.
+직전 완료: A15.3 (FileUploadService GREEN, full suite 회귀 0). 신규 Testcontainers 7 cases는 Docker 가용 환경에서 GREEN 검증 필요.
 
 ## 다음 세션 읽기 순서
 
