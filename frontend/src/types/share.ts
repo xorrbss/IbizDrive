@@ -74,6 +74,13 @@ export interface ShareDto {
   subjectId: string | null
   /** A13 — permissions.preset. 'read' | 'upload' | 'edit' | 'admin'. */
   preset: SharePreset
+  /**
+   * A16 — backend가 subject 표시명을 join한 결과. user면 user.displayName, department면
+   * department.name, everyone이면 null. soft-delete/dangling FK 등 lookup miss 시에도 null
+   * (frontend는 fallback `${type} ${id.head}`를 ShareDialog 등에서 사용).
+   * ADR #36 / docs/02 §7.9.
+   */
+  subjectName: string | null
 }
 
 export interface SharePage {

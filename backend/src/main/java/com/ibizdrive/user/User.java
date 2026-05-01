@@ -78,6 +78,13 @@ public class User implements Serializable {
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
+    /**
+     * A16 — 부서 FK (V7, ADR #36, docs/02 §2.x). nullable — V7 적용 시 기존 row는 NULL.
+     * 별도 setter로 노출하여 기존 생성자 시그니처(테스트 포함)를 보존.
+     */
+    @Column(name = "department_id")
+    private UUID departmentId;
+
     protected User() {
         // JPA
     }
@@ -142,6 +149,17 @@ public class User implements Serializable {
 
     public OffsetDateTime getDeletedAt() {
         return deletedAt;
+    }
+
+    public UUID getDepartmentId() {
+        return departmentId;
+    }
+
+    /**
+     * A16 — dept 배정/해제 (관리자 작업 트랙으로 분리, ADR #36). null 허용 (미배정 user).
+     */
+    public void setDepartmentId(UUID departmentId) {
+        this.departmentId = departmentId;
     }
 
     public boolean isLocked() {

@@ -1,7 +1,11 @@
 package com.ibizdrive.share;
 
+import com.ibizdrive.department.Department;
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
+import com.ibizdrive.user.User;
+import com.ibizdrive.user.UserRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -44,11 +48,17 @@ public class ShareQueryService {
 
     private final ShareRepository shareRepository;
     private final PermissionRepository permissionRepository;
+    private final UserRepository userRepository;
+    private final DepartmentRepository departmentRepository;
 
     public ShareQueryService(ShareRepository shareRepository,
-                             PermissionRepository permissionRepository) {
+                             PermissionRepository permissionRepository,
+                             UserRepository userRepository,
+                             DepartmentRepository departmentRepository) {
         this.shareRepository = shareRepository;
         this.permissionRepository = permissionRepository;
+        this.userRepository = userRepository;
+        this.departmentRepository = departmentRepository;
     }
 
     /**
@@ -109,6 +119,8 @@ public class ShareQueryService {
         List<Share> page = hasMore ? rows.subList(0, limit) : rows;
 
         Map<UUID, PermissionRow> grants = fetchGrants(page);
+        // A16: 페이지 내 grants의 subject_id를 type별로 분리 수집 → 2회 batch fetch.
+        Map<UUID, String> subjectNames = fetchSubjectNames(grants.values());
 
         List<ShareDto> dtos = new ArrayList<>(page.size());
         for (Share s : page) {
@@ -119,7 +131,11 @@ public class ShareQueryService {
                     "share " + s.getId() + " has dangling permission " + s.getPermissionId()
                 );
             }
-            dtos.add(ShareDto.from(s, grant));
+            // A16: everyone subject 또는 lookup 실패(soft-delete 등) → null. subject_id 자체가 NULL이면 자연 null.
+            String subjectName = grant.getSubjectId() != null
+                ? subjectNames.get(grant.getSubjectId())
+                : null;
+            dtos.add(ShareDto.from(s, grant, subjectName));
         }
 
         String nextCursor = null;
@@ -128,6 +144,38 @@ public class ShareQueryService {
             nextCursor = ShareCursor.encode(last.getCreatedAt(), last.getId());
         }
         return new SharePage(List.copyOf(dtos), nextCursor);
+    }
+
+    /**
+     * A16 — 페이지 grants에서 user/department subject_id를 분리 수집 → 1회씩 batch fetch → id → name 맵 merge.
+     *
+     * <p>{@code everyone} subject는 {@code subject_id IS NULL}이므로 수집 단계에서 자연 제외. user/dept 분리가
+     * 필요한 이유: 동일 UUID가 user와 department에 동시 존재할 수 없는 보장은 schema에 없음 (서로 다른 테이블) —
+     * 두 batch query 모두 실행하고 type별 lookup으로 분기.
+     */
+    private Map<UUID, String> fetchSubjectNames(Iterable<PermissionRow> grants) {
+        Set<UUID> userIds = new LinkedHashSet<>();
+        Set<UUID> deptIds = new LinkedHashSet<>();
+        for (PermissionRow g : grants) {
+            if (g.getSubjectId() == null) continue;
+            if ("user".equals(g.getSubjectType())) {
+                userIds.add(g.getSubjectId());
+            } else if ("department".equals(g.getSubjectType())) {
+                deptIds.add(g.getSubjectId());
+            }
+        }
+        Map<UUID, String> map = new HashMap<>(userIds.size() + deptIds.size());
+        if (!userIds.isEmpty()) {
+            for (User u : userRepository.findAllById(userIds)) {
+                map.put(u.getId(), u.getDisplayName());
+            }
+        }
+        if (!deptIds.isEmpty()) {
+            for (Department d : departmentRepository.findAllById(deptIds)) {
+                map.put(d.getId(), d.getName());
+            }
+        }
+        return map;
     }
 
     /** 페이지의 permission_id 집합을 1회 IN 절로 fetch → id → row 맵. 빈 페이지면 빈 맵. */

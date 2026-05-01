@@ -7,7 +7,9 @@ import { useRevokeShare } from '@/hooks/useRevokeShare'
 import { useSharesByMe } from '@/hooks/useSharesByMe'
 import type { SharePreset, ShareSubject, ShareSubjectType } from '@/types/share'
 import type { UserSummary } from '@/types/user'
+import type { DepartmentSummary } from '@/types/department'
 import { UserSearchCombobox } from './UserSearchCombobox'
+import { DepartmentSearchCombobox } from './DepartmentSearchCombobox'
 
 /**
  * 공유 다이얼로그 (F4 → F5.2, docs/01 §14, docs/02 §7.9, ADR #34).
@@ -45,11 +47,12 @@ export function ShareDialog() {
   const [preset, setPreset] = useState<SharePreset>('read')
   const [expiresAtLocal, setExpiresAtLocal] = useState('')
   const [message, setMessage] = useState('')
-  // F6.4 — subjectType picker. MVP: everyone | user (department/role 도메인 부재).
-  const [subjectType, setSubjectType] = useState<Extract<ShareSubjectType, 'everyone' | 'user'>>(
-    'everyone',
-  )
+  // A16.7 — subjectType picker 3-way: everyone | user | department. role은 보류 (ADR #36).
+  const [subjectType, setSubjectType] = useState<
+    Extract<ShareSubjectType, 'everyone' | 'user' | 'department'>
+  >('everyone')
   const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null)
+  const [selectedDept, setSelectedDept] = useState<DepartmentSummary | null>(null)
 
   const createShare = useCreateShare()
   const revokeShare = useRevokeShare()
@@ -65,6 +68,7 @@ export function ShareDialog() {
     setMessage('')
     setSubjectType('everyone')
     setSelectedUser(null)
+    setSelectedDept(null)
   }, [isOpen])
 
   useEffect(() => {
@@ -98,6 +102,12 @@ export function ShareDialog() {
         return
       }
       subject = { type: 'user', id: selectedUser.id }
+    } else if (subjectType === 'department') {
+      if (!selectedDept) {
+        toast.error('공유할 부서를 선택해 주세요')
+        return
+      }
+      subject = { type: 'department', id: selectedDept.id }
     } else {
       subject = { type: 'everyone' }
     }
@@ -184,6 +194,7 @@ export function ShareDialog() {
                 onChange={() => {
                   setSubjectType('everyone')
                   setSelectedUser(null)
+                  setSelectedDept(null)
                 }}
               />
               모든 사용자
@@ -194,13 +205,32 @@ export function ShareDialog() {
                 name="subjectType"
                 value="user"
                 checked={subjectType === 'user'}
-                onChange={() => setSubjectType('user')}
+                onChange={() => {
+                  setSubjectType('user')
+                  setSelectedDept(null)
+                }}
               />
               특정 사용자
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="subjectType"
+                value="department"
+                checked={subjectType === 'department'}
+                onChange={() => {
+                  setSubjectType('department')
+                  setSelectedUser(null)
+                }}
+              />
+              부서
             </label>
           </div>
           {subjectType === 'user' && (
             <UserSearchCombobox value={selectedUser} onChange={setSelectedUser} />
+          )}
+          {subjectType === 'department' && (
+            <DepartmentSearchCombobox value={selectedDept} onChange={setSelectedDept} />
           )}
         </fieldset>
 
@@ -252,7 +282,7 @@ export function ShareDialog() {
               {existingShares.map((s) => (
                 <li key={s.id} className="flex items-center justify-between text-[12.5px] gap-2">
                   <span className="text-fg truncate">
-                    {subjectLabel(s.subjectType, s.subjectId)} · {presetLabel(s.preset)}
+                    {subjectLabel(s.subjectType, s.subjectId, s.subjectName)} · {presetLabel(s.preset)}
                   </span>
                   <span className="text-fg-muted text-[11.5px] truncate">
                     {s.expiresAt ? `만료 ${formatExpires(s.expiresAt)}` : '무기한'}
@@ -307,11 +337,17 @@ function presetLabel(p: SharePreset): string {
 }
 
 /**
- * A13 — subject 한국어 라벨. 'everyone'은 별도 안내, 그 외는 type 라벨 + 짧은 식별자.
- * raw UUID 전체를 노출하면 가독성이 떨어져 머릿8자만 보여준다 (식별 보조용).
+ * A13 → A16 — subject 한국어 라벨. 'everyone'은 별도 안내, 그 외는 backend가 join한 subjectName
+ * 우선 사용. lookup miss(soft-delete/dangling FK)로 subjectName이 null이면 type 라벨 + 머릿8자
+ * fallback (식별 보조용).
  */
-function subjectLabel(type: ShareSubjectType, id: string | null): string {
+function subjectLabel(
+  type: ShareSubjectType,
+  id: string | null,
+  subjectName: string | null,
+): string {
   if (type === 'everyone') return '모든 사용자'
+  if (subjectName) return subjectName
   const head = id ? id.slice(0, 8) : '?'
   switch (type) {
     case 'user':

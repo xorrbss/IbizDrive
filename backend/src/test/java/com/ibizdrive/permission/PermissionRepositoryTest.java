@@ -177,6 +177,99 @@ class PermissionRepositoryTest {
         assertTrue(rows.isEmpty(), "다른 사용자 user-grant는 본인 결과에 포함되지 않아야 함");
     }
 
+    // ---------- A16: dept subject ----------
+
+    @Test
+    void findEffective_departmentGrant_matchesUserInThatDepartment() {
+        UUID granter = insertUser("dept-granter@test", "granter");
+        UUID dept = insertDepartment("Engineering");
+        UUID member = insertUserInDepartment("dept-member@test", "member", dept);
+        UUID folder = insertFolder(null, "dept-folder", granter);
+        insertPermissionDept("folder", folder, dept, "edit", granter);
+
+        List<PermissionRow> rows = permissionRepository.findEffective(member, "folder", folder);
+
+        assertEquals(1, rows.size(), "사용자가 dept 멤버이면 dept grant가 적용");
+        assertEquals("department", rows.get(0).getSubjectType());
+        assertEquals(dept, rows.get(0).getSubjectId());
+        assertEquals("edit", rows.get(0).getPreset());
+    }
+
+    @Test
+    void findEffective_departmentGrant_excludesUserInDifferentDepartment() {
+        UUID granter = insertUser("dept-other-granter@test", "g");
+        UUID deptA = insertDepartment("Sales");
+        UUID deptB = insertDepartment("HR");
+        UUID memberB = insertUserInDepartment("hr-user@test", "hrUser", deptB);
+        UUID folder = insertFolder(null, "sales-folder", granter);
+        insertPermissionDept("folder", folder, deptA, "read", granter);
+
+        List<PermissionRow> rows = permissionRepository.findEffective(memberB, "folder", folder);
+
+        assertTrue(rows.isEmpty(),
+            "다른 부서 grant는 본인 결과에 포함되지 않음 (dept 매칭은 user.department_id = grant.subject_id)");
+    }
+
+    @Test
+    void findEffective_departmentGrant_excludesUserWithNullDepartment() {
+        UUID granter = insertUser("dept-null-granter@test", "g");
+        UUID dept = insertDepartment("DevOps");
+        UUID userNoDept = insertUser("nodept@test", "nodept"); // department_id = NULL
+        UUID folder = insertFolder(null, "devops-folder", granter);
+        insertPermissionDept("folder", folder, dept, "read", granter);
+
+        List<PermissionRow> rows = permissionRepository.findEffective(userNoDept, "folder", folder);
+
+        assertTrue(rows.isEmpty(),
+            "user.department_id가 NULL이면 어떤 dept grant도 매칭되지 않음 (NULL 비교 안전)");
+    }
+
+    @Test
+    void findEffective_departmentGrant_inheritsFromAncestor() {
+        UUID granter = insertUser("dept-inh-granter@test", "g");
+        UUID dept = insertDepartment("Infra");
+        UUID member = insertUserInDepartment("infra-user@test", "infraUser", dept);
+        UUID parent = insertFolder(null, "infra-parent", granter);
+        UUID child = insertFolder(parent, "infra-child", granter);
+        insertPermissionDept("folder", parent, dept, "edit", granter);
+
+        List<PermissionRow> rows = permissionRepository.findEffective(member, "folder", child);
+
+        assertEquals(1, rows.size(), "dept grant도 폴더 상속 체인을 따라가야 함");
+        assertEquals(parent, rows.get(0).getResourceId());
+    }
+
+    @Test
+    void findEffective_departmentGrant_appliesToFileResourceViaFolderChain() {
+        UUID granter = insertUser("dept-file-granter@test", "g");
+        UUID dept = insertDepartment("Marketing");
+        UUID member = insertUserInDepartment("mkt-user@test", "mktUser", dept);
+        UUID folder = insertFolder(null, "mkt-folder", granter);
+        UUID file = insertFile(folder, "mkt.pdf", granter);
+        insertPermissionDept("folder", folder, dept, "read", granter);
+
+        List<PermissionRow> rows = permissionRepository.findEffective(member, "file", file);
+
+        assertEquals(1, rows.size(), "file 리소스도 folder dept grant 상속");
+        assertEquals(folder, rows.get(0).getResourceId());
+    }
+
+    @Test
+    void findEffective_combinedSubjects_returnsAllApplicable() {
+        UUID granter = insertUser("combo-granter@test", "g");
+        UUID dept = insertDepartment("AllInOne");
+        UUID member = insertUserInDepartment("combo-user@test", "comboUser", dept);
+        UUID folder = insertFolder(null, "combo-folder", granter);
+        insertPermission("folder", folder, "user", member, "read", granter);
+        insertPermissionDept("folder", folder, dept, "edit", granter);
+        insertPermissionEveryone("folder", folder, "read", granter);
+
+        List<PermissionRow> rows = permissionRepository.findEffective(member, "folder", folder);
+
+        assertEquals(3, rows.size(),
+            "user/department/everyone subject grant 모두 동시 매칭 (회귀: 기존 OR 분기 보존)");
+    }
+
     // ---------- findExpiredActiveIds (permissions-expired-cron) ----------
 
     @Test
@@ -267,6 +360,30 @@ class PermissionRepositoryTest {
             id, email, displayName
         );
         return id;
+    }
+
+    private UUID insertDepartment(String name) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("INSERT INTO departments(id, name) VALUES (?, ?)", id, name);
+        return id;
+    }
+
+    private UUID insertUserInDepartment(String email, String displayName, UUID deptId) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO users(id, email, display_name, department_id) VALUES (?, ?, ?, ?)",
+            id, email, displayName, deptId
+        );
+        return id;
+    }
+
+    private void insertPermissionDept(String resourceType, UUID resourceId,
+                                      UUID departmentId, String preset, UUID grantedBy) {
+        jdbc.update(
+            "INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, " +
+            "preset, granted_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            UUID.randomUUID(), resourceType, resourceId, "department", departmentId, preset, grantedBy
+        );
     }
 
     private UUID insertFolder(UUID parentId, String name, UUID ownerId) {

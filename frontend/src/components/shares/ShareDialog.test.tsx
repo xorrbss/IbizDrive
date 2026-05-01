@@ -8,14 +8,17 @@ import { useCreateShare } from '@/hooks/useCreateShare'
 import { useRevokeShare } from '@/hooks/useRevokeShare'
 import { useSharesByMe } from '@/hooks/useSharesByMe'
 import { useUserSearch } from '@/hooks/useUserSearch'
+import { useDepartmentSearch } from '@/hooks/useDepartmentSearch'
 import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 import type { ShareDto } from '@/types/share'
 import type { UserSummary } from '@/types/user'
+import type { DepartmentSummary } from '@/types/department'
 
 vi.mock('@/hooks/useCreateShare', () => ({ useCreateShare: vi.fn() }))
 vi.mock('@/hooks/useRevokeShare', () => ({ useRevokeShare: vi.fn() }))
 vi.mock('@/hooks/useSharesByMe', () => ({ useSharesByMe: vi.fn() }))
 vi.mock('@/hooks/useUserSearch', () => ({ useUserSearch: vi.fn() }))
+vi.mock('@/hooks/useDepartmentSearch', () => ({ useDepartmentSearch: vi.fn() }))
 
 function wrap(qc: QueryClient) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -40,6 +43,7 @@ const SHARE_FOR_FILE: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'edit',
+  subjectName: null,
 }
 const SHARE_OTHER_FILE: ShareDto = {
   ...SHARE_FOR_FILE,
@@ -72,10 +76,23 @@ function setHooks(opts: {
     isLoading: false,
     isFetching: false,
   })
+  ;(useDepartmentSearch as ReturnType<typeof vi.fn>).mockReturnValue({
+    data: { items: [] },
+    isLoading: false,
+    isFetching: false,
+  })
 }
 
 function setUserSearch(items: UserSummary[]) {
   ;(useUserSearch as ReturnType<typeof vi.fn>).mockReturnValue({
+    data: { items },
+    isLoading: false,
+    isFetching: false,
+  })
+}
+
+function setDeptSearch(items: DepartmentSummary[]) {
+  ;(useDepartmentSearch as ReturnType<typeof vi.fn>).mockReturnValue({
     data: { items },
     isLoading: false,
     isFetching: false,
@@ -303,6 +320,131 @@ describe('ShareDialog (F5.1 wire-aligned)', () => {
     expect(mutate).toHaveBeenCalledTimes(1)
     const [vars] = mutate.mock.calls[0]
     expect(vars.req.subjects).toEqual([{ type: 'everyone' }])
+  })
+
+  // ─── A16.7 — department subject picker 통합 ───────────────────────────────────
+  it('A16.7: subjectType 라디오에 부서 추가 — 3-way (everyone | user | department)', () => {
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    expect(screen.getByRole('radio', { name: /모든 사용자/ })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /특정 사용자/ })).toBeTruthy()
+    expect(screen.getByRole('radio', { name: /부서/ })).toBeTruthy()
+  })
+
+  it('A16.7: department 라디오 클릭 → DepartmentSearchCombobox 노출', () => {
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /부서/ }))
+    // 단일 combobox (dept picker)
+    expect(screen.getByRole('combobox')).toBeTruthy()
+  })
+
+  it('A16.7: dept 선택 + submit → subjects:[{type:department, id}] 페이로드', () => {
+    const ENG: DepartmentSummary = { id: 'd1', name: 'Engineering' }
+    const mutate = vi.fn()
+    setHooks({ createMutate: mutate })
+    setDeptSearch([ENG])
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /부서/ }))
+    const combo = screen.getByRole('combobox') as HTMLInputElement
+    fireEvent.change(combo, { target: { value: 'en' } })
+    fireEvent.focus(combo)
+    fireEvent.click(screen.getByText('Engineering'))
+
+    fireEvent.click(screen.getByRole('button', { name: /^공유$/ }))
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [vars] = mutate.mock.calls[0]
+    expect(vars).toEqual({
+      target: FILE_TARGET,
+      req: { subjects: [{ type: 'department', id: 'd1' }], preset: 'read' },
+    })
+  })
+
+  it('A16.7: department 라디오인데 미선택 + submit → mutate 차단 + toast.error', () => {
+    const mutate = vi.fn()
+    setHooks({ createMutate: mutate })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /부서/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^공유$/ }))
+
+    expect(mutate).not.toHaveBeenCalled()
+    expect(toastSpy('error')).toHaveBeenCalledWith('공유할 부서를 선택해 주세요')
+  })
+
+  it('A16.7: user → department 토글 → user combobox 사라지고 dept combobox 마운트', () => {
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /특정 사용자/ }))
+    const userCombo = screen.getByRole('combobox') as HTMLInputElement
+    expect(userCombo.placeholder).toMatch(/사용자/)
+
+    fireEvent.click(screen.getByRole('radio', { name: /부서/ }))
+    const deptCombo = screen.getByRole('combobox') as HTMLInputElement
+    expect(deptCombo.placeholder).toMatch(/부서/)
+  })
+
+  it('A16.7: existing share에 subjectName 노출 — user displayName 우선', () => {
+    const SHARE_USER: ShareDto = {
+      ...SHARE_FOR_FILE,
+      id: 'sh-user',
+      subjectType: 'user',
+      subjectId: 'u1',
+      subjectName: 'Alice Kim',
+      preset: 'read',
+    }
+    setHooks({ shares: [SHARE_USER] })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    expect(screen.getByText('Alice Kim · 읽기')).toBeTruthy()
+  })
+
+  it('A16.7: existing share에 subjectName 노출 — department name 우선', () => {
+    const SHARE_DEPT: ShareDto = {
+      ...SHARE_FOR_FILE,
+      id: 'sh-dept',
+      subjectType: 'department',
+      subjectId: 'd1',
+      subjectName: 'Engineering',
+      preset: 'edit',
+    }
+    setHooks({ shares: [SHARE_DEPT] })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    expect(screen.getByText('Engineering · 편집')).toBeTruthy()
+  })
+
+  it('A16.7: subjectName 미존재 시 fallback (`사용자 ${head}`)', () => {
+    const SHARE_USER_NO_NAME: ShareDto = {
+      ...SHARE_FOR_FILE,
+      id: 'sh-noname',
+      subjectType: 'user',
+      subjectId: 'abcdef12-aaaa-bbbb-cccc-deadbeefdead',
+      subjectName: null,
+      preset: 'read',
+    }
+    setHooks({ shares: [SHARE_USER_NO_NAME] })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    expect(screen.getByText(/사용자 abcdef12 · 읽기/)).toBeTruthy()
   })
 
   it('F5.2: folder kind 진입 → mutate Vars target.kind=folder + 부제 "폴더" 라벨', () => {

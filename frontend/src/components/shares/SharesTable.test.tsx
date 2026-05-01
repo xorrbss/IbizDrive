@@ -31,6 +31,7 @@ const SHARE_A: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'edit',
+  subjectName: null,
 }
 const SHARE_B: ShareDto = {
   id: 'sh-2',
@@ -46,6 +47,7 @@ const SHARE_B: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'read',
+  subjectName: null,
 }
 
 function setHook(opts: {
@@ -124,6 +126,7 @@ describe('SharesTable (F5.1 wire-aligned)', () => {
       subjectType: 'everyone',
       subjectId: null,
       preset: 'read',
+      subjectName: null,
     }
     setHook({ items: [SHARE_FOLDER] })
     const qc = new QueryClient()
