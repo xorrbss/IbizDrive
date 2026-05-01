@@ -490,18 +490,30 @@ export const api = {
   },
 
   /**
-   * M8 — 사용자의 노드별 effective 권한 (docs/01 §14.2 + docs/03 §3.1).
+   * M8 — 사용자의 노드별 effective 권한 (docs/01 §14.2 + docs/02 §7.10 + docs/03 §3.1).
    *
-   * 백엔드 미존재. mock은 admin preset 8 권한(PURGE 제외, docs/03 §3.2 line 331).
-   * `nodeId` 미지정 시 전역 effective 권한 (RightPanel 컨텍스트 외) 반환.
+   * F2.1 — backend GET /api/me/effective-permissions 직접 호출 (A11 endpoint).
+   * 응답 shape `{ permissions: Permission[] }`을 그대로 반환. role∪resource grant 합산
+   * /ADMIN early return / PURGE 제외 평가는 backend IbizDrivePermissionEvaluator가 책임.
    *
-   * 백엔드 endpoint 신설 시 본 mock만 fetch로 교체 — hook/UI 무수정.
+   * 에러 envelope: 비-OK 응답은 status 필드 가진 Error throw → QueryCache.onError 401/403 분기.
    */
   async getEffectivePermissions(nodeId?: string): Promise<Permission[]> {
-    void nodeId
-    await new Promise((r) => setTimeout(r, 80))
-    // admin preset (PURGE 제외) — docs/03 §3.2 노드 admin 행
-    return ['READ', 'UPLOAD', 'EDIT', 'MOVE', 'DOWNLOAD', 'DELETE', 'SHARE', 'PERMISSION_ADMIN']
+    const qs = nodeId ? `?${new URLSearchParams({ nodeId }).toString()}` : ''
+    const res = await fetch(`/api/me/effective-permissions${qs}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getEffectivePermissions fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const data = (await res.json()) as { permissions: Permission[] }
+    return data.permissions
   },
 
   /**
