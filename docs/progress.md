@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-05-01 — 🏁 M9 마일스톤 종료 (Frontend 휴지통 통합)
+
+### 범위
+
+M9.0 (`qk.trash()` + prep 키 + `invalidations.afterDelete/afterRestore/afterPurge` — filesListPrefix + trash + folderTree + search 4건 일괄) → M9.1 (`types/trash.ts` + `api.{getTrash,restoreFile,restoreFolder,purgeTrashItem,softDeleteFile,softDeleteFolder}` 실 backend fetch + `useDeleteBulk` Mock 제거 → 시그니처 `ids: string[]` → `items: {id,type}[]` 마이그) → M9.2 (`useTrashList`/`useRestoreItem`/`usePurgeTrashItem` hooks + 14 GREEN) → M9.3 (`/trash` 페이지 + `TrashTable`/`TrashRowActions`/`TrashLink` + `(explorer)/layout.tsx` Sidebar mount + `findFolderPath` 유틸 + 9 GREEN) → M9.4 (BulkActionBar `useDeleteBulk` onSuccess에 sonner `action: { label: '되돌리기', duration: 5000 }` + `undoDelete` 헬퍼 — type 분기 `restoreFile/restoreFolder` Promise.all + RESTORE_CONFLICT 분기 + 4 GREEN) → 중간 게이트(rebase onto master + PR #16 mock trash hooks orphan 정리 + M14 권한 정합 `admin → PURGE`) → M9.5 (PR #22 squash-merge `1927c56` + dev-docs archive).
+
+### 회고
+
+- **commits**: 10 on top of A10 close `24a78b2` (worktree branch `feature/m9-frontend-trash`, 중간에 origin/master 9 commits 흡수 — PR #16/F1.1/A9/A10) → 최종 rebase onto F2 close `69ab2e6` → squash-merge `1927c56` on `master`. PR #22 single, CI green (backend junit 36s + frontend vitest 1m25s 모두 SUCCESS).
+- **production 파일**: 추가 8 / 수정 3.
+  - 추가: `app/(explorer)/trash/{page,ClientTrashPage}.tsx`, `components/trash/{TrashTable,TrashRowActions,TrashLink}.tsx`, `hooks/{useTrashList,useRestoreItem,usePurgeTrashItem}.ts`, `types/trash.ts`, `lib/folderTreeUtils.ts`(findFolderPath).
+  - 수정: `lib/queryKeys.ts`(qk.trash + 무효화 3건), `lib/api.ts`(trash + soft-delete 6 메서드 + `buildApiError` helper), `components/files/BulkActionBar.tsx`(Undo toast wiring), `app/(explorer)/layout.tsx`(TrashLink mount).
+- **test 파일**: 신설 5 / 수정 2 — 42건 GREEN 신설(api.trash 15 / hooks 14 / TrashTable 7 / TrashLink 2 / BulkActionBar Undo 4). `useDeleteBulk.test.ts` softDelete*로 mock 교체.
+- **frontend 회귀 0**: 전체 `pnpm test` 47 files / 439 tests GREEN. `pnpm typecheck` + `pnpm lint` clean. `pnpm build` GREEN(8/8 SSG) — pre-existing `/trash` Suspense fail은 PR #24(`ed89353`)에서 별도 fix 후 본 트랙 머지.
+
+### 핵심 결정 (M9 트랙, 확정)
+
+1. **`useDeleteBulk` 시그니처 마이그 (`ids[]` → `items[{id,type}]`)** — backend가 file/folder 분기 endpoint(`DELETE /api/{files,folders}/:id`)이라 호출부에서 type 동봉 필요. cache miss 시 `'file'` 폴백 — 404 response 시 onError에서 selection 복원.
+2. **무효화 매트릭스 4건 일괄** — soft-delete/restore 모두 `filesListPrefix + trash + folderTree + search` 한 번에. folderTree 포함 이유: folder cascade restore/soft-delete 시 사이드바 stale 방지.
+3. **`originalParentId` → folderTree path 해석 (N+1 회피)** — `useFolderTree()` 캐시 + `findFolderPath` 유틸로 해석. 부모도 trashed면 "원위치 폴더 삭제됨" 폴백. backend가 originalPath를 응답에 포함하도록 변경 시 endpoint patch 필요.
+4. **PURGE는 M14 권한 hook의 ADMIN-only flag** — `usePermission().PURGE` (docs/03 §3.2). 초기엔 stub `usePermission().admin` 불리언이었으나 PR #16(M14) 머지 직후 `admin → PURGE` 일괄 정합. 의미적으로도 정확(영구 삭제 권한).
+5. **Undo toast 5초 단일 sonner action** — `toast.success(msg, { duration:5000, action:{ label:'되돌리기', onClick } })`. 5초 시한 + 다중 action UX는 별도 디자인.
+6. **RESTORE_CONFLICT 409 — toast.error 폴백** — MVP는 사용자가 폴더에서 충돌 항목 정리 후 재시도. ConflictDialog는 v1.x 보류.
+7. **Bulk purge 미구현 (ADR #32)** — UI에서 "전체 비우기" 버튼 노출 안 함. backend `DELETE /api/trash` 트랙 별도화.
+8. **`pnpm-lock.yaml` 미커밋** — F2와 동일 정책. 프로젝트는 `package-lock.json` 추적, pnpm 워크트리 lockfile은 로컬 artifact.
+9. **PR #16 mock trash hooks orphan 정리** — PR #16이 mock 기반 `useRestoreBulk`/`usePurgeBulk`/`useTrashHooks.test.tsx`를 추가했으나 본 트랙이 real-backend `useRestoreItem`/`usePurgeTrashItem`/`useTrashList`로 대체했으므로 `488ca5a`에서 orphan 삭제. 트랙 충돌 시 mock 잔존 hooks는 squash 후 즉시 제거가 표준.
+
+### 다음 트랙 후보
+
+- **F4 — Frontend Shares UI** (A10 share endpoint 노출). docs/01 §6/§14 신설 후 진입.
+- **F3 — `useStorageQuota` 실연결** — backend quota API 미신설 → 백엔드 트랙 선행 필요.
+- **A12 — folder 공유** (A10 ADR #34 backlog).
+- **A11 후속 — `SHARE_EXPIRED` 자동 전환 배치**.
+- **M10 — SSE/WebSocket 실시간 동기화** (휴지통 다른 탭 변경 push 무효화 — docs/01 §15).
+
+---
+
 ## 2026-05-01 — 🏁 F2 마일스톤 종료 (Frontend usePermission 실연결)
 
 ### 범위
