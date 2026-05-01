@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -16,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.*;
 
 /**
@@ -175,6 +177,87 @@ class PermissionRepositoryTest {
         assertTrue(rows.isEmpty(), "다른 사용자 user-grant는 본인 결과에 포함되지 않아야 함");
     }
 
+    // ---------- findExpiredActiveIds (permissions-expired-cron) ----------
+
+    @Test
+    void findExpiredActiveIds_returnsOnlyExpiredOldestFirst() {
+        UUID owner = insertUser("expo1@test", "expo1");
+        UUID subject1 = insertUser("expu1a@test", "expu1a");
+        UUID subject2 = insertUser("expu1b@test", "expu1b");
+        UUID subject3 = insertUser("expu1c@test", "expu1c");
+        UUID folder = insertFolder(null, "exp-folder1", owner);
+        Instant now = Instant.now();
+
+        // 두 개 만료 (서로 다른 시각), 한 개 미만료, 한 개 NULL.
+        // idx_permissions_unique=(resource_type, resource_id, subject_type, subject_id) — 동일 resource×subject 중복 금지.
+        // 따라서 subject를 3명으로 분리해야 동일 (folder, user) tuple에 3 row 공존 가능.
+        UUID idOldExpired = insertPermissionWithExpiryReturning(
+            "folder", folder, "user", subject1, "read", owner,
+            now.minus(2, ChronoUnit.HOURS)
+        );
+        UUID idRecentExpired = insertPermissionWithExpiryReturning(
+            "folder", folder, "user", subject2, "edit", owner,
+            now.minus(10, ChronoUnit.MINUTES)
+        );
+        insertPermissionWithExpiry(
+            "folder", folder, "user", subject3, "admin", owner,
+            now.plus(1, ChronoUnit.HOURS) // 미만료
+        );
+        insertPermission("file", insertFile(folder, "x.txt", owner), "everyone", null, "read", owner);
+
+        List<UUID> ids = permissionRepository.findExpiredActiveIds(now, PageRequest.of(0, 100));
+
+        // oldest-first 정렬, 미만료/NULL 제외.
+        assertThat(ids).containsExactly(idOldExpired, idRecentExpired);
+    }
+
+    @Test
+    void findExpiredActiveIds_respectsLimit() {
+        UUID user = insertUser("expu2@test", "expu2");
+        UUID folder = insertFolder(null, "exp-folder2", user);
+        Instant now = Instant.now();
+        for (int i = 0; i < 5; i++) {
+            insertPermissionWithExpiryReturning(
+                "file", insertFile(folder, "f" + i + ".txt", user), "user", user, "read", user,
+                now.minus(i + 1, ChronoUnit.MINUTES)
+            );
+        }
+
+        List<UUID> ids = permissionRepository.findExpiredActiveIds(now, PageRequest.of(0, 3));
+
+        assertThat(ids).hasSize(3);
+    }
+
+    @Test
+    void findExpiredActiveIds_boundaryExactNowIncluded() {
+        UUID user = insertUser("expu3@test", "expu3");
+        UUID folder = insertFolder(null, "exp-folder3", user);
+        // expires_at = NOW() 정확히 같은 row — `<= NOW()` boundary 검증.
+        Instant boundary = Instant.now().minus(1, ChronoUnit.SECONDS);
+        UUID exactlyExpired = insertPermissionWithExpiryReturning(
+            "folder", folder, "user", user, "read", user, boundary
+        );
+
+        List<UUID> ids = permissionRepository.findExpiredActiveIds(boundary, PageRequest.of(0, 10));
+
+        assertThat(ids).contains(exactlyExpired);
+    }
+
+    @Test
+    void findExpiredActiveIds_emptyWhenNoneExpired() {
+        UUID user = insertUser("expu4@test", "expu4");
+        UUID folder = insertFolder(null, "exp-folder4", user);
+        Instant now = Instant.now();
+        insertPermissionWithExpiry(
+            "folder", folder, "user", user, "read", user,
+            now.plus(1, ChronoUnit.DAYS)
+        );
+
+        List<UUID> ids = permissionRepository.findExpiredActiveIds(now, PageRequest.of(0, 10));
+
+        assertThat(ids).isEmpty();
+    }
+
     // ====================== helpers ======================
 
     private UUID insertUser(String email, String displayName) {
@@ -234,5 +317,19 @@ class PermissionRepositoryTest {
             UUID.randomUUID(), resourceType, resourceId, subjectType, subjectId, preset, grantedBy,
             java.sql.Timestamp.from(expiresAt)
         );
+    }
+
+    /** Returning variant — findExpiredActiveIds 결과 매칭 검증용. */
+    private UUID insertPermissionWithExpiryReturning(String resourceType, UUID resourceId,
+                                                     String subjectType, UUID subjectId,
+                                                     String preset, UUID grantedBy, Instant expiresAt) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, " +
+            "preset, granted_by, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            id, resourceType, resourceId, subjectType, subjectId, preset, grantedBy,
+            java.sql.Timestamp.from(expiresAt)
+        );
+        return id;
     }
 }

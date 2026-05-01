@@ -1,5 +1,6 @@
 package com.ibizdrive.audit;
 
+import com.ibizdrive.permission.PermissionExpiredEvent;
 import com.ibizdrive.permission.PermissionGrantedEvent;
 import com.ibizdrive.permission.PermissionRevokedEvent;
 import com.ibizdrive.permission.RoleChangedEvent;
@@ -119,6 +120,58 @@ public class PermissionAuditListener {
         } catch (RuntimeException ex) {
             log.error("audit emission failed for event={}", AuditEventType.PERMISSION_REVOKED, ex);
         }
+    }
+
+    /**
+     * {@code permissions-expired-cron} — {@link PermissionExpiredEvent} → {@link AuditEventType#PERMISSION_EXPIRED}
+     * 기록.
+     *
+     * <p>{@link #onPermissionRevoked}와 거의 동일하나 actor 컨텍스트 부재 (시스템 트리거):
+     * <ul>
+     *   <li>{@code actor_id=null} (시스템 트리거)</li>
+     *   <li>{@code actor_ip=null}, {@code user_agent=null} — HTTP 요청 컨텍스트 없음</li>
+     *   <li>{@code metadata.trigger='system.expiration'} — {@code permission.revoked}와 audit row 시각 분별 가능
+     *       (감사 화면에서 {@code metadata.trigger}로 자동/수동 구분)</li>
+     *   <li>{@code before_state}는 {@link #grantStateJson} 재사용 — DELETE 후 row가 사라지므로 caller가 캡처한
+     *       snapshot이 진실 출처</li>
+     * </ul>
+     *
+     * <p>{@link com.ibizdrive.share.ShareCommandService#expireShare} 동형 패턴 (SHARE_EXPIRED, ADR #34 closure).
+     */
+    @EventListener
+    public void onPermissionExpired(PermissionExpiredEvent event) {
+        String before = grantStateJson(
+            event.resourceType(), event.resourceId(),
+            event.subjectType(), event.subjectId(),
+            event.preset().wire(), event.originalExpiresAt()
+        );
+        String metadata = expirationMetadataJson(event.resourceType(), event.resourceId());
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.PERMISSION_EXPIRED,
+                null,   // 시스템 트리거 — actor 부재
+                null,   // actor IP 부재
+                null,   // user-agent 부재
+                AuditTargetType.PERMISSION,
+                event.permissionId(),
+                before,
+                null,
+                metadata
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event={}", AuditEventType.PERMISSION_EXPIRED, ex);
+        }
+    }
+
+    /**
+     * {@link #onPermissionExpired}용 metadata helper — 기존 {@link #resourceMetadataJson}에
+     * {@code "trigger":"system.expiration"} 키만 추가. 별도 helper로 분리한 이유는 grant/revoke 패스의
+     * metadata 형식을 그대로 보존하면서 expired 패스에만 trigger 키를 의도적으로 노출하기 위함.
+     */
+    private static String expirationMetadataJson(String resourceType, UUID resourceId) {
+        return "{\"trigger\":\"system.expiration\""
+             + ",\"resource_type\":\"" + resourceType + "\""
+             + ",\"resource_id\":\"" + resourceId + "\"}";
     }
 
     private static String grantStateJson(String resourceType, UUID resourceId,

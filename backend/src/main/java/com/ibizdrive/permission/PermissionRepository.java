@@ -1,10 +1,15 @@
 package com.ibizdrive.permission;
 
+import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -88,5 +93,37 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
         @Param("userId") UUID userId,
         @Param("resourceType") String resourceType,
         @Param("resourceId") UUID resourceId
+    );
+
+    /**
+     * Pessimistic write lock on a permission row by PK — {@link PermissionService#expirePermission}이
+     * cron 만료 처리 진입 시점에 행 잠금 (CLAUDE.md §3 원칙 7 동형, {@code ShareRepository.lockByIdAndRevokedAtIsNull}
+     * 패턴).
+     *
+     * <p>{@code permissions}는 hard delete를 사용하므로 두 번째 인스턴스가 동시에 같은 id를 처리하려 하면
+     * lock 미스 → {@link Optional#empty()}. 호출자({@code expirePermission})는 이를 race-safe하게
+     * {@link com.ibizdrive.common.error.ResourceNotFoundException}로 변환하고, job 레벨에서 swallow.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM PermissionRow p WHERE p.id = :id")
+    Optional<PermissionRow> lockById(@Param("id") UUID id);
+
+    /**
+     * {@code permissions-expired-cron} 후보 스캔 — {@code expires_at IS NOT NULL AND expires_at <= :now}.
+     * 결과는 oldest-first 순 (동일 batch 내 다중 만료의 처리 안정성, {@code ShareRepository.findExpiredActiveIds}
+     * 동형).
+     *
+     * <p>{@link PermissionExpirationJob}이 batch-size 한도로 호출 → 각 id에 대해 별도 트랜잭션의
+     * {@link PermissionService#expirePermission}에서 다시 lock을 획득. 본 쿼리는 lock 미사용 (스냅샷 조회).
+     *
+     * @param now   기준 시각 (보통 {@link java.time.Instant#now()}).
+     * @param limit batch-size 상한 — JPA Pageable로 LIMIT 매핑.
+     */
+    @Query("SELECT p.id FROM PermissionRow p "
+         + "WHERE p.expiresAt IS NOT NULL AND p.expiresAt <= :now "
+         + "ORDER BY p.expiresAt ASC, p.id ASC")
+    List<UUID> findExpiredActiveIds(
+        @Param("now") Instant now,
+        Pageable limit
     );
 }

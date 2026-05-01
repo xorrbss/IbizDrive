@@ -30,6 +30,7 @@ export type AuditEventType =
   // 권한 / 공유
   | 'permission.granted'
   | 'permission.revoked'
+  | 'permission.expired'
   | 'permission.changed'
   | 'share.created'
   | 'share.revoked'

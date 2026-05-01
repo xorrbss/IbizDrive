@@ -214,6 +214,60 @@ public class PermissionService {
     }
 
     /**
+     * 시스템 자동 만료 — {@code permissions-expired-cron} 진입점.
+     *
+     * <p>{@link PermissionRepository#lockById}로 row를 잠근 뒤 snapshot 캡처 → DELETE →
+     * {@link PermissionExpiredEvent} publish. {@link com.ibizdrive.audit.PermissionAuditListener}가
+     * {@code permission.expired} audit row INSERT (REQUIRES_NEW 분리 트랜잭션, ADR #24).
+     *
+     * <p><b>controller 매핑 없음 / @PreAuthorize 불요</b>: 본 메서드는 {@link PermissionExpirationJob}이
+     * 시스템 트리거로만 호출. 외부 API에서 진입할 경로 없음. {@link #revokePermission}과의 차이는 actor
+     * 부재 + audit row의 {@code metadata.trigger='system.expiration'}.
+     *
+     * <p><b>race protection</b>:
+     * <ul>
+     *   <li>두 번째 cron 인스턴스가 동시에 같은 id 처리 시 → 한 쪽이 row-level lock 획득, 다른 쪽은 lock
+     *       대기 후 query 시점에 row 부재 → {@link ResourceNotFoundException} → job 레벨에서 swallow.</li>
+     *   <li>사용자가 {@link #revokePermission}으로 직접 삭제한 직후 cron 만료 시도 → 동일 패턴으로 race-safe.</li>
+     * </ul>
+     *
+     * <p><b>{@link #revokePermission}과의 코드 중복</b>: 두 메서드는 (lock/find → snapshot → DELETE → event
+     * publish) 라는 4-step 골격이 동일하나 이벤트 타입과 lock 메서드가 달라 helper 추출이 오히려 가독성을
+     * 해친다 — KISS. 변경 시 두 곳을 함께 수정.
+     *
+     * @param permissionId 만료 대상 grant 의 PK
+     * @throws ResourceNotFoundException row 가 없거나 다른 인스턴스/사용자 트랜잭션이 이미 삭제 (race)
+     */
+    @Transactional
+    public void expirePermission(UUID permissionId) {
+        if (permissionId == null) throw new IllegalArgumentException("permissionId must not be null");
+
+        PermissionRow row = permissionRepository.lockById(permissionId)
+            .orElseThrow(() -> new ResourceNotFoundException("permission not found: " + permissionId));
+
+        Preset preset;
+        try {
+            preset = Preset.from(row.getPreset());
+        } catch (IllegalArgumentException ex) {
+            throw new IllegalStateException("invalid preset stored: " + row.getPreset(), ex);
+        }
+
+        permissionRepository.delete(row);
+
+        eventPublisher.publishEvent(new PermissionExpiredEvent(
+            row.getId(),
+            row.getResourceType(),
+            row.getResourceId(),
+            row.getSubjectType(),
+            row.getSubjectId(),
+            preset,
+            row.getGrantedBy(),
+            row.getCreatedAt(),
+            row.getExpiresAt()
+        ));
+    }
+
+    /**
      * DELETE {@code /api/permissions/:permissionId} 의 SpEL 가드 (docs/02 §7.10).
      *
      * <p>호출 형태: {@code @PreAuthorize("@permissionService.canRevokePermission(#permissionId, principal)")}.

@@ -1,5 +1,6 @@
 package com.ibizdrive.audit;
 
+import com.ibizdrive.permission.PermissionExpiredEvent;
 import com.ibizdrive.permission.PermissionGrantedEvent;
 import com.ibizdrive.permission.PermissionRevokedEvent;
 import com.ibizdrive.permission.Preset;
@@ -152,6 +153,87 @@ class PermissionAuditListenerTest {
         listener.onPermissionGranted(new PermissionGrantedEvent(
             ACTOR, UUID.randomUUID(), "folder", UUID.randomUUID(),
             "user", UUID.randomUUID(), Preset.READ, null
+        ));
+
+        verify(auditService).record(org.mockito.ArgumentMatchers.any());
+    }
+
+    // ── permissions-expired-cron — PERMISSION_EXPIRED ────────────────────
+
+    @Test
+    void onPermissionExpired_recordsBeforeStateSnapshotWithSystemMetadata() {
+        UUID permissionId = UUID.randomUUID();
+        UUID resourceId = UUID.randomUUID();
+        UUID subjectId = UUID.randomUUID();
+        UUID grantedBy = UUID.randomUUID();
+        Instant grantedAt = Instant.parse("2026-04-01T00:00:00Z");
+        Instant expiredAt = Instant.parse("2026-05-01T00:00:00Z");
+
+        listener.onPermissionExpired(new PermissionExpiredEvent(
+            permissionId, "folder", resourceId, "user", subjectId,
+            Preset.EDIT, grantedBy, grantedAt, expiredAt
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.PERMISSION_EXPIRED);
+        // 시스템 트리거 — actor/IP/UA 모두 부재.
+        assertThat(ev.actorId()).isNull();
+        assertThat(ev.actorIp()).isNull();
+        assertThat(ev.userAgent()).isNull();
+        assertThat(ev.targetType()).isEqualTo(AuditTargetType.PERMISSION);
+        assertThat(ev.targetId()).isEqualTo(permissionId);
+        // DELETE 이므로 after_state 는 null, before_state 가 snapshot.
+        assertThat(ev.afterState()).isNull();
+        assertThat(ev.beforeState())
+            .contains("\"resource_type\":\"folder\"")
+            .contains("\"resource_id\":\"" + resourceId + "\"")
+            .contains("\"subject_type\":\"user\"")
+            .contains("\"subject_id\":\"" + subjectId + "\"")
+            .contains("\"preset\":\"edit\"")
+            .contains("\"expires_at\":\"2026-05-01T00:00:00Z\"");
+        // metadata.trigger 가 system.expiration 으로 분별 가능.
+        assertThat(ev.metadata())
+            .contains("\"trigger\":\"system.expiration\"")
+            .contains("\"resource_type\":\"folder\"")
+            .contains("\"resource_id\":\"" + resourceId + "\"");
+    }
+
+    @Test
+    void onPermissionExpired_everyoneSubject_serializesNullSubjectId() {
+        UUID permissionId = UUID.randomUUID();
+        UUID resourceId = UUID.randomUUID();
+        UUID grantedBy = UUID.randomUUID();
+        Instant grantedAt = Instant.parse("2026-04-01T00:00:00Z");
+        Instant expiredAt = Instant.parse("2026-05-01T00:00:00Z");
+
+        listener.onPermissionExpired(new PermissionExpiredEvent(
+            permissionId, "file", resourceId, "everyone", null,
+            Preset.READ, grantedBy, grantedAt, expiredAt
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+
+        assertThat(ev.beforeState())
+            .contains("\"subject_type\":\"everyone\"")
+            .contains("\"subject_id\":null");
+    }
+
+    @Test
+    void onPermissionExpired_swallowsAuditFailure() {
+        doThrow(new RuntimeException("db down"))
+            .when(auditService).record(org.mockito.ArgumentMatchers.any());
+
+        // ADR #24 — 실패는 ERROR 로그만 + 비즈니스 흐름에 영향 없음.
+        listener.onPermissionExpired(new PermissionExpiredEvent(
+            UUID.randomUUID(), "folder", UUID.randomUUID(), "user", UUID.randomUUID(),
+            Preset.READ, UUID.randomUUID(),
+            Instant.parse("2026-04-01T00:00:00Z"),
+            Instant.parse("2026-05-01T00:00:00Z")
         ));
 
         verify(auditService).record(org.mockito.ArgumentMatchers.any());
