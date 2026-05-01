@@ -54,6 +54,7 @@ class PermissionControllerTest {
     private PermissionService permissionService;
     private FileRepository fileRepository;
     private FolderRepository folderRepository;
+    private IbizDrivePermissionEvaluator evaluator;
     private PermissionController controller;
     private IbizDriveUserDetails principal;
 
@@ -62,13 +63,19 @@ class PermissionControllerTest {
         permissionService = mock(PermissionService.class);
         fileRepository = mock(FileRepository.class);
         folderRepository = mock(FolderRepository.class);
-        controller = new PermissionController(permissionService, fileRepository, folderRepository);
+        evaluator = mock(IbizDrivePermissionEvaluator.class);
+        controller = new PermissionController(
+            permissionService, fileRepository, folderRepository, evaluator);
 
+        principal = udsOf(Role.ADMIN);
+    }
+
+    private static IbizDriveUserDetails udsOf(Role role) {
         User u = new User(
-            ACTOR, "admin@example.com", "Admin", "{bcrypt}$2a$12$dummy",
-            Role.ADMIN, true, false, OffsetDateTime.now()
+            ACTOR, role.name().toLowerCase() + "@example.com", role.name(),
+            "{bcrypt}$2a$12$dummy", role, true, false, OffsetDateTime.now()
         );
-        principal = new IbizDriveUserDetails(u);
+        return new IbizDriveUserDetails(u);
     }
 
     // ── grant: happy path ──────────────────────────────────────────────
@@ -194,6 +201,87 @@ class PermissionControllerTest {
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.NO_CONTENT);
         verify(permissionService).revokePermission(permissionId, ACTOR);
+    }
+
+    // ── myEffectivePermissions (A11.2) ─────────────────────────────────
+
+    @Test
+    void myEffectivePermissions_noNodeId_returnsRolePermissions_resolverNotCalled() {
+        IbizDriveUserDetails member = udsOf(Role.MEMBER);
+        when(evaluator.resolveAll(member, null, null))
+            .thenReturn(java.util.EnumSet.noneOf(Permission.class));
+
+        ResponseEntity<Map<String, java.util.List<Permission>>> res =
+            controller.myEffectivePermissions(null, member);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody().get("permissions")).isEmpty();
+        // 노드 미지정이므로 folder/file repository 미조회.
+        verify(folderRepository, never()).findByIdAndDeletedAtIsNull(any());
+        verify(fileRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void myEffectivePermissions_admin_noNodeId_returnsNinePermissionsSorted() {
+        when(evaluator.resolveAll(principal, null, null))
+            .thenReturn(java.util.EnumSet.allOf(Permission.class));
+
+        ResponseEntity<Map<String, java.util.List<Permission>>> res =
+            controller.myEffectivePermissions(null, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        java.util.List<Permission> perms = res.getBody().get("permissions");
+        assertThat(perms).containsExactly(Permission.values()); // enum 정의 순(natural order)
+    }
+
+    @Test
+    void myEffectivePermissions_folderExists_passesFolderTypeToEvaluator() {
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.of(mock(Folder.class)));
+        when(evaluator.resolveAll(principal, "folder", RESOURCE_ID))
+            .thenReturn(java.util.EnumSet.of(Permission.READ, Permission.DOWNLOAD));
+
+        ResponseEntity<Map<String, java.util.List<Permission>>> res =
+            controller.myEffectivePermissions(RESOURCE_ID, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody().get("permissions"))
+            .containsExactly(Permission.READ, Permission.DOWNLOAD);
+        // folder 발견 시 file repository는 조회하지 않음(짧은 회로).
+        verify(fileRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void myEffectivePermissions_fileExists_passesFileTypeToEvaluator() {
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.empty());
+        when(fileRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.of(mock(FileItem.class)));
+        when(evaluator.resolveAll(principal, "file", RESOURCE_ID))
+            .thenReturn(java.util.EnumSet.of(Permission.READ));
+
+        ResponseEntity<Map<String, java.util.List<Permission>>> res =
+            controller.myEffectivePermissions(RESOURCE_ID, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody().get("permissions")).containsExactly(Permission.READ);
+        verify(evaluator).resolveAll(principal, "file", RESOURCE_ID);
+    }
+
+    @Test
+    void myEffectivePermissions_nodeMissingInBoth_throwsResourceNotFound() {
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.empty());
+        when(fileRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+            controller.myEffectivePermissions(RESOURCE_ID, principal))
+            .isInstanceOf(ResourceNotFoundException.class)
+            .hasMessageContaining(RESOURCE_ID.toString());
+
+        // 노드 미존재 시 evaluator 미호출.
+        verify(evaluator, never()).resolveAll(any(), anyString(), any());
     }
 
     // ── helpers ────────────────────────────────────────────────────────

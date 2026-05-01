@@ -1170,7 +1170,7 @@ GET /api/shares/with-me?cursor=&limit=                     (ADR #34, MVP scope)
 | GET | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` (구표기 `'ADMIN'` alias) | REQUIRED | — | — | 400, 403, 404, 409 |
 | DELETE | `/api/permissions/:permissionId` | `PermissionService.canRevokePermission(#permissionId, currentUser)` | REQUIRED | — | — | 403, 404 |
-| GET | `/api/me/effective-permissions?nodeId=` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/me/effective-permissions?nodeId=` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | 400, 401, 404 |
 
 ```text
 POST /api/:resource/:id/permissions
@@ -1191,6 +1191,19 @@ DELETE /api/permissions/:permissionId
   TX:       SELECT row → DELETE → emit PermissionRevokedEvent
               → PermissionAuditListener (REQUIRES_NEW) → audit_log (permission.revoked, before_state=snapshot)
   Errors:   403 PERMISSION_DENIED, 404 NOT_FOUND
+
+GET /api/me/effective-permissions[?nodeId={uuid}]
+  Response: 200 { permissions: Permission[] }   # Permission enum (UPPER_SNAKE_CASE), 정의 순 정렬
+  Eval:     nodeId 미지정 → ROLE 기반 권한만 (effectivePermissions(role))
+            nodeId 지정 → ROLE 권한 ∪ resource-level grant (folder|file 자동 식별)
+              ADMIN role은 9 권한 즉시 grant (PermissionResolver 미호출 early return)
+              PURGE는 ROLE ADMIN만 보유 — Preset 미포함이라 resource grant로 부여 불가 (docs/03 line 331~334)
+  Errors:   400 BAD_REQUEST (nodeId UUID 형식 위반)
+            401 UNAUTHORIZED (미인증)
+            404 NOT_FOUND (nodeId 지정 + folder/file 모두 미존재 또는 deleted_at NOT NULL)
+  Note:     read-only — TX 없음, audit 미기록.
+            frontend `api.getEffectivePermissions(nodeId?)`의 Promise<Permission[]> 시그니처와 1:1 매핑.
+            staleTime 60s (usePermission) — 빈도 낮음, 9× CTE 비용 MVP 허용.
 ```
 
 ### 7.11 휴지통 (Trash, A6/A8)

@@ -12,12 +12,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -57,13 +60,16 @@ public class PermissionController {
     private final PermissionService permissionService;
     private final FileRepository fileRepository;
     private final FolderRepository folderRepository;
+    private final IbizDrivePermissionEvaluator evaluator;
 
     public PermissionController(PermissionService permissionService,
                                 FileRepository fileRepository,
-                                FolderRepository folderRepository) {
+                                FolderRepository folderRepository,
+                                IbizDrivePermissionEvaluator evaluator) {
         this.permissionService = permissionService;
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
+        this.evaluator = evaluator;
     }
 
     /**
@@ -103,6 +109,46 @@ public class PermissionController {
         return ResponseEntity
             .status(HttpStatus.CREATED)
             .body(Map.of("permission", PermissionDto.from(saved)));
+    }
+
+    /**
+     * A11 — 현재 사용자의 effective 권한 조회 (docs/02 §7.10 line 1173).
+     *
+     * <p>{@code nodeId} 미지정 시 ROLE 기반 권한만 반환 (전역 권한 컨텍스트). 지정 시 해당 노드(folder
+     * 또는 file)에 대한 ROLE 권한 ∪ resource-level grant. {@link IbizDrivePermissionEvaluator#resolveAll}
+     * 에 위임 — 평가 정책은 {@code hasPermission}과 동일하나 9 권한 전체를 한 번에 산출.
+     *
+     * <p>응답 본문: {@code { "permissions": ["READ", "DOWNLOAD", ...] }}. 권한은 {@link Permission}
+     * enum 정의 순(natural order)으로 정렬. frontend {@code api.getEffectivePermissions} 의
+     * {@code Promise<Permission[]>} 시그니처에 맞춤 (CLAUDE.md §4 계약 파일 표).
+     *
+     * <p><b>가드</b>: {@code @PreAuthorize("isAuthenticated()")} — 인증된 사용자면 모두 호출 가능
+     * (자기 권한 조회는 보안 정보 노출이 아님). 미인증은 401.
+     *
+     * <p><b>노드 존재 검증</b>: nodeId 지정 시 folder/file 모두에서 활성 row를 lookup. 둘 다 부재 시
+     * {@link ResourceNotFoundException} → 404. {@code resourceType}은 발견된 type으로 결정 (먼저 folder
+     * 조회 — 양 테이블 UUID 충돌은 V5 별도 시퀀스라 운용상 불가능).
+     */
+    @GetMapping("/me/effective-permissions")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, List<Permission>>> myEffectivePermissions(
+        @RequestParam(value = "nodeId", required = false) UUID nodeId,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        String resourceType = null;
+        if (nodeId != null) {
+            boolean folderExists = folderRepository.findByIdAndDeletedAtIsNull(nodeId).isPresent();
+            boolean fileExists = !folderExists
+                && fileRepository.findByIdAndDeletedAtIsNull(nodeId).isPresent();
+            if (!folderExists && !fileExists) {
+                throw new ResourceNotFoundException("node not found: " + nodeId);
+            }
+            resourceType = folderExists ? "folder" : "file";
+        }
+
+        Set<Permission> set = evaluator.resolveAll(principal, resourceType, nodeId);
+        List<Permission> sorted = set.stream().sorted().toList();
+        return ResponseEntity.ok(Map.of("permissions", sorted));
     }
 
     /**
