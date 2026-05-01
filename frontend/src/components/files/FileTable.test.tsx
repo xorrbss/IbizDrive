@@ -1,11 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { FileTable } from './FileTable'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useViewParam } from '@/hooks/useViewParam'
 import { useSortParams } from '@/hooks/useSortParams'
+import { useGridColumns } from '@/hooks/useGridColumns'
 import type { FileItem } from '@/types/file'
 
 vi.mock('next/navigation', () => ({
@@ -16,6 +17,7 @@ vi.mock('next/navigation', () => ({
 vi.mock('@/hooks/useFilesInFolder', () => ({ useFilesInFolder: vi.fn() }))
 vi.mock('@/hooks/useViewParam', () => ({ useViewParam: vi.fn() }))
 vi.mock('@/hooks/useSortParams', () => ({ useSortParams: vi.fn() }))
+vi.mock('@/hooks/useGridColumns', () => ({ useGridColumns: vi.fn(() => 1) }))
 vi.mock('@/hooks/useNativeFileDrop', () => ({ useNativeFileDrop: () => false }))
 vi.mock('@/hooks/useUpload', () => ({ useUpload: () => ({ enqueue: vi.fn() }) }))
 vi.mock('@/hooks/useDeleteBulk', () => ({ useDeleteBulk: () => ({ mutate: vi.fn() }) }))
@@ -115,5 +117,93 @@ describe('FileTable view 분기 (M16.2)', () => {
     render(wrap(<FileTable folderId="root" />))
     const grid = screen.getByRole('grid', { name: '파일 그리드' })
     expect(grid.getAttribute('data-grid-virtual')).toBe('true')
+  })
+})
+
+// M16VK Grid 2D 키보드 wrap — useGridColumns mock 변동 + 6 items 사용.
+describe('FileTable Grid 2D 키보드 wrap (M16VK)', () => {
+  const SIX_ITEMS: FileItem[] = Array.from({ length: 6 }, (_, i) => ({
+    id: `g${i}`,
+    name: `g${i}.txt`,
+    type: 'file',
+    mimeType: 'text/plain',
+    size: 100,
+    updatedAt: '2026-04-25T00:00:00Z',
+    updatedBy: 'me',
+    parentId: 'root',
+  }))
+
+  beforeEach(() => {
+    vi.mocked(useViewParam).mockReturnValue({ view: 'grid', setView: vi.fn() })
+    vi.mocked(useGridColumns).mockReturnValue(3) // 3 cols × 2 rows
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: SIX_ITEMS,
+      isLoading: false,
+      error: null,
+      refetch: vi.fn(),
+    } as unknown as ReturnType<typeof useFilesInFolder>)
+  })
+
+  const focusedId = (): string | null => {
+    const cells = screen.getAllByRole('gridcell')
+    const focused = cells.find((c) => c.getAttribute('tabIndex') === '0')
+    return focused?.getAttribute('data-file-id') ?? null
+  }
+
+  it('ArrowDown moves by columns (g0 → g3)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // -1 → 0
+    expect(focusedId()).toBe('g0')
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // 0 → 3 (columns step)
+    expect(focusedId()).toBe('g3')
+  })
+
+  it('ArrowRight moves by 1 (g0 → g1)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    fireEvent.keyDown(grid, { key: 'ArrowDown' })
+    expect(focusedId()).toBe('g0')
+    fireEvent.keyDown(grid, { key: 'ArrowRight' })
+    expect(focusedId()).toBe('g1')
+  })
+
+  it('ArrowRight wraps across row boundary (g2 → g3)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // → g0
+    fireEvent.keyDown(grid, { key: 'ArrowRight' }) // → g1
+    fireEvent.keyDown(grid, { key: 'ArrowRight' }) // → g2 (end of row 0)
+    fireEvent.keyDown(grid, { key: 'ArrowRight' }) // → g3 (wrap to row 1)
+    expect(focusedId()).toBe('g3')
+  })
+
+  it('ArrowLeft wraps backwards (g3 → g2)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // → g0
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // → g3
+    fireEvent.keyDown(grid, { key: 'ArrowLeft' }) // → g2 (wrap to row 0)
+    expect(focusedId()).toBe('g2')
+  })
+
+  it('ArrowUp moves by columns (g4 → g1)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // g0
+    fireEvent.keyDown(grid, { key: 'ArrowRight' }) // g1
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // g4
+    expect(focusedId()).toBe('g4')
+    fireEvent.keyDown(grid, { key: 'ArrowUp' }) // g4 - 3 = g1
+    expect(focusedId()).toBe('g1')
+  })
+
+  it('ArrowDown stays on last row (no further row)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // g0
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // g3
+    fireEvent.keyDown(grid, { key: 'ArrowDown' }) // overshoot — exact row, no further
+    expect(focusedId()).toBe('g3')
   })
 })

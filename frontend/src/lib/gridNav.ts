@@ -29,6 +29,15 @@ export function computeNextIndex(input: ComputeNextIndexInput): number {
   const { prev, key, view, columns, length, isPending } = input
   if (length <= 0) return prev
 
+  // 초기 focus 없음(prev < 0): ↓/→는 첫 non-pending로 진입, ↑/←는 stay.
+  // List ←/→는 아래 분기에서 no-op으로 처리되므로 view 무관 통일 처리.
+  if (prev < 0) {
+    if (key === 'ArrowDown' || key === 'ArrowRight') {
+      return walk(-1, 1, length, isPending)
+    }
+    return prev
+  }
+
   // List 모드: ←/→ no-op, ↑/↓ ±1
   if (view === 'list') {
     if (key === 'ArrowLeft' || key === 'ArrowRight') return prev

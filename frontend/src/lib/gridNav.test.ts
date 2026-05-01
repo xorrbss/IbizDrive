@@ -149,6 +149,28 @@ describe('computeNextIndex — grid mode', () => {
     ).toBe(0)
   })
 
+  it('prev=-1 — ArrowDown/Right enter first non-pending', () => {
+    expect(computeNextIndex({ ...baseGrid, prev: -1, key: 'ArrowDown' })).toBe(0)
+    expect(computeNextIndex({ ...baseGrid, prev: -1, key: 'ArrowRight' })).toBe(0)
+  })
+
+  it('prev=-1 — ArrowUp/Left stay at -1 (no focus)', () => {
+    expect(computeNextIndex({ ...baseGrid, prev: -1, key: 'ArrowUp' })).toBe(-1)
+    expect(computeNextIndex({ ...baseGrid, prev: -1, key: 'ArrowLeft' })).toBe(-1)
+  })
+
+  it('prev=-1 — ArrowDown skips pending at 0', () => {
+    const pending = new Set([0, 1])
+    expect(
+      computeNextIndex({
+        ...baseGrid,
+        prev: -1,
+        key: 'ArrowDown',
+        isPending: (i) => pending.has(i),
+      }),
+    ).toBe(2)
+  })
+
   it('empty grid: every key returns prev', () => {
     const keys: ArrowKey[] = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight']
     for (const key of keys) {
