@@ -10,7 +10,7 @@ Last Updated: 2026-05-01
 |---|---|---|
 | A15.0 bootstrap | ✅ done | dev-docs 3파일 commit `b98b044`. ADR #13 재정정 초안은 A15.7 closure에 포함. |
 | A15.1 StorageClient + LocalFs | ✅ done | interface + LocalFs impl + properties + 9 RED→GREEN tests. `ibizdrive.storage.*` 네임스페이스 (existing convention). |
-| A15.2 FileUploadService RED | ⬜ pending | — |
+| A15.2 FileUploadService RED | ✅ done | UploadResolution + UploadResult + service skeleton(throws UOE) + 7 Testcontainers tests (Docker 미가용 시 skip). audit emission은 listener 미도입 — file/ 패키지 기존 convention(직접 emitAudit) 답습. |
 | A15.3 FileUploadService GREEN | ⬜ pending | — |
 | A15.4 POST /api/files | ⬜ pending | — |
 | A15.5 GET /api/files/:id/download | ⬜ pending | — |
@@ -28,8 +28,8 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-**A15.2 FileUploadService RED** — service 시그니처 + 단위 테스트.
-직전 완료: A15.1 (storage abstraction + LocalFs impl + 9 tests GREEN, full suite 회귀 0).
+**A15.3 FileUploadService GREEN** — skeleton 구현 채우기 (folder lock + conflict 이중 가드 + storage write + INSERT files/file_versions + current_version_id 갱신 + emitAudit). FileVersionRepository에 `findMaxVersionNumberByFileId` 추가 필요(NEW_VERSION 분기).
+직전 완료: A15.2 (UploadResolution/UploadResult + skeleton + 7 RED 테스트, full suite 회귀 0).
 
 ## 다음 세션 읽기 순서
 
@@ -49,8 +49,9 @@ Last Updated: 2026-05-01
 - **신설**: `backend/src/main/java/com/ibizdrive/file/FileUploadService.java`
 - **신설**: `backend/src/main/java/com/ibizdrive/file/FileUploadController.java` (POST /api/files)
 - **신설**: `backend/src/main/java/com/ibizdrive/file/FileDownloadController.java` (GET /api/files/:id/download) — 또는 `FileController` 안에 메서드 추가 (단일 controller 응집)
-- **신설**: `backend/src/main/java/com/ibizdrive/file/FileUploadedEvent.java`, `FileDownloadedEvent.java` (record)
-- **신설**: `backend/src/main/java/com/ibizdrive/file/FileAuditListener.java` (또는 기존 패턴 위치)
+- **취소(2026-05-01)**: `FileUploadedEvent.java` / `FileDownloadedEvent.java` / `FileAuditListener.java` — file/ 패키지의 기존 emitAudit convention 답습으로 대체.
+- **신설(A15.2 done)**: `backend/src/main/java/com/ibizdrive/file/UploadResolution.java` enum (NEW_VERSION, RENAME)
+- **신설(A15.2 done)**: `backend/src/main/java/com/ibizdrive/file/UploadResult.java` record (FileItem file, FileVersion version, boolean newFile)
 - **수정**: `backend/src/main/java/com/ibizdrive/file/FileRepository.java` — `lockActiveFolderById`, `existsActiveByFolderAndNormalizedName` (이미 있음), `findMaxVersionNumberByFileId` (file_versions repository 활용 가능)
 - **수정**: `backend/src/main/resources/application.yml` — `app.storage.{type, root}` 추가 + `spring.servlet.multipart.{max-file-size, max-request-size}` 명시
 - **신설**: `backend/src/test/java/com/ibizdrive/storage/LocalFsStorageClientTest.java`
@@ -74,7 +75,7 @@ Last Updated: 2026-05-01
 1. **MVP = 단일-POST multipart** (tus 프로토콜 v1.x 재이월). ADR #13 재정정. KISS+YAGNI.
 2. **Storage abstraction = `StorageClient` interface + `LocalFsStorageClient` MVP impl**. S3 impl은 v1.x. AWS SDK v2 의존성 추가 안 함.
 3. **resolution = `new_version` | `rename` | unset(409)**. M5 frontend 인터페이스 1:1.
-4. **Audit emission = listener 패턴 (folder/permission/share 답습)**. service 직접 호출 거부.
+4. **Audit emission = file/ 패키지 기존 convention(직접 `auditService.record()` via `emitAudit` helper)** 답습 (FileMutationService:298-315). 2026-05-01 결정: share/permission/auth는 listener 패턴이지만 file/ 패키지 내 일관성을 위해 직접 호출 채택. KISS+§3 원칙 — 동일 패키지 안에 두 패턴 혼재 회피.
 5. **권한**: 업로드 = `hasPermission(#req.folderId, 'folder', 'UPLOAD')`, 다운로드 = `hasPermission(#id, 'file', 'READ')` (DOWNLOAD enum 별도 — docs/03 §3 매트릭스 재확인 후 결정. MVP는 READ로 단순화 강한 후보).
 6. **storage orphan**: MVP 한정 알려진 한계. cleanup job 별도 트랙.
 7. **인증**: 기존 `@AuthenticationPrincipal` 패턴 그대로.

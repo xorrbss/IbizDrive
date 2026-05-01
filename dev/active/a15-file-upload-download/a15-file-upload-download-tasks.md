@@ -10,8 +10,8 @@ Last Updated: 2026-05-01
 |---|---|
 | A15.0 bootstrap | ✅ done |
 | A15.1 StorageClient + LocalFs | ✅ done |
-| A15.2 FileUploadService RED | 🟡 next |
-| A15.3 FileUploadService GREEN | ⬜ pending |
+| A15.2 FileUploadService RED | ✅ done |
+| A15.3 FileUploadService GREEN | 🟡 next |
 | A15.4 POST /api/files controller | ⬜ pending |
 | A15.5 GET /api/files/:id/download controller | ⬜ pending |
 | A15.6 Frontend api.uploadFile 실 XHR | ⬜ pending |
@@ -88,7 +88,22 @@ Last Updated: 2026-05-01
 
 ---
 
-## ⬜ A15.2 — FileUploadService RED (시그니처 + 단위 테스트)
+## ✅ A15.2 — FileUploadService RED (시그니처 + 단위 테스트) — DONE
+
+**Commit**: TBD (this phase commit pending below).
+**산출물**:
+- `backend/src/main/java/com/ibizdrive/file/UploadResolution.java` (enum NEW_VERSION/RENAME)
+- `backend/src/main/java/com/ibizdrive/file/UploadResult.java` (record file/version/newFile)
+- `backend/src/main/java/com/ibizdrive/file/FileUploadService.java` (skeleton — `upload(...)` throws UnsupportedOperationException)
+- `backend/src/test/java/com/ibizdrive/file/FileUploadServiceTest.java` (Testcontainers, 7 cases — Docker 미가용 시 SKIPPED)
+
+**테스트 커버리지(7 cases)**: happy(new file) / folder-missing / folder-soft-deleted / conflict-null / conflict-NEW_VERSION / conflict-RENAME / blank-filename.
+
+**deviation from plan**:
+- `FileUploadedEvent.java` 미생성 — file/ 패키지 기존 emitAudit 직접 호출 convention 답습 (FileMutationService:298-315). KISS+§3 — 동일 패키지 내 패턴 혼재 회피.
+- 테스트는 Mockito-only가 아닌 Testcontainers + AuditService/StorageClient mock (FileMutationServiceTest 패턴 답습) — folder lock + DB unique index 가드의 의미를 RED 시점부터 잠근다.
+
+### 작업 전 필독 (참고용 — RED 완료)
 
 ### 작업 전 필독
 - `docs/02 §6.1` 업로드 트랜잭션 의사코드 (folder lock → conflict 검사 → INSERT files → INSERT file_versions → UPDATE current_version_id → audit).
