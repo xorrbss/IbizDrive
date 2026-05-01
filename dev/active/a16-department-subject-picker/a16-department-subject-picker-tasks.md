@@ -8,9 +8,9 @@ Last Updated: 2026-05-01
 
 | Phase | 상태 |
 |---|---|
-| A16.0 bootstrap | 🟡 dev-docs 3파일 ✅, worktree/baseline 미진행 (사용자 승인 대기) |
-| A16.1 backend wire (V7 + Department 도메인) | ⏸ blocked by A16.0 |
-| A16.2 PermissionRepository.findEffective dept 분기 | ⏸ blocked by A16.1 |
+| A16.0 bootstrap | ✅ 완료 (commit `7ac09d8`, frontend 533/533 + backend BUILD SUCCESSFUL) |
+| A16.1 backend wire (V7 + Department 도메인) | ✅ 완료 (department 패키지 6개 + tests 4개 + V7 SQL + User.departmentId) |
+| A16.2 PermissionRepository.findEffective dept 분기 | 🟡 ACTIVE |
 | A16.3 ShareDto subjectName 추가 + caller 갱신 | ⏸ blocked by A16.2 |
 | A16.4 Frontend wire backbone | ⏸ blocked by A16.3 |
 | A16.5 useDepartmentSearch 훅 | ⏸ blocked by A16.4 |
@@ -28,10 +28,10 @@ Last Updated: 2026-05-01
 
 ### 구현 대상
 - [x] `dev/active/a16-department-subject-picker/` 3파일 작성
-- [ ] **사용자 승인 게이트** — 옵션 (C) Role 보류 vs 옵션 (A) Role 포함(permissions schema 확장 동반)
-- [ ] worktree `feature/a16-department-subject-picker` 생성 (master `ab45e7d` base)
-- [ ] worktree에서 `cd frontend && pnpm install && pnpm test --run` 533 GREEN
-- [ ] worktree에서 `cd backend && ./gradlew test` GREEN
+- [x] **사용자 승인 게이트** — 옵션 (C) Role 보류 채택 (2026-05-01)
+- [x] worktree `feature/a16-department-subject-picker` 생성 (master `ab45e7d` base, commit `7ac09d8`)
+- [x] worktree에서 `cd frontend && pnpm install && pnpm test --run` 533/533 GREEN
+- [x] worktree에서 `cd backend && ./gradlew test` BUILD SUCCESSFUL
 
 ### 검증 참조
 - baseline GREEN — 회귀 0 기준점.
@@ -80,11 +80,11 @@ END $$;
 **주의**: `LTREE` 사용은 v1.x 후속 — A15는 entity/Repository에서 `path` 컬럼 보유하지만 application 코드는 flat 매칭만(부서 직속 user 매칭). LTREE GIST index는 schema에 도입(향후 트리 쿼리 도입 시 재migration 회피).
 
 ### 구현 대상
-- [ ] **A16.1.0 V7 SQL + V7MigrationIT** RED→GREEN
-- [ ] **A16.1.1 Department entity + Repository** TDD (`searchActive(pattern, Pageable)`, `findAllById`)
-- [ ] **A16.1.2 DepartmentSearchService** TDD (minLen 2, cap 50, LIKE escape, 400 reuse)
-- [ ] **A16.1.3 DepartmentSearchController + DTOs** + JSON wire 단위 테스트
-- [ ] **A16.1.4 User.java** department_id 매핑 + UserRepositoryTest 회귀 0
+- [x] **A16.1.0 V7 SQL + V7MigrationIT** (departments 테이블 + ltree extension + users.department_id FK + indexes; 9 테스트 케이스, Docker 환경 skip baseline 동일)
+- [x] **A16.1.1 Department entity + Repository** (`searchActive(pattern, Pageable)` JPQL; entity는 KISS로 `path`/`parent_id` 생략 — JPA validate는 entity-side 컬럼만 검증)
+- [x] **A16.1.2 DepartmentSearchService** (minLen 2, cap 50, LIKE escape, 400 INVALID_SEARCH_QUERY; 11/11 mock test GREEN)
+- [x] **A16.1.3 DepartmentSearchController + DTOs** (`GET /api/departments/search`, `@PreAuthorize("isAuthenticated()")`; 4/4 controller test GREEN)
+- [x] **A16.1.4 User.java** `departmentId` nullable 컬럼 + setter (생성자 시그니처 보존 → 회귀 0)
 
 ### 검증 참조
 - AC backend #1, #2.

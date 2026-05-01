@@ -10,8 +10,10 @@ Last Updated: 2026-05-01
   - dev-docs 3파일 작성(plan/context/tasks).
   - 결정 #1~#3 closed (1순위 채택).
   - 결정 #4(권한 매트릭스 변경 0) **검증 결과 = 틀림** — `findEffective` SQL 변경 필수.
-  - 신규 결정 #5(role schema impedance) surface — A15에서 role 보류 추천(옵션 C).
-  - **HALT 상태**: A16.0 worktree 진입 직전. scope decision 사용자 승인 대기.
+  - 신규 결정 #5(role schema impedance) surface — A16에서 role 보류 추천(옵션 C).
+  - 사용자 승인 (옵션 C 채택). worktree `feature/a16-department-subject-picker` 생성, baseline GREEN.
+  - **A16.0 완료** (commit `7ac09d8`).
+  - **A16.1 완료**: V7 SQL + Department 도메인 6파일 (entity/Repository/Service/Controller/2 DTOs) + tests 4파일 (V7MigrationIT 9 + DepartmentRepositoryTest 5 + DepartmentSearchServiceTest 11 + DepartmentSearchControllerTest 4) + User.departmentId nullable. `./gradlew test` BUILD SUCCESSFUL — 회귀 0.
   - master HEAD baseline: `ab45e7d` (BulkActionBar fix, 2026-05-01).
 
 ## Current Execution Contract
@@ -23,8 +25,9 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-- **A16.0 bootstrap (HALT)** — dev-docs 3파일 ✅. worktree 미생성. baseline 미실행.
-- 사용자 승인 후 A16.0 즉시 마무리 → A16.1 진입.
+- **A16.2 PermissionRepository.findEffective dept 분기 (RED→GREEN)**
+- A16.1 완료 — dept lookup endpoint + entity/repo + V7 SQL + User.departmentId 매핑.
+- 다음: PermissionRepositoryTest에 dept grant 케이스 추가 → SQL 갱신 → IbizDrivePermissionEvaluator 통합 회귀.
 
 ## 다음 세션 읽기 순서
 
