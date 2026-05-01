@@ -13,7 +13,7 @@ Last Updated: 2026-05-02
 | OC.2 StorageClient.listOlderThan + LocalFs impl | ✅ done |
 | OC.3 FileVersionRepository.streamActiveStorageKeys | ✅ done |
 | OC.4 StorageOrphanCleanupService | ✅ done |
-| OC.5 StorageOrphanCleanupJob + integration test | ⬜ pending |
+| OC.5 StorageOrphanCleanupJob + integration test | ✅ done |
 | OC.6 closure (docs sync + PR + archive) | ⬜ pending |
 
 ---
@@ -175,7 +175,7 @@ Last Updated: 2026-05-02
 
 ---
 
-## ⬜ OC.5 — StorageOrphanCleanupJob + integration test
+## ✅ OC.5 — StorageOrphanCleanupJob + integration test
 
 ### 작업 전 필독
 - `backend/.../purge/HardPurgeJob.java` — `@Scheduled` + `@ConditionalOnProperty` 패턴.

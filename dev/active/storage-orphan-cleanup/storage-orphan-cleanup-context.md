@@ -13,7 +13,7 @@ Last Updated: 2026-05-02
 | OC.2 StorageClient.list 확장 | ✅ done | StorageObject record + listOlderThan(Duration). LocalFs impl: walk + UUID match + grace boundary + temp/non-UUID skip. 6 신규 테스트 GREEN. |
 | OC.3 Repository active set | ✅ done | streamActiveStorageKeys() — `SELECT v.storageKey FROM FileVersion v` (no deleted_at filter, trash 보호). Hibernate fetchSize=200 + readOnly hint. 3 신규 repository 테스트(Docker 가용 시 검증). |
 | OC.4 Service GREEN | ✅ done | runDailyCleanup(maxPerRun, graceHours): liveSet 적재→walk→diff→delete→audit. @Transactional(readOnly=true). 8 mockito 유닛 테스트 (happy/empty/cap/per-row 실패 isolation/non-uuid skip/audit JSON/invalid args/walk IOException). |
-| OC.5 Job + integration test | ⬜ pending | — |
+| OC.5 Job + integration test | ✅ done | StorageOrphanCleanupJob (@ConditionalOnProperty + @Scheduled) + Disabled integration test (bean 미등록 검증) + E2E integration test (실 Postgres + LocalFs @TempDir). Docker 미가용 환경 자동 skip. |
 | OC.6 closure | ⬜ pending | — |
 
 ## Current Execution Contract
@@ -27,12 +27,15 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-**OC.5 StorageOrphanCleanupJob + integration test**.
+**OC.6 closure** (docs sync + PR + archive).
 
-- `StorageOrphanCleanupJob` (`@Component @ConditionalOnProperty("app.storage.orphan-cleanup.enabled") @Scheduled(cron, zone)`).
-- service.runDailyCleanup(props.maxPerRun(), props.graceHours()) 호출. truncated 시 WARN log.
-- Disabled property 하에서 빈 미등록 검증 — `HardPurgeJobDisabledIntegrationTest` 답습.
-- Integration test (`@SpringBootTest` + `@Testcontainers(disabledWithoutDocker=true)`): 실 Postgres + LocalFs `@TempDir` + file_versions 행 삽입 + 객체 mix → service 호출 → orphan만 삭제 검증.
+- `docs/00-overview.md §5 ADR` 신규 row(closure 시점에 다른 트랙과 번호 조정).
+- `docs/02-backend-data-model.md §5` 또는 §6에 cleanup job 섹션 1개.
+- `docs/04-admin-operations.md §13` 배치 작업 표에 행 1개.
+- `docs/03-security-compliance.md §4.1` audit 이벤트에 STORAGE_ORPHAN_CLEANED 추가.
+- `docs/progress.md` 본 트랙 closure entry 최상단.
+- dev-docs `dev/completed/storage-orphan-cleanup/`로 이동.
+- PR 생성 + squash-merge.
 
 ## 다음 세션 읽기 순서
 
