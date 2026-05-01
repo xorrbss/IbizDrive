@@ -7,13 +7,13 @@ import type { TrashItem } from '@/types/trash'
 
 /**
  * 휴지통 행 액션 — 복원 + (ADMIN-only) 영구 삭제.
- * - 영구 삭제 가시성: `usePermission().admin` (M7 권한 hook 자리)
+ * - 영구 삭제 가시성: `usePermission().PURGE` (M14 권한 hook, docs/03 §3.2 PURGE는 ADMIN role 전용)
  * - 보안은 backend가 책임 (403 폴백 → toast)
  */
 export function TrashRowActions({ item }: { item: TrashItem }) {
   const restore = useRestoreItem()
   const purge = usePurgeTrashItem()
-  const { admin } = usePermission()
+  const { PURGE } = usePermission()
 
   const handleRestore = () => {
     restore.mutate(
@@ -63,7 +63,7 @@ export function TrashRowActions({ item }: { item: TrashItem }) {
       >
         복원
       </button>
-      {admin && (
+      {PURGE && (
         <button
           type="button"
           onClick={handlePurge}

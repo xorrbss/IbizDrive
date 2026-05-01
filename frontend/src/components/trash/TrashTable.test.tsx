@@ -75,7 +75,7 @@ describe('TrashTable', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     ;(useFolderTree as ReturnType<typeof vi.fn>).mockReturnValue({ data: mockTree })
-    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ admin: true })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: true })
   })
 
   it('isLoading → 로딩 상태', () => {
@@ -124,7 +124,7 @@ describe('TrashTable', () => {
 
   it('ADMIN → 영구 삭제 버튼 표시', () => {
     setHook({ items: [itemFile] })
-    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ admin: true })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: true })
     const qc = new QueryClient()
     render(<TrashTable />, { wrapper: wrap(qc) })
     expect(screen.getByRole('button', { name: '영구 삭제' })).toBeTruthy()
@@ -133,7 +133,7 @@ describe('TrashTable', () => {
 
   it('non-ADMIN → 영구 삭제 버튼 숨김 (복원만)', () => {
     setHook({ items: [itemFile] })
-    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ admin: false })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: false })
     const qc = new QueryClient()
     render(<TrashTable />, { wrapper: wrap(qc) })
     expect(screen.queryByRole('button', { name: '영구 삭제' })).toBeNull()

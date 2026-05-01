@@ -17,6 +17,21 @@ vi.mock('@/hooks/useFilesInFolder', () => ({
   useFilesInFolder: vi.fn(),
 }))
 
+// M8: usePermission은 useQuery 기반 — 테스트는 권한 검증과 무관하므로 admin preset 8 권한으로 고정.
+vi.mock('@/hooks/usePermission', () => ({
+  usePermission: () => ({
+    READ: true,
+    UPLOAD: true,
+    EDIT: true,
+    MOVE: true,
+    DOWNLOAD: true,
+    DELETE: true,
+    SHARE: true,
+    PERMISSION_ADMIN: true,
+    PURGE: false,
+  }),
+}))
+
 vi.mock('@/hooks/useCurrentFolder', () => ({
   useCurrentFolder: vi.fn(),
 }))
@@ -96,7 +111,7 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
   })
 
   it('단일 선택 시 활성: 클릭하면 RenameDialog가 열린다 (id, name 전달)', () => {
@@ -184,7 +199,7 @@ describe('BulkActionBar — Undo toast (M9.4)', () => {
       isLoading: false,
       error: null,
     } as unknown as ReturnType<typeof useCurrentFolder>)
-    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc' })
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
   })
 
   /**
