@@ -224,11 +224,11 @@ subjects: [{ type: 'everyone' }]
 
 ### 구현 대상
 
-- [ ] **F6.5.1 docs/01 §14 sync**:
+- [x] **F6.5.1 docs/01 §14 sync** (commit `2db0b3a`):
   - subject picker user 섹션 추가
   - `UserSearchCombobox`/`useUserSearch` 등재
   - subjectType 라디오 흐름 다이어그램(텍스트)
-- [ ] **F6.5.2 progress.md** F6 closure 라인
+- [x] **F6.5.2 progress.md** F6 closure 라인
 - [ ] **F6.5.3 PR**:
   - `git push -u origin feature/f6-user-search-picker`
   - `gh pr create --title "feat(f6): share subject picker — user search 통합" --body <hereDoc>`
