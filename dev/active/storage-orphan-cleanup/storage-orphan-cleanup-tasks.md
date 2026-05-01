@@ -8,9 +8,9 @@ Last Updated: 2026-05-02
 
 | Phase | Status |
 |---|---|
-| OC.0 bootstrap | 🟡 in progress |
-| OC.1 audit type + properties + frontend sync | ⬜ pending |
-| OC.2 StorageClient.listOlderThan + LocalFs impl | ⬜ pending |
+| OC.0 bootstrap | ✅ done |
+| OC.1 audit type + properties + frontend sync | ✅ done |
+| OC.2 StorageClient.listOlderThan + LocalFs impl | 🟡 next |
 | OC.3 FileVersionRepository.streamActiveStorageKeys | ⬜ pending |
 | OC.4 StorageOrphanCleanupService | ⬜ pending |
 | OC.5 StorageOrphanCleanupJob + integration test | ⬜ pending |
@@ -18,15 +18,15 @@ Last Updated: 2026-05-02
 
 ---
 
-## 🟡 OC.0 — bootstrap
+## ✅ OC.0 — bootstrap
 
 - [x] 워크트리 생성 (`.claude/worktrees/storage-orphan-cleanup`, 브랜치 `feature/storage-orphan-cleanup`, base `65e5cd3`)
 - [x] dev-docs 3파일 초안 작성 (plan / context / tasks)
-- [ ] bootstrap commit (`chore(storage-orphan-cleanup): bootstrap dev-docs`)
+- [x] bootstrap commit (`941b6d5` — chore(storage-orphan-cleanup): bootstrap dev-docs)
 
 ---
 
-## ⬜ OC.1 — audit type + properties + frontend sync
+## ✅ OC.1 — audit type + properties + frontend sync
 
 ### 작업 전 필독
 - `backend/src/main/java/com/ibizdrive/audit/AuditEventType.java` — 기존 enum 추가 패턴.

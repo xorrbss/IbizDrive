@@ -77,6 +77,17 @@ app:
       batch-size: 200
       cron: "0 */5 * * * *" # 매 5분
       zone: Asia/Seoul
+  # A15 backlog — storage orphan cleanup (트랜잭션 실패·hard purge 잔존 객체 일일 정리).
+  # files/file_versions JOIN으로 live storage_key set을 만들고, storage walk와 diff하여 삭제.
+  # mtime이 NOW-graceHours 이전인 객체만 후보 (in-flight 업로드 race 회피).
+  storage:
+    orphan-cleanup:
+      enabled: false
+      cron: "0 0 1 * * *"   # 매일 새벽 1시 (hard purge 자정 직후)
+      zone: Asia/Seoul
+      max-per-run: 10000
+      grace-hours: 24
+      batch-size: 200
 
 ibizdrive:
   storage:

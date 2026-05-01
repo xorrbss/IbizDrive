@@ -3,6 +3,7 @@ package com.ibizdrive.config;
 import com.ibizdrive.permission.PermissionExpirationProperties;
 import com.ibizdrive.purge.HardPurgeProperties;
 import com.ibizdrive.share.ShareExpirationProperties;
+import com.ibizdrive.storage.StorageOrphanCleanupProperties;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.annotation.EnableScheduling;
@@ -27,7 +28,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
 @EnableConfigurationProperties({
     HardPurgeProperties.class,
     ShareExpirationProperties.class,
-    PermissionExpirationProperties.class
+    PermissionExpirationProperties.class,
+    StorageOrphanCleanupProperties.class
 })
 public class SchedulingConfig {
 }

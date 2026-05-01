@@ -8,9 +8,9 @@ Last Updated: 2026-05-02
 
 | Phase | Status | Note |
 |---|---|---|
-| OC.0 bootstrap | 🟡 in progress | 본 3파일 작성 + bootstrap commit. base = master `65e5cd3` (A15 closure). |
-| OC.1 audit type + properties | ⬜ pending | — |
-| OC.2 StorageClient.list 확장 | ⬜ pending | — |
+| OC.0 bootstrap | ✅ done | 3파일 + bootstrap commit `941b6d5`. base = master `65e5cd3` (A15 closure). |
+| OC.1 audit type + properties | ✅ done | enum + Properties record + yml + ts union. backend GREEN, frontend 531/531 + typecheck/lint clean. |
+| OC.2 StorageClient.list 확장 | 🟡 next | — |
 | OC.3 Repository active set | ⬜ pending | — |
 | OC.4 Service GREEN | ⬜ pending | — |
 | OC.5 Job + integration test | ⬜ pending | — |
@@ -27,12 +27,12 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-**OC.1 audit type + properties** (OC.0 bootstrap 직후).
+**OC.2 StorageClient.listOlderThan + LocalFs impl**.
 
-- 신규 enum `AuditEventType.STORAGE_ORPHAN_CLEANED` (wire `"storage.orphan.cleaned"`).
-- 신규 record `StorageOrphanCleanupProperties` (`@ConfigurationProperties("app.storage.orphan-cleanup")`).
-- `application.yml` 추가: `app.storage.orphan-cleanup.{enabled:false, cron:"0 0 1 * * *", zone:"Asia/Seoul", max-per-run:10000, grace-hours:24, batch-size:200}`.
-- frontend `types/audit.ts` AuditEventType union에 `'storage.orphan.cleaned'` 추가.
+- 신규 record `StorageObject(String key, Instant lastModified)`.
+- `StorageClient` interface에 `Stream<StorageObject> listOlderThan(Duration grace)` 추가.
+- `LocalFsStorageClient.listOlderThan` 구현 — `Files.walk(root)` lazy stream + UUID match + root escape 차단 + non-UUID skip+WARN.
+- TDD: `LocalFsStorageClientTest`에 listOlderThan 케이스 (grace boundary, non-UUID skip, empty walk, root escape) 추가.
 
 ## 다음 세션 읽기 순서
 
