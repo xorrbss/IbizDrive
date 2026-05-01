@@ -1100,7 +1100,7 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
 
 ### 7.9 공유 (Shares, ADR #34)
 
-> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST) 구현. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화 — `SHARE_EXPIRED` cron / SSE emission 은 별도 트랙(deferred).
+> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST) 구현. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화. `SHARE_EXPIRED` cron 트랙 `share-expired-cron`(2026-05-01)에서 활성화 — §7.9.1. SSE emission은 별도 트랙(deferred).
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
@@ -1177,6 +1177,23 @@ GET /api/shares/with-me?cursor=&limit=                     (ADR #34, MVP scope)
   Note:     MVP는 subject_type='user' 매칭만. department/role/everyone subject 로 받은 share 는
             with-me 결과 미포함 (별도 트랙, ADR #34 backlog).
 ```
+
+#### 7.9.1 만료 cron (`share-expired-cron`, ADR #34 backlog closure)
+
+> `shares.expires_at <= NOW() AND revoked_at IS NULL` row를 자동 만료. 운영 기본 비활성, staging/prod에서 명시적 활성화. **`permissions.expires_at`(직접 grant)** 만료는 본 트랙 scope 외(별도 트랙).
+
+| 항목 | 정책 |
+|---|---|
+| 빈 등록 | `app.share.expiration.enabled=true`일 때만 (`@ConditionalOnProperty`, default `false`) |
+| 스케줄 | `@Scheduled(cron, zone)` — default `0 */5 * * * *` Asia/Seoul (`app.share.expiration.cron`/`zone`) |
+| 한 회 한도 | `app.share.expiration.batch-size` (default `200`). repository `findExpiredActiveIds(now, PageRequest.of(0, batchSize))` |
+| 처리 단위 | 후보 id 1건당 별도 트랜잭션 — `ShareCommandService.expireShare(shareId)` |
+| 만료 동작 | revoke와 동형 트랜잭션: `SELECT share FOR UPDATE WHERE revoked_at IS NULL` → `revoked_at=NOW()` + `revoked_by=NULL` (시스템) → `permissions.deleteById(share.permission_id)` |
+| 이벤트 | `ShareExpiredEvent`(record, `actorId` 부재) — `ShareAuditListener.onShareExpired`가 `AuditEventType.SHARE_EXPIRED`로 매핑 |
+| audit row | `actor_id=NULL`, IP/UA 부재, `metadata.trigger='system.expiration'`, `before_state=share snapshot` (revoke와 동일 — CASCADE로 row 사라짐). §03 §4.1 참조 |
+| 다중 인스턴스 | V6 row-level pessimistic lock이 동시 `expireShare(sameId)` 호출을 직렬화. 두 번째 호출은 `ResourceNotFoundException`으로 swallow — 분산락 별도 도입 불요 |
+| 실패 격리 | per-row `RuntimeException`은 ERROR 로그 + 다음 row 진행 (배치 전체 차단 없음). scan 단계 실패는 다음 cron으로 재시도 |
+| 로그 | run summary INFO `total=N ok=O failed=F`, `failed > 0`이면 WARN |
 
 ### 7.10 권한 (Permissions)
 

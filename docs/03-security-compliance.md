@@ -420,9 +420,9 @@ type AuditEventType =
   | 'permission.granted'
   | 'permission.revoked'
   | 'permission.changed'
-  | 'share.created'
-  | 'share.revoked'
-  | 'share.expired'
+  | 'share.created'        // A10 활성화 (`a10-shares`)
+  | 'share.revoked'        // A10 활성화 (`a10-shares`)
+  | 'share.expired'        // 활성화 (`share-expired-cron`, 2026-05-01) — actor_id=NULL, metadata.trigger='system.expiration', docs/02 §7.9.1
   // 인증
   | 'user.login.success'
   | 'user.login.failed'
