@@ -1,3 +1,4 @@
+import { Suspense } from 'react'
 import { FolderTree } from '@/components/folders/FolderTree'
 import { DndProvider } from '@/components/dnd/DndProvider'
 import { TopBar } from '@/components/topbar/TopBar'
@@ -29,7 +30,12 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
         <main className="flex-1 min-w-0 flex flex-col bg-bg overflow-hidden">
           <TopBar />
           <div className="flex-1 min-h-0 flex flex-col">{children}</div>
-          <StatusBar />
+          {/* Next.js 15: useSearchParams() 사용 컴포넌트는 Suspense boundary 필요.
+              StatusBar가 useSortParams → useSearchParams를 호출하므로,
+              해당 boundary 없이는 /trash 등 SSG 경로의 prerender가 실패함. */}
+          <Suspense fallback={null}>
+            <StatusBar />
+          </Suspense>
         </main>
       </div>
     </DndProvider>
