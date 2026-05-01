@@ -33,6 +33,9 @@ const FILE_SHARE_FIXTURE: ShareDto = {
   createdAt: '2026-04-30T12:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'read',
 }
 
 const FOLDER_SHARE_FIXTURE: ShareDto = {
@@ -46,6 +49,9 @@ const FOLDER_SHARE_FIXTURE: ShareDto = {
   createdAt: '2026-04-30T13:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'edit',
 }
 
 describe('api.createFileShares', () => {

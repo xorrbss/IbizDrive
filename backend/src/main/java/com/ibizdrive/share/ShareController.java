@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -76,14 +75,13 @@ public class ShareController {
         @RequestBody ShareCreateRequest body,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        List<Share> created = shareCommandService.createShares(
+        // A13: service가 permission grant join까지 마친 ShareDto를 반환 — controller는 envelope만.
+        List<ShareDto> created = shareCommandService.createShares(
             fileId, body, principal.getUser().getId()
         );
-        List<ShareDto> dtos = new ArrayList<>(created.size());
-        for (Share s : created) dtos.add(ShareDto.from(s));
         return ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(Map.of("shares", List.copyOf(dtos)));
+            .body(Map.of("shares", List.copyOf(created)));
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -103,14 +101,13 @@ public class ShareController {
         @RequestBody ShareCreateRequest body,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        List<Share> created = shareCommandService.createFolderShares(
+        // A13: file 변형과 동형 — service 응답이 이미 ShareDto.
+        List<ShareDto> created = shareCommandService.createFolderShares(
             folderId, body, principal.getUser().getId()
         );
-        List<ShareDto> dtos = new ArrayList<>(created.size());
-        for (Share s : created) dtos.add(ShareDto.from(s));
         return ResponseEntity
             .status(HttpStatus.CREATED)
-            .body(Map.of("shares", List.copyOf(dtos)));
+            .body(Map.of("shares", List.copyOf(created)));
     }
 
     // ──────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ import { useShareUiStore } from '@/stores/shareUi'
 import { useCreateShare } from '@/hooks/useCreateShare'
 import { useRevokeShare } from '@/hooks/useRevokeShare'
 import { useSharesByMe } from '@/hooks/useSharesByMe'
-import type { SharePreset } from '@/types/share'
+import type { SharePreset, ShareSubjectType } from '@/types/share'
 
 /**
  * 공유 다이얼로그 (F4 → F5.2, docs/01 §14, docs/02 §7.9, ADR #34).
@@ -16,9 +16,10 @@ import type { SharePreset } from '@/types/share'
  * - 위치 이동: `components/files/` → `components/shares/` (file 전용 컴포넌트가 아니므로 소유 경계 정합).
  * - 라벨 kind-aware: 부제 "(파일|폴더) <name>" + NOT_FOUND toast 한국어 분기.
  *
- * F5.1에서 굳어진 정책:
+ * F5.1에서 굳어진 정책 (A13에서 일부 복원):
  * - 기존 share 매칭은 `(s.fileId ?? s.folderId) === target.id` (wire XOR).
- * - 기존 share 행 표시는 만료 시각 + 해제 버튼만 (subject/preset wire에 없음, A13 backlog 시 복원).
+ * - 기존 share 행 표시: A13 backend join 복원으로 subject + preset 라벨 + 만료를 함께 노출.
+ *   subject는 type 한국어 라벨 + (UUID 미노출 정책상) 식별자를 짧게 마스킹.
  *
  * MVP 정책 (유지):
  * - subject = 'everyone' 고정 — frontend user/department/role 목록 endpoint 부재 (별도 트랙).
@@ -205,8 +206,11 @@ export function ShareDialog() {
             </span>
             <ul className="flex flex-col gap-1 max-h-[120px] overflow-auto">
               {existingShares.map((s) => (
-                <li key={s.id} className="flex items-center justify-between text-[12.5px]">
-                  <span className="text-fg-muted truncate">
+                <li key={s.id} className="flex items-center justify-between text-[12.5px] gap-2">
+                  <span className="text-fg truncate">
+                    {subjectLabel(s.subjectType, s.subjectId)} · {presetLabel(s.preset)}
+                  </span>
+                  <span className="text-fg-muted text-[11.5px] truncate">
                     {s.expiresAt ? `만료 ${formatExpires(s.expiresAt)}` : '무기한'}
                   </span>
                   <button
@@ -255,6 +259,23 @@ function presetLabel(p: SharePreset): string {
       return '편집'
     case 'admin':
       return '관리'
+  }
+}
+
+/**
+ * A13 — subject 한국어 라벨. 'everyone'은 별도 안내, 그 외는 type 라벨 + 짧은 식별자.
+ * raw UUID 전체를 노출하면 가독성이 떨어져 머릿8자만 보여준다 (식별 보조용).
+ */
+function subjectLabel(type: ShareSubjectType, id: string | null): string {
+  if (type === 'everyone') return '모든 사용자'
+  const head = id ? id.slice(0, 8) : '?'
+  switch (type) {
+    case 'user':
+      return `사용자 ${head}`
+    case 'department':
+      return `부서 ${head}`
+    case 'role':
+      return `역할 ${head}`
   }
 }
 

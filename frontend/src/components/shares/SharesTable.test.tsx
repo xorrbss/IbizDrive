@@ -16,7 +16,7 @@ function wrap(qc: QueryClient) {
   return Wrapper
 }
 
-// F5.1: wire-aligned 10-field ShareDto. file 공유 row → fileId set, folderId null (XOR).
+// F5.1 → A13: wire-aligned ShareDto. A13에서 permissions join으로 subjectType/subjectId/preset 복원.
 const SHARE_A: ShareDto = {
   id: 'sh-1',
   fileId: 'file-A',
@@ -28,6 +28,9 @@ const SHARE_A: ShareDto = {
   createdAt: '2026-04-30T10:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'edit',
 }
 const SHARE_B: ShareDto = {
   id: 'sh-2',
@@ -40,6 +43,9 @@ const SHARE_B: ShareDto = {
   createdAt: '2026-04-30T11:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'read',
 }
 
 function setHook(opts: {
@@ -85,7 +91,7 @@ describe('SharesTable (F5.1 wire-aligned)', () => {
     expect(screen.getByRole('status').textContent).toMatch(/받은 공유가 없습니다/)
   })
 
-  it('데이터 — 행 렌더 + 공유한 사람 + 만료 표시 (preset 컬럼은 wire 부재로 제거)', () => {
+  it('데이터 — 행 렌더 + 공유한 사람 + 권한 + 만료 표시 (A13 preset 컬럼 복원)', () => {
     setHook({ items: [SHARE_A, SHARE_B] })
     const qc = new QueryClient()
     render(<SharesTable />, { wrapper: wrap(qc) })
@@ -98,9 +104,9 @@ describe('SharesTable (F5.1 wire-aligned)', () => {
     // 항목 식별자 (file 공유 row → fileId)
     expect(screen.getByText('file-A')).toBeTruthy()
     expect(screen.getByText('file-B')).toBeTruthy()
-    // preset 한글 라벨은 더 이상 노출되지 않음
-    expect(screen.queryByText('편집')).toBeNull()
-    expect(screen.queryByText('읽기')).toBeNull()
+    // A13 — preset 한글 라벨이 다시 노출됨 (편집/읽기).
+    expect(screen.getByText('편집')).toBeTruthy()
+    expect(screen.getByText('읽기')).toBeTruthy()
   })
 
   it('folder 공유 row — folderId 표시 (file/folder 양립)', () => {
@@ -115,6 +121,9 @@ describe('SharesTable (F5.1 wire-aligned)', () => {
       createdAt: '2026-04-30T12:00:00Z',
       revokedAt: null,
       revokedBy: null,
+      subjectType: 'everyone',
+      subjectId: null,
+      preset: 'read',
     }
     setHook({ items: [SHARE_FOLDER] })
     const qc = new QueryClient()

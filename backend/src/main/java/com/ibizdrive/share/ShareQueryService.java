@@ -1,11 +1,17 @@
 package com.ibizdrive.share;
 
+import com.ibizdrive.permission.PermissionRepository;
+import com.ibizdrive.permission.PermissionRow;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -37,9 +43,12 @@ public class ShareQueryService {
     private static final int DEFAULT_LIMIT = 50;
 
     private final ShareRepository shareRepository;
+    private final PermissionRepository permissionRepository;
 
-    public ShareQueryService(ShareRepository shareRepository) {
+    public ShareQueryService(ShareRepository shareRepository,
+                             PermissionRepository permissionRepository) {
         this.shareRepository = shareRepository;
+        this.permissionRepository = permissionRepository;
     }
 
     /**
@@ -90,12 +99,28 @@ public class ShareQueryService {
      *
      * <p>hasMore이면 마지막 row를 잘라내고 그 위치에서 nextCursor를 발급한다 — 이렇게 해야 다음 페이지가
      * 정확히 잘려나간 row부터 시작한다 (cursor `<` 비교이므로).
+     *
+     * <p>A13 — 페이지 결정 후 {@code permission_id} set으로 1회 {@link PermissionRepository#findAllById}
+     * batch fetch. share 1쿼리 + permissions 1쿼리 (N+1 회피). MAX_LIMIT=100 → 페이지 당 최대 100개 IN 절.
+     * V6 FK CASCADE가 active share row에 대해 permission row 존재를 보증 — 누락 시 즉시 IllegalStateException.
      */
-    private static SharePage toPage(List<Share> rows, int limit) {
+    private SharePage toPage(List<Share> rows, int limit) {
         boolean hasMore = rows.size() > limit;
         List<Share> page = hasMore ? rows.subList(0, limit) : rows;
+
+        Map<UUID, PermissionRow> grants = fetchGrants(page);
+
         List<ShareDto> dtos = new ArrayList<>(page.size());
-        for (Share s : page) dtos.add(ShareDto.from(s));
+        for (Share s : page) {
+            PermissionRow grant = grants.get(s.getPermissionId());
+            if (grant == null) {
+                // V6 FK 보증 위반 — share active이지만 permission row 부재. 운영상 도달 불가.
+                throw new IllegalStateException(
+                    "share " + s.getId() + " has dangling permission " + s.getPermissionId()
+                );
+            }
+            dtos.add(ShareDto.from(s, grant));
+        }
 
         String nextCursor = null;
         if (hasMore) {
@@ -103,6 +128,18 @@ public class ShareQueryService {
             nextCursor = ShareCursor.encode(last.getCreatedAt(), last.getId());
         }
         return new SharePage(List.copyOf(dtos), nextCursor);
+    }
+
+    /** 페이지의 permission_id 집합을 1회 IN 절로 fetch → id → row 맵. 빈 페이지면 빈 맵. */
+    private Map<UUID, PermissionRow> fetchGrants(List<Share> page) {
+        if (page.isEmpty()) return Map.of();
+        Set<UUID> ids = new LinkedHashSet<>(page.size());
+        for (Share s : page) ids.add(s.getPermissionId());
+        Map<UUID, PermissionRow> map = new HashMap<>(ids.size());
+        for (PermissionRow row : permissionRepository.findAllById(ids)) {
+            map.put(row.getId(), row);
+        }
+        return map;
     }
 
     private static int clampLimit(Integer requested) {

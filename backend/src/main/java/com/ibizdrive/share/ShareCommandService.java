@@ -83,10 +83,11 @@ public class ShareCommandService {
      * @param fileId  대상 파일 (active만). 미존재/soft-deleted면 {@link ResourceNotFoundException}.
      * @param request subjects + preset + expiresAt? + message?
      * @param actorId 호출자 (shared_by + permissions.granted_by + audit actor).
-     * @return 생성된 Share row 목록 (id/createdAt 채워진 상태). controller가 ShareDto 매핑.
+     * @return 생성된 ShareDto 목록 — A13. 각 row는 매칭된 permission grant 메타(subjectType/subjectId/preset)
+     *     까지 포함. loop 내 {@link PermissionRow grant}를 그대로 사용 → 추가 query 없음.
      */
     @Transactional
-    public List<Share> createShares(UUID fileId, ShareCreateRequest request, UUID actorId) {
+    public List<ShareDto> createShares(UUID fileId, ShareCreateRequest request, UUID actorId) {
         if (fileId == null) throw new IllegalArgumentException("fileId must not be null");
         if (actorId == null) throw new IllegalArgumentException("actorId must not be null");
         if (request == null) throw new IllegalArgumentException("request must not be null");
@@ -105,7 +106,7 @@ public class ShareCommandService {
         FileItem file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new ResourceNotFoundException("file not found: " + fileId));
 
-        List<Share> created = new ArrayList<>(subjects.size());
+        List<ShareDto> created = new ArrayList<>(subjects.size());
         for (ShareCreateRequest.Subject subject : subjects) {
             if (subject == null || subject.type() == null) {
                 throw new IllegalArgumentException("subject.type must not be null");
@@ -143,7 +144,8 @@ public class ShareCommandService {
                 request.expiresAt(),
                 request.message()
             ));
-            created.add(share);
+            // A13: grant는 본 트랜잭션에서 막 INSERT한 row → ShareDto join용으로 그대로 사용.
+            created.add(ShareDto.from(share, grant));
         }
         return created;
     }
@@ -157,7 +159,7 @@ public class ShareCommandService {
      * <p>입력 검증/공통 helper(parsePreset/validateMessage/expiresAt 미래)는 file 변형과 1:1 재사용.
      */
     @Transactional
-    public List<Share> createFolderShares(UUID folderId, ShareCreateRequest request, UUID actorId) {
+    public List<ShareDto> createFolderShares(UUID folderId, ShareCreateRequest request, UUID actorId) {
         if (folderId == null) throw new IllegalArgumentException("folderId must not be null");
         if (actorId == null) throw new IllegalArgumentException("actorId must not be null");
         if (request == null) throw new IllegalArgumentException("request must not be null");
@@ -175,7 +177,7 @@ public class ShareCommandService {
         Folder folder = folderRepository.findByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new ResourceNotFoundException("folder not found: " + folderId));
 
-        List<Share> created = new ArrayList<>(subjects.size());
+        List<ShareDto> created = new ArrayList<>(subjects.size());
         for (ShareCreateRequest.Subject subject : subjects) {
             if (subject == null || subject.type() == null) {
                 throw new IllegalArgumentException("subject.type must not be null");
@@ -212,7 +214,8 @@ public class ShareCommandService {
                 request.expiresAt(),
                 request.message()
             ));
-            created.add(share);
+            // A13: file 변형과 동형 — grant를 ShareDto join에 그대로 사용.
+            created.add(ShareDto.from(share, grant));
         }
         return created;
     }

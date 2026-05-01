@@ -22,7 +22,7 @@ function wrap(qc: QueryClient) {
   return Wrapper
 }
 
-// F5.1: wire-aligned 10-field ShareDto. file 공유 row → fileId set, folderId null (XOR).
+// F5.1 → A13: wire-aligned ShareDto. A13에서 permissions join으로 subjectType/subjectId/preset 복원.
 const SHARE_FOR_FILE: ShareDto = {
   id: 'sh-1',
   fileId: 'f1',
@@ -34,6 +34,9 @@ const SHARE_FOR_FILE: ShareDto = {
   createdAt: '2026-04-30T10:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'edit',
 }
 const SHARE_OTHER_FILE: ShareDto = {
   ...SHARE_FOR_FILE,
@@ -194,6 +197,16 @@ describe('ShareDialog (F5.1 wire-aligned)', () => {
     fireEvent.click(screen.getByRole('button', { name: '해제' }))
     expect(revokeMutate).toHaveBeenCalledTimes(1)
     expect(revokeMutate.mock.calls[0][0]).toBe('sh-1')
+  })
+
+  it('A13: 기존 공유 행에 subject + preset 라벨 노출 (everyone + edit → "모든 사용자 · 편집")', () => {
+    setHooks({ shares: [SHARE_FOR_FILE] })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    // SHARE_FOR_FILE: subjectType='everyone', preset='edit' → 한국어 라벨 join.
+    expect(screen.getByText('모든 사용자 · 편집')).toBeTruthy()
   })
 
   it('F5.2: folder kind 진입 → mutate Vars target.kind=folder + 부제 "폴더" 라벨', () => {

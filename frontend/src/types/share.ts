@@ -1,9 +1,11 @@
 /**
- * 공유(Share) 타입 — F4 + F5 (docs/02 §7.9, ADR #34 mirror).
+ * 공유(Share) 타입 — F4 + F5 + A13 (docs/02 §7.9, ADR #34 mirror).
  *
  * backend `ShareDto` record (com.ibizdrive.share.ShareDto) 와 wire 1:1.
- * - `Share` entity 컬럼 그대로 직렬화 — Jackson record 표준. 추가 필드(subject/preset 등)는 join이
- *   필요하므로 본 wire에 부재 (별도 backend 트랙 backlog).
+ * - `Share` entity 컬럼 그대로 직렬화 — Jackson record 표준.
+ * - A13: backend가 `permissions` row를 join하여 `subjectType`/`subjectId`/`preset` 3필드를 추가
+ *   surface (POST/by-me/with-me 응답 모두). subject UI 노출(누구에게 공유했는지) + preset 표시(읽기/편집…)
+ *   복원이 목적. wire 1:1이므로 frontend 인터페이스도 동일 위치에 reflect.
  * - `fileId` / `folderId`: V6 `shares` 테이블 XOR CHECK 동형 — 한 row는 file 공유 또는 folder 공유,
  *   둘 다 NULL 또는 둘 다 NOT NULL은 backend 자체에서 거부.
  * - `revokedAt` / `revokedBy`: by-me/with-me cursor 쿼리는 active row만 반환 → 두 필드는 항상 null.
@@ -60,6 +62,18 @@ export interface ShareDto {
   revokedAt: string | null
   /** revokedAt와 pair-set (V6 CHECK). active row에서 항상 null. */
   revokedBy: string | null
+  /**
+   * A13 — backend가 permissions row를 join한 결과. 누구를 향한 공유인지.
+   * 'user' | 'department' | 'role' | 'everyone'. MVP는 'everyone'/'user'만 발급되지만 wire는 full.
+   */
+  subjectType: ShareSubjectType
+  /**
+   * A13 — subject 식별자. subjectType이 'everyone'이면 null (V5 CHECK).
+   * 그 외 type에서는 UUID 보장.
+   */
+  subjectId: string | null
+  /** A13 — permissions.preset. 'read' | 'upload' | 'edit' | 'admin'. */
+  preset: SharePreset
 }
 
 export interface SharePage {

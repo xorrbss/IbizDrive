@@ -869,9 +869,9 @@ export function usePermission(nodeId?: string) {
 | **파괴적** (삭제, 영구 삭제) | 숨김 | 비활성이 오히려 유인 |
 | **조회 불가** (읽기 권한 없음) | 애초에 리스트/트리에 안 뜸 | 백엔드 필터링 |
 
-### 14.4 ShareDialog (F4 → F5)
+### 14.4 ShareDialog (F4 → F5 → A13)
 
-`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01).
+`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활.
 
 - **트리거**:
   - 파일: `BulkActionBar` 단일 선택 시 `공유` 버튼 → `useShareUiStore.open({kind:'file', id, name})`.
@@ -882,13 +882,13 @@ export function usePermission(nodeId?: string) {
 - preset: `read | upload | edit | admin` 4값 (ADR #34, V5 CHECK는 SHARE 미지원).
 - expiresAt: HTML5 datetime-local → `new Date(v).toISOString()`.
 - 기존 by-me share 목록 매칭: `(s.fileId ?? s.folderId) === target.id` (wire `shares` 행은 file_id/folder_id XOR — V6 CHECK).
-- 기존 share 행 표시: 만료 시각 + `해제` 버튼만. **subject/preset 필드는 backend `ShareDto` record에 부재 (wire drift, A13 backlog 등록 후 복원 예정).**
+- 기존 share 행 표시 (A13): `subjectLabel(subjectType, subjectId) · presetLabel(preset) · 만료/무기한 + 해제`. subject UUID는 머릿8자만(가독성). everyone은 "모든 사용자".
 - `해제` → `useRevokeShare`. 백엔드 `canRevoke`(sharedBy==me ‖ ADMIN)가 진실의 출처.
 - 에러 envelope: 409 PERMISSION_CONFLICT / 403 PERMISSION_DENIED / 404 NOT_FOUND(파일|폴더 분기) / 그 외 → 한국어 toast.error.
 - 무효화: §6.1 `qk.shares()` prefix 1회로 by-me/with-me 동시 갱신 (file/folder 무관 동일).
-- **ShareDto wire** (10필드, backend `com.ibizdrive.share.ShareDto` record와 1:1):
-  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null}` — active 행에서 revoked* 항상 null.
-- **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. F5에서 컬럼은 `항목 | 공유한 사람 | 만료` 3열로 단순화 (preset 컬럼은 wire 부재로 제거). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
+- **ShareDto wire** (13필드, backend `com.ibizdrive.share.ShareDto` record와 1:1):
+  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface.
+- **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. A13에서 컬럼 4열로 복원: `항목 | 공유한 사람 | 권한 | 만료`. preset은 한국어 라벨(읽기/업로드/편집/관리). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
 
 ---
 

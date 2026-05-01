@@ -169,7 +169,8 @@ class ShareCommandServiceTest {
     void createShares_singleUserSubject_emitsGrantPermissionAndShareEvent() {
         UUID subjectId = UUID.randomUUID();
         UUID grantId = UUID.randomUUID();
-        PermissionRow grant = grantRow(grantId);
+        // A13 — grant 메타가 ShareDto에 join되므로 명시.
+        PermissionRow grant = grantRow(grantId, "user", subjectId, "edit");
         when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
         when(permissionService.grantPermission(eq("file"), eq(fileId), eq("user"),
             eq(subjectId), any(), any(), eq(actorId))).thenReturn(grant);
@@ -179,23 +180,28 @@ class ShareCommandServiceTest {
             "edit", null, "hello"
         );
 
-        List<Share> result = service.createShares(fileId, req, actorId);
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
 
         assertThat(result).hasSize(1);
-        Share saved = result.get(0);
-        assertThat(saved.getFileId()).isEqualTo(fileId);
-        assertThat(saved.getFolderId()).isNull();
-        assertThat(saved.getPermissionId()).isEqualTo(grantId);
-        assertThat(saved.getSharedBy()).isEqualTo(actorId);
-        assertThat(saved.getMessage()).isEqualTo("hello");
-        assertThat(saved.getRevokedAt()).isNull();
+        // A13: service 반환은 ShareDto record (permission grant join 완료 형태).
+        ShareDto saved = result.get(0);
+        assertThat(saved.fileId()).isEqualTo(fileId);
+        assertThat(saved.folderId()).isNull();
+        assertThat(saved.permissionId()).isEqualTo(grantId);
+        assertThat(saved.sharedBy()).isEqualTo(actorId);
+        assertThat(saved.message()).isEqualTo("hello");
+        assertThat(saved.revokedAt()).isNull();
+        // A13 — permissions join 결과.
+        assertThat(saved.subjectType()).isEqualTo("user");
+        assertThat(saved.subjectId()).isEqualTo(subjectId);
+        assertThat(saved.preset()).isEqualTo("edit");
 
         verify(shareRepository, times(1)).saveAndFlush(any(Share.class));
 
         ArgumentCaptor<ShareCreatedEvent> evCaptor = ArgumentCaptor.forClass(ShareCreatedEvent.class);
         verify(eventPublisher, times(1)).publishEvent(evCaptor.capture());
         ShareCreatedEvent ev = evCaptor.getValue();
-        assertThat(ev.shareId()).isEqualTo(saved.getId());
+        assertThat(ev.shareId()).isEqualTo(saved.id());
         assertThat(ev.fileId()).isEqualTo(fileId);
         assertThat(ev.permissionId()).isEqualTo(grantId);
         assertThat(ev.subjectType()).isEqualTo("user");
@@ -242,7 +248,7 @@ class ShareCommandServiceTest {
             "upload", null, null
         );
 
-        List<Share> result = service.createShares(fileId, req, actorId);
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
 
         assertThat(result).hasSize(2);
         verify(permissionService, times(2)).grantPermission(
@@ -266,11 +272,11 @@ class ShareCommandServiceTest {
             "read", future, exact1000
         );
 
-        List<Share> result = service.createShares(fileId, req, actorId);
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
 
         assertThat(result).hasSize(1);
-        assertThat(result.get(0).getExpiresAt()).isEqualTo(future);
-        assertThat(result.get(0).getMessage()).isEqualTo(exact1000);
+        assertThat(result.get(0).expiresAt()).isEqualTo(future);
+        assertThat(result.get(0).message()).isEqualTo(exact1000);
     }
 
     // ── A12 — createFolderShares (folder variant) ────────────────────────
@@ -345,7 +351,8 @@ class ShareCommandServiceTest {
     void createFolderShares_singleUserSubject_passesFolderTypeAndSetsXorInvariant() {
         UUID subjectId = UUID.randomUUID();
         UUID grantId = UUID.randomUUID();
-        PermissionRow grant = grantRow(grantId);
+        // A13 — folder 변형도 grant 메타가 DTO에 join.
+        PermissionRow grant = grantRow(grantId, "user", subjectId, "edit");
         when(folderRepository.findByIdAndDeletedAtIsNull(folderId)).thenReturn(Optional.of(folder));
         when(permissionService.grantPermission(eq("folder"), eq(folderId), eq("user"),
             eq(subjectId), any(), any(), eq(actorId))).thenReturn(grant);
@@ -355,16 +362,20 @@ class ShareCommandServiceTest {
             "edit", null, "folder hello"
         );
 
-        List<Share> result = service.createFolderShares(folderId, req, actorId);
+        List<ShareDto> result = service.createFolderShares(folderId, req, actorId);
 
         assertThat(result).hasSize(1);
-        Share saved = result.get(0);
+        ShareDto saved = result.get(0);
         // V6 XOR — folderId NOT NULL, fileId NULL.
-        assertThat(saved.getFolderId()).isEqualTo(folderId);
-        assertThat(saved.getFileId()).isNull();
-        assertThat(saved.getPermissionId()).isEqualTo(grantId);
-        assertThat(saved.getSharedBy()).isEqualTo(actorId);
-        assertThat(saved.getMessage()).isEqualTo("folder hello");
+        assertThat(saved.folderId()).isEqualTo(folderId);
+        assertThat(saved.fileId()).isNull();
+        assertThat(saved.permissionId()).isEqualTo(grantId);
+        assertThat(saved.sharedBy()).isEqualTo(actorId);
+        assertThat(saved.message()).isEqualTo("folder hello");
+        // A13 — folder 변형도 join 동일 적용.
+        assertThat(saved.subjectType()).isEqualTo("user");
+        assertThat(saved.subjectId()).isEqualTo(subjectId);
+        assertThat(saved.preset()).isEqualTo("edit");
 
         // PermissionService에 nodeType="folder" 전달 (file path와 분기 확인).
         verify(permissionService).grantPermission(eq("folder"), eq(folderId), eq("user"),
@@ -403,7 +414,7 @@ class ShareCommandServiceTest {
             "upload", null, null
         );
 
-        List<Share> result = service.createFolderShares(folderId, req, actorId);
+        List<ShareDto> result = service.createFolderShares(folderId, req, actorId);
 
         assertThat(result).hasSize(2);
         verify(permissionService, times(2)).grantPermission(
@@ -440,10 +451,20 @@ class ShareCommandServiceTest {
         assertThat(ev.permissionId()).isEqualTo(sharePermissionId);
     }
 
-    /** PermissionRow ctor도 package-protected — service는 row.getId()만 쓰므로 mock으로 충분. */
+    /**
+     * PermissionRow ctor가 package-protected — mock으로 우회.
+     * A13 — service.createShares는 ShareDto.from(share, grant)에서 grant의 subjectType/subjectId/preset도 읽음.
+     */
     private PermissionRow grantRow(UUID id) {
+        return grantRow(id, "user", UUID.randomUUID(), "read");
+    }
+
+    private PermissionRow grantRow(UUID id, String subjectType, UUID subjectId, String preset) {
         PermissionRow row = mock(PermissionRow.class);
         when(row.getId()).thenReturn(id);
+        when(row.getSubjectType()).thenReturn(subjectType);
+        when(row.getSubjectId()).thenReturn(subjectId);
+        when(row.getPreset()).thenReturn(preset);
         return row;
     }
 
