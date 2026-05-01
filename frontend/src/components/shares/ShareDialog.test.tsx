@@ -7,12 +7,15 @@ import { useShareUiStore } from '@/stores/shareUi'
 import { useCreateShare } from '@/hooks/useCreateShare'
 import { useRevokeShare } from '@/hooks/useRevokeShare'
 import { useSharesByMe } from '@/hooks/useSharesByMe'
+import { useUserSearch } from '@/hooks/useUserSearch'
 import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 import type { ShareDto } from '@/types/share'
+import type { UserSummary } from '@/types/user'
 
 vi.mock('@/hooks/useCreateShare', () => ({ useCreateShare: vi.fn() }))
 vi.mock('@/hooks/useRevokeShare', () => ({ useRevokeShare: vi.fn() }))
 vi.mock('@/hooks/useSharesByMe', () => ({ useSharesByMe: vi.fn() }))
+vi.mock('@/hooks/useUserSearch', () => ({ useUserSearch: vi.fn() }))
 
 function wrap(qc: QueryClient) {
   const Wrapper = ({ children }: { children: ReactNode }) => (
@@ -63,6 +66,19 @@ function setHooks(opts: {
     data: opts.shares
       ? { pages: [{ items: opts.shares, nextCursor: null }] }
       : { pages: [{ items: [], nextCursor: null }] },
+  })
+  ;(useUserSearch as ReturnType<typeof vi.fn>).mockReturnValue({
+    data: { items: [] },
+    isLoading: false,
+    isFetching: false,
+  })
+}
+
+function setUserSearch(items: UserSummary[]) {
+  ;(useUserSearch as ReturnType<typeof vi.fn>).mockReturnValue({
+    data: { items },
+    isLoading: false,
+    isFetching: false,
   })
 }
 
@@ -207,6 +223,86 @@ describe('ShareDialog (F5.1 wire-aligned)', () => {
 
     // SHARE_FOR_FILE: subjectType='everyone', preset='edit' → 한국어 라벨 join.
     expect(screen.getByText('모든 사용자 · 편집')).toBeTruthy()
+  })
+
+  // ─── F6.4 — subject picker (user) 통합 ─────────────────────────────────────────
+  it('F6.4: subjectType 라디오 — 기본 everyone, user 라디오 존재', () => {
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    const everyone = screen.getByRole('radio', { name: /모든 사용자/ }) as HTMLInputElement
+    const user = screen.getByRole('radio', { name: /특정 사용자/ }) as HTMLInputElement
+    expect(everyone.checked).toBe(true)
+    expect(user.checked).toBe(false)
+    // user 미선택 상태에서는 combobox 미노출
+    expect(screen.queryByRole('combobox')).toBeNull()
+  })
+
+  it('F6.4: user 라디오 클릭 → UserSearchCombobox 노출', () => {
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /특정 사용자/ }))
+    expect(screen.getByRole('combobox')).toBeTruthy()
+  })
+
+  it('F6.4: user 선택 + submit → subjects:[{type:user, id}] 페이로드', () => {
+    const ALICE: UserSummary = { id: 'u1', displayName: 'Alice Kim', email: 'alice@example.com' }
+    const mutate = vi.fn()
+    setHooks({ createMutate: mutate })
+    setUserSearch([ALICE]) // setHooks 안에서 useUserSearch도 reset되므로 그 뒤에 override
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /특정 사용자/ }))
+    const combo = screen.getByRole('combobox') as HTMLInputElement
+    fireEvent.change(combo, { target: { value: 'al' } })
+    fireEvent.focus(combo)
+    fireEvent.click(screen.getByText('Alice Kim'))
+
+    fireEvent.click(screen.getByRole('button', { name: /^공유$/ }))
+
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [vars] = mutate.mock.calls[0]
+    expect(vars).toEqual({
+      target: FILE_TARGET,
+      req: { subjects: [{ type: 'user', id: 'u1' }], preset: 'read' },
+    })
+  })
+
+  it('F6.4: user 라디오인데 미선택 + submit → mutate 차단 + toast.error', () => {
+    const mutate = vi.fn()
+    setHooks({ createMutate: mutate })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /특정 사용자/ }))
+    fireEvent.click(screen.getByRole('button', { name: /^공유$/ }))
+
+    expect(mutate).not.toHaveBeenCalled()
+    expect(toastSpy('error')).toHaveBeenCalledWith('공유할 사용자를 선택해 주세요')
+  })
+
+  it('F6.4: user → everyone 토글 → combobox 언마운트, submit subjects everyone', () => {
+    const mutate = vi.fn()
+    setHooks({ createMutate: mutate })
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    fireEvent.click(screen.getByRole('radio', { name: /특정 사용자/ }))
+    expect(screen.getByRole('combobox')).toBeTruthy()
+    fireEvent.click(screen.getByRole('radio', { name: /모든 사용자/ }))
+    expect(screen.queryByRole('combobox')).toBeNull()
+
+    fireEvent.click(screen.getByRole('button', { name: /^공유$/ }))
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [vars] = mutate.mock.calls[0]
+    expect(vars.req.subjects).toEqual([{ type: 'everyone' }])
   })
 
   it('F5.2: folder kind 진입 → mutate Vars target.kind=folder + 부제 "폴더" 라벨', () => {

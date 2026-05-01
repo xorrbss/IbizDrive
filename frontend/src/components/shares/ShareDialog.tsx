@@ -5,7 +5,9 @@ import { useShareUiStore } from '@/stores/shareUi'
 import { useCreateShare } from '@/hooks/useCreateShare'
 import { useRevokeShare } from '@/hooks/useRevokeShare'
 import { useSharesByMe } from '@/hooks/useSharesByMe'
-import type { SharePreset, ShareSubjectType } from '@/types/share'
+import type { SharePreset, ShareSubject, ShareSubjectType } from '@/types/share'
+import type { UserSummary } from '@/types/user'
+import { UserSearchCombobox } from './UserSearchCombobox'
 
 /**
  * 공유 다이얼로그 (F4 → F5.2, docs/01 §14, docs/02 §7.9, ADR #34).
@@ -43,6 +45,11 @@ export function ShareDialog() {
   const [preset, setPreset] = useState<SharePreset>('read')
   const [expiresAtLocal, setExpiresAtLocal] = useState('')
   const [message, setMessage] = useState('')
+  // F6.4 — subjectType picker. MVP: everyone | user (department/role 도메인 부재).
+  const [subjectType, setSubjectType] = useState<Extract<ShareSubjectType, 'everyone' | 'user'>>(
+    'everyone',
+  )
+  const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null)
 
   const createShare = useCreateShare()
   const revokeShare = useRevokeShare()
@@ -56,6 +63,8 @@ export function ShareDialog() {
     setPreset('read')
     setExpiresAtLocal('')
     setMessage('')
+    setSubjectType('everyone')
+    setSelectedUser(null)
   }, [isOpen])
 
   useEffect(() => {
@@ -82,11 +91,21 @@ export function ShareDialog() {
       }
       expiresAt = d.toISOString()
     }
+    let subject: ShareSubject
+    if (subjectType === 'user') {
+      if (!selectedUser) {
+        toast.error('공유할 사용자를 선택해 주세요')
+        return
+      }
+      subject = { type: 'user', id: selectedUser.id }
+    } else {
+      subject = { type: 'everyone' }
+    }
     createShare.mutate(
       {
         target,
         req: {
-          subjects: [{ type: 'everyone' }],
+          subjects: [subject],
           preset,
           ...(expiresAt ? { expiresAt } : {}),
           ...(message.trim() ? { message: message.trim() } : {}),
@@ -155,9 +174,34 @@ export function ShareDialog() {
 
         <fieldset className="flex flex-col gap-1.5">
           <legend className="text-[11.5px] uppercase tracking-[0.04em] text-fg-muted">대상</legend>
-          <p className="text-[12.5px] text-fg">
-            모든 사용자 <span className="text-fg-muted">(everyone)</span>
-          </p>
+          <div className="flex gap-3 text-[12.5px]" role="radiogroup" aria-label="공유 대상 종류">
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="subjectType"
+                value="everyone"
+                checked={subjectType === 'everyone'}
+                onChange={() => {
+                  setSubjectType('everyone')
+                  setSelectedUser(null)
+                }}
+              />
+              모든 사용자
+            </label>
+            <label className="flex items-center gap-1.5">
+              <input
+                type="radio"
+                name="subjectType"
+                value="user"
+                checked={subjectType === 'user'}
+                onChange={() => setSubjectType('user')}
+              />
+              특정 사용자
+            </label>
+          </div>
+          {subjectType === 'user' && (
+            <UserSearchCombobox value={selectedUser} onChange={setSelectedUser} />
+          )}
         </fieldset>
 
         <fieldset className="flex flex-col gap-1.5">
