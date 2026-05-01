@@ -6,10 +6,10 @@ Last Updated: 2026-05-02
 
 | Phase | 상태 | 요약 |
 |---|---|---|
-| M16VK.0 | 🚧 in-progress | worktree + dev-docs bootstrap |
-| M16VK.1 | ⏳ pending | `lib/gridNav.ts` pure helper RED→GREEN |
-| M16VK.2 | ⏳ pending | `FileTable.tsx` 통합 + 회귀 테스트 |
-| M16VK.3 | ⏳ pending | docs/01 §12.1 + progress entry + archive + PR |
+| M16VK.0 | ✅ done | worktree + dev-docs bootstrap (commit 58dac5e) |
+| M16VK.1 | ✅ done | `lib/gridNav.ts` pure helper + 25 케이스 (commit 7087791) |
+| M16VK.2 | ✅ done | `FileTable.tsx` 통합 + Grid 6 케이스 + 594/594 GREEN (commit 6f22e3d) |
+| M16VK.3 | ✅ done | docs/01 §12.1 + progress entry + archive + PR + master squash-merge |
 
 ## Current Execution Contract
 

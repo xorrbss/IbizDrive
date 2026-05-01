@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-02 — 🏁 M16VK 트랙 종료 (Grid View 2D 키보드 wrap — M16V backlog closure)
+
+### 범위
+
+M16VK.0 (worktree `feature/m16v-grid-keyboard-wrap` from `90274c7` master + dev-docs bootstrap `dev/active/m16v-grid-keyboard-wrap/` 3파일) → M16VK.1 (`frontend/src/lib/gridNav.ts` pure helper `computeNextIndex(prev, key, view, columns, length, isPending)` + `gridNav.test.ts` 25 vitest 케이스 — list 8 + grid 14 + initial focus(prev=-1) 3) → M16VK.2 (FileTable.tsx handleKeyDown switch에서 ArrowDown/Up/Left/Right 4 case를 helper 단일 분기로 통합. list ←/→는 helper no-op + preventDefault 스킵으로 상위 핸들러 보존. FileTable.test.tsx에 useGridColumns mock + 6 items 기반 Grid 2D 통합 케이스 6개 추가) → M16VK.3 (closure: `docs/01 §12.1` 키맵 표 List/Grid 분리 + Grid 2D 보강 주, `docs/progress.md` top entry, dev-docs archive, PR + master squash-merge).
+
+### 회고
+
+- **commits**: 3 on top of `90274c7` master (worktree branch `feature/m16v-grid-keyboard-wrap`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 1 / 수정 1.
+  - 신설: `frontend/src/lib/gridNav.ts` (`computeNextIndex` pure helper 67줄)
+  - 수정: `frontend/src/components/files/FileTable.tsx` (handleKeyDown ArrowKey 4 case → helper 1 분기 + 주석 갱신)
+- **test**: 신설 1 / 수정 1. `gridNav.test.ts` 25 GREEN; `FileTable.test.tsx` 6 케이스 추가(3→9). 최종 frontend `pnpm test --run` GREEN 594/594(baseline 588 → +6 wrap 케이스). `pnpm typecheck` + `pnpm lint` + `pnpm build` clean.
+- **docs sync**: `docs/01-frontend-design.md §12.1` 키맵 표 List/Grid 컬럼 분리 + Grid 2D 정책 주(↓ overshoot clamp, ↑ 첫행 stay, pending stride skip).
+
+### 핵심 결정 (M16VK 트랙)
+
+1. **Pure helper 분리** — handleKeyDown은 이미 130+라인. `lib/gridNav.ts`로 핵심 인덱스 계산을 추출해 ResizeObserver mock 없이 unit test 가능. CLAUDE.md ULTIMATE INVARIANT 5(확장 전 검토) 충족 — 추상화 정당화는 "ResizeObserver 의존 회피 + 25 케이스 vitest 단순화".
+2. **↑/↓ 정책 = column stride** — `prev ± gridSafeColumns`. ↑ overshoot(prev<columns)는 stay(첫 행 wrap 없음), ↓ overshoot은 last partial row에 항목 있으면 `length-1`로 clamp, 없으면 stay. Windows Explorer / macOS Finder 동작 답습.
+3. **←/→ 정책 = ±1 + row 경계 자연 wrap** — list 모드 ↑/↓ 1D 패턴을 그대로 차용. 사용자 멘탈 모델 일관.
+4. **List 모드 변경 0** — ←/→는 List에서 helper 안에서 no-op으로 처리 + `preventDefault` 스킵으로 상위 핸들러(textbox 캐럿 이동 등)에 영향 없음. 회귀 테스트 GREEN.
+5. **prev=-1 초기 focus** — ↓/→는 첫 non-pending로 진입(기존 List 동작 보존), ↑/←는 stay. helper 진입부에서 단일 분기로 처리해 view 무관 통일.
+6. **pending skip = stride 방향** — ↑/↓는 column stride(±columns), ←/→는 1-step. helper 내 `walk(prev, step, length, isPending)` 단일 함수로 통합 — step 부호/크기만 호출자가 결정.
+7. **shift 범위 확장은 모든 방향 일관** — selectRange anchor 유지. 사용자 입장에서 ↑↓←→ 모두 동일 모델.
+8. **`useGridColumns` 변경 0** — ResizeObserver 기반 columns 계산은 그대로 사용. 입력 1개(columns) 추가만으로 helper 동작.
+
+### 파급 영향
+
+- **`docs/01 §12.1`**: 키맵 표 List/Grid 컬럼 분리 + Grid 2D 정책 주 추가.
+- **frontend backlog 정리**: M16V closure entry(`docs/progress.md`)의 "Grid 2D 키보드 wrap" 항목 closed. 잔여(Grid DnD, 가변 카드 높이, 썸네일 이미지)는 유지.
+- **DB/스키마/backend**: 변경 0 — frontend-only 트랙.
+
+---
+
 ## 2026-05-02 — 🏁 storage-orphan-cleanup 트랙 종료 (Storage Orphan Cleanup daily cron — A15/A7 backlog closure)
 
 ### 범위

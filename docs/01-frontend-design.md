@@ -752,18 +752,21 @@ export function normalizeFileName(s: string): string {
 
 ### 12.1 키맵
 
-| 키 | 동작 |
-|---|---|
-| ↑ ↓ | 행 포커스 이동 + 단일 선택 |
-| Shift + ↑↓ | 범위 확장 |
-| Ctrl/Meta + ↑↓ | 포커스만 이동 |
-| Space | 선택 토글 |
-| Enter | 열기 (폴더 진입 또는 `?file=` 설정) |
-| Delete | 휴지통으로 |
-| F2 | 이름 변경 |
-| Ctrl/Meta + A | 전체 선택 |
-| Esc | 선택 해제 / RightPanel 닫기 (`?file=` 제거) |
-| / | 검색창 포커스 |
+| 키 | List 모드 | Grid 모드 |
+|---|---|---|
+| ↑ ↓ | 행 ±1 이동 | columns 단위 ±1 이동 (column stride) |
+| ← → | (no-op) | ±1 이동, row 경계에서 자연 wrap |
+| Shift + ↑↓←→ | 범위 확장 | 범위 확장 |
+| Ctrl/Meta + ↑↓ | 포커스만 이동 | 포커스만 이동 |
+| Space | 선택 토글 | 선택 토글 |
+| Enter | 열기 (폴더 진입 또는 `?file=` 설정) | 동일 |
+| Delete | 휴지통으로 | 동일 |
+| F2 | 이름 변경 | 이름 변경 |
+| Ctrl/Meta + A | 전체 선택 | 전체 선택 |
+| Esc | 선택 해제 / RightPanel 닫기 (`?file=` 제거) | 동일 |
+| / | 검색창 포커스 | 동일 |
+
+> Grid 2D 내비게이션은 pure helper `frontend/src/lib/gridNav.ts:computeNextIndex`로 분리. ↓ overshoot 시 마지막 partial row에 항목이 있으면 `length-1`로 clamp, 없으면 stay. ↑은 첫 행에서 stay. pendingIds는 같은 stride 방향(↑/↓ = columns, ←/→ = 1)으로 skip하며 후보가 없으면 stay (M16VK).
 
 ### 12.2 Virtualization + aria
 
