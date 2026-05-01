@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 OPEN — A10.0~A10.3 done, A10.4 active
+Status: ✅ CLOSED — PR #21 squash-merge `24a78b2`, dev-docs archived
 ---
 
 # A10 — Shares Endpoint Backend — Context

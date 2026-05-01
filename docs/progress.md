@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-01 — 🏁 A10 마일스톤 종료 (Shares Endpoint Backend)
+
+### 범위
+
+A10.0 (ADR #34 신설 + docs/02 §2.7 `shares` 테이블 SQL에 `expires_at` 추가 + §7.9 spec 4 endpoints 정합 + docs/03 §3 backlink + Preset 4값 V5 check 일관) → A10.1 (V6 마이그레이션 `shares` 테이블 + `Share` entity + `ShareRepository` + Testcontainers V6MigrationIT 1건) → A10.2 (`ShareDto`/`ShareCreateRequest` + `ShareCommandService.createShares` 1 request → N subjects) → A10.3 (`ShareCommandService.revokeShare` soft-revoke + `canRevoke` SpEL + `ShareAuditListener` `share.created`/`share.revoked` emit — **audit 첫 활성화**) → A10.4 (`ShareQueryService` by-me/with-me + `ShareCursor` `{createdAt}|{id}` base64) → A10.5 (`ShareController` 4 endpoints + `@PreAuthorize` + 400/403/404 envelope + Mockito 통합 테스트) → A10.6 (PR #21 squash-merge `24a78b2` + dev-docs archive).
+
+### 회고
+
+- **commits**: 7 on top of F1 close `9875fe9` (worktree branch `feature/a10-shares`) → squash-merge `24a78b2` on `master`. PR #21 single, CI green (backend junit 3m7s + frontend vitest 1m33s 모두 SUCCESS).
+- **production 파일**: 12 신설 — `share/Share.java`, `share/ShareCommandService.java`, `share/ShareController.java`, `share/ShareCreateRequest.java`, `share/ShareCreatedEvent.java`, `share/ShareCursor.java`, `share/ShareDto.java`, `share/SharePage.java`, `share/ShareQueryService.java`, `share/ShareRepository.java`, `share/ShareRevokedEvent.java`, `audit/ShareAuditListener.java` + V6 마이그레이션(`db/migration/V6__shares.sql`).
+- **test 파일**: 6 신설 — `ShareCommandServiceTest`, `ShareControllerTest`, `ShareCursorTest`, `ShareQueryServiceTest`, `ShareAuditListenerTest`, `V6MigrationIT` (Testcontainers).
+- **ADR 신설**: #34 — Shares endpoint 채택. file 한정(folder 공유 backlog), subject 4종(user/department/role/everyone, MVP 후처리 user 1차) + ADR #28 preset 4값 정합(V5 `permissions_preset_check`).
+- **Audit 첫 활성화**: `AuditEventType.SHARE_CREATED`/`SHARE_REVOKED` enum 정의(이전까지 사용처 0) → `ShareAuditListener` `@TransactionalEventListener` REQUIRES_NEW로 첫 emit. `SHARE_EXPIRED` 배치 트랙은 deferred.
+- **A1~A9 회귀 0**: 전체 백엔드 535 tests GREEN.
+
+### 핵심 결정 (A10 트랙, 확정)
+
+1. **shares 테이블 = share 메타, permission row = 권한 자체** (ADR #34) — share row가 `permission_id` 참조. revoke 시 share `revoked_at` set + permission row delete + `share.revoked` audit 단일 발행 (이중 audit 회피, KISS).
+2. **subject 4종 채택, 후처리는 MVP user 한정** — wire format `user`/`department`/`role`/`everyone` 모두 수신. with-me 매칭은 `subject_type='user' AND subject_id=actorId` 1차. department/role/everyone 후처리는 별도 ADR로 박제.
+3. **`expires_at` 컬럼 추가** (V6) — frontend permission expiresAt UX 패리티 + 향후 `SHARE_EXPIRED` 배치 자동 전환 hook. 컨트롤러 진입 시 미래 시각 검증.
+4. **`canRevoke` SpEL** — `@PreAuthorize("@shareCommandService.canRevoke(#shareId, principal)")` (owner OR sharer OR ADMIN). audit 회피용 단일 진입점.
+5. **Cursor `{createdAt}|{id}` base64 url-safe** — A8 TrashCursor / A9 SearchCursor 패턴 변형. by-me/with-me 둘 다 `created_at DESC, id DESC` 정렬.
+6. **Preset 4값 정합** (`VIEW`/`COMMENT`/`EDIT`/`MANAGE`) — V5 `permissions_preset_check` 단일 진실. ADR #28 본문 5-preset drift 정정.
+7. **bulk revoke / SSE / folder 공유 / 외부 토큰 / SHARE_EXPIRED 배치 / Frontend UI는 별도 트랙** — backend stack only, ADR #34 backlog 박제.
+
+### 다음 트랙 후보
+
+- **F2 — useEffectivePermissions 실연결** (M8 권한 UI mock → A4 `/api/permissions` real). A10 share row를 permission UI에 노출하려면 `/api/permissions/effective` 응답에 share-derived 권한 포함 여부 결정 선행.
+- **F4 — Frontend Shares UI** (Right Panel `Shares` tab + 공유 다이얼로그). docs/01 §6/§14 신설 필요 → 설계 추가 후 트랙 진입.
+- **A11 — `SHARE_EXPIRED` 자동 전환 배치** (A7 `purge.expired` 미러). cron + `expires_at` 도과 row → `revoked_at` set + audit emit.
+- **A12 — folder 공유** (`POST /api/folders/:id/share`). 현재 shares 테이블은 `file_id`/`folder_id` 양립 — endpoint만 추가.
+
+---
+
 ## 2026-05-01 — 🏁 F1 마일스톤 종료 (Frontend Search 실연결)
 
 ### 범위

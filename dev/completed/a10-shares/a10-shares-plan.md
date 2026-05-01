@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 OPEN — bootstrap 직후
+Status: ✅ CLOSED — PR #21 squash-merge `24a78b2`, dev-docs archived
 ---
 
 # A10 — Shares Endpoint Backend — Plan
