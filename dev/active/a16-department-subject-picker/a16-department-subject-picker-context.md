@@ -19,6 +19,8 @@ Last Updated: 2026-05-02
   - master HEAD baseline: `ab45e7d` (BulkActionBar fix, 2026-05-01).
 - 2026-05-02:
   - **A16.4 완료** (commit `67c1f69`): `frontend/src/types/department.ts` 신설(`DepartmentSummary { id, name }`), `lib/api.ts:searchDepartments` 추가(A14 1:1 답습), `lib/queryKeys.ts:qk.departments()`+`qk.departmentsSearch(normalized, limit)` 추가, `types/share.ts ShareDto`에 `subjectName: string|null` 필드 추가(backend wire 정합), 기존 ShareDto fixture 8개에 `subjectName: null` 보강. `api.departments.test.ts` 7/7 GREEN. `pnpm test --run` 540/540 GREEN, typecheck/lint clean.
+  - **A16.5 완료** (commit `ee36fa7`): `useDepartmentSearch.ts`/`useDepartmentSearch.test.tsx` 신설 — useUserSearch 1:1 답습(debounce 300ms / minLen 2 / keepPreviousData / signal / staleTime 30s). 5 tests GREEN. 회귀 0(545/545).
+  - **A16.6 완료**: `DepartmentSearchCombobox.tsx`/`.test.tsx` 신설 — UserSearchCombobox 1:1 답습, 차이는 표시 필드(name만). 12 tests GREEN. 회귀 0(557/557), typecheck/lint clean.
 
 ## Current Execution Contract
 
@@ -29,9 +31,9 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-- **A16.5 useDepartmentSearch 훅** (TDD: useUserSearch 1:1 답습 — debounce 300ms / minLen 2 / keepPreviousData / signal / staleTime 30s).
-- A16.1~A16.4 완료 — frontend wire backbone(api+types+qk+ShareDto.subjectName) 정렬 완료.
-- 다음: `frontend/src/hooks/useDepartmentSearch.test.tsx` (RED) → `useDepartmentSearch.ts` (GREEN).
+- **A16.7 ShareDialog 통합 + subjectLabel 실 이름**.
+- A16.1~A16.6 완료 — backend dept wire + permission SQL + ShareDto.subjectName + frontend api/types/qk + useDepartmentSearch + DepartmentSearchCombobox 모두 활성.
+- 다음: ShareDialog.test/component 갱신 — subjectType 라디오 3종(everyone|user|department) + dept Combobox 마운트 + submit `subjects:[{type:'department', id}]` + 차단 검증 + subjectLabel에 subjectName 우선 노출.
 
 ## 다음 세션 읽기 순서
 

@@ -13,9 +13,9 @@ Last Updated: 2026-05-02
 | A16.2 PermissionRepository.findEffective dept 분기 | ✅ 완료 (subquery `users.department_id` 매칭, 6 신규 테스트, 회귀 0) |
 | A16.3 ShareDto subjectName 추가 + caller 갱신 | ✅ 완료 (ShareDto 14필드 + ShareCommandService 단건 lookup + ShareQueryService batch fetch, 신규 7 테스트, 회귀 0) |
 | A16.4 Frontend wire backbone | ✅ 완료 (commit `67c1f69`, DepartmentSummary + searchDepartments + qk.departments + ShareDto.subjectName, 540 tests GREEN) |
-| A16.5 useDepartmentSearch 훅 | 🟡 ACTIVE |
-| A16.6 DepartmentSearchCombobox | ⏸ blocked by A16.5 |
-| A16.7 ShareDialog 통합 + subjectLabel 실 이름 | ⏸ blocked by A16.6 |
+| A16.5 useDepartmentSearch 훅 | ✅ 완료 (commit `ee36fa7`, 5 tests GREEN) |
+| A16.6 DepartmentSearchCombobox | ✅ 완료 (12 tests GREEN, UserSearchCombobox 1:1) |
+| A16.7 ShareDialog 통합 + subjectLabel 실 이름 | 🟡 ACTIVE |
 | A16.8 docs sync + PR + master squash-merge + closure archive | ⏸ blocked by A16.7 |
 
 ---
@@ -196,9 +196,9 @@ WHERE
 - `frontend/src/hooks/useUserSearch.ts` + test (1:1 답습 모델).
 
 ### 구현 대상
-- [ ] **A16.5.0 RED** — `useDepartmentSearch.test.tsx` (useUserSearch.test.tsx 1:1 답습).
-- [ ] **A16.5.1 GREEN** — `useDepartmentSearch.ts` (debounce 300ms / minLen 2 / keepPreviousData / signal / staleTime 30s).
-- [ ] **A16.5.2 검증** — 회귀 0.
+- [x] **A16.5.0 RED** — `useDepartmentSearch.test.tsx` (5 tests, useUserSearch 1:1 답습).
+- [x] **A16.5.1 GREEN** — `useDepartmentSearch.ts` (useUserSearch 1:1).
+- [x] **A16.5.2 검증** — 545 tests GREEN, typecheck/lint clean, 회귀 0.
 
 ### 검증 참조
 - AC frontend #2.
@@ -211,9 +211,9 @@ WHERE
 - `frontend/src/components/shares/UserSearchCombobox.tsx` + test (1:1 답습 모델).
 
 ### 구현 대상
-- [ ] **A16.6.0 RED** — `DepartmentSearchCombobox.test.tsx` 신설.
-- [ ] **A16.6.1 GREEN** — `DepartmentSearchCombobox.tsx` 신설 (props: `{ value: DepartmentSummary | null, onChange, inputId? }`).
-- [ ] **A16.6.2 검증** — pnpm test 신규 + 회귀 0 + typecheck/lint GREEN.
+- [x] **A16.6.0 RED** — `DepartmentSearchCombobox.test.tsx` 신설 (12 tests).
+- [x] **A16.6.1 GREEN** — `DepartmentSearchCombobox.tsx` 신설 (UserSearchCombobox 1:1, name 필드만 표시).
+- [x] **A16.6.2 검증** — 557 tests GREEN, typecheck/lint clean, 회귀 0.
 
 ### 검증 참조
 - AC frontend #3.
