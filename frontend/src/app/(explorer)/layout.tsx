@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { FolderTree } from '@/components/folders/FolderTree'
 import { TrashLink } from '@/components/trash/TrashLink'
+import { SharesLink } from '@/components/shares/SharesLink'
 import { DndProvider } from '@/components/dnd/DndProvider'
 import { TopBar } from '@/components/topbar/TopBar'
 import { StatusBar } from '@/components/statusbar/StatusBar'
@@ -23,6 +24,7 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
           </div>
           <FolderTree />
           <div className="mt-auto pt-2 border-t border-border">
+            <SharesLink />
             <TrashLink />
             <StorageBar />
           </div>

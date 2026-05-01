@@ -3,6 +3,7 @@ import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type { Permission } from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
+import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
@@ -645,6 +646,81 @@ export const api = {
       throw err
     }
   },
+
+  /**
+   * 파일 공유 생성 — F4 (docs/02 §7.9, ADR #34).
+   * 한 번의 호출로 multi-subject grant. backend는 단일 트랜잭션 + 부분 성공 없음 (UNIQUE 위반 시 전체 rollback).
+   * 에러 envelope { error: { code, message, details } } → buildApiError로 status/code 매핑.
+   *   400 BAD_REQUEST       — subjects empty / message > 1000 / expiresAt past / subject_id ↔ everyone 위반
+   *   403 PERMISSION_DENIED — SHARE 권한 미보유
+   *   404 NOT_FOUND         — file 미존재 / soft-deleted
+   *   409 PERMISSION_CONFLICT — 동일 file × subject 중복 grant
+   */
+  async createShares(fileId: string, req: ShareCreateRequest): Promise<ShareDto[]> {
+    const res = await fetch(`/api/files/${encodeURIComponent(fileId)}/share`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `createShares failed: ${res.status}`)
+    }
+    const data = (await res.json()) as { shares: ShareDto[] }
+    return data.shares
+  },
+
+  /**
+   * 공유 revoke — F4. backend `canRevoke = sharedBy == me || role == ADMIN`.
+   * 응답 204 NO_CONTENT. 이미 revoked된 share는 404로 폴백 (멱등).
+   */
+  async revokeShare(shareId: string): Promise<void> {
+    const res = await fetch(`/api/shares/${encodeURIComponent(shareId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `revokeShare failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * 내가 공유한 목록 — F4. cursor/limit 둘 다 optional. backend가 nextCursor를 echo하지 않으면 null 폴백.
+   */
+  async listSharesByMe(opts: { cursor?: string; limit?: number } = {}): Promise<SharePage> {
+    return fetchSharePage('/api/shares/by-me', opts)
+  },
+
+  /**
+   * 받은 공유 목록 — F4 (MVP: subject_type='user' 매칭만).
+   * department/role/everyone 으로 받은 share는 별도 트랙 (ADR #34 backlog).
+   */
+  async listSharesWithMe(opts: { cursor?: string; limit?: number } = {}): Promise<SharePage> {
+    return fetchSharePage('/api/shares/with-me', opts)
+  },
+}
+
+/**
+ * GET /api/shares/{by-me|with-me} 공통 fetch — cursor/limit 쿼리 + nextCursor 폴백.
+ */
+async function fetchSharePage(
+  path: string,
+  opts: { cursor?: string; limit?: number },
+): Promise<SharePage> {
+  const params = new URLSearchParams()
+  if (opts.cursor) params.set('cursor', opts.cursor)
+  if (opts.limit !== undefined) params.set('limit', String(opts.limit))
+  const qs = params.toString()
+  const url = qs ? `${path}?${qs}` : path
+  const res = await fetch(url, { credentials: 'include' })
+  if (!res.ok) {
+    throw await buildApiError(res, `${path} failed: ${res.status}`)
+  }
+  const raw = (await res.json()) as {
+    items: ShareDto[]
+    nextCursor?: string | null
+  }
+  return { items: raw.items, nextCursor: raw.nextCursor ?? null }
 }
 
 /**
