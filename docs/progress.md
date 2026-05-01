@@ -5,6 +5,39 @@
 
 ---
 
+## 2026-05-01 — 🏁 M12 closure (Audit Log UI — A2.6 wired status 표기)
+
+### 범위
+
+M12 트랙(2026-04-25 mock 도입, `/admin/audit/logs` Filters/Table/Pagination/CSV)은 A2.6(2026-04-26)에서 backend `GET /api/admin/audit` 실연결로 교체되며 사실상 closed. 단 (1) `page.tsx:14-20` docblock은 "M12 mock + 백엔드 연결 없음" stale 문구를 그대로 유지 (2) `docs/04 §7`은 모든 항목이 미체크 상태로 mock-time 잔존 — 이 두 표기 정합만 누락. 본 closure는 (1) docblock 정정 + (2) docs §7 status 표기 갱신으로 트랙 종료.
+
+### 회고
+
+- **commits**: 1 on top of `17eac0e` SHARE_EXPIRED closure (worktree branch `feature/m12-audit-ui-closure`).
+- **production 파일**: 수정 1 — `frontend/src/app/admin/audit/logs/page.tsx` docblock(M12 mock → M12 A2.6 wired + CSV export 동작/v1.x deferred 명시).
+- **test 파일**: 미터치(JSDoc 변경만, 회귀 0).
+- **docs sync**:
+  - `docs/04 §7` Status quote 추가(M12 wired 2026-05-01 closure marker)
+  - 7.1: `dateFrom`/`dateTo`/`actorId`/`eventType` 4 필터 활성 표기 + `대상 리소스`/`IP 주소`는 v1.x deferred(frontend filter + backend query param 미수용)
+  - 7.2: CSV export 활성 + server-side full-result 스트리밍 / `audit.exported` runtime emission / JSON download 모두 v1.x deferred 명시
+  - 7.3: before/after diff + 관련 이벤트 연결 v1.x deferred 명시
+- **A2.6 wiring 사실**: `api.getAuditLogs`가 `fetch('/api/admin/audit?...', { credentials: 'include' })` 직접 호출(`frontend/src/lib/api.ts:493-553`). M12 mock 분기 + 60-row generator는 A2.6에서 완전 제거됨.
+
+### 핵심 결정 (m12-audit-ui-closure 트랙, 확정)
+
+1. **closure-only 트랙** — backend/frontend 코드 변경 0. 표기 정합만 처리. 새 기능 추가 거부(YAGNI).
+2. **server export + `audit.exported` runtime emission은 v1.x deferred 유지** — current-page CSV는 운영 충분(필터 좁힘 + 페이지네이션). 전체 export는 별도 backend endpoint(streaming + audit emission) 도입 시점.
+3. **`대상 리소스`/`IP 주소` 필터는 v1.x deferred** — `AuditLogFilters` 타입 + backend query param 양쪽 추가 필요. 현재 운영 필터(시간/행위자/이벤트)로 충분.
+4. **`page.tsx` JSDoc 외 코드 미변경** — 실제 구현은 이미 GREEN(484+ frontend tests). closure는 의미 표기만.
+
+### 파급 영향
+
+- **frontend backlog**: 대상 리소스/IP 필터 + JSON download + 상세 뷰 diff(v1.x).
+- **backend backlog**: server-side audit export endpoint + `audit.exported` emission(v1.x). docs/03 §4.1 enum에 `audit.exported`는 정의되어 있으므로 emission만 활성화하면 됨.
+- **DB/스키마**: 변경 없음.
+
+---
+
 ## 2026-05-01 — 🏁 SHARE_EXPIRED cron 트랙 종료 (ADR #34 backlog closure)
 
 ### 범위
