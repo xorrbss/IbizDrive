@@ -1423,6 +1423,42 @@ GET /api/sse/files?folderIds=fld_a,fld_b
 
 ---
 
+### 7.14 사용자 검색 (User Search, ADR #35)
+
+공유 subject picker(파일/폴더 공유 대상자 선택)에서 사용자 lookup 용도. 인증된 모든 사용자에 대해 공개 — ADR #18(관리자 초대 only 등록)로 사용자 명단 자체가 trust boundary 내부 정보.
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| GET | `/api/users/search?q=&limit=` | `isAuthenticated()` | — | q→trim+lowercase | `WHERE deleted_at IS NULL AND is_active=TRUE` | 400 INVALID_SEARCH_QUERY (q 길이/형식), 401 UNAUTHORIZED |
+
+```text
+GET /api/users/search?q=alice&limit=20
+  Validation:
+    - q: required, trim+lowercase 후 minLength 2자, blank/null 거부 → 400 INVALID_SEARCH_QUERY (A9 일관)
+    - limit: 1~50 (default=20, hard cap=50, 0/음수→default)
+  Algorithm:
+    - LIKE escape: % _ \ → backslash prefix (literal 매칭)
+    - 패턴: '%' + escaped(lowercased(q)) + '%'
+    - SQL: LOWER(display_name) LIKE :p ESCAPE '\\'  OR  LOWER(email) LIKE :p ESCAPE '\\'
+    - ORDER BY display_name ASC, id ASC  LIMIT :limit
+  Response: 200 {
+              items: [
+                { id: string (UUID), displayName: string, email: string }
+              ]
+            }
+  Errors:
+    400 INVALID_SEARCH_QUERY  { } — q normalize 후 minLength 미달/blank/null
+    401 UNAUTHORIZED          { } — 비인증
+  Note:
+    - cursor 미지원 (ADR #35) — 결과는 limit 절단(최대 50). 추후 페이지네이션 도입 시 nextCursor 필드 추가.
+    - department/role 필터 deferred — share subject picker MVP는 user lookup만 필요.
+    - audit emission 없음 — A9 search와 동일 정책 (검색 행위 자체 감사는 보안 트랙 별도).
+```
+
+**근거**: ADR #35.
+
+---
+
 ## 8. 에러 코드 표준
 
 | HTTP | code | 의미 | 프론트 처리 |

@@ -11,9 +11,13 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
+import jakarta.persistence.EntityManager;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -103,5 +107,121 @@ class UserRepositoryTest {
         Optional<User> found = userRepository.findActiveByEmail("ghost@example.com");
 
         assertFalse(found.isPresent());
+    }
+
+    // ── A14: searchActive ─────────────────────────────────────────────
+
+    @Autowired
+    private EntityManager entityManager;
+
+    @Test
+    void searchActive_matchesDisplayNameCaseInsensitive() {
+        UUID id = UUID.randomUUID();
+        userRepository.save(activeUser(id, "alice@example.com", "Alice Kim", true));
+        userRepository.save(activeUser(UUID.randomUUID(), "bob@example.com", "Bob Lee", true));
+
+        List<User> result = userRepository.searchActive("%alice%", 10);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getId()).isEqualTo(id);
+    }
+
+    @Test
+    void searchActive_matchesEmail() {
+        UUID id = UUID.randomUUID();
+        userRepository.save(activeUser(id, "Charlie@example.com", "Charles", true));
+
+        List<User> result = userRepository.searchActive("%charlie%", 10);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getId()).isEqualTo(id);
+    }
+
+    @Test
+    void searchActive_excludesSoftDeleted() {
+        UUID activeId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        userRepository.save(activeUser(activeId, "tom@example.com", "Tom Active", true));
+        userRepository.save(activeUser(deletedId, "tom2@example.com", "Tom Deleted", true));
+        userRepository.flush();
+        markSoftDeleted(deletedId);
+
+        List<User> result = userRepository.searchActive("%tom%", 10);
+
+        assertThat(result).extracting(User::getId).containsExactly(activeId);
+    }
+
+    @Test
+    void searchActive_excludesInactive() {
+        UUID activeId = UUID.randomUUID();
+        UUID inactiveId = UUID.randomUUID();
+        userRepository.save(activeUser(activeId, "active@example.com", "Sam Active", true));
+        userRepository.save(activeUser(inactiveId, "inactive@example.com", "Sam Inactive", false));
+
+        List<User> result = userRepository.searchActive("%sam%", 10);
+
+        assertThat(result).extracting(User::getId).containsExactly(activeId);
+    }
+
+    @Test
+    void searchActive_orderedByDisplayNameAscThenIdAsc() {
+        UUID idCharlie = UUID.fromString("ccccccc1-ccc1-ccc1-ccc1-ccccccccccc1");
+        UUID idAlice = UUID.fromString("aaaaaaa1-aaa1-aaa1-aaa1-aaaaaaaaaaa1");
+        UUID idBob = UUID.fromString("bbbbbbb1-bbb1-bbb1-bbb1-bbbbbbbbbbb1");
+        userRepository.save(activeUser(idCharlie, "c@example.com", "ZZ Charlie", true));
+        userRepository.save(activeUser(idAlice, "a@example.com", "ZZ Alice", true));
+        userRepository.save(activeUser(idBob, "b@example.com", "ZZ Bob", true));
+
+        List<User> result = userRepository.searchActive("%zz%", 10);
+
+        assertThat(result).extracting(User::getId)
+            .containsExactly(idAlice, idBob, idCharlie);
+    }
+
+    @Test
+    void searchActive_respectsLimit() {
+        for (int i = 0; i < 5; i++) {
+            userRepository.save(activeUser(
+                UUID.randomUUID(), "limit" + i + "@example.com", "Limit User " + i, true));
+        }
+
+        List<User> result = userRepository.searchActive("%limit user%", 3);
+
+        assertThat(result).hasSize(3);
+    }
+
+    @Test
+    void searchActive_likeWildcardsAreEscaped() {
+        UUID idPercent = UUID.randomUUID();
+        UUID idOther = UUID.randomUUID();
+        userRepository.save(activeUser(idPercent, "p@example.com", "50%off promo", true));
+        userRepository.save(activeUser(idOther, "o@example.com", "ordinary user", true));
+
+        // service layer가 q="50%" → escape → "%50\%%" 패턴 생성한다고 가정 — literal '%'만 매칭
+        List<User> result = userRepository.searchActive("%50\\%%", 10);
+
+        assertThat(result).extracting(User::getId).containsExactly(idPercent);
+    }
+
+    private static User activeUser(UUID id, String email, String displayName, boolean isActive) {
+        return new User(
+            id,
+            email,
+            displayName,
+            "{bcrypt}$2a$12$dummyhashfortestonlydummyhashfortestonlydummyhashfortest",
+            Role.MEMBER,
+            isActive,
+            false,
+            OffsetDateTime.now()
+        );
+    }
+
+    private void markSoftDeleted(UUID id) {
+        entityManager.createQuery("UPDATE User u SET u.deletedAt = :now WHERE u.id = :id")
+            .setParameter("now", OffsetDateTime.now())
+            .setParameter("id", id)
+            .executeUpdate();
+        entityManager.flush();
+        entityManager.clear();
     }
 }

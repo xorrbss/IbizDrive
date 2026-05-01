@@ -357,7 +357,9 @@
 
 ### 3.5 권한 매트릭스 (엔드포인트 × 권한)
 
-각 endpoint의 권한 요구는 **`docs/02-backend-data-model.md §7.4~§7.13` Guard 컬럼**에 명시 (단일 진실 출처). 본 문서는 권한 enum과 preset 정의만 담당, endpoint 매핑은 02 문서 참조.
+각 endpoint의 권한 요구는 **`docs/02-backend-data-model.md §7.4~§7.14` Guard 컬럼**에 명시 (단일 진실 출처). 본 문서는 권한 enum과 preset 정의만 담당, endpoint 매핑은 02 문서 참조.
+
+> **사용자 검색 (`/api/users/search`, ADR #35)**: `isAuthenticated()` 공개 — 사용자 명단 자체가 trust boundary 내부 정보(ADR #18 admin-invitation only 등록). share subject picker가 ADMIN 외 EDIT 보유자에게도 노출되어야 하므로 ROLE 가드 부적절.
 
 `@PreAuthorize` 표현식 패턴:
 
