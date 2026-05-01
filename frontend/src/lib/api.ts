@@ -5,6 +5,7 @@ import type { Permission } from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
+import type { DepartmentSummary } from '@/types/department'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
@@ -485,6 +486,43 @@ export const api = {
       throw err
     }
     return (await res.json()) as { items: UserSummary[] }
+  },
+
+  /**
+   * A16 — 부서 검색 (docs/02 §7.x, ADR #36).
+   *
+   * `GET /api/departments/search?q=&limit=`을 fetch. `searchUsers` 1:1 답습 (F6 패턴).
+   * - q.length < 2면 backend 라운드트립 없이 `{items:[]}` 반환 (`useDepartmentSearch.enabled`와 이중 안전).
+   * - 호출자(useDepartmentSearch)는 이미 trim+lowercase + 최소 2자 게이트를 통과한 query를 넘김.
+   * - limit default 20, backend가 1~50 cap 강제.
+   * - 응답 `{items: DepartmentSummary[]}`를 그대로 반환 — 매핑 불요(record 1:1 wire).
+   * - 에러 envelope: 비-OK 응답은 status 필드 가진 Error throw → QueryCache.onError 401/403 분기.
+   * - AbortSignal은 fetch에 그대로 전달 (DOMException AbortError → useQuery cancellation).
+   */
+  async searchDepartments(
+    params: { q: string; limit?: number },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ items: DepartmentSummary[] }> {
+    const { signal } = options
+    const q = params.q
+    if (!q || q.length < 2) return { items: [] }
+    const limit = params.limit ?? 20
+
+    const qs = new URLSearchParams({ q, limit: String(limit) })
+    const res = await fetch(`/api/departments/search?${qs.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+      signal,
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `departments search fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    return (await res.json()) as { items: DepartmentSummary[] }
   },
 
   /**

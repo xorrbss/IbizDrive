@@ -40,6 +40,7 @@ const SHARE_FOR_FILE: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'edit',
+  subjectName: null,
 }
 const SHARE_OTHER_FILE: ShareDto = {
   ...SHARE_FOR_FILE,
