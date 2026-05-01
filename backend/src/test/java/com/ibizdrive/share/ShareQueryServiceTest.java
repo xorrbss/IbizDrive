@@ -170,6 +170,57 @@ class ShareQueryServiceTest {
         assertThat(dto.createdAt()).isEqualTo(s.getCreatedAt());
     }
 
+    // ----------------- A12 — folder share natural exposure -----------------
+
+    @Test
+    void listByMe_folderShare_surfacesWithFolderIdAndNullFileId() {
+        // A12 — repository SQL은 file/folder 분기 없음. folder share row가 by-me에 자연 노출되어야.
+        Share folderShare = makeFolderShare("2026-04-30T12:00:00Z");
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(folderShare));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(1);
+        ShareDto dto = page.items().get(0);
+        assertThat(dto.fileId()).isNull();
+        assertThat(dto.folderId()).isEqualTo(folderShare.getFolderId());
+        assertThat(dto.permissionId()).isEqualTo(folderShare.getPermissionId());
+    }
+
+    @Test
+    void listWithMe_folderShare_surfacesWithFolderIdAndNullFileId() {
+        Share folderShare = makeFolderShare("2026-04-29T12:00:00Z");
+        when(shareRepository.findActiveWithMeBySubjectUser(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(folderShare));
+
+        SharePage page = service.listWithMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(1);
+        ShareDto dto = page.items().get(0);
+        assertThat(dto.fileId()).isNull();
+        assertThat(dto.folderId()).isEqualTo(folderShare.getFolderId());
+    }
+
+    @Test
+    void listByMe_mixedFileAndFolderShares_preservesXorPerRow() {
+        Share fileShare = makeShare("2026-04-30T12:00:00Z");
+        Share folderShare = makeFolderShare("2026-04-29T12:00:00Z");
+        when(shareRepository.findActiveBySharedBy(eq(ACTOR), isNull(), isNull(), eq(11)))
+            .thenReturn(List.of(fileShare, folderShare));
+
+        SharePage page = service.listByMe(ACTOR, null, 10);
+
+        assertThat(page.items()).hasSize(2);
+        ShareDto first = page.items().get(0);
+        ShareDto second = page.items().get(1);
+        // 첫 row: file path, 두번째 row: folder path. XOR per row.
+        assertThat(first.fileId()).isEqualTo(fileShare.getFileId());
+        assertThat(first.folderId()).isNull();
+        assertThat(second.fileId()).isNull();
+        assertThat(second.folderId()).isEqualTo(folderShare.getFolderId());
+    }
+
     // ----------------- helpers -----------------
 
     private static Share makeShare(String createdAtIso) {
@@ -177,6 +228,19 @@ class ShareQueryServiceTest {
         s.setId(UUID.randomUUID());
         s.setFileId(UUID.randomUUID());
         s.setFolderId(null);
+        s.setPermissionId(UUID.randomUUID());
+        s.setSharedBy(ACTOR);
+        s.setCreatedAt(Instant.parse(createdAtIso));
+        s.setRevokedAt(null);
+        s.setRevokedBy(null);
+        return s;
+    }
+
+    private static Share makeFolderShare(String createdAtIso) {
+        Share s = new Share();
+        s.setId(UUID.randomUUID());
+        s.setFileId(null);                       // V6 XOR — folder share
+        s.setFolderId(UUID.randomUUID());
         s.setPermissionId(UUID.randomUUID());
         s.setSharedBy(ACTOR);
         s.setCreatedAt(Instant.parse(createdAtIso));

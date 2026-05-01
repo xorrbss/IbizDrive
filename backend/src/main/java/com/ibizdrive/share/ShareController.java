@@ -20,18 +20,20 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Shares REST endpoint — A10.5 (docs/02 §7.9, ADR #34).
+ * Shares REST endpoint — A10.5 + A12 (docs/02 §7.9, ADR #34).
  *
  * <ul>
  *   <li><b>POST</b>   {@code /api/files/{fileId}/share}     — N subjects → N shares (A10.2). 201 + {@code { shares: ShareDto[] }}</li>
- *   <li><b>DELETE</b> {@code /api/shares/{shareId}}         — owner/ADMIN revoke (A10.3). 204</li>
- *   <li><b>GET</b>    {@code /api/shares/by-me}             — actor가 만든 active share (A10.4). 200 {@link SharePage}</li>
- *   <li><b>GET</b>    {@code /api/shares/with-me}           — actor가 받은 active share (A10.4). 200 {@link SharePage}</li>
+ *   <li><b>POST</b>   {@code /api/folders/{folderId}/share} — folder 변형 (A12). 201 + {@code { shares: ShareDto[] }}</li>
+ *   <li><b>DELETE</b> {@code /api/shares/{shareId}}         — owner/ADMIN revoke (A10.3). 204 (file/folder 공통)</li>
+ *   <li><b>GET</b>    {@code /api/shares/by-me}             — actor가 만든 active share (A10.4). 200 {@link SharePage} (file+folder)</li>
+ *   <li><b>GET</b>    {@code /api/shares/with-me}           — actor가 받은 active share (A10.4). 200 {@link SharePage} (file+folder)</li>
  * </ul>
  *
  * <p><b>인가</b>:
  * <ul>
- *   <li>POST: {@code @PreAuthorize("hasPermission(#fileId, 'file', 'SHARE')")} — 대상 파일에 SHARE preset 보유.</li>
+ *   <li>POST file: {@code @PreAuthorize("hasPermission(#fileId, 'file', 'SHARE')")} — 대상 파일에 SHARE preset 보유.</li>
+ *   <li>POST folder: {@code @PreAuthorize("hasPermission(#folderId, 'folder', 'SHARE')")} — 대상 폴더에 SHARE preset 보유.</li>
  *   <li>DELETE: {@code @PreAuthorize("@shareCommandService.canRevoke(#shareId, principal)")} — 본인 share 또는 ADMIN.</li>
  *   <li>GET by-me / with-me: {@code @PreAuthorize("isAuthenticated()")} — 인증된 모든 사용자.</li>
  * </ul>
@@ -39,7 +41,7 @@ import java.util.UUID;
  * <p><b>에러 매핑</b> (GlobalExceptionHandler):
  * <ul>
  *   <li>입력 검증 실패 (preset/subject wire, expiresAt 과거, message > 1000자, invalid cursor) → 400</li>
- *   <li>file/share 미존재 → 404 (ResourceNotFoundException)</li>
+ *   <li>file/folder/share 미존재 → 404 (ResourceNotFoundException)</li>
  *   <li>중복 grant → 409 (PermissionConflictException, V5 unique 인덱스 위반)</li>
  *   <li>인가 거부 → 403 (PermissionDenyContext envelope)</li>
  * </ul>
@@ -76,6 +78,33 @@ public class ShareController {
     ) {
         List<Share> created = shareCommandService.createShares(
             fileId, body, principal.getUser().getId()
+        );
+        List<ShareDto> dtos = new ArrayList<>(created.size());
+        for (Share s : created) dtos.add(ShareDto.from(s));
+        return ResponseEntity
+            .status(HttpStatus.CREATED)
+            .body(Map.of("shares", List.copyOf(dtos)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // POST /api/folders/{folderId}/share — A12
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * folder 공유 생성 — A12. service가 N subjects → N shares를 단일 트랜잭션에서 처리.
+     *
+     * <p>file 변형({@link #create})과 동일 envelope ({@code { shares: ShareDto[] }}). 결과 ShareDto는
+     * {@code folderId} NOT NULL, {@code fileId} NULL (V6 XOR CHECK + event invariant).
+     */
+    @PostMapping("/folders/{folderId}/share")
+    @PreAuthorize("hasPermission(#folderId, 'folder', 'SHARE')")
+    public ResponseEntity<Map<String, List<ShareDto>>> createFolderShare(
+        @PathVariable("folderId") UUID folderId,
+        @RequestBody ShareCreateRequest body,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        List<Share> created = shareCommandService.createFolderShares(
+            folderId, body, principal.getUser().getId()
         );
         List<ShareDto> dtos = new ArrayList<>(created.size());
         for (Share s : created) dtos.add(ShareDto.from(s));

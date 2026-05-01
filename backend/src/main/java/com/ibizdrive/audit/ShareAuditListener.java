@@ -36,12 +36,15 @@ public class ShareAuditListener {
 
     @EventListener
     public void onShareCreated(ShareCreatedEvent event) {
+        // file/folder XOR — 정확히 한 쪽이 NOT NULL (event compact constructor 보증).
+        String nodeKey = event.fileId() != null ? "file_id" : "folder_id";
+        UUID nodeId = event.fileId() != null ? event.fileId() : event.folderId();
         String after = createStateJson(
-            event.fileId(), event.permissionId(),
+            nodeKey, nodeId, event.permissionId(),
             event.subjectType(), event.subjectId(),
             event.preset().wire(), event.expiresAt(), event.message()
         );
-        String metadata = "{\"file_id\":\"" + event.fileId() + "\""
+        String metadata = "{\"" + nodeKey + "\":\"" + nodeId + "\""
             + ",\"permission_id\":\"" + event.permissionId() + "\"}";
         try {
             auditService.record(new AuditEvent(
@@ -63,13 +66,15 @@ public class ShareAuditListener {
     @EventListener
     public void onShareRevoked(ShareRevokedEvent event) {
         // V6 CASCADE로 share row가 사라지므로 snapshot이 유일한 기록 — before_state로 보존.
+        String nodeKey = event.fileId() != null ? "file_id" : "folder_id";
+        UUID nodeId = event.fileId() != null ? event.fileId() : event.folderId();
         String before = revokeStateJson(
-            event.fileId(), event.permissionId(),
+            nodeKey, nodeId, event.permissionId(),
             event.originalSharedBy(),
             event.originalCreatedAt(), event.originalExpiresAt(),
             event.originalMessage()
         );
-        String metadata = "{\"file_id\":\"" + event.fileId() + "\""
+        String metadata = "{\"" + nodeKey + "\":\"" + nodeId + "\""
             + ",\"permission_id\":\"" + event.permissionId() + "\""
             + ",\"original_shared_by\":\"" + event.originalSharedBy() + "\"}";
         try {
@@ -89,11 +94,11 @@ public class ShareAuditListener {
         }
     }
 
-    private static String createStateJson(UUID fileId, UUID permissionId,
+    private static String createStateJson(String nodeKey, UUID nodeId, UUID permissionId,
                                           String subjectType, UUID subjectId,
                                           String presetWire, Instant expiresAt, String message) {
         StringBuilder sb = new StringBuilder(200);
-        sb.append("{\"file_id\":\"").append(fileId).append("\"")
+        sb.append("{\"").append(nodeKey).append("\":\"").append(nodeId).append("\"")
           .append(",\"permission_id\":\"").append(permissionId).append("\"")
           .append(",\"subject_type\":\"").append(subjectType).append("\"")
           .append(",\"subject_id\":");
@@ -107,10 +112,10 @@ public class ShareAuditListener {
         return sb.toString();
     }
 
-    private static String revokeStateJson(UUID fileId, UUID permissionId, UUID originalSharedBy,
+    private static String revokeStateJson(String nodeKey, UUID nodeId, UUID permissionId, UUID originalSharedBy,
                                           Instant createdAt, Instant expiresAt, String message) {
         StringBuilder sb = new StringBuilder(200);
-        sb.append("{\"file_id\":\"").append(fileId).append("\"")
+        sb.append("{\"").append(nodeKey).append("\":\"").append(nodeId).append("\"")
           .append(",\"permission_id\":\"").append(permissionId).append("\"")
           .append(",\"shared_by\":\"").append(originalSharedBy).append("\"")
           .append(",\"created_at\":");
