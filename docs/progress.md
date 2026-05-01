@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-05-01 — 🏁 F6 트랙 종료 (Frontend Share Subject Picker — User)
+
+### 범위
+
+F6.0 (worktree `feature/f6-user-search-picker` from `09d4b52` A14 closure + dev-docs bootstrap `dev/active/f6-user-search-picker/`) → F6.1 (`UserSummary` 타입 신설 + `qk.users()`/`qk.usersSearch(normalized, limit)` 키 팩토리 + `api.searchUsers({q, limit?}, {signal?})` — q < 2 자체 short-circuit, default limit=20, `searchFiles` wire 패턴 그대로 답습; `api.users.test.ts` 7 케이스 GREEN) → F6.2 (`useUserSearch(rawQuery, {limit?})` — `useDebounce(300ms)` + `q.trim().toLowerCase()` (A14 ADR #35 — `normalizeForSearch` NFC collapse 미적용) + `useQuery` enabled `normalized.length >= 2` + `keepPreviousData` + `staleTime 30_000` + signal 전파; `useUserSearch.test.tsx` 5 케이스 GREEN) → F6.3 (`UserSearchCombobox.tsx` 신설 — WAI-ARIA 1.2 Combobox + Listbox self-contained, controlled `value: UserSummary|null` + `onChange`, internal `rawInput`/`isOpen`/`activeIndex` state, ArrowDown/Up wrap-around + Enter commit + Esc close + Click(`onMouseDown.preventDefault` + `onClick.commit`), 선택 후 재입력 시 `onChange(null)` (RenameDialog input-as-state 패턴), `aria-controls`/`aria-expanded`/`aria-activedescendant` 정합; 12 케이스 GREEN) → F6.4 (`ShareDialog.tsx` 통합 — `subjectType: 'everyone'|'user'` state default `'everyone'` + `selectedUser: UserSummary|null` state, 라디오 그룹 `모든 사용자 | 특정 사용자`, `subjectType==='user'` 분기로 Combobox 마운트, submit 분기: everyone → `{type:'everyone'}` / user+selected null → `toast.error('공유할 사용자를 선택해 주세요')` + return / user+selected → `{type:'user', id: selectedUser.id}`, dialog 재오픈 시 reset; `ShareDialog.test.tsx` +5 케이스 GREEN) → F6.5 (`docs/01 §14.4`에 subjectType 라디오 흐름 + `UserSearchCombobox`/`useUserSearch` 등재 + `docs/progress.md` 본 entry + dev-docs archive + PR + master squash-merge).
+
+### 회고
+
+- **commits**: 6 on top of `09d4b52` A14 closure (worktree branch `feature/f6-user-search-picker`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 4 / 수정 3.
+  - 신설: `frontend/src/types/user.ts`, `frontend/src/hooks/useUserSearch.ts`, `frontend/src/components/shares/UserSearchCombobox.tsx`
+  - 신설(api 메서드): `api.searchUsers` (`frontend/src/lib/api.ts` 증분)
+  - 수정: `frontend/src/lib/api.ts`, `frontend/src/lib/queryKeys.ts`, `frontend/src/components/shares/ShareDialog.tsx`
+- **test 파일**: 신설 4. `api.users.test.ts`(7), `useUserSearch.test.tsx`(5), `UserSearchCombobox.test.tsx`(12), `ShareDialog.test.tsx`(+5). 최종 `pnpm test --run` **529/529 GREEN** (baseline 500 → +29). `pnpm typecheck` + `pnpm lint` + `pnpm build` clean.
+- **docs sync**: `docs/01-frontend-design.md §14.4` — subject picker user 옵션 + Combobox 등재 + subjectType 라디오 흐름. DB/스키마 변경 0 (frontend 전용 트랙).
+
+### 핵심 결정 (F6 트랙, 확정)
+
+1. **`useUserSearch` normalize = `trim().toLowerCase()` only** — A14 ADR #35 정책. `normalizeForSearch`(NFC collapse + 다이아크리틱 제거)는 file/folder name 검색 전용. 사용자 displayName/email은 1:1 매칭 의도 — Unicode collapse는 false-positive 위험.
+2. **Combobox는 self-contained (외부 a11y 라이브러리 거부)** — KISS + 의존성 최소. WAI-ARIA 1.2 Combobox + Listbox 패턴 직접 구현. 키보드 1D + wrap-around로 충분, 스크롤-into-view 미구현(option 10개 cap 가정).
+3. **선택 = `value` controlled, input 텍스트 = internal state** — RenameDialog input-as-state 패턴 차용. 재입력 시 `onChange(null)`로 이전 선택 무효화 → submit 시 race 방지.
+4. **단일 선택만 (multi-chip 없음)** — A14 wire가 `subjects[]`(다중)을 지원하지만 본 트랙 scope 외. 다중은 v1.x.
+5. **subjectType radio default `'everyone'`** — 기존 ShareDialog UX 보존. 사용자가 명시적으로 `특정 사용자` 선택해야 picker 마운트.
+6. **submit guard = inline toast** — `selectedUser=null + subjectType=user` 시 toast.error로 재시도 유도. dialog 닫지 않음.
+7. **dialog 재오픈 시 reset** — open useEffect 안에서 `setSubjectType('everyone')` + `setSelectedUser(null)` — 이전 선택 누수 방지.
+8. **`Esc` propagation 차단** — Combobox 자체 Esc는 `e.stopPropagation()` 후 listbox close만 수행. ShareDialog의 Esc 닫기와 충돌 방지(listbox 열림 상태에서 Esc → dialog까지 닫히면 UX 손실).
+
+### 파급 영향
+
+- **A14 wire 활용**: A14가 등재한 `GET /api/users/search` (q minLen 2, limit 1~50 default 20 cap 50) 1:1 사용. backend 변경 0.
+- **frontend backlog**: department/role subject picker(별도 endpoint 필요), 다중 선택 chip, 사용자 lookup 캐시 공유(`qk.usersSearch` staleTime 30s 활용), Combobox 외부-클릭 close(현재 옵션 click + Esc만 close — modal 안에서 충분).
+- **DB/스키마**: 변경 없음.
+
+---
+
 ## 2026-05-01 — 🏁 M16 follow-up Grid 가상화 종료 (`useGridColumns` + row 단위 `useVirtualizer`)
 
 ### 범위

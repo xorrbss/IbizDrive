@@ -4,6 +4,7 @@ import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit
 import type { Permission } from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
+import type { UserSummary } from '@/types/user'
 import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
@@ -449,6 +450,41 @@ export const api = {
       }
     })
     return { items }
+  },
+
+  /**
+   * F6 — 사용자 검색 (A14 / docs/02 §7.14, ADR #35).
+   *
+   * `GET /api/users/search?q=&limit=`을 fetch.
+   * - q.length < 2면 backend 라운드트립 없이 `{items:[]}` 반환 (`useUserSearch.enabled`와 이중 안전).
+   * - 호출자(useUserSearch)는 이미 trim+lowercase + 최소 2자 게이트를 통과한 query를 넘김.
+   * - limit default 20, backend가 1~50 cap 강제.
+   * - 응답 `{items: UserSummary[]}`를 그대로 반환 — 매핑 불요(record 1:1 wire).
+   * - 에러 envelope: 비-OK 응답은 status 필드 가진 Error throw → QueryCache.onError 401/403 분기.
+   * - AbortSignal은 fetch에 그대로 전달 (DOMException AbortError → useQuery cancellation).
+   */
+  async searchUsers(
+    params: { q: string; limit?: number },
+    options: { signal?: AbortSignal } = {},
+  ): Promise<{ items: UserSummary[] }> {
+    const { signal } = options
+    const q = params.q
+    if (!q || q.length < 2) return { items: [] }
+    const limit = params.limit ?? 20
+
+    const qs = new URLSearchParams({ q, limit: String(limit) })
+    const res = await fetch(`/api/users/search?${qs.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+      signal,
+    })
+    if (!res.ok) {
+      const err = new Error(`users search fetch failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    return (await res.json()) as { items: UserSummary[] }
   },
 
   /**

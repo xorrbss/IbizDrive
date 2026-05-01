@@ -869,16 +869,30 @@ export function usePermission(nodeId?: string) {
 | **파괴적** (삭제, 영구 삭제) | 숨김 | 비활성이 오히려 유인 |
 | **조회 불가** (읽기 권한 없음) | 애초에 리스트/트리에 안 뜸 | 백엔드 필터링 |
 
-### 14.4 ShareDialog (F4 → F5 → A13)
+### 14.4 ShareDialog (F4 → F5 → A13 → F6)
 
-`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활.
+`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활 → **F6(2026-05-01)** A14 `GET /api/users/search` (docs/02 §7.14, ADR #35)을 활용해 subject picker에 user 옵션 추가.
 
 - **트리거**:
   - 파일: `BulkActionBar` 단일 선택 시 `공유` 버튼 → `useShareUiStore.open({kind:'file', id, name})`.
   - 폴더: `Breadcrumb` 우측 `공유` 버튼(현재 폴더 = URL `folderId`, 비루트만) → `open({kind:'folder', id, name})`.
 - **store 형상**: `target: ShareTarget = {kind:'file'|'folder', id, name}` discriminated. ShareDialog는 `target` 단일 선택자로 일반화.
 - **mutation**: `useCreateShare` Vars `{target, req}` → target.kind === 'folder' ? POST `/api/folders/{id}/share` : POST `/api/files/{id}/share` (api.createFolderShares / createFileShares 분리).
-- subject: **'everyone' 고정 (MVP)** — user/department/role 목록 endpoint 부재. 백로그.
+- **subject picker (F6)** — `subjectType` 라디오 (`everyone` | `user`), default `everyone`. department/role은 도메인 부재로 backlog.
+  - `user` 라디오 선택 시 `<UserSearchCombobox value={selectedUser} onChange={setSelectedUser}/>` 마운트.
+  - `everyone` 토글 시 Combobox 언마운트 + `selectedUser=null` 리셋.
+  - submit 분기:
+    - `everyone` → `subjects:[{type:'everyone'}]`
+    - `user` + `selectedUser=null` → `toast.error('공유할 사용자를 선택해 주세요')` + 차단 (mutate 호출 안 함)
+    - `user` + `selectedUser` → `subjects:[{type:'user', id:selectedUser.id}]`
+  - dialog 재오픈 시 `subjectType='everyone'` + `selectedUser=null` reset (preset/expires/message와 동일 라이프사이클).
+- **UserSearchCombobox** (`components/shares/UserSearchCombobox.tsx`, F6.3):
+  - WAI-ARIA 1.2 Combobox + Listbox 패턴 — `<input role="combobox" aria-expanded aria-controls aria-activedescendant>` + `<ul role="listbox">` + `<li role="option" aria-selected>`.
+  - 외부 a11y 라이브러리 거부 (KISS / ULTIMATE INVARIANT 5/3).
+  - 키보드: ArrowDown/Up wrap-around, Enter 선택, Esc close (input 값 보존).
+  - `useUserSearch(rawInput)` (F6.2) — debounce 300ms + minLen 2 + keepPreviousData + AbortSignal. normalize는 `q.trim().toLowerCase()` (A14 ADR #35: NFC collapse 미적용).
+  - 선택 후 input 변경 → `onChange(null)` (RenameDialog input-as-state 패턴).
+  - **out-of-scope**: multi-chip / department / role / role 라벨 — A14 wire에 없음 + MVP 단일 사용자 공유로 충분.
 - preset: `read | upload | edit | admin` 4값 (ADR #34, V5 CHECK는 SHARE 미지원).
 - expiresAt: HTML5 datetime-local → `new Date(v).toISOString()`.
 - 기존 by-me share 목록 매칭: `(s.fileId ?? s.folderId) === target.id` (wire `shares` 행은 file_id/folder_id XOR — V6 CHECK).
