@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-01
-Status: 🟢 ACTIVE — 게이트 5 통과 (M9.4 Undo toast wiring) → M9.5 진입 대기
+Status: 🟢 ACTIVE — 게이트 5 통과 + rebase onto master (PR #16/A10 흡수) 완료 → M9.5 PR 생성 단계
 ---
 
 # M9 — Frontend 휴지통 통합 — Context
@@ -52,6 +52,18 @@ Status: 🟢 ACTIVE — 게이트 5 통과 (M9.4 Undo toast wiring) → M9.5 진
   - 신설 테스트 4건: duration+action.label / action.onClick type 분기 / Undo 성공 후 복원 toast / 409 RESTORE_CONFLICT 분기. 기존 4 rename 테스트 유지 → 8 total in BulkActionBar.test.tsx.
   - 검증: pnpm test 41 files / 364 tests GREEN, 회귀 0. typecheck/lint 통과.
   - **lesson**: 본 프로젝트는 `vi.mocked(toast).success.mock.calls` 패턴이 TS narrow 실패 — `@/test/mocks/sonner`의 `toastSpy('success').mock.calls`가 표준. 다음 toast 호출 검증 시 toastSpy helper 선행.
+- **2026-05-01 rebase onto origin/master (PR #16/A10 흡수)** — 게이트 5와 M9.5 사이에 origin/master가 9 commit 진행 (PR #16/F1.1/A9/A10). 충돌 해소 후 회귀 0 (439 tests GREEN).
+  - 배경: PR #16(`f77f886`)이 우리 작업 동안 mock 기반 휴지통 hooks(`useRestoreBulk`/`usePurgeBulk`/`useTrashHooks.test.tsx`)를 추가 + M14 권한 시스템(`usePermission` useQuery 기반, UPPER_SNAKE_CASE flags) + M11 검색(`api.searchFiles`) + M15 storage(`api.getStorageQuota`) + Share UI(`useShareUiStore`). 우리 트랙은 동일 영역에서 real-backend 마이그를 진행 중이었음.
+  - 충돌 해소 전략: M9 real-backend 구현(ours)을 base로 + PR #16의 무관 추가(searchFiles/getEffectivePermissions/getStorageQuota/StorageBar/ShareUiStore/Share button)는 cherry-pick 형식으로 흡수.
+    - `frontend/src/lib/queryKeys.ts` (4 conflict block) — folderTree 추가는 양측 합의, `afterDelete`/`afterRestore`의 추가 무효화 키는 우리 것 채택.
+    - `frontend/src/lib/api.ts` — ours base + master의 `searchFiles`/`getEffectivePermissions`/`getStorageQuota` import 추가.
+    - `frontend/src/components/files/BulkActionBar.{tsx,test.tsx}` — ours 채택 후 새 `usePermission()` mock 추가(admin preset 8 권한). `useSortParams` mock에 `setSort: vi.fn()` 추가(M11이 `setSort`를 hook 시그니처에 추가).
+    - `frontend/src/app/(explorer)/layout.tsx` — duplicate `TrashLink` import 제거 + master의 `<StorageBar />`를 `<TrashLink />` 다음에 mount.
+  - **orphan 정리 commit `488ca5a`** — PR #16의 mock 기반 hooks 3종 (`useRestoreBulk.ts` / `usePurgeBulk.ts` / `useTrashHooks.test.tsx`) 삭제. 우리의 real-backend `useRestoreItem` / `usePurgeTrashItem` / `useTrashList`로 대체.
+  - **M14 권한 시스템 정합 commit `ba978e5`** — `TrashRowActions.tsx`의 `usePermission().admin` (불리언 stub) → `usePermission().PURGE` (M14 권한 hook 표준 flag) 마이그. docs/03 §3.2 PURGE는 ADMIN role 전용이라 의미적으로 정합. `TrashTable.test.tsx`의 mock도 `{ admin: true/false }` → `{ PURGE: true/false }` 일괄 교체 (3 instances). `BulkActionBar.test.tsx`의 `useSortParams` mock에 `setSort: vi.fn()` 추가.
+  - 검증: pnpm test 47 files / 439 tests GREEN, 회귀 0. typecheck/lint 통과.
+  - **out-of-scope blocker (M9 외)**: `pnpm build` 실패 (`useSearchParams() should be wrapped in a suspense boundary at page "/files"`). origin/master(`24a78b2`)에서도 동일 재현 — PR #16(M11 검색) 또는 F1.1(`api.searchFiles`)에서 `/files` 페이지가 `useSearchParams`를 Suspense 외부에서 호출하는 것이 원인. **M9 트랙 책임 외**, 별도 트랙(`fix(F1.x): /files Suspense boundary`)에서 처리 권고. 본 PR description에 명시 + skip 사유 기록.
+  - **lesson**: 자율 모드에서 long-running worktree는 origin/master 변경에 노출됨. 게이트 사이마다 `git fetch && git log master..HEAD --oneline` 점검 → 충돌 영역 미리 알림. 또한 stub `usePermission`은 향후 M14 도입 시 mock 시그니처 일괄 갱신이 필요하므로 worktree 시작 시 PR 동향(특히 `useQuery`-기반 시스템 hook) 점검 필요.
 
 ## Current Execution Contract
 
@@ -64,9 +76,9 @@ Status: 🟢 ACTIVE — 게이트 5 통과 (M9.4 Undo toast wiring) → M9.5 진
 
 ## 현재 active task
 
-- **Phase**: 게이트 5 통과 → M9.5 진입 대기
-- **선행 완료**: M9.0 (`6e67785`) — qk.trash + 무효화 헬퍼. M9.1 (`7bd63f2`) — API client. M9.2 (`d52b4d6`) — hooks. M9.3 — /trash 페이지 + 컴포넌트 + Sidebar 통합 + 9 GREEN. M9.4 — Undo toast wiring (BulkActionBar) + 4 GREEN.
-- **다음**: M9.5 — closure (PR 생성 + CI green + squash merge + dev-docs archive + worktree 정리).
+- **Phase**: M9.5 진입 — rebase onto master 완료 → PR 생성 단계
+- **선행 완료**: M9.0~M9.4 + rebase onto origin/master (PR #16/A10 흡수) + orphan 정리(`488ca5a`) + M14 권한 정합(`ba978e5`).
+- **다음**: M9.5 — push + PR 생성 (CI green 확인 + 사용자 승인 → squash merge → archive + worktree 정리). 빌드 blocker(`useSearchParams` Suspense)는 master pre-existing이라 별도 트랙으로 분리 — PR description에 flag.
 
 ## 다음 세션 읽기 순서
 

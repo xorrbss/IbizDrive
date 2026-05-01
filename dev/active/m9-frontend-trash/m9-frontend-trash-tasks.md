@@ -207,14 +207,17 @@ Status: 🟢 ACTIVE — 게이트 5 통과 → M9.5 진입 대기
 
 ---
 
-## M9.5 — closure (PR + archive) [📋 ready]
+## M9.5 — closure (PR + archive) [🟡 in progress]
 
 **작업 전 필독**:
 - `dev/completed/a8-trash-manage/` closure 패턴 mirror
 - 본 플랜의 DoD 10개 항목
+- context.md "2026-05-01 rebase onto origin/master (PR #16/A10 흡수)" 항목 — 충돌 해소 + orphan 정리 + M14 권한 정합 로그
 
 **구현 대상**:
-- [ ] (1) `cd frontend && pnpm test && pnpm typecheck && pnpm lint && pnpm build` — 모두 통과
+- [x] (1a) `pnpm test` — 47 files / 439 tests GREEN, 회귀 0 (rebase 후 재검증).
+- [x] (1b) `pnpm typecheck` / `pnpm lint` — 통과.
+- [⚠️] (1c) `pnpm build` — **out-of-scope blocker**: `/files` 페이지 `useSearchParams` Suspense 누락. origin/master(`24a78b2`)에서도 동일 재현 → PR #16(M11) 또는 F1.1(searchFiles wiring)에서 도입된 pre-existing regression. 본 PR 범위 외, 별도 트랙(`fix(F1.x): /files Suspense boundary`)에서 처리 + PR description에 flag.
 - [ ] (2) PR 생성 — title `feat(M9): frontend 휴지통 통합 (/trash + Undo toast + A6/A8 endpoint 연결)`
 - [ ] (3) 사용자 승인 → CI green → squash-merge
 - [ ] (4) closure commit `chore(M9): closure — M9 마일스톤 종료 + dev-docs archive`:
