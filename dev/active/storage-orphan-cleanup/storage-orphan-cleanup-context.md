@@ -12,7 +12,7 @@ Last Updated: 2026-05-02
 | OC.1 audit type + properties | ✅ done | enum + Properties record + yml + ts union. backend GREEN, frontend 531/531 + typecheck/lint clean. |
 | OC.2 StorageClient.list 확장 | ✅ done | StorageObject record + listOlderThan(Duration). LocalFs impl: walk + UUID match + grace boundary + temp/non-UUID skip. 6 신규 테스트 GREEN. |
 | OC.3 Repository active set | ✅ done | streamActiveStorageKeys() — `SELECT v.storageKey FROM FileVersion v` (no deleted_at filter, trash 보호). Hibernate fetchSize=200 + readOnly hint. 3 신규 repository 테스트(Docker 가용 시 검증). |
-| OC.4 Service GREEN | ⬜ pending | — |
+| OC.4 Service GREEN | ✅ done | runDailyCleanup(maxPerRun, graceHours): liveSet 적재→walk→diff→delete→audit. @Transactional(readOnly=true). 8 mockito 유닛 테스트 (happy/empty/cap/per-row 실패 isolation/non-uuid skip/audit JSON/invalid args/walk IOException). |
 | OC.5 Job + integration test | ⬜ pending | — |
 | OC.6 closure | ⬜ pending | — |
 
@@ -27,15 +27,12 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-**OC.4 StorageOrphanCleanupService**.
+**OC.5 StorageOrphanCleanupJob + integration test**.
 
-- `runDailyCleanup(maxPerRun, graceHours, batchSize)`:
-  1. `liveSet = repository.streamActiveStorageKeys()` → `Set<UUID>` 적재.
-  2. `walked = storageClient.listOlderThan(Duration.ofHours(graceHours))` lazy stream 소비.
-  3. each walked: parse UUID from key → if not in liveSet → orphan candidate.
-  4. delete each orphan (per-row try/catch, ERROR log + continue). cap maxPerRun → truncated=true.
-  5. emit audit `STORAGE_ORPHAN_CLEANED` summary 1건.
-- TDD unit: Mock<StorageClient> + Mock<FileVersionRepository> + Mock<AuditService>로 카운터·delete 호출 검증.
+- `StorageOrphanCleanupJob` (`@Component @ConditionalOnProperty("app.storage.orphan-cleanup.enabled") @Scheduled(cron, zone)`).
+- service.runDailyCleanup(props.maxPerRun(), props.graceHours()) 호출. truncated 시 WARN log.
+- Disabled property 하에서 빈 미등록 검증 — `HardPurgeJobDisabledIntegrationTest` 답습.
+- Integration test (`@SpringBootTest` + `@Testcontainers(disabledWithoutDocker=true)`): 실 Postgres + LocalFs `@TempDir` + file_versions 행 삽입 + 객체 mix → service 호출 → orphan만 삭제 검증.
 
 ## 다음 세션 읽기 순서
 

@@ -12,7 +12,7 @@ Last Updated: 2026-05-02
 | OC.1 audit type + properties + frontend sync | ✅ done |
 | OC.2 StorageClient.listOlderThan + LocalFs impl | ✅ done |
 | OC.3 FileVersionRepository.streamActiveStorageKeys | ✅ done |
-| OC.4 StorageOrphanCleanupService | ⬜ pending |
+| OC.4 StorageOrphanCleanupService | ✅ done |
 | OC.5 StorageOrphanCleanupJob + integration test | ⬜ pending |
 | OC.6 closure (docs sync + PR + archive) | ⬜ pending |
 
@@ -117,7 +117,7 @@ Last Updated: 2026-05-02
 
 ---
 
-## ⬜ OC.4 — StorageOrphanCleanupService (Mockito unit)
+## ✅ OC.4 — StorageOrphanCleanupService (Mockito unit)
 
 ### 작업 전 필독
 - `backend/src/main/java/com/ibizdrive/purge/HardPurgeService.java` — single `@Transactional` + summary audit emission 패턴 (line 86-143 reference).
