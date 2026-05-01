@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-05-02 — 🏁 storage-orphan-cleanup 트랙 종료 (Storage Orphan Cleanup daily cron — A15/A7 backlog closure)
+
+### 범위
+
+OC.0 (worktree `feature/storage-orphan-cleanup` from `65e5cd3` A15 closure + dev-docs bootstrap `dev/active/storage-orphan-cleanup/`, 3파일 commit `941b6d5`) → OC.1 (`AuditEventType.STORAGE_ORPHAN_CLEANED("storage.orphan.cleaned")` enum + wire 추가, `StorageOrphanCleanupProperties` `@ConfigurationProperties("app.storage.orphan-cleanup")` record `{enabled, cron, zone, maxPerRun, graceHours, batchSize}` + `SchedulingConfig` `@EnableConfigurationProperties` 등록 + `application.yml` 블록 추가, `frontend/src/types/audit.ts` union에 `'storage.orphan.cleaned'` 추가) → OC.2 (`StorageObject` record `(String key, Instant lastModified)` 신설, `StorageClient.listOlderThan(Duration grace)` interface 확장, `LocalFsStorageClient.listOlderThan` impl — `Files.walk(root)` 기반 lazy stream + UUID regex match + mtime grace 컷오프 + 비-UUID name skip + WARN log, 6 RED→GREEN 테스트) → OC.3 (`FileVersionRepository.streamActiveStorageKeys()` `@Query("SELECT v.storageKey FROM FileVersion v")` + `@QueryHints(fetchSize=200, readOnly=true)`. **Plan 정정**: 원안 `JOIN files WHERE deleted_at IS NULL`은 trash file의 storage 보호 invariant 위반(soft-delete 30일 grace 내 storage 객체가 orphan으로 분류되어 삭제 → 복원 시 데이터 손실)이라 단순 stream으로 변경 — A7 hard purge cascade가 file_versions row를 cascade 삭제하므로 다음 cron에서 자연 orphan 분류. 3 신규 `@Transactional` 테스트) → OC.4 (`StorageOrphanCleanupResult` record `(runId, scanned, candidates, deleted, failed, truncated, durationMs)` + `StorageOrphanCleanupService.runDailyCleanup(maxPerRun, graceHours)` 5-stage 파이프라인 — liveSet 적재 → walk → diff → per-row delete(IOException isolation) → audit emit `STORAGE_ORPHAN_CLEANED`. `@Transactional(readOnly=true)` outer + `AuditService.record` REQUIRES_NEW. 8 Mockito 유닛 테스트 — happy/empty/cap/per-row 실패 isolation/non-uuid skip/audit JSON 7-field/invalid args/walk IOException) → OC.5 (`StorageOrphanCleanupJob @Component @ConditionalOnProperty + @Scheduled` — props 기반 cron/zone, RuntimeException catch-all + truncated WARN log, `StorageOrphanCleanupJobDisabledIntegrationTest` `@TestPropertySource(enabled=false)` bean 부재 검증, `StorageOrphanCleanupIntegrationTest` E2E with real Postgres + LocalFs `@TempDir` — live key + orphan(grace 통과) + orphan(in-flight) 3-객체 시나리오로 deletes orphans only + preserves live and in-flight 검증) → OC.6 (closure: ADR #38 + docs/02 §5.6 + docs/04 §13 row + docs/03 §4.1 audit type + progress entry + dev-docs archive + PR + master squash-merge. **참고**: master에 A16(ADR #37)이 먼저 머지되어 본 트랙 ADR은 #38로 재번호).
+
+### 회고
+
+- **commits**: 6 on top of `65e5cd3` A15 closure (worktree branch `feature/storage-orphan-cleanup`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 6 / 수정 5.
+  - 신설(backend): `StorageOrphanCleanupProperties.java`, `StorageObject.java`, `StorageOrphanCleanupResult.java`, `StorageOrphanCleanupService.java`, `StorageOrphanCleanupJob.java`
+  - 수정(backend): `StorageClient.java` (listOlderThan 추가), `LocalFsStorageClient.java` (listOlderThan impl + UUID_PATTERN), `FileVersionRepository.java` (streamActiveStorageKeys), `AuditEventType.java` (enum 추가), `SchedulingConfig.java` (Properties 등록), `application.yml` (`app.storage.orphan-cleanup.*` 블록)
+  - 수정(frontend): `types/audit.ts` (union 추가)
+- **test 파일**: 신설 4 + 수정 1. `LocalFsStorageClientTest`(+6 listOlderThan 케이스), `FileVersionRepositoryTest`(+3 streamActiveStorageKeys), `StorageOrphanCleanupServiceTest`(8 Mockito), `StorageOrphanCleanupJobDisabledIntegrationTest`(1 disabled bean 검증), `StorageOrphanCleanupIntegrationTest`(2 E2E — bean registered + deletes orphans only). Testcontainers `disabledWithoutDocker=true` Docker 미가용 환경 자동 skip. backend `./gradlew test` GREEN, frontend 527/527 + typecheck/lint clean.
+- **docs sync**: `docs/00-overview.md` ADR #38 신규 row, `docs/02-backend-data-model.md` §5.6 신규 섹션 (storage orphan cleanup 알고리즘 + properties + S3 확장 hook), `docs/04-admin-operations.md` §13 표 행 1개(`storage.orphan.cleanup` daily 01:00) + 각주 [§], `docs/03-security-compliance.md` §4.1 union에 `'storage.orphan.cleaned'` 추가. DB/스키마 변경 0.
+
+### 핵심 결정 (storage-orphan-cleanup 트랙, 확정 → ADR #38)
+
+1. **트리거 = daily cron(`0 0 1 * * *` Asia/Seoul) + 운영자 enable** — A7 hard purge / share-expired-cron / permissions-expired-cron 일관 (`enabled=false` default). A7 purge가 자정에 돌므로 1시간 격차로 trash purge → orphan 발생 → orphan 잡 처리 순.
+2. **DB live set = `file_versions.storage_key` 전체 (NO `JOIN files WHERE deleted_at IS NULL`)** — Plan 원안의 JOIN은 trash 30일 grace 내 file의 storage 객체를 orphan으로 잘못 분류 → 복원 데이터 손실 위험. 단순 stream으로 정정 (CLAUDE.md §3 원칙 9 — 문제 은폐 금지). A7 hard purge cascade가 file_versions row 삭제 시점에 자연 orphan으로 분류되어 다음 cron에서 회수.
+3. **Walk 대상 = LocalFs `{root}/{YYYY}/{MM}/*` 트리, `{UUID}` leaf만 candidate** — 비-UUID name / 디렉토리 leaf / symlink는 skip + WARN log. UUID regex 검증 후 mtime 비교.
+4. **grace = mtime > NOW-24h skip** — in-flight 업로드(트랜잭션 timeout < 5분 가정) race 회피. `app.storage.orphan-cleanup.grace-hours=24` (default).
+5. **삭제 cap = `max-per-run:10000`** — A7 `MAX_PURGE_PER_RUN` 패턴. 도달 시 `truncated=true` + 다음 cron 재시도. `truncated` 플래그 시 WARN log.
+6. **per-row 실패 isolation** — 객체 1개 delete IOException → ERROR log + 다음 candidate 진행. counters에 `failed` 증가. 전체 잡 실패로 번지지 않음.
+7. **Audit = summary 1건/run** = `STORAGE_ORPHAN_CLEANED` (target_type=`system`, target_id=`NULL`, actor_id=`NULL`, metadata=`{runId, scanned, candidates, deleted, failed, truncated, durationMs}`). A7 `SYSTEM_PURGE_EXECUTED` 일관 — per-row spam 회피. `REQUIRES_NEW` 트랜잭션으로 read-only outer trx와 분리.
+8. **Lock = `@SchedulerLock` 미도입** — MVP single-instance 가정 (A7 패턴 일관). 멀티-인스턴스화 시 별도 ADR.
+9. **Properties 네임스페이스 = `app.storage.orphan-cleanup.*`** — `app.*`(job-related) 일관, `ibizdrive.storage.*`(client config)와 분리. cron job은 `app:`, storage I/O 설정은 `ibizdrive:` — 기존 분리 답습.
+10. **신규 enum 추가만으로 호환** — V3 `audit_log.event_type` CHECK 미존재 (VARCHAR(50) 자유). 마이그레이션 0.
+11. **`StorageClient.listOlderThan` 시그니처 = `Stream<StorageObject> listOlderThan(Duration grace)`** — Stream lazy 보장으로 큰 트리에서 메모리 폭증 회피. caller(`try-with-resources`)로 close 책임. S3 impl(v1.x)은 ListObjectsV2 paginator로 자연 매핑(LastModified 비교).
+12. **권한 트리거 = 시스템 잡 only** — HTTP endpoint 미도입(운영 트리거는 backlog). ROI 검증 후 admin endpoint 별도 ADR.
+
+### 파급 영향
+
+- **`docs/00 §5 ADR`**: #38 신규 row.
+- **`docs/02 §5.6`**: 신규 섹션 (cleanup 알고리즘 + properties + S3 확장 hook).
+- **`docs/04 §13`**: 배치 작업 표 행 1개(`storage.orphan.cleanup`) + 각주 [§].
+- **`docs/03 §4.1`**: audit event union에 `'storage.orphan.cleaned'` 추가.
+- **DB/스키마**: 변경 0.
+- **Backend backlog**: S3StorageClient `listOlderThan` impl(ListObjectsV2 paginator), `@SchedulerLock`(멀티 인스턴스화 시), 운영자 트리거 admin endpoint(ROI 검증 후).
+- **Frontend**: 인터페이스 변경 0 — `'storage.orphan.cleaned'` audit union 추가만, 사용처 0건(unknown 이벤트는 default 분기).
+
+---
+
 ## 2026-05-02 — 🏁 A16 트랙 종료 (Department Subject Picker — Domain 도입 + 3-way picker)
 
 ### 범위

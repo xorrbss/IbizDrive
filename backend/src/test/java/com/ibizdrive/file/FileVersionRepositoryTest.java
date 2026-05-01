@@ -8,6 +8,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
+import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -15,7 +16,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -188,6 +192,59 @@ class FileVersionRepositoryTest {
             UUID.randomUUID(), file, 1, UUID.randomUUID(), 100L,
             "0".repeat(64), owner
         ), "scan_status CHECK ('pending','clean','infected','error') 위반");
+    }
+
+    // -------------------- streamActiveStorageKeys (OC.3) --------------------
+
+    @Test
+    @Transactional
+    void streamActiveStorageKeys_emptyDb_returnsEmpty() {
+        try (Stream<UUID> s = fileVersionRepository.streamActiveStorageKeys()) {
+            assertEquals(0L, s.count(), "빈 DB → empty stream");
+        }
+    }
+
+    @Test
+    @Transactional
+    void streamActiveStorageKeys_includesActiveFileVersions() {
+        UUID owner = insertUser("oc3a@test", "oc3a");
+        UUID folder = insertFolder(owner, "oc3af");
+        UUID file = insertFile(owner, folder, "oc3afile");
+
+        FileVersion v1 = newVersion(file, 1, owner);
+        FileVersion v2 = newVersion(file, 2, owner);
+        fileVersionRepository.save(v1);
+        fileVersionRepository.save(v2);
+        fileVersionRepository.flush();
+
+        try (Stream<UUID> s = fileVersionRepository.streamActiveStorageKeys()) {
+            Set<UUID> keys = s.collect(Collectors.toSet());
+            assertTrue(keys.contains(v1.getStorageKey()), "active file v1 storage_key 포함");
+            assertTrue(keys.contains(v2.getStorageKey()), "active file v2 storage_key 포함");
+        }
+    }
+
+    @Test
+    @Transactional
+    void streamActiveStorageKeys_includesTrashedFileVersions() {
+        // 30일 trash grace 보호 — soft-deleted file의 version storage_key도 stream에 포함되어야 한다.
+        // 그래야 cleanup이 trashed file의 storage를 orphan으로 분류하지 않아 restore가 안전.
+        UUID owner = insertUser("oc3b@test", "oc3b");
+        UUID folder = insertFolder(owner, "oc3bf");
+        UUID file = insertFile(owner, folder, "oc3bfile");
+
+        FileVersion v = newVersion(file, 1, owner);
+        UUID key = v.getStorageKey();
+        fileVersionRepository.save(v);
+        fileVersionRepository.flush();
+
+        // soft delete (trash 진입)
+        jdbc.update("UPDATE files SET deleted_at = NOW() WHERE id = ?", file);
+
+        try (Stream<UUID> s = fileVersionRepository.streamActiveStorageKeys()) {
+            Set<UUID> keys = s.collect(Collectors.toSet());
+            assertTrue(keys.contains(key), "trash file의 storage_key도 보존되어야 한다 — 30일 grace 보호");
+        }
     }
 
     // ====================== helpers ======================

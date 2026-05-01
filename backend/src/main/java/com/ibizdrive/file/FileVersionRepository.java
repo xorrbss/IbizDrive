@@ -3,11 +3,15 @@ package com.ibizdrive.file;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
+
+import jakarta.persistence.QueryHint;
 
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 /**
  * Spring Data JPA repository for {@link FileVersion} (A5.1 — ADR #29 deferred 클리어).
@@ -54,4 +58,24 @@ public interface FileVersionRepository extends JpaRepository<FileVersion, UUID> 
     @Modifying
     @Query("DELETE FROM FileVersion v WHERE v.fileId IN :fileIds")
     int deleteByFileIds(@Param("fileIds") Collection<UUID> fileIds);
+
+    /**
+     * Storage orphan cleanup용 — 모든 {@code file_versions.storage_key}를 lazy stream으로 반환.
+     *
+     * <p><b>설계</b>: {@code files.deleted_at} 필터를 적용하지 않는다. 30일 trash grace 동안
+     * {@code file_versions} 행이 보존되어 restore가 가능해야 하므로, storage도 함께 보존되어야 한다.
+     * A7 hard purge가 file row를 삭제하면 cascade로 file_versions 행도 삭제되어 그 시점 이후
+     * 본 stream에서 빠진다 → 다음 orphan cleanup cron에서 storage 객체 삭제.
+     *
+     * <p><b>Stream 자원 관리</b>: caller는 {@code @Transactional(readOnly=true)} 컨텍스트에서
+     * try-with-resources로 호출해야 한다. JPA streaming은 트랜잭션 외부에서 cursor가 닫히면 예외.
+     *
+     * @return 모든 storage_key UUID의 lazy stream — 호출자 close 책임
+     */
+    @Query("SELECT v.storageKey FROM FileVersion v")
+    @QueryHints({
+        @QueryHint(name = "org.hibernate.fetchSize", value = "200"),
+        @QueryHint(name = "org.hibernate.readOnly", value = "true")
+    })
+    Stream<UUID> streamActiveStorageKeys();
 }

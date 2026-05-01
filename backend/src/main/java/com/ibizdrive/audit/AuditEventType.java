@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * 감사 이벤트 타입 (docs/03 §4.1, ADR #24).
  *
- * <p>총 40개 값. {@code frontend/src/types/audit.ts}의 {@code AuditEventType} 유니언과 1:1 동기 —
+ * <p>총 41개 값. {@code frontend/src/types/audit.ts}의 {@code AuditEventType} 유니언과 1:1 동기 —
  * 변경 시 docs/03 §4.1 + frontend types/audit.ts 양쪽 갱신 (계약).
  *
  * <p>Java enum 이름은 {@code UPPER_SNAKE_CASE}, JSON wire format은 {@code lower.dot.notation}.
@@ -66,9 +66,10 @@ public enum AuditEventType {
     ADMIN_LEGAL_HOLD_PLACED("admin.legal_hold.placed"),
     ADMIN_LEGAL_HOLD_RELEASED("admin.legal_hold.released"),
 
-    // 시스템 (2)
+    // 시스템 (3)
     SYSTEM_BACKUP_COMPLETED("system.backup.completed"),
     SYSTEM_PURGE_EXECUTED("system.purge.executed"),
+    STORAGE_ORPHAN_CLEANED("storage.orphan.cleaned"),
 
     // 감사 로그 자체 (1)
     AUDIT_EXPORTED("audit.exported");

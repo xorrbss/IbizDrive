@@ -566,6 +566,44 @@ filename= 파라미터는 fallback용 ASCII만.
   - scan_status = 'clean'    → 정상 다운로드
 ```
 
+### 5.6 Storage Orphan Cleanup (daily cron)
+
+> ADR #38 — A15(`storage_key` 잔존)/A7 hard purge(deferred orphan) 한계 회수.
+
+```text
+트리거: @Scheduled(cron = "0 0 1 * * *", zone = "Asia/Seoul"), default disabled
+        - app.storage.orphan-cleanup.enabled=true 운영자 활성화
+        - A7 hard purge(자정) → 1시간 격차로 cascade orphan 회수
+
+알고리즘:
+  1. liveSet = file_versions.storage_key 전체 (Stream, fetchSize=200, readOnly hint)
+       - NO `JOIN files WHERE deleted_at IS NULL` — trash 30일 grace 내 version도 보존 대상
+       - hard purge가 file_versions cascade 삭제하면 다음 cron에서 자연 orphan 분류
+  2. walk = StorageClient.listOlderThan(grace=24h) — {root}/{YYYY}/{MM}/{UUID} 트리
+       - 비-UUID name / 디렉토리 leaf / symlink → skip + WARN
+       - mtime > NOW-grace → skip (in-flight 업로드 race 회피)
+  3. diff = walk 결과 storage_key 추출 후 liveSet에 없으면 candidate
+  4. delete = per-row try/catch — IOException 1건 → ERROR log + 다음 candidate 진행
+       - cap = max-per-run (default 10000) 도달 시 truncated=true + 다음 cron 재시도
+  5. audit = STORAGE_ORPHAN_CLEANED 1건/run (REQUIRES_NEW)
+       - target_type=system, target_id=NULL
+       - metadata: {runId, scanned, candidates, deleted, failed, truncated, durationMs}
+
+Properties (application.yml `app.storage.orphan-cleanup.*`):
+  - enabled (default false)
+  - cron (default "0 0 1 * * *")
+  - zone (default Asia/Seoul)
+  - max-per-run (default 10000)
+  - grace-hours (default 24)
+  - batch-size (default 200)
+
+S3 확장:
+  - StorageClient.listOlderThan은 Stream lazy 보장 — 큰 트리에서 메모리 폭증 회피
+  - S3StorageClient(v1.x)는 ListObjectsV2 paginator로 자연 매핑 (LastModified 비교)
+```
+
+⚠️ MVP single-instance 가정. 멀티 인스턴스화 시 `@SchedulerLock` 도입 별도 ADR.
+
 ---
 
 ## 6. 트랜잭션 경계

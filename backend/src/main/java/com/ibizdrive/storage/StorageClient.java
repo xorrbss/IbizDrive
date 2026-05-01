@@ -2,6 +2,8 @@ package com.ibizdrive.storage;
 
 import java.io.IOException;
 import java.io.InputStream;
+import java.time.Duration;
+import java.util.stream.Stream;
 
 /**
  * Object storage 추상화 — A15 (docs/02 §5, ADR #5).
@@ -63,4 +65,23 @@ public interface StorageClient {
      * @return 존재 시 true
      */
     boolean exists(String key);
+
+    /**
+     * mtime이 {@code now() - grace} 이전인 객체를 lazy stream으로 반환한다 — orphan cleanup용.
+     *
+     * <p><b>Stream 자원 관리</b>: 구현체는 file walk 등 외부 자원을 소비할 수 있다. caller는 반드시
+     * try-with-resources로 close 해야 하며, 본 stream은 {@link Stream#close()} 호출 시 모든
+     * 외부 자원을 해제한다.
+     *
+     * <p><b>객체 키 필터</b>: 도메인 키 형식({@code {YYYY}/{MM}/{UUID}})에 부합하는 항목만 반환한다.
+     * 비 UUID 파일/임시 파일/숨김 파일은 skip + WARN 로그 (cleanup 대상 외).
+     *
+     * <p><b>grace boundary</b>: {@code lastModified <= now - grace} 객체만 yield. 경계 동등도 포함
+     * (in-flight 업로드는 호출자 측 추가 보호 권장 — service 레벨 graceHours).
+     *
+     * @param grace 현재 시각 기준 보호 기간. 음수 또는 0이면 모든 객체.
+     * @return lazy stream — 호출자 close 책임.
+     * @throws IOException walk 시작 실패 (root 부재 등)
+     */
+    Stream<StorageObject> listOlderThan(Duration grace) throws IOException;
 }
