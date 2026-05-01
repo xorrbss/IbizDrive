@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-02 — 🏁 A15 트랙 종료 (Storage 모듈 + 파일 업로드/다운로드 endpoint)
+
+### 범위
+
+A15.0 (worktree `feature/a15-file-upload-download` from `09d4b52` A14 closure + dev-docs bootstrap `dev/active/a15-file-upload-download/`, 3파일 commit `b98b044` — ADR #13 재정정/ADR #36 신규 초안은 closure로 이월) → A15.1 (`backend/src/main/java/com/ibizdrive/storage/{StorageClient,LocalFsStorageClient,StorageProperties}.java` 신설 — interface `write(key,in,size)`/`read(key)`/`delete(key)` + LocalFs impl `{root}/{YYYY}/{MM}/{UUID}` 객체 키, `@ConfigurationProperties("app.storage")` `{type, root}`, `application.yml` 추가; `LocalFsStorageClientTest` 9 RED→GREEN — write/read roundtrip + 객체 키 포맷 + delete idempotent + 부재 read NoSuchFileException) → A15.2 (`backend/src/main/java/com/ibizdrive/file/{UploadResolution,UploadResult}.java` enum/record 신설 + `FileUploadService` skeleton + 7 Testcontainers RED — Docker 미가용 시 skip; audit emission은 file/ 패키지 기존 `emitAudit` direct convention 답습 — listener 미도입(ADR #36 채택)) → A15.3 (`FileUploadService.upload(...)` GREEN — folder lock + UNIQUE 이중 가드 + storage write + INSERT files+versions + UPDATE current_version_id + emitAudit FILE_UPLOADED, `FileVersionRepository.findMaxVersionNumberByFileId` + `FileRepository.lockActiveByFolderAndNormalizedName` 추가, RENAME 자동 suffix `(N)`) → A15.4 (`FileUploadController` POST `/api/files` + `UploadResponse` DTO + multipart 활성화 100MB cap; `FileUploadControllerTest` 8/8 GREEN — wire `resolution: new_version|rename|null`) → A15.5 (`FileDownloadService` + `FileDownloadController` + `DownloadHandle` 신설 — RFC 5987 Content-Disposition (`filename=` ASCII fallback + `filename*=UTF-8''` percent-encode) + `ETag("<versionId>")` + Content-Type fallback `application/octet-stream`, audit FILE_DOWNLOADED, 권한 = file `READ` (별도 `DOWNLOAD` enum 미도입); 7 service + 6 controller GREEN) → A15.6 (`frontend/src/lib/api.ts` `uploadFile` 분기를 실 `XMLHttpRequest`로 교체 — `POST /api/files` multipart + `withCredentials=true`, `frontend/src/lib/{fakeXhr.ts,fakeXhr.test.ts}` 삭제, `useUpload.ts` 타입 `XhrLike = XMLHttpRequest` 전환 + 409 envelope `{error:{code,message,details:{fileId,fileName}}}` 파싱(폴백 `conflictWith=undefined` → `UploadConflictDialog`가 `task.file.name`로 폴백 — 검증 `UploadConflictDialog.tsx:27`), MOCK_FILES side-effect 제거(backend authoritative), 신규 `api.upload.test.ts` 4 + `useUpload.test.ts` 9 (`vi.stubGlobal('XMLHttpRequest', MockXHR)` 패턴 + 파일명→응답 정적 테이블), 최종 527/527 GREEN + typecheck/lint clean) → A15.7 (ADR #13 supersede 마커 + 신규 ADR #36 (storage abstraction + multipart MVP), `docs/02 §7.6` 표에 POST `/api/files` 행 추가 + `download` guard `'DOWNLOAD'` → `'READ'` 정정 + 신규 §7.6.1 multipart spec(요청 form parts/응답 status/409 envelope/Audit)/download 헤더(RFC 5987/ETag/Content-Type fallback), §7.7 tus는 supersede 마커로 보존(MVP 미구현), `docs/progress.md` 본 entry + dev-docs archive + PR + master squash-merge).
+
+### 회고
+
+- **commits**: 7 on top of `09d4b52` A14 closure (worktree branch `feature/a15-file-upload-download`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 8 / 수정 5.
+  - 신설(backend): `StorageClient.java`, `LocalFsStorageClient.java`, `StorageProperties.java`, `FileUploadService.java`, `FileUploadController.java`, `FileDownloadService.java`, `FileDownloadController.java`, `DownloadHandle.java`, `UploadResolution.java`, `UploadResult.java`, `UploadResponse.java`
+  - 수정(backend): `FileRepository.java` (lock/exists 헬퍼), `FileVersionRepository.java` (findMaxVersionNumberByFileId), `application.yml` (`app.storage.*` + multipart 한도)
+  - 수정(frontend): `lib/api.ts` (실 XHR), `hooks/useUpload.ts` (XHR 타입 + 409 envelope details 파싱)
+  - 삭제(frontend): `lib/fakeXhr.ts`, `lib/fakeXhr.test.ts`
+- **test 파일**: 신설 6. `LocalFsStorageClientTest`(9), `FileUploadServiceTest`(7 Testcontainers), `FileUploadControllerTest`(8), `FileDownloadServiceTest`(7), `FileDownloadControllerTest`(6), `api.upload.test.ts`(4), `useUpload.test.ts`(9, 재작성). 최종 backend `./gradlew test` GREEN (Testcontainers Docker 가용 환경 한정), frontend `pnpm test --run` **527/527 GREEN** + `pnpm typecheck` + `pnpm lint` clean.
+- **docs sync**: `docs/00-overview.md` ADR #13 supersede 마커 + 신규 ADR #36 (A15 정책 묶음), `docs/02-backend-data-model.md` §7.6 표 + 신규 §7.6.1 multipart/download spec + §7.7 supersede 마커. DB/스키마 변경 0 (storage 추상화는 코드 레벨, files/file_versions 테이블 재사용).
+
+### 핵심 결정 (A15 트랙, 확정)
+
+1. **MVP = 단일-POST multipart** — tus 프로토콜 v1.x 재이월. ADR #13 supersede(`docs/00 §5 ADR #36`) 명시. KISS+YAGNI: tus-java-server + 재개 토큰 lifecycle + S3 multipart 라이브러리 위임 비용이 100MB cap·평균 분포에서 ROI 역전. tus는 §7.7로 spec 보존(v1.x 재개 시 백업).
+2. **Storage 추상화 = `StorageClient` interface + `LocalFsStorageClient` MVP impl** — S3 impl은 v1.x. AWS SDK v2 의존성 미추가. 객체 키 `{YYYY}/{MM}/{UUID}` (ADR #5 storage_key UUID 정합 — 원본 파일명은 DB에만).
+3. **권한 = upload `UPLOAD` / download `READ`** — 별도 `DOWNLOAD` enum 미도입. `READ`가 view+download 모두 grant — KISS, docs/03 §3 권한 매트릭스 단순화. 업로드는 부모 folder의 `UPLOAD` 위임.
+4. **Audit emission = file/ 패키지 직접 호출 convention** — `FileMutationService:298-315` `emitAudit` 헬퍼 답습. share/permission/auth는 listener 패턴이지만 file/ 패키지 내부 일관성을 위해 직접 호출 채택 — 동일 패키지에 두 패턴 혼재 회피 (KISS+§3). FILE_UPLOADED/FILE_DOWNLOADED 활성화.
+5. **Conflict resolution wire format = `new_version` | `rename` | unset(409)** — M5 frontend 인터페이스 1:1. 자동 RENAME suffix `(N)` 부여(예: `report.pdf` → `report (2).pdf`).
+6. **응답 status 분기**: 신규 파일 INSERT → **201 Created**, NEW_VERSION 분기 → **200 OK**. body = `UploadResponse{file: FileDto, versionId, versionNumber, newFile, resolution}`.
+7. **409 envelope = `{error:{code:'RENAME_CONFLICT', message, details:{fileId, fileName}}}`** — `UploadConflictDialog`는 `details` 부재 시 `task.file.name` 폴백(검증 `UploadConflictDialog.tsx:27`).
+8. **Download 헤더 = RFC 5987 + ETag(versionId) + Content-Type fallback** — `Content-Disposition: attachment; filename="<ascii-fallback>"; filename*=UTF-8''<percent-encoded>` (UTF-8 + 비ASCII 안전), `Content-Type` null/invalid → `application/octet-stream`, `ETag: "<versionId>"`, `Content-Length: version.sizeBytes`.
+9. **Storage orphan = MVP 한정 알려진 한계** — 트랜잭션 실패 시 storage 객체 잔존 가능. cleanup job은 별도 트랙(편법 아닌 명시적 deferred — CLAUDE.md §3 원칙 9). storage 모듈 v1.x에서 `S3StorageClient` 추상화 + orphan detect 잡 cross-check 도입.
+10. **Frontend FakeXHR 모듈 삭제** — `api.uploadFile`이 유일한 production importer였으므로 dev-only stub 격리 대신 완전 삭제. 테스트는 `vi.stubGlobal('XMLHttpRequest', MockXHR)` + 파일명→응답 정적 테이블로 FakeXHR 시절 magic-filename 계약 보존.
+
+### 파급 영향
+
+- **`docs/00 §5 ADR`**: #13 row에 Superseded 마커, #36 신규 row 추가.
+- **`docs/02 §7.6`**: POST `/api/files` 행 신규 + `download` guard `'DOWNLOAD'` → `'READ'` 정정 + 신규 §7.6.1 multipart/download spec.
+- **`docs/02 §7.7`**: tus spec은 supersede 마커와 함께 보존 (MVP 미구현, v1.x 백업).
+- **DB/스키마**: 변경 0 — `files`/`file_versions` 테이블 재사용. `current_version_id` NULL 허용은 그대로(MVP 단일-버전 가정 유지).
+- **Backend backlog**: storage orphan cleanup, S3 impl, Testcontainers Docker 부재 환경에서 service-level 단위 테스트(현재 7 케이스는 통합), tus 재개 업로드(v1.x ADR #13 재오픈).
+- **Frontend**: 인터페이스 변경 0 — `UploadDock`/`upload store`/`ConflictDialog` 무수정. 시각적/기능적 회귀 0.
+
+---
+
 ## 2026-05-01 — 🏁 F6 트랙 종료 (Frontend Share Subject Picker — User)
 
 ### 범위

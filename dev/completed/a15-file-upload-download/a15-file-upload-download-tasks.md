@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-05-01
+Last Updated: 2026-05-02
 ---
 
 # A15 Tasks — Storage 모듈 + 파일 업로드/다운로드 endpoint
@@ -15,7 +15,7 @@ Last Updated: 2026-05-01
 | A15.4 POST /api/files controller | ✅ done |
 | A15.5 GET /api/files/:id/download controller | ✅ done |
 | A15.6 Frontend api.uploadFile 실 XHR | ✅ done |
-| A15.7 closure (docs sync + PR + archive) | 🟡 next |
+| A15.7 closure (docs sync + PR + archive) | ✅ done |
 
 ---
 
@@ -305,7 +305,9 @@ Last Updated: 2026-05-01
 
 ---
 
-## ⬜ A15.7 — closure (docs sync + PR + archive)
+## ✅ A15.7 — closure (docs sync + PR + archive)
+
+> **완료 (2026-05-02)**: ADR #13 supersede 마커 + 신규 ADR #36 (A15 정책 묶음, `docs/00 §5`), `docs/02 §7.6` 표에 POST `/api/files` 행 추가 + `download` guard `'DOWNLOAD'` → `'READ'` 정정 + 신규 §7.6.1 multipart/download spec, §7.7 supersede 마커, `docs/progress.md` A15 closure entry 최상단. dev-docs는 `dev/completed/a15-file-upload-download/`로 이동. PR/머지는 사용자 승인 게이트.
 
 ### 작업 전 필독
 - 모든 phase GREEN 확인.

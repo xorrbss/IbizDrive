@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-05-01
+Last Updated: 2026-05-02
 ---
 
 
@@ -16,7 +16,7 @@ Last Updated: 2026-05-01
 | A15.4 POST /api/files | ✅ done | FileUploadController + UploadResponse DTO + multipart 활성화 (max 100MB). 8/8 controller tests GREEN. resolution wire format `new_version`/`rename`/null. |
 | A15.5 GET /api/files/:id/download | ✅ done | FileDownloadService + FileDownloadController + DownloadHandle. RFC 5987 Content-Disposition (filename + filename*=UTF-8'') + ETag(versionId) + Content-Type fallback (octet-stream). audit FILE_DOWNLOADED. 7 service + 6 controller tests GREEN. 권한 = file READ. |
 | A15.6 Frontend api.uploadFile 실 XHR | ✅ done | `api.uploadFile` → `new XMLHttpRequest()` + `POST /api/files` (multipart) + `withCredentials=true`. fakeXhr.ts/fakeXhr.test.ts 삭제. useUpload는 XMLHttpRequest 타입으로 전환 + 409 envelope `{error.details:{fileId,fileName}}` 파싱(폴백 conflictWith undefined). MOCK_FILES side-effect 제거(backend authoritative). 신규 api.upload.test.ts 4개 + useUpload.test.ts 9개(MockXHR global stub). 527/527 GREEN, typecheck/lint clean. |
-| A15.7 closure | ⬜ pending | — |
+| A15.7 closure | ✅ done | ADR #13 supersede + ADR #36 신규(`docs/00 §5`), `docs/02 §7.6` 표 + 신규 §7.6.1 multipart/download spec, §7.7 supersede 마커, `docs/progress.md` A15 closure entry, dev-docs archive. |
 
 ## Current Execution Contract
 
@@ -29,8 +29,7 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-**A15.7 closure** — ADR #13 재정정 + 신규 ADR #36 (storage abstraction + multipart MVP), `docs/02 §6.1/§7.6/§7.7` sync, `docs/progress.md` A15 closure entry, PR 생성, dev-docs archive.
-직전 완료: A15.6 (api.uploadFile real XMLHttpRequest 교체, fakeXhr 모듈 삭제, useUpload 타입 전환 + 409 envelope details 파싱, 527/527 GREEN).
+**전 phase 완료 — 트랙 종료.** 잔여 작업은 PR/squash-merge(게이트). dev-docs는 closure commit 후 `dev/completed/a15-file-upload-download/`로 이동.
 
 ## 다음 세션 읽기 순서
 
