@@ -7,6 +7,8 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
 
 import java.io.Serializable;
+import java.util.EnumSet;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -118,5 +120,50 @@ public class IbizDrivePermissionEvaluator implements PermissionEvaluator {
             }
         }
         return null;
+    }
+
+    /**
+     * A11 — 사용자×노드의 effective 권한 집합 평가 (docs/02 §7.10 line 1173).
+     *
+     * <p>{@code hasPermission}이 권한 1개 단위 boolean을 반환하는 반면, 본 메서드는 9개 {@link Permission}
+     * 전체를 평가하여 grant된 것만 모은 {@link Set}을 반환한다. 평가 정책은 {@code hasPermission}과
+     * 동일하나 9× 반복 비용을 줄이기 위해 다음 단축을 적용한다:
+     * <ul>
+     *   <li>{@code user == null} → empty set (미인증 안전).</li>
+     *   <li>{@link Role#ADMIN} → role 단계에서 9개 모두 grant이므로 {@link PermissionResolver} 미호출 early return.</li>
+     *   <li>role-only 모드 ({@code resourceType == null || resourceId == null}) → role 권한만 반환.</li>
+     *   <li>resource-level 모드 — role이 이미 grant한 권한은 resolver 미호출 (skip).
+     *       {@link Permission#PURGE}는 Preset에 미포함 (docs/03 line 331~334) → resource grant로 부여 불가하므로 skip.</li>
+     * </ul>
+     *
+     * <p>본 메서드는 {@link PermissionDenyContext}에 기록하지 않는다 — 본 endpoint는 read-only 정보 조회이며
+     * 거부 envelope을 만들지 않는다.
+     */
+    public Set<Permission> resolveAll(IbizDriveUserDetails user, String resourceType, UUID resourceId) {
+        if (user == null) {
+            return EnumSet.noneOf(Permission.class);
+        }
+
+        Role role = user.getUser().getRole();
+        Set<Permission> rolePermissions = permissionService.effectivePermissions(role);
+
+        // role-only 모드 또는 ADMIN early return.
+        if (resourceType == null || resourceId == null || role == Role.ADMIN) {
+            EnumSet<Permission> snapshot = EnumSet.noneOf(Permission.class);
+            snapshot.addAll(rolePermissions);
+            return snapshot;
+        }
+
+        EnumSet<Permission> result = EnumSet.noneOf(Permission.class);
+        result.addAll(rolePermissions);
+        UUID userId = user.getUser().getId();
+        for (Permission p : Permission.values()) {
+            if (result.contains(p)) continue;            // role이 이미 grant.
+            if (p == Permission.PURGE) continue;         // Preset 미포함 — resource grant로 부여 불가.
+            if (permissionResolver.isGranted(userId, resourceType, resourceId, p)) {
+                result.add(p);
+            }
+        }
+        return result;
     }
 }

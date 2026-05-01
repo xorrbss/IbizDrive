@@ -173,9 +173,127 @@ class IbizDrivePermissionEvaluatorTest {
         assertThat(evaluator.hasPermission(authOf(Role.ADMIN), new Object(), "READ")).isFalse();
     }
 
+    // ─── resolveAll (A11) ────────────────────────────────────────────────
+
+    @Test
+    void resolveAll_nullUser_returnsEmpty() {
+        assertThat(evaluator.resolveAll(null, null, null)).isEmpty();
+        assertThat(evaluator.resolveAll(null, "folder", FOLDER_ID)).isEmpty();
+    }
+
+    @Test
+    void resolveAll_admin_nullNode_returnsAllNine_resolverNotCalled() {
+        when(permissionService.effectivePermissions(Role.ADMIN))
+            .thenReturn(EnumSet.allOf(Permission.class));
+
+        java.util.Set<Permission> set = evaluator.resolveAll(udsOf(Role.ADMIN), null, null);
+
+        assertThat(set).containsExactlyInAnyOrder(Permission.values());
+        verify(resolver, never()).isGranted(any(), any(), any(), any());
+    }
+
+    @Test
+    void resolveAll_admin_withNode_returnsAllNine_resolverNotCalled() {
+        when(permissionService.effectivePermissions(Role.ADMIN))
+            .thenReturn(EnumSet.allOf(Permission.class));
+
+        java.util.Set<Permission> set =
+            evaluator.resolveAll(udsOf(Role.ADMIN), "folder", FOLDER_ID);
+
+        assertThat(set).containsExactlyInAnyOrder(Permission.values());
+        verify(resolver, never()).isGranted(any(), any(), any(), any());
+    }
+
+    @Test
+    void resolveAll_auditor_nullNode_returnsRead() {
+        when(permissionService.effectivePermissions(Role.AUDITOR))
+            .thenReturn(EnumSet.of(Permission.READ));
+
+        assertThat(evaluator.resolveAll(udsOf(Role.AUDITOR), null, null))
+            .containsExactly(Permission.READ);
+        verify(resolver, never()).isGranted(any(), any(), any(), any());
+    }
+
+    @Test
+    void resolveAll_auditor_withNode_noGrants_returnsRead_skipsRoleAndPurge() {
+        when(permissionService.effectivePermissions(Role.AUDITOR))
+            .thenReturn(EnumSet.of(Permission.READ));
+        when(resolver.isGranted(any(), any(), any(), any())).thenReturn(false);
+
+        java.util.Set<Permission> set =
+            evaluator.resolveAll(udsOf(Role.AUDITOR), "folder", FOLDER_ID);
+
+        assertThat(set).containsExactly(Permission.READ);
+        // role이 이미 grant한 READ는 resolver에 묻지 않음. PURGE는 Preset 미포함이라 skip.
+        verify(resolver, never()).isGranted(eq(USER_ID), eq("folder"), eq(FOLDER_ID), eq(Permission.READ));
+        verify(resolver, never()).isGranted(eq(USER_ID), eq("folder"), eq(FOLDER_ID), eq(Permission.PURGE));
+    }
+
+    @Test
+    void resolveAll_member_nullNode_returnsEmpty() {
+        when(permissionService.effectivePermissions(Role.MEMBER))
+            .thenReturn(EnumSet.noneOf(Permission.class));
+
+        assertThat(evaluator.resolveAll(udsOf(Role.MEMBER), null, null)).isEmpty();
+        verify(resolver, never()).isGranted(any(), any(), any(), any());
+    }
+
+    @Test
+    void resolveAll_member_withNode_resolverGrantsRead_returnsRead() {
+        when(permissionService.effectivePermissions(Role.MEMBER))
+            .thenReturn(EnumSet.noneOf(Permission.class));
+        when(resolver.isGranted(eq(USER_ID), eq("folder"), eq(FOLDER_ID), eq(Permission.READ)))
+            .thenReturn(true);
+        // 나머지 권한은 false (default Mockito 동작)
+
+        java.util.Set<Permission> set =
+            evaluator.resolveAll(udsOf(Role.MEMBER), "folder", FOLDER_ID);
+
+        assertThat(set).containsExactly(Permission.READ);
+    }
+
+    @Test
+    void resolveAll_member_withNode_adminPreset_returnsEightExceptPurge() {
+        when(permissionService.effectivePermissions(Role.MEMBER))
+            .thenReturn(EnumSet.noneOf(Permission.class));
+        // admin preset 시뮬레이션 — PURGE를 제외한 8개 grant.
+        for (Permission p : Permission.values()) {
+            if (p == Permission.PURGE) continue;
+            when(resolver.isGranted(eq(USER_ID), eq("folder"), eq(FOLDER_ID), eq(p))).thenReturn(true);
+        }
+
+        java.util.Set<Permission> set =
+            evaluator.resolveAll(udsOf(Role.MEMBER), "folder", FOLDER_ID);
+
+        assertThat(set).containsExactlyInAnyOrder(
+            Permission.READ, Permission.UPLOAD, Permission.EDIT, Permission.MOVE,
+            Permission.DOWNLOAD, Permission.DELETE, Permission.SHARE, Permission.PERMISSION_ADMIN);
+        assertThat(set).doesNotContain(Permission.PURGE);
+        verify(resolver, never()).isGranted(any(), any(), any(), eq(Permission.PURGE));
+    }
+
+    @Test
+    void resolveAll_member_withNode_fileType_passedToResolver() {
+        when(permissionService.effectivePermissions(Role.MEMBER))
+            .thenReturn(EnumSet.noneOf(Permission.class));
+        when(resolver.isGranted(eq(USER_ID), eq("file"), eq(FOLDER_ID), eq(Permission.DOWNLOAD)))
+            .thenReturn(true);
+
+        java.util.Set<Permission> set =
+            evaluator.resolveAll(udsOf(Role.MEMBER), "file", FOLDER_ID);
+
+        assertThat(set).containsExactly(Permission.DOWNLOAD);
+        verify(resolver).isGranted(USER_ID, "file", FOLDER_ID, Permission.DOWNLOAD);
+    }
+
     // ─── helpers ────────────────────────────────────────────────────────
 
     private static Authentication authOf(Role role) {
+        IbizDriveUserDetails uds = udsOf(role);
+        return new UsernamePasswordAuthenticationToken(uds, "n/a", uds.getAuthorities());
+    }
+
+    private static IbizDriveUserDetails udsOf(Role role) {
         User u = new User(
             USER_ID,
             role.name().toLowerCase() + "@example.com",
@@ -186,7 +304,6 @@ class IbizDrivePermissionEvaluatorTest {
             false,
             OffsetDateTime.now()
         );
-        IbizDriveUserDetails uds = new IbizDriveUserDetails(u);
-        return new UsernamePasswordAuthenticationToken(uds, "n/a", uds.getAuthorities());
+        return new IbizDriveUserDetails(u);
     }
 }
