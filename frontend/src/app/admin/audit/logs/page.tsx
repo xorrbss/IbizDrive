@@ -12,11 +12,13 @@ const PAGE_SIZE = 20
 const EMPTY_FILTERS: AuditLogFilters = {}
 
 /**
- * /admin/audit/logs — 감사 로그 페이지 (M12 mock, docs/04 §7).
+ * /admin/audit/logs — 감사 로그 페이지 (M12, A2.6 wired, docs/04 §7).
  *
  * - 필터 (행위자/이벤트/날짜) + 페이지네이션 + CSV export
- * - 백엔드 연결 없음. api.getAuditLogs는 클라이언트 mock 데이터 사용.
- *   실제 연결 시 (A 트랙) export는 서버 endpoint 호출 + audit.exported 기록 필요.
+ * - 백엔드 연결: `api.getAuditLogs`는 `GET /api/admin/audit`(A2.6) 직접 호출.
+ *   audit_log emission은 A2/A10/A12 누적 활성(file/folder/permission/share).
+ * - CSV export는 client-side current-page만(`toAuditCsvBlob`). 서버 전체 결과
+ *   스트리밍 + `audit.exported` runtime emission은 v1.x deferred.
  */
 export default function AuditLogsPage() {
   const [filters, setFilters] = useState<AuditLogFilters>(EMPTY_FILTERS)

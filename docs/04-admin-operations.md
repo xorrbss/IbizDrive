@@ -151,24 +151,28 @@ DB row 중 S3 객체가 없는 것 = phantom
 
 ## 7. 감사 로그 UI
 
+> **Status**: M12 wired (2026-05-01 closure, `m12-audit-ui-closure`). frontend `/admin/audit/logs`(M12 트랙, 2026-04-25 mock 도입) → A2.6에서 `api.getAuditLogs`를 backend `GET /api/admin/audit`(docs/02 §7.12) 실연결로 교체. M12 closure는 `page.tsx` stale docblock 정정 + 본 §7 상태 표기 동기화로 마감.
+
 ### 7.1 필터
 
-- [ ] 시간 범위
-- [ ] 행위자 (actor_id)
-- [ ] 이벤트 타입
-- [ ] 대상 리소스
-- [ ] IP 주소
+- [x] 시간 범위 — `dateFrom`/`dateTo` (datetime-local)
+- [x] 행위자 (`actorId`)
+- [x] 이벤트 타입 (`eventType` enum mirror, docs/03 §4.1)
+- [ ] 대상 리소스 — frontend filter 미수용 (`AuditLogFilters` 신규 필드 + backend query param 추가 필요, v1.x deferred)
+- [ ] IP 주소 — 동상 (frontend filter 미수용, v1.x deferred)
 
 ### 7.2 내보내기
 
-- [ ] CSV / JSON 다운로드
-- [ ] 대상 기간 / 필터 조건 포함
-- [ ] 내보내기 자체도 audit_log에 기록 (`audit.exported`)
+- [x] CSV 다운로드 — `toAuditCsvBlob` (RFC 4180 quoting + UTF-8 BOM, `text/csv` MIME)
+- [x] 대상 기간 / 필터 조건 포함 — current-page 결과 기준
+- [ ] **server-side full-result 스트리밍** — 현재는 client-side current-page만 export. 전체 결과 export는 별도 backend endpoint 필요 (v1.x deferred)
+- [ ] **`audit.exported` runtime emission** — enum 정의 존재(`docs/03 §4.1`), runtime emission은 server export endpoint 도입 시점에 활성화 (v1.x deferred)
+- [ ] JSON 다운로드 — v1.x deferred
 
 ### 7.3 상세 뷰
 
-- [ ] before/after 상태 diff 표시
-- [ ] 관련 이벤트 연결 (같은 세션 내 이벤트)
+- [ ] before/after 상태 diff 표시 (v1.x deferred — 현재는 raw JSON 표기만)
+- [ ] 관련 이벤트 연결 (같은 세션 내 이벤트, v1.x deferred)
 
 ---
 
