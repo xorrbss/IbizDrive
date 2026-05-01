@@ -7,9 +7,9 @@ Last Updated: 2026-05-01
 ## Phase 상태
 
 - A14.0 bootstrap — [x]
-- A14.1 Repository + Service — [ ]
-- A14.2 Controller + DTO — [ ]
-- A14.3 Docs sync — [ ]
+- A14.1 Repository + Service — [x]
+- A14.2 Controller + DTO — [x]
+- A14.3 Docs sync — [x]
 - A14.4 PR + closure (gate) — [ ]
 
 ---
@@ -51,12 +51,11 @@ Last Updated: 2026-05-01
 
 ## A14.3 — Docs sync
 
-- [ ] `docs/00 §5` ADR #35 신규 row — 결정/근거/scope/privacy 정책
-- [ ] `docs/02 §7.13` 신규 섹션 또는 §7.4 인접에 "사용자 검색" 표/의사코드
-  - 위치 결정: §7.13(현재 SSE)을 §7.14로 밀고 §7.13 user search 신규 — 또는 §7.4 Auth 다음에 §7.4.5 추가. 후자가 도메인적으로 적절(인증/사용자 인접).
-  - 단순화: §7.4 마지막에 "user lookup" subsection 추가 또는 별도 §7.13 신설. **결정: §7.13 user search 신규** (auth와 별개 도메인, share scope 확장 의도가 명확)
-- [ ] `docs/02 §7` 표 row 추가 (Method/Path/Guard/...)
-- [ ] commit: `docs(a14): ADR #35 + §7.13 user search`
+- [x] `docs/00 §5` ADR #35 신규 row — 결정/근거/scope/privacy 정책
+- [x] `docs/02 §7.14` 신규 섹션 (사용자 검색) — 표/의사코드 + LIKE escape + cursor 미지원 명시
+  - **최종 결정: §7.14 추가 (SSE §7.13 보존)** — §7.13 SSE를 §7.14로 밀면 docs/00, docs/01(line 898/909/1039), docs/03(line 360), docs/progress.md 다수 cross-ref 갱신 필요. 부록 형태로 §7.14 추가가 churn 최소.
+- [x] `docs/03 §3.5` 본문에 user search `isAuthenticated()` 정책 inline note (ADR #35 참조)
+- [x] commit: `docs(a14): ADR #35 + §7.14 user search`
 
 ---
 

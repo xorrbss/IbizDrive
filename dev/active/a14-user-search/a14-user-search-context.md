@@ -12,6 +12,21 @@ Last Updated: 2026-05-01
 - dev-docs 3파일 생성
 - 다음: A14.1 TDD (Repository search method)
 
+### 2026-05-01 — A14.1 + A14.2 backend 구현 (commit `a3db8c8`)
+
+- `UserSummaryDto` record + `UserSearchResponse` envelope
+- `UserRepository.searchActive(pattern, Pageable) + default(int limit)` JPQL — `LOWER(displayName|email) LIKE :p ESCAPE '\\'` + soft-delete/inactive 제외
+- `UserSearchService` — normalize(trim+lower) + minLen 2 + LIKE escape + limit clamp(default 20/cap 50)
+- `UserSearchController` — `GET /api/users/search?q=&limit=` `@PreAuthorize("isAuthenticated()")`
+- 테스트 22개 GREEN (Repository Testcontainers 7 + Service unit 11 + Controller 4)
+
+### 2026-05-01 — A14.3 docs sync
+
+- `docs/00 §5` ADR #35 신규 row (#34 다음 위치)
+- `docs/02 §7.14` "사용자 검색" 신규 섹션 (SSE §7.13 보존, churn 최소화)
+- `docs/03 §3.5` user search `isAuthenticated()` 정책 inline note + §7.4~§7.13 → §7.4~§7.14 갱신
+- 다음: A14.4 PR + closure (게이트)
+
 ## Current Execution Contract
 
 - 자율 모드 활성 (memory `feedback_autonomous_mode.md`)
@@ -22,7 +37,7 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-- **A14.1** — `UserRepository.searchActive` JPQL + 단위 테스트 (RED 작성 시작)
+- **A14.4** — PR + closure (게이트). push/pr create 자동 진행, `gh pr merge`는 사용자 승인 대기.
 
 ## 다음 세션 읽기 순서
 
