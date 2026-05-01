@@ -181,24 +181,29 @@ class PermissionRepositoryTest {
 
     @Test
     void findExpiredActiveIds_returnsOnlyExpiredOldestFirst() {
-        UUID user = insertUser("expu1@test", "expu1");
-        UUID folder = insertFolder(null, "exp-folder1", user);
+        UUID owner = insertUser("expo1@test", "expo1");
+        UUID subject1 = insertUser("expu1a@test", "expu1a");
+        UUID subject2 = insertUser("expu1b@test", "expu1b");
+        UUID subject3 = insertUser("expu1c@test", "expu1c");
+        UUID folder = insertFolder(null, "exp-folder1", owner);
         Instant now = Instant.now();
 
         // 두 개 만료 (서로 다른 시각), 한 개 미만료, 한 개 NULL.
+        // idx_permissions_unique=(resource_type, resource_id, subject_type, subject_id) — 동일 resource×subject 중복 금지.
+        // 따라서 subject를 3명으로 분리해야 동일 (folder, user) tuple에 3 row 공존 가능.
         UUID idOldExpired = insertPermissionWithExpiryReturning(
-            "folder", folder, "user", user, "read", user,
+            "folder", folder, "user", subject1, "read", owner,
             now.minus(2, ChronoUnit.HOURS)
         );
         UUID idRecentExpired = insertPermissionWithExpiryReturning(
-            "folder", folder, "user", user, "edit", user,
+            "folder", folder, "user", subject2, "edit", owner,
             now.minus(10, ChronoUnit.MINUTES)
         );
         insertPermissionWithExpiry(
-            "folder", folder, "user", user, "admin", user,
+            "folder", folder, "user", subject3, "admin", owner,
             now.plus(1, ChronoUnit.HOURS) // 미만료
         );
-        insertPermission("file", insertFile(folder, "x.txt", user), "everyone", null, "read", user);
+        insertPermission("file", insertFile(folder, "x.txt", owner), "everyone", null, "read", owner);
 
         List<UUID> ids = permissionRepository.findExpiredActiveIds(now, PageRequest.of(0, 100));
 
