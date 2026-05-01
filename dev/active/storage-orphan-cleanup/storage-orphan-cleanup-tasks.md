@@ -10,7 +10,7 @@ Last Updated: 2026-05-02
 |---|---|
 | OC.0 bootstrap | ✅ done |
 | OC.1 audit type + properties + frontend sync | ✅ done |
-| OC.2 StorageClient.listOlderThan + LocalFs impl | 🟡 next |
+| OC.2 StorageClient.listOlderThan + LocalFs impl | ✅ done |
 | OC.3 FileVersionRepository.streamActiveStorageKeys | ⬜ pending |
 | OC.4 StorageOrphanCleanupService | ⬜ pending |
 | OC.5 StorageOrphanCleanupJob + integration test | ⬜ pending |
@@ -61,7 +61,7 @@ Last Updated: 2026-05-02
 
 ---
 
-## ⬜ OC.2 — StorageClient.listOlderThan + LocalFs impl
+## ✅ OC.2 — StorageClient.listOlderThan + LocalFs impl
 
 ### 작업 전 필독
 - `backend/src/main/java/com/ibizdrive/storage/StorageClient.java` (write/read/delete/exists 시그니처).

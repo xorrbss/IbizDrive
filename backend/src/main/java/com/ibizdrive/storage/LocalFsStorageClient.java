@@ -12,6 +12,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.regex.Pattern;
+import java.util.stream.Stream;
 
 /**
  * Local FS 백엔드 {@link StorageClient} 구현 — A15 MVP (docs/02 §5).
@@ -93,5 +97,45 @@ public class LocalFsStorageClient implements StorageClient {
         } catch (IOException e) {
             return false;
         }
+    }
+
+    /** UUID v4 형식 ({@code 8-4-4-4-12} hex). 도메인 storage_key는 항상 이 형식. */
+    private static final Pattern UUID_PATTERN = Pattern.compile(
+        "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    );
+
+    @Override
+    public Stream<StorageObject> listOlderThan(Duration grace) throws IOException {
+        if (!Files.isDirectory(root)) {
+            return Stream.empty();
+        }
+        Instant cutoff = Instant.now().minus(grace == null ? Duration.ZERO : grace);
+
+        Stream<Path> walk = Files.walk(root);
+        return walk
+            .filter(Files::isRegularFile)
+            .map(path -> {
+                String fileName = path.getFileName().toString();
+                if (!UUID_PATTERN.matcher(fileName).matches()) {
+                    if (!fileName.startsWith(".")) {
+                        log.warn("listOlderThan — skip non-UUID file: {}", root.relativize(path));
+                    }
+                    return null;
+                }
+                Instant mtime;
+                try {
+                    mtime = Files.getLastModifiedTime(path).toInstant();
+                } catch (IOException e) {
+                    log.warn("listOlderThan — failed to stat {}: {}", path, e.toString());
+                    return null;
+                }
+                if (mtime.isAfter(cutoff)) {
+                    return null;
+                }
+                String key = root.relativize(path).toString().replace('\\', '/');
+                return new StorageObject(key, mtime);
+            })
+            .filter(o -> o != null)
+            .onClose(walk::close);
     }
 }

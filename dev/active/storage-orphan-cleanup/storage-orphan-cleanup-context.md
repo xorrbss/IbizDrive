@@ -10,7 +10,7 @@ Last Updated: 2026-05-02
 |---|---|---|
 | OC.0 bootstrap | ✅ done | 3파일 + bootstrap commit `941b6d5`. base = master `65e5cd3` (A15 closure). |
 | OC.1 audit type + properties | ✅ done | enum + Properties record + yml + ts union. backend GREEN, frontend 531/531 + typecheck/lint clean. |
-| OC.2 StorageClient.list 확장 | 🟡 next | — |
+| OC.2 StorageClient.list 확장 | ✅ done | StorageObject record + listOlderThan(Duration). LocalFs impl: walk + UUID match + grace boundary + temp/non-UUID skip. 6 신규 테스트 GREEN. |
 | OC.3 Repository active set | ⬜ pending | — |
 | OC.4 Service GREEN | ⬜ pending | — |
 | OC.5 Job + integration test | ⬜ pending | — |
@@ -27,12 +27,11 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-**OC.2 StorageClient.listOlderThan + LocalFs impl**.
+**OC.3 FileVersionRepository.streamActiveStorageKeys**.
 
-- 신규 record `StorageObject(String key, Instant lastModified)`.
-- `StorageClient` interface에 `Stream<StorageObject> listOlderThan(Duration grace)` 추가.
-- `LocalFsStorageClient.listOlderThan` 구현 — `Files.walk(root)` lazy stream + UUID match + root escape 차단 + non-UUID skip+WARN.
-- TDD: `LocalFsStorageClientTest`에 listOlderThan 케이스 (grace boundary, non-UUID skip, empty walk, root escape) 추가.
+- `file_versions JOIN files ON file_versions.file_id = files.id WHERE files.deleted_at IS NULL`로 live storage_key set 추출 (휴지통 30일 grace 보존).
+- `Stream<String>` 또는 paged scan — orphan service의 set membership 검증용. 메모리 cap을 위해 lazy stream 권장.
+- TDD: 트랜잭션 내 stream 사용 패턴 + 휴지통 file 제외 + soft-deleted folder cascade 케이스.
 
 ## 다음 세션 읽기 순서
 

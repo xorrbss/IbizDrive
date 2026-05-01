@@ -10,10 +10,16 @@ import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.FileTime;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIOException;
+import static org.assertj.core.api.Assertions.within;
 
 /**
  * Unit tests for {@link LocalFsStorageClient} — A15.1 (StorageClient + LocalFs).
@@ -134,5 +140,114 @@ class LocalFsStorageClientTest {
         LocalFsStorageClient c = newClient(tmp);
         assertThatIOException().isThrownBy(() ->
             c.write("../escape", new ByteArrayInputStream(new byte[]{0}), 1, "text/plain"));
+    }
+
+    // --- listOlderThan (OC.2) ---
+
+    private static String dateKey(int yearOffset, String name) {
+        // yearOffset 0 = 2026. {YYYY}/{MM}/{name} 형식.
+        int year = 2026 + yearOffset;
+        return String.format("%04d/%02d/%s", year, 1, name);
+    }
+
+    private static void writeAt(LocalFsStorageClient c, Path root, String key, Instant mtime) throws IOException {
+        c.write(key, new ByteArrayInputStream(new byte[]{0x42}), 1, "application/octet-stream");
+        Files.setLastModifiedTime(root.resolve(key), FileTime.from(mtime));
+    }
+
+    @Test
+    @DisplayName("listOlderThan — root 미생성/empty 시 빈 stream")
+    void listOlderThan_emptyWalk(@TempDir Path tmp) throws IOException {
+        LocalFsStorageClient c = newClient(tmp);
+        try (Stream<StorageObject> s = c.listOlderThan(Duration.ofHours(24))) {
+            assertThat(s).isEmpty();
+        }
+    }
+
+    @Test
+    @DisplayName("listOlderThan — grace 보다 오래된 UUID 객체만 yield, 신규는 제외")
+    void listOlderThan_filtersByGrace(@TempDir Path tmp) throws IOException {
+        LocalFsStorageClient c = newClient(tmp);
+        Instant now = Instant.now();
+        String oldKey = dateKey(0, UUID.randomUUID().toString());
+        String newKey = dateKey(0, UUID.randomUUID().toString());
+
+        writeAt(c, tmp, oldKey, now.minus(Duration.ofHours(48)));
+        writeAt(c, tmp, newKey, now.minus(Duration.ofMinutes(5)));
+
+        try (Stream<StorageObject> s = c.listOlderThan(Duration.ofHours(24))) {
+            List<String> keys = s.map(StorageObject::key).toList();
+            assertThat(keys).containsExactly(oldKey);
+        }
+    }
+
+    @Test
+    @DisplayName("listOlderThan — UUID가 아닌 파일명은 skip (매니페스트/임시 파일 보호)")
+    void listOlderThan_skipsNonUuidFiles(@TempDir Path tmp) throws IOException {
+        LocalFsStorageClient c = newClient(tmp);
+        Instant old = Instant.now().minus(Duration.ofHours(72));
+
+        String uuidKey = dateKey(0, UUID.randomUUID().toString());
+        String nonUuidKey = dateKey(0, "manifest.json"); // skip 대상
+
+        writeAt(c, tmp, uuidKey, old);
+        writeAt(c, tmp, nonUuidKey, old);
+
+        try (Stream<StorageObject> s = c.listOlderThan(Duration.ofHours(24))) {
+            List<String> keys = s.map(StorageObject::key).toList();
+            assertThat(keys).containsExactly(uuidKey);
+        }
+    }
+
+    @Test
+    @DisplayName("listOlderThan — 경계 동등(mtime == now-grace)은 포함")
+    void listOlderThan_boundaryInclusive(@TempDir Path tmp) throws IOException {
+        LocalFsStorageClient c = newClient(tmp);
+        Instant now = Instant.now();
+        Duration grace = Duration.ofHours(24);
+        // 정확히 경계: mtime = now - grace
+        String key = dateKey(0, UUID.randomUUID().toString());
+        writeAt(c, tmp, key, now.minus(grace).minusSeconds(1));
+
+        try (Stream<StorageObject> s = c.listOlderThan(grace)) {
+            assertThat(s.map(StorageObject::key).toList()).contains(key);
+        }
+    }
+
+    @Test
+    @DisplayName("listOlderThan — 임시 파일(.tmp.*) skip")
+    void listOlderThan_skipsTempFiles(@TempDir Path tmp) throws IOException {
+        LocalFsStorageClient c = newClient(tmp);
+        Instant old = Instant.now().minus(Duration.ofHours(72));
+
+        // 정상 UUID 객체 + 동일 디렉터리에 임시 파일 수동 배치
+        String uuidKey = dateKey(0, UUID.randomUUID().toString());
+        writeAt(c, tmp, uuidKey, old);
+
+        Path tmpFile = tmp.resolve("2026/01/." + UUID.randomUUID() + ".tmp.123");
+        Files.createDirectories(tmpFile.getParent());
+        Files.writeString(tmpFile, "leftover");
+        Files.setLastModifiedTime(tmpFile, FileTime.from(old));
+
+        try (Stream<StorageObject> s = c.listOlderThan(Duration.ofHours(24))) {
+            List<String> keys = s.map(StorageObject::key).toList();
+            assertThat(keys).containsExactly(uuidKey);
+        }
+    }
+
+    @Test
+    @DisplayName("listOlderThan — StorageObject.lastModified는 파일 mtime과 일치")
+    void listOlderThan_propagatesMtime(@TempDir Path tmp) throws IOException {
+        LocalFsStorageClient c = newClient(tmp);
+        Instant mtime = Instant.parse("2026-04-01T12:00:00Z");
+        String key = dateKey(0, UUID.randomUUID().toString());
+        writeAt(c, tmp, key, mtime);
+
+        try (Stream<StorageObject> s = c.listOlderThan(Duration.ofHours(1))) {
+            List<StorageObject> all = s.toList();
+            assertThat(all).hasSize(1);
+            // FileTime → Instant 라운딩(파일시스템마다 ms 또는 ns 정밀도) 흡수
+            assertThat(all.get(0).lastModified()).isCloseTo(mtime, within(1, java.time.temporal.ChronoUnit.SECONDS));
+        }
     }
 }
