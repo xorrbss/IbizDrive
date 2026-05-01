@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-01 — 🏁 A12 마일스톤 종료 (Backend folder share endpoint)
+
+### 범위
+
+A12.0 (worktree `feature/a12-folder-shares` from `e0957e5` M9 closure + dev-docs bootstrap `dev/active/a12-folder-shares-endpoint/`) → A12.1 (`POST /api/folders/{folderId}/share` endpoint + `ShareCommandService.createFolderShares`(FolderRepository 주입) + `ShareCreatedEvent`/`ShareRevokedEvent` `folderId` XOR invariant + `ShareAuditListener` `nodeKey` 분기 + 테스트 갱신/추가) → A12.2 (`ShareQueryServiceTest` folder share 자연 노출 회귀 — by-me/with-me/mixed XOR per-row) → A12.3 (docs/00 ADR #34 활성화 + docs/02 §2.7/§7.9 folder POST + docs/03 §3 backlink) → A12.4 (PR #26 squash-merge `e076a1b` + dev-docs archive).
+
+### 회고
+
+- **commits**: 3 on top of `e0957e5` M9 close (worktree branch `feature/a12-folder-shares`) → squash-merge `e076a1b` on `master`. PR #26 single, CI green (backend junit + frontend vitest 모두 SUCCESS — 약 4분).
+- **production 파일**: 수정 5 / 신설 0.
+  - 수정: `share/ShareController.java`(folder POST 라우트), `share/ShareCommandService.java`(`createFolderShares` 추가, `revokeShare` snapshot folderId 캡처), `share/ShareCreatedEvent.java`/`ShareRevokedEvent.java`(folderId 필드 + XOR 컴팩트 컨스트럭터), `audit/ShareAuditListener.java`(nodeKey 분기로 file_id/folder_id JSON 키 출현).
+- **test 파일**: 수정 3 / 신설 0 — `ShareAuditListenerTest`(기존 6개 이벤트 호출 folderId=null 인자 + folder variant 2건), `ShareCommandServiceTest`(@Mock FolderRepository + createFolderShares 7건 + revokeShare folder 변형 1건), `ShareControllerTest`(createFolderShare 4건), `ShareQueryServiceTest`(folder 자연 노출 3건). 합계 +20 GREEN.
+- **schema 변경 0**: V6 `shares` 테이블 `file_id`/`folder_id` XOR CHECK가 이미 양립 — 컬럼/CHECK 추가 없음. ADR #34 backlog 항목(folder share endpoint 미도입) 명시적 closure.
+- **backend 회귀 0**: 전체 `./gradlew test` GREEN. A10 file path 테스트 모두 통과.
+- **frontend 미터치**: A12 backend stack only — frontend folder share UI는 docs/01 §6/§14 미명시 → 별도 backlog.
+
+### 핵심 결정 (A12 트랙, 확정)
+
+1. **`createFolderShares` 별도 메서드** — `createShares`(file)와 통합 abstraction(`createForNode(nodeType, nodeId, ...)`) 대안은 거부. KISS — A10 시그니처 보존 + 호출부 명시성 우선. 공통 검증(parsePreset / validateMessage / expiresAt 미래)은 private static helper로 재사용.
+2. **`Share*Event`에 `folderId` 필드 추가 + XOR 컴팩트 컨스트럭터** — `nodeId` + `nodeType` 통합 대안은 거부. V6 `shares` 테이블이 이미 file_id/folder_id 양립이므로 event payload도 1:1 정합. 컴팩트 컨스트럭터 `(fileId == null) == (folderId == null)` invariant이 잘못된 발행을 차단.
+3. **`ShareAuditListener` `nodeKey` 분기로 `file_id`/`folder_id` JSON 키 분리** — 통합 키(`node_id` + `node_type`) 대안은 거부. 기존 audit row 호환 유지 — A10 시점 audit_log row가 `file_id` 키를 사용하므로 query/조회 backward compat.
+4. **`ShareQueryService` SQL 분기 없음** — by-me/with-me/DELETE는 file/folder share 모두 자연 노출. repository 쿼리는 `shared_by` 또는 `subject_id` 매칭만 — `file_id IS NOT NULL` 같은 분기 필터 부재. A12.2가 이 가정을 회귀 테스트로 박제.
+5. **`@PreAuthorize("hasPermission(#folderId, 'folder', 'SHARE')")`** — file 변형(`'file'`)과 동형. PermissionEvaluator가 `nodeType` 분기 자동 처리(A4 evaluator).
+
+### 파급 영향
+
+- **frontend**: 미터치. folder share UI는 별도 트랙(`m_-folder-share-ui` 가칭, docs/01 §6/§14 추가 후 진행).
+- **backend**: A10 `permission.granted` audit + `share.created` audit 이중 발행 패턴 그대로. `permission_id`로 grant 추적 가능.
+- **DB**: V6 schema 변경 없음. 향후 `SHARE_EXPIRED` cron + SSE emission도 trigger 추가 없이 application 레벨에서 가능.
+
+---
+
 ## 2026-05-01 — 🏁 M9 마일스톤 종료 (Frontend 휴지통 통합)
 
 ### 범위
