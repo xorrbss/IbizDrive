@@ -11,7 +11,7 @@ Last Updated: 2026-05-02
 | OC.0 bootstrap | ✅ done | 3파일 + bootstrap commit `941b6d5`. base = master `65e5cd3` (A15 closure). |
 | OC.1 audit type + properties | ✅ done | enum + Properties record + yml + ts union. backend GREEN, frontend 531/531 + typecheck/lint clean. |
 | OC.2 StorageClient.list 확장 | ✅ done | StorageObject record + listOlderThan(Duration). LocalFs impl: walk + UUID match + grace boundary + temp/non-UUID skip. 6 신규 테스트 GREEN. |
-| OC.3 Repository active set | ⬜ pending | — |
+| OC.3 Repository active set | ✅ done | streamActiveStorageKeys() — `SELECT v.storageKey FROM FileVersion v` (no deleted_at filter, trash 보호). Hibernate fetchSize=200 + readOnly hint. 3 신규 repository 테스트(Docker 가용 시 검증). |
 | OC.4 Service GREEN | ⬜ pending | — |
 | OC.5 Job + integration test | ⬜ pending | — |
 | OC.6 closure | ⬜ pending | — |
@@ -27,11 +27,15 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-**OC.3 FileVersionRepository.streamActiveStorageKeys**.
+**OC.4 StorageOrphanCleanupService**.
 
-- `file_versions JOIN files ON file_versions.file_id = files.id WHERE files.deleted_at IS NULL`로 live storage_key set 추출 (휴지통 30일 grace 보존).
-- `Stream<String>` 또는 paged scan — orphan service의 set membership 검증용. 메모리 cap을 위해 lazy stream 권장.
-- TDD: 트랜잭션 내 stream 사용 패턴 + 휴지통 file 제외 + soft-deleted folder cascade 케이스.
+- `runDailyCleanup(maxPerRun, graceHours, batchSize)`:
+  1. `liveSet = repository.streamActiveStorageKeys()` → `Set<UUID>` 적재.
+  2. `walked = storageClient.listOlderThan(Duration.ofHours(graceHours))` lazy stream 소비.
+  3. each walked: parse UUID from key → if not in liveSet → orphan candidate.
+  4. delete each orphan (per-row try/catch, ERROR log + continue). cap maxPerRun → truncated=true.
+  5. emit audit `STORAGE_ORPHAN_CLEANED` summary 1건.
+- TDD unit: Mock<StorageClient> + Mock<FileVersionRepository> + Mock<AuditService>로 카운터·delete 호출 검증.
 
 ## 다음 세션 읽기 순서
 

@@ -11,7 +11,7 @@ Last Updated: 2026-05-02
 | OC.0 bootstrap | ✅ done |
 | OC.1 audit type + properties + frontend sync | ✅ done |
 | OC.2 StorageClient.listOlderThan + LocalFs impl | ✅ done |
-| OC.3 FileVersionRepository.streamActiveStorageKeys | ⬜ pending |
+| OC.3 FileVersionRepository.streamActiveStorageKeys | ✅ done |
 | OC.4 StorageOrphanCleanupService | ⬜ pending |
 | OC.5 StorageOrphanCleanupJob + integration test | ⬜ pending |
 | OC.6 closure (docs sync + PR + archive) | ⬜ pending |
@@ -92,7 +92,7 @@ Last Updated: 2026-05-02
 
 ---
 
-## ⬜ OC.3 — FileVersionRepository.streamActiveStorageKeys
+## ✅ OC.3 — FileVersionRepository.streamActiveStorageKeys
 
 ### 작업 전 필독
 - `backend/src/main/java/com/ibizdrive/file/FileVersionRepository.java` — 기존 `findStorageKeysByFileIds(...)` 시그니처.
