@@ -20,6 +20,38 @@ vi.mock('@/hooks/useNativeFileDrop', () => ({ useNativeFileDrop: () => false }))
 vi.mock('@/hooks/useUpload', () => ({ useUpload: () => ({ enqueue: vi.fn() }) }))
 vi.mock('@/hooks/useDeleteBulk', () => ({ useDeleteBulk: () => ({ mutate: vi.fn() }) }))
 
+// jsdom 한계: 가상화 컨테이너의 clientHeight=0 → virtualizer가 빈 viewport로 판단해
+// virtualItems 미반환. 테스트에서는 list/grid 분기 렌더 자체를 검증해야 하므로 virtualizer를
+// "전 항목을 visible로 반환"하도록 mock. M16V 추가 — list/grid 두 분기 모두에 적용.
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count, estimateSize }: { count: number; estimateSize: () => number }) => {
+    const size = estimateSize()
+    return {
+      getTotalSize: () => count * size,
+      getVirtualItems: () =>
+        Array.from({ length: count }, (_, i) => ({
+          index: i,
+          start: i * size,
+          size,
+          end: (i + 1) * size,
+          key: i,
+          lane: 0,
+        })),
+      scrollToIndex: vi.fn(),
+    }
+  },
+}))
+
+// jsdom에는 ResizeObserver 없음 → useGridColumns가 columns=1로 초기 상태 유지.
+// 본 분기 회귀 테스트에서는 columns 정확값보다 렌더 마커가 핵심.
+class FakeResizeObserver {
+  observe() {}
+  unobserve() {}
+  disconnect() {}
+}
+;(globalThis as unknown as { ResizeObserver: typeof FakeResizeObserver }).ResizeObserver =
+  FakeResizeObserver
+
 const ITEMS: FileItem[] = [
   {
     id: 'f1',
@@ -76,5 +108,12 @@ describe('FileTable view 분기 (M16.2)', () => {
     expect(screen.getAllByRole('gridcell').length).toBe(2)
     expect(screen.getByText('a.pdf')).toBeTruthy()
     expect(screen.getByText('b.txt')).toBeTruthy()
+  })
+
+  it('view=grid — data-grid-virtual 마커 존재 (M16V 가상화)', () => {
+    vi.mocked(useViewParam).mockReturnValue({ view: 'grid', setView: vi.fn() })
+    render(wrap(<FileTable folderId="root" />))
+    const grid = screen.getByRole('grid', { name: '파일 그리드' })
+    expect(grid.getAttribute('data-grid-virtual')).toBe('true')
   })
 })
