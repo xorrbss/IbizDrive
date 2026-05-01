@@ -1,0 +1,41 @@
+package com.ibizdrive.share;
+
+import com.ibizdrive.permission.Preset;
+
+import java.time.Instant;
+import java.util.UUID;
+
+/**
+ * Share 생성 이벤트 — A10.2, ADR #34.
+ *
+ * <p>{@link ShareCommandService#createShares}가 트랜잭션 경계 안에서 publish.
+ * {@code ShareAuditListener}(A10.3 도입)가 audit_log에 {@code share.created}로 기록.
+ *
+ * <p>{@link com.ibizdrive.permission.PermissionGrantedEvent}와의 차이:
+ *   - PermissionGrantedEvent는 {@code permissions} row 생성에 대해 발행(이중 발행) → audit
+ *     {@code permission.granted}.
+ *   - 본 이벤트는 그 위 {@code shares} row 메타에 대해 발행 → audit {@code share.created}.
+ *   - 두 audit row는 동일 트랜잭션에서 함께 INSERT됨 (호출자가 둘 다 publish, REQUIRES_NEW로 분리 보존).
+ *
+ * <p>metadata 후보(listener 책임):
+ *   {@code shareId, fileId, permissionId, subjectType, subjectId, preset, expiresAt, message?}
+ */
+public record ShareCreatedEvent(
+    UUID actorId,
+    UUID shareId,
+    UUID fileId,
+    UUID permissionId,
+    String subjectType,
+    UUID subjectId,
+    Preset preset,
+    Instant expiresAt,
+    String message
+) {
+    public ShareCreatedEvent {
+        if (shareId == null) throw new IllegalArgumentException("shareId is required");
+        if (fileId == null) throw new IllegalArgumentException("fileId is required");
+        if (permissionId == null) throw new IllegalArgumentException("permissionId is required");
+        if (subjectType == null) throw new IllegalArgumentException("subjectType is required");
+        if (preset == null) throw new IllegalArgumentException("preset is required");
+    }
+}

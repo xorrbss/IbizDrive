@@ -211,9 +211,9 @@ CREATE INDEX idx_permissions_expires ON permissions(expires_at) WHERE expires_at
 
 > **효율적 권한 조회**: 파일/폴더의 effective permission 계산은 재귀 CTE로 상위 폴더까지 순회. 성능이 문제면 materialized view 또는 상속된 권한을 비정규화.
 
-### 2.7 shares
+### 2.7 shares (V6 마이그레이션 — A10, ADR #34)
 
-공유는 permissions의 특수 케이스이지만, UX/감사 편의로 별도 테이블로 관리:
+`shares` row = 공유 메타(message / expiresAt / revoke 추적) + `permissions` row와 1:1 연결. `permissions.preset`은 "공유받은 사람의 권한 셋"(Preset.java 5종 wire format), `shares.message`/`expires_at`/`revoked_at`은 공유 행위 자체의 메타. SRP 분리(ADR #34) — 권한 row에 메타 컬럼 추가 대안은 거부(책임 혼합).
 
 ```sql
 CREATE TABLE shares (
@@ -222,7 +222,8 @@ CREATE TABLE shares (
   folder_id       UUID REFERENCES folders(id) ON DELETE CASCADE,
   permission_id   UUID NOT NULL REFERENCES permissions(id) ON DELETE CASCADE,
   shared_by       UUID NOT NULL REFERENCES users(id),
-  message         TEXT,
+  message         TEXT,                              -- max 1000자 (controller 검증)
+  expires_at      TIMESTAMPTZ,                       -- NULL = 무기한. SHARE_EXPIRED cron(별도 트랙)이 도과 row 처리
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   revoked_at      TIMESTAMPTZ,
   revoked_by      UUID REFERENCES users(id),
@@ -230,8 +231,11 @@ CREATE TABLE shares (
   CHECK ((file_id IS NOT NULL)::int + (folder_id IS NOT NULL)::int = 1)
 );
 
-CREATE INDEX idx_shares_active ON shares(shared_by) WHERE revoked_at IS NULL;
+CREATE INDEX idx_shares_active     ON shares(shared_by, created_at DESC) WHERE revoked_at IS NULL;
+CREATE INDEX idx_shares_permission ON shares(permission_id);  -- /api/shares/with-me JOIN
 ```
+
+> `POST /api/folders/:id/share` endpoint는 MVP 미도입(`folder_id` 컬럼은 schema 양립 — 향후 ADR로 endpoint만 추가). `SHARE_EXPIRED` audit cron 및 SSE `share.created/revoked` emission도 별도 트랙(deferred).
 
 ### 2.8 audit_log (append-only)
 
@@ -1094,20 +1098,69 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
     }
 ```
 
-### 7.9 공유 (Shares)
+### 7.9 공유 (Shares, ADR #34)
+
+> A10 트랙 `a10-shares` 구현. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 첫 활성화 — `SHARE_EXPIRED` cron / folder share endpoint / SSE emission 모두 별도 트랙(deferred).
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| GET | `/api/shares/by-me` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | — |
-| GET | `/api/shares/with-me` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | — |
-| POST | `/api/files/:id/share` | `hasPermission(#id, 'file', 'SHARE')` | REQUIRED | — | `WHERE deleted_at IS NULL` | 400, 404 |
-| DELETE | `/api/shares/:shareId` | `share.owner = currentUser OR hasRole('ADMIN')` | REQUIRED | — | — | 403, 404 |
+| GET | `/api/shares/by-me` | `isAuthenticated()` | — | — | `WHERE revoked_at IS NULL` | — |
+| GET | `/api/shares/with-me` | `isAuthenticated()` | — | — | `WHERE revoked_at IS NULL AND subject_type='user' AND subject_id=actor` (MVP) | — |
+| POST | `/api/files/:id/share` | `hasPermission(#fileId, 'file', 'SHARE')` | REQUIRED | — | `files.deleted_at IS NULL` | 400, 404, 409 |
+| DELETE | `/api/shares/:shareId` | `@shareCommandService.canRevoke(#shareId, principal)` | REQUIRED | — | `revoked_at IS NULL` (이미 revoked → 404) | 403, 404 |
 
 ```text
-POST /api/files/:id/share
-  Request:  { subjects: [{ type: 'USER'|'DEPT', id: string }], preset: 'VIEW'|'EDIT'|'FULL', expiresAt?: ISO8601, message?: string }
+POST /api/files/:fileId/share                              (ADR #34)
+  Guard:    hasPermission(#fileId, 'file', 'SHARE')
+  Request:  { subjects: [{ type: 'user'|'department'|'role'|'everyone', id?: UUID }],
+              preset:    'read'|'upload'|'edit'|'admin',
+              expiresAt? : ISO8601 (미래),
+              message?   : string (max 1000) }
+              # subjects[].id 는 type='everyone' 일 때만 NULL (V5 idx_permissions_unique CHECK 동형)
+              # preset wire format = V5 permissions_preset_check 4 값 (read|upload|edit|admin).
+              #   Preset.SHARE 는 enum 정의 존재하나 V5 CHECK 미지원 → controller 진입 시 거부 (400 BAD_REQUEST). ADR #34 backlog.
   Response: 201 { shares: ShareDto[] }
-  TX:       INSERT shares + INSERT permissions (preset 매핑) + audit_log (PERMISSION_GRANT)
+              # ShareDto = { id, fileId, permissionId, sharedBy, subjectType, subjectId,
+              #              preset, expiresAt?, message?, createdAt }
+  TX:       for each subject:
+              (1) INSERT permissions(preset) → PermissionGrantedEvent → audit `permission.granted`
+              (2) INSERT shares(permission_id 참조) → ShareCreatedEvent → audit `share.created`
+            전체 단일 트랜잭션. UNIQUE 위반 시 전체 rollback.
+  Errors:   400 BAD_REQUEST       (subjects 비어있음, message > 1000자, expiresAt past, subject_id ↔ everyone 위반)
+            404 NOT_FOUND         (file 미존재 또는 soft-deleted)
+            409 PERMISSION_CONFLICT (V5 idx_permissions_unique 위반 — 동일 file × subject 중복 grant)
+
+DELETE /api/shares/:shareId                                (ADR #34)
+  Guard:    @shareCommandService.canRevoke(#shareId, principal)
+              # share.shared_by == principal.userId  ||  principal.role == ADMIN
+  Response: 204 No Content
+  TX:       SELECT share FOR UPDATE
+            → share.revoked_at = NOW(), share.revoked_by = actor → save
+            → permissionRepository.deleteById(share.permission_id)   -- 공유받은 사람의 접근 즉시 회수
+            → ShareRevokedEvent → audit `share.revoked`
+              metadata:     { shareId, permissionId, originalSharedBy, fileId }
+              before_state: snapshot(share)
+            -- audit `permission.revoked` 는 emit 하지 않음 (이중 발행 회피, ADR #34)
+  Errors:   403 PERMISSION_DENIED, 404 NOT_FOUND (이미 revoked 포함)
+
+GET /api/shares/by-me?cursor=&limit=                       (ADR #34)
+  Guard:    isAuthenticated()
+  Response: 200 { items: ShareDto[], nextCursor?: string }
+  Query:    WHERE shared_by = :actor AND revoked_at IS NULL
+            ORDER BY created_at DESC, id DESC LIMIT :limit + 1
+  Cursor:   opaque base64 url-safe `{createdAt epoch ms}|{id}` (ShareCursor)
+
+GET /api/shares/with-me?cursor=&limit=                     (ADR #34, MVP scope)
+  Guard:    isAuthenticated()
+  Response: 200 { items: ShareDto[], nextCursor?: string }
+  Query:    INNER JOIN permissions p ON shares.permission_id = p.id
+            WHERE shares.revoked_at IS NULL
+              AND p.subject_type = 'user'
+              AND p.subject_id   = :actor
+              AND (p.expires_at IS NULL OR p.expires_at > NOW())
+            ORDER BY shares.created_at DESC, shares.id DESC LIMIT :limit + 1
+  Note:     MVP는 subject_type='user' 매칭만. department/role/everyone subject 로 받은 share 는
+            with-me 결과 미포함 (별도 트랙, ADR #34 backlog).
 ```
 
 ### 7.10 권한 (Permissions)
