@@ -20,6 +20,7 @@ import { useUpload } from '@/hooks/useUpload'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { UploadOverlay } from '@/components/upload/UploadOverlay'
+import { computeNextIndex, type ArrowKey } from '@/lib/gridNav'
 import type { FileItem } from '@/types/file'
 
 const ROW_HEIGHT = 40
@@ -165,7 +166,8 @@ export function FileTable({ folderId }: Props) {
       const orderedIds = items.map((it) => it.id)
 
       // Grid 모드는 1D index를 row index로 매핑해 scrollToIndex 호출 (M16V).
-      // 좌/우 wrap navigation (2D 키보드)은 v1.x — 본 트랙은 ↑/↓ 1D 유지.
+      // 2D 키보드 wrap(Grid ↑/↓ columns step + ←/→ row 경계 wrap)은 M16VK에서
+      // `computeNextIndex` pure helper로 분리 — list 모드 동작은 변경 없음.
       const scrollToFocused = (idx: number) => {
         if (view === 'grid') {
           gridVirtualizer.scrollToIndex(Math.floor(idx / gridSafeColumns), {
@@ -177,28 +179,27 @@ export function FileTable({ folderId }: Props) {
       }
 
       switch (e.key) {
-        case 'ArrowDown': {
-          e.preventDefault()
+        case 'ArrowDown':
+        case 'ArrowUp':
+        case 'ArrowLeft':
+        case 'ArrowRight': {
+          // List 모드 ←/→는 helper 안에서 no-op 처리. preventDefault는 grid 모드에서만 실시해
+          // List에서 ←/→로 textbox 캐럿 이동 등 상위 핸들러를 막지 않는다.
+          if (!(view === 'list' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight'))) {
+            e.preventDefault()
+          }
           setFocusedIndex((prev) => {
-            let next = prev + 1
-            while (next < items.length && pendingIds.has(items[next].id)) next++
-            if (next >= items.length) return prev
+            const next = computeNextIndex({
+              prev,
+              key: e.key as ArrowKey,
+              view,
+              columns: gridSafeColumns,
+              length: items.length,
+              isPending: (idx) => pendingIds.has(items[idx].id),
+            })
+            if (next === prev) return prev
             scrollToFocused(next)
             // Shift: 범위 확장 (anchor 유지). Ctrl/Meta: focus only.
-            if (e.shiftKey) {
-              selectRange(items[next].id, orderedIds)
-            }
-            return next
-          })
-          break
-        }
-        case 'ArrowUp': {
-          e.preventDefault()
-          setFocusedIndex((prev) => {
-            let next = prev - 1
-            while (next >= 0 && pendingIds.has(items[next].id)) next--
-            if (next < 0) return prev
-            scrollToFocused(next)
             if (e.shiftKey) {
               selectRange(items[next].id, orderedIds)
             }
