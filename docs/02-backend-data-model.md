@@ -1102,7 +1102,7 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
 
 ### 7.9 공유 (Shares, ADR #34)
 
-> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST) 구현. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화. `SHARE_EXPIRED` cron 트랙 `share-expired-cron`(2026-05-01)에서 활성화 — §7.9.1. SSE emission은 별도 트랙(deferred).
+> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST), A13 트랙 `a13-shares-permissions-join`(2026-05-01) — `ShareDto` ↔ `permissions` row join 복원: 응답에 `subjectType`/`subjectId`/`preset` 3 필드를 포함. POST 응답은 트랜잭션 내 `PermissionRow` 그대로 사용, by-me/with-me 응답은 페이지 결정 후 `permissionRepository.findAllById(ids)` 1회 IN 절 batch (N+1 회피, MAX_LIMIT=100 → 페이지 당 최대 100 IN). V6 FK CASCADE가 active share row의 permission 존재를 보증 — 누락 시 `IllegalStateException`. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화. `SHARE_EXPIRED` cron 트랙 `share-expired-cron`(2026-05-01)에서 활성화 — §7.9.1. SSE emission은 별도 트랙(deferred).
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
@@ -1123,8 +1123,11 @@ POST /api/files/:fileId/share                              (ADR #34)
               # preset wire format = V5 permissions_preset_check 4 값 (read|upload|edit|admin).
               #   Preset.SHARE 는 enum 정의 존재하나 V5 CHECK 미지원 → controller 진입 시 거부 (400 BAD_REQUEST). ADR #34 backlog.
   Response: 201 { shares: ShareDto[] }
-              # ShareDto = { id, fileId, permissionId, sharedBy, subjectType, subjectId,
-              #              preset, expiresAt?, message?, createdAt }
+              # ShareDto = { id, fileId, folderId(=null on file POST), permissionId, sharedBy,
+              #              message?, expiresAt?, createdAt, revokedAt(=null), revokedBy(=null),
+              #              subjectType, subjectId, preset }
+              # subjectType/subjectId/preset 는 A13에서 permissions row join으로 surface.
+              # POST 응답은 INSERT 직후 PermissionRow 그대로 매핑 (별도 SELECT 없음).
   TX:       for each subject:
               (1) INSERT permissions(preset) → PermissionGrantedEvent → audit `permission.granted`
               (2) INSERT shares(permission_id 참조) → ShareCreatedEvent → audit `share.created`
@@ -1160,22 +1163,28 @@ DELETE /api/shares/:shareId                                (ADR #34)
             -- audit `permission.revoked` 는 emit 하지 않음 (이중 발행 회피, ADR #34)
   Errors:   403 PERMISSION_DENIED, 404 NOT_FOUND (이미 revoked 포함)
 
-GET /api/shares/by-me?cursor=&limit=                       (ADR #34)
+GET /api/shares/by-me?cursor=&limit=                       (ADR #34, A13 join)
   Guard:    isAuthenticated()
   Response: 200 { items: ShareDto[], nextCursor?: string }
-  Query:    WHERE shared_by = :actor AND revoked_at IS NULL
-            ORDER BY created_at DESC, id DESC LIMIT :limit + 1
+              # ShareDto는 POST 응답과 동일 형상 — subjectType/subjectId/preset 포함.
+  Query:    (1) shares 페이지 SELECT — WHERE shared_by = :actor AND revoked_at IS NULL
+                ORDER BY created_at DESC, id DESC LIMIT :limit + 1
+            (2) A13 — 페이지 결정 후 permission_id 집합으로 SELECT * FROM permissions WHERE id IN (...).
+                share 1쿼리 + permissions 1쿼리 — N+1 회피.
   Cursor:   opaque base64 url-safe `{createdAt epoch ms}|{id}` (ShareCursor)
 
-GET /api/shares/with-me?cursor=&limit=                     (ADR #34, MVP scope)
+GET /api/shares/with-me?cursor=&limit=                     (ADR #34, MVP scope, A13 join)
   Guard:    isAuthenticated()
   Response: 200 { items: ShareDto[], nextCursor?: string }
-  Query:    INNER JOIN permissions p ON shares.permission_id = p.id
-            WHERE shares.revoked_at IS NULL
-              AND p.subject_type = 'user'
-              AND p.subject_id   = :actor
-              AND (p.expires_at IS NULL OR p.expires_at > NOW())
-            ORDER BY shares.created_at DESC, shares.id DESC LIMIT :limit + 1
+              # ShareDto는 POST 응답과 동일 형상 — subjectType/subjectId/preset 포함.
+  Query:    (1) shares 페이지 SELECT — INNER JOIN permissions p ON shares.permission_id = p.id
+                WHERE shares.revoked_at IS NULL
+                  AND p.subject_type = 'user'
+                  AND p.subject_id   = :actor
+                  AND (p.expires_at IS NULL OR p.expires_at > NOW())
+                ORDER BY shares.created_at DESC, shares.id DESC LIMIT :limit + 1
+            (2) A13 — 페이지 결정 후 permission_id 집합으로 SELECT * FROM permissions WHERE id IN (...).
+                with-me는 (1) JOIN으로도 grant를 집어올 수 있지만 by-me와 동형 path로 통일 (DTO mapping 동일).
   Note:     MVP는 subject_type='user' 매칭만. department/role/everyone subject 로 받은 share 는
             with-me 결과 미포함 (별도 트랙, ADR #34 backlog).
 ```

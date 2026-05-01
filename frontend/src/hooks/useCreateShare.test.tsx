@@ -19,7 +19,7 @@ function wrap(qc: QueryClient) {
   return Wrapper
 }
 
-// F5.1: wire-aligned 10-field ShareDto. subject/preset 등 derived 필드는 제거됨.
+// F5.1 → A13: wire-aligned ShareDto. A13에서 permissions join으로 subjectType/subjectId/preset 복원.
 const SHARE: ShareDto = {
   id: 'sh-1',
   fileId: 'file-1',
@@ -31,6 +31,9 @@ const SHARE: ShareDto = {
   createdAt: '2026-04-30T12:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'read',
 }
 
 describe('useCreateShare', () => {

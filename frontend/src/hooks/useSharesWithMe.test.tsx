@@ -29,6 +29,9 @@ const SHARE: ShareDto = {
   createdAt: '2026-04-30T12:00:00Z',
   revokedAt: null,
   revokedBy: null,
+  subjectType: 'everyone',
+  subjectId: null,
+  preset: 'read',
 }
 
 describe('useSharesWithMe', () => {

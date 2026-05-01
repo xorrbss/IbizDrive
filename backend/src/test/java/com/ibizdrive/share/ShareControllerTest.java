@@ -58,13 +58,15 @@ class ShareControllerTest {
     @Test
     void create_returns201WithSharesEnvelope() {
         UUID fileId = UUID.randomUUID();
+        UUID subjectId = UUID.randomUUID();
         ShareCreateRequest req = new ShareCreateRequest(
-            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            List.of(new ShareCreateRequest.Subject("user", subjectId)),
             "edit", null, null
         );
-        Share s = makeShare(fileId);
+        // A13 — service 반환은 join이 끝난 ShareDto.
+        ShareDto dto = makeFileDto(fileId, "user", subjectId, "edit");
         when(commandService.createShares(eq(fileId), eq(req), eq(ACTOR)))
-            .thenReturn(List.of(s));
+            .thenReturn(List.of(dto));
 
         ResponseEntity<Map<String, List<ShareDto>>> res = controller.create(fileId, req, principal);
 
@@ -72,31 +74,40 @@ class ShareControllerTest {
         assertThat(res.getBody()).containsKey("shares");
         List<ShareDto> dtos = res.getBody().get("shares");
         assertThat(dtos).hasSize(1);
-        assertThat(dtos.get(0).id()).isEqualTo(s.getId());
+        ShareDto out = dtos.get(0);
+        assertThat(out.id()).isEqualTo(dto.id());
+        // A13 wire 검증 — 3 join 필드가 envelope에 포함.
+        assertThat(out.subjectType()).isEqualTo("user");
+        assertThat(out.subjectId()).isEqualTo(subjectId);
+        assertThat(out.preset()).isEqualTo("edit");
         verify(commandService).createShares(fileId, req, ACTOR);
     }
 
     @Test
     void create_multipleSubjects_returnsAllSharesInOrder() {
         UUID fileId = UUID.randomUUID();
+        UUID s1Subject = UUID.randomUUID();
+        UUID s2Subject = UUID.randomUUID();
         ShareCreateRequest req = new ShareCreateRequest(
             List.of(
-                new ShareCreateRequest.Subject("user", UUID.randomUUID()),
-                new ShareCreateRequest.Subject("department", UUID.randomUUID())
+                new ShareCreateRequest.Subject("user", s1Subject),
+                new ShareCreateRequest.Subject("department", s2Subject)
             ),
             "read", null, "msg"
         );
-        Share s1 = makeShare(fileId);
-        Share s2 = makeShare(fileId);
+        ShareDto d1 = makeFileDto(fileId, "user", s1Subject, "read");
+        ShareDto d2 = makeFileDto(fileId, "department", s2Subject, "read");
         when(commandService.createShares(eq(fileId), eq(req), eq(ACTOR)))
-            .thenReturn(List.of(s1, s2));
+            .thenReturn(List.of(d1, d2));
 
         ResponseEntity<Map<String, List<ShareDto>>> res = controller.create(fileId, req, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(res.getBody().get("shares")).hasSize(2);
-        assertThat(res.getBody().get("shares").get(0).id()).isEqualTo(s1.getId());
-        assertThat(res.getBody().get("shares").get(1).id()).isEqualTo(s2.getId());
+        assertThat(res.getBody().get("shares").get(0).id()).isEqualTo(d1.id());
+        assertThat(res.getBody().get("shares").get(1).id()).isEqualTo(d2.id());
+        // A13 — 두번째 row의 department subject 노출 확인.
+        assertThat(res.getBody().get("shares").get(1).subjectType()).isEqualTo("department");
     }
 
     @Test
@@ -132,13 +143,15 @@ class ShareControllerTest {
     @Test
     void createFolderShare_returns201WithSharesEnvelope() {
         UUID folderId = UUID.randomUUID();
+        UUID subjectId = UUID.randomUUID();
         ShareCreateRequest req = new ShareCreateRequest(
-            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            List.of(new ShareCreateRequest.Subject("user", subjectId)),
             "edit", null, null
         );
-        Share s = makeFolderShare(folderId);
+        // A13 — service 반환은 join이 끝난 ShareDto (folder XOR).
+        ShareDto dto = makeFolderDto(folderId, "user", subjectId, "edit");
         when(commandService.createFolderShares(eq(folderId), eq(req), eq(ACTOR)))
-            .thenReturn(List.of(s));
+            .thenReturn(List.of(dto));
 
         ResponseEntity<Map<String, List<ShareDto>>> res =
             controller.createFolderShare(folderId, req, principal);
@@ -147,7 +160,14 @@ class ShareControllerTest {
         assertThat(res.getBody()).containsKey("shares");
         List<ShareDto> dtos = res.getBody().get("shares");
         assertThat(dtos).hasSize(1);
-        assertThat(dtos.get(0).id()).isEqualTo(s.getId());
+        ShareDto out = dtos.get(0);
+        assertThat(out.id()).isEqualTo(dto.id());
+        assertThat(out.folderId()).isEqualTo(folderId);
+        assertThat(out.fileId()).isNull();
+        // A13 wire 검증.
+        assertThat(out.subjectType()).isEqualTo("user");
+        assertThat(out.subjectId()).isEqualTo(subjectId);
+        assertThat(out.preset()).isEqualTo("edit");
         // file POST의 createShares가 호출되지 않아야 — folder path 분기 확인.
         verify(commandService).createFolderShares(folderId, req, ACTOR);
     }
@@ -155,25 +175,27 @@ class ShareControllerTest {
     @Test
     void createFolderShare_multipleSubjects_returnsAllSharesInOrder() {
         UUID folderId = UUID.randomUUID();
+        UUID s1Subject = UUID.randomUUID();
+        UUID s2Subject = UUID.randomUUID();
         ShareCreateRequest req = new ShareCreateRequest(
             List.of(
-                new ShareCreateRequest.Subject("user", UUID.randomUUID()),
-                new ShareCreateRequest.Subject("department", UUID.randomUUID())
+                new ShareCreateRequest.Subject("user", s1Subject),
+                new ShareCreateRequest.Subject("department", s2Subject)
             ),
             "read", null, "msg"
         );
-        Share s1 = makeFolderShare(folderId);
-        Share s2 = makeFolderShare(folderId);
+        ShareDto d1 = makeFolderDto(folderId, "user", s1Subject, "read");
+        ShareDto d2 = makeFolderDto(folderId, "department", s2Subject, "read");
         when(commandService.createFolderShares(eq(folderId), eq(req), eq(ACTOR)))
-            .thenReturn(List.of(s1, s2));
+            .thenReturn(List.of(d1, d2));
 
         ResponseEntity<Map<String, List<ShareDto>>> res =
             controller.createFolderShare(folderId, req, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
         assertThat(res.getBody().get("shares")).hasSize(2);
-        assertThat(res.getBody().get("shares").get(0).id()).isEqualTo(s1.getId());
-        assertThat(res.getBody().get("shares").get(1).id()).isEqualTo(s2.getId());
+        assertThat(res.getBody().get("shares").get(0).id()).isEqualTo(d1.id());
+        assertThat(res.getBody().get("shares").get(1).id()).isEqualTo(d2.id());
     }
 
     @Test
@@ -287,25 +309,41 @@ class ShareControllerTest {
 
     // ── helpers ────────────────────────────────────────────────────────
 
-    private static Share makeShare(UUID fileId) {
-        Share s = new Share();
-        s.setId(UUID.randomUUID());
-        s.setFileId(fileId);
-        s.setFolderId(null);
-        s.setPermissionId(UUID.randomUUID());
-        s.setSharedBy(ACTOR);
-        s.setCreatedAt(Instant.now());
-        return s;
+    /** A13 — service 반환이 ShareDto이므로 controller 테스트 fixture도 DTO로 직접 구성. file XOR (folderId=null). */
+    private static ShareDto makeFileDto(UUID fileId, String subjectType, UUID subjectId, String preset) {
+        return new ShareDto(
+            UUID.randomUUID(),  // id
+            fileId,
+            null,               // folderId — file XOR
+            UUID.randomUUID(),  // permissionId
+            ACTOR,              // sharedBy
+            null,               // message
+            null,               // expiresAt
+            Instant.now(),      // createdAt
+            null,               // revokedAt
+            null,               // revokedBy
+            subjectType,
+            subjectId,
+            preset
+        );
     }
 
-    private static Share makeFolderShare(UUID folderId) {
-        Share s = new Share();
-        s.setId(UUID.randomUUID());
-        s.setFileId(null);
-        s.setFolderId(folderId);
-        s.setPermissionId(UUID.randomUUID());
-        s.setSharedBy(ACTOR);
-        s.setCreatedAt(Instant.now());
-        return s;
+    /** folder XOR (fileId=null). */
+    private static ShareDto makeFolderDto(UUID folderId, String subjectType, UUID subjectId, String preset) {
+        return new ShareDto(
+            UUID.randomUUID(),  // id
+            null,               // fileId — folder XOR
+            folderId,
+            UUID.randomUUID(),  // permissionId
+            ACTOR,              // sharedBy
+            null,               // message
+            null,               // expiresAt
+            Instant.now(),      // createdAt
+            null,               // revokedAt
+            null,               // revokedBy
+            subjectType,
+            subjectId,
+            preset
+        );
     }
 }
