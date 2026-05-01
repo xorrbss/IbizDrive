@@ -12,7 +12,8 @@ Last Updated: 2026-05-01
 | A15.1 StorageClient + LocalFs | ✅ done |
 | A15.2 FileUploadService RED | ✅ done |
 | A15.3 FileUploadService GREEN | ✅ done |
-| A15.4 POST /api/files controller | 🟡 next |
+| A15.4 POST /api/files controller | ✅ done |
+| A15.5 GET /api/files/:id/download controller | 🟡 next |
 | A15.5 GET /api/files/:id/download controller | ⬜ pending |
 | A15.6 Frontend api.uploadFile 실 XHR | ⬜ pending |
 | A15.7 closure (docs sync + PR + archive) | ⬜ pending |
