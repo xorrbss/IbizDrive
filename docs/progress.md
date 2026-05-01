@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-01 — 🏁 A13 트랙 종료 (`ShareDto` ↔ `permissions` join 복원, subject/preset surface)
+
+### 범위
+
+A13.0 (worktree `feature/a13-shares-permissions-join` from `544afc9` F5 closure 후 `fe9e963` permissions-expired-cron 위로 rebase + dev-docs bootstrap `dev/active/a13-shares-permissions-join/`) → A13.1 (`ShareDto` record에 `subjectType`/`subjectId`/`preset` 3 필드 복구, Jackson record 직렬화 wire 정합) → A13.2 (`ShareCommandService.createFileShares` / `createFolderShares` POST 응답 트랜잭션 내 `PermissionRow` 그대로 매핑 — 추가 SELECT 없음) → A13.3 (`ShareQueryService.listSharesByMe` / `listSharesWithMe` 페이지 결정 후 `permissionRepository.findAllById(ids)` **1회 IN-batch** N+1 회피, MAX_LIMIT=100 → 페이지당 최대 100 IN) → A13.4 (`ShareControllerTest` wire JSON 3 필드 surface 검증 강화 + `ShareQueryServiceTest` Mockito `grantRow` 로컬 변수 추출로 nested-stubbing exception 회피 + `ShareCommandServiceTest` POST 응답 매핑 단위 테스트 보강) → A13.5 (frontend `ShareDto` interface 3 필드 + `SharesTable` 4열 복원 `항목 | 공유한 사람 | 권한 | 만료` + `ShareDialog` 기존-share 행 `subjectLabel · presetLabel · 만료/무기한 + 해제` + `presetLabel` / `subjectLabel` helper) → A13.6 (`docs/00 §5 ADR #34` A13 closure 마커 + `docs/01 §14.4` 4열·subjectLabel·presetLabel 반영 + `docs/02 §7.9` POST/by-me/with-me 응답 schema 3 필드 + N+1 회피 IN-batch 명시) → A13.7 (PR #32 squash-merge `393e38f` + dev-docs archive).
+
+### 회고
+
+- **commits**: 1 on top of `fe9e963` permissions-expired-cron closure (worktree branch `feature/a13-shares-permissions-join`) → squash-merge `393e38f` on `master`. PR #32 single, frontend vitest + backend junit 모두 1회 GREEN. rebase 시 `docs/00-overview.md` ADR #34 cell 충돌 발생(master의 permissions-expired-cron closure marker vs A13 closure marker 동일 cell 확장) → 둘 다 보존하는 형태로 수동 머지.
+- **production 파일**: 신설 0 / 수정 8.
+  - backend: `ShareDto.java`, `ShareCommandService.java`, `ShareController.java`, `ShareQueryService.java`
+  - frontend: `frontend/src/types/share.ts`, `frontend/src/components/shares/SharesTable.tsx`, `frontend/src/components/shares/ShareDialog.tsx`
+- **test 파일**: 신설 0 / 수정 9. `ShareCommandServiceTest`, `ShareControllerTest`, `ShareQueryServiceTest` + frontend `useSharesByMe.test.tsx`, `useSharesWithMe.test.tsx`, `useCreateShare.test.tsx`, `api.shares.test.ts`, `SharesTable.test.tsx`, `ShareDialog.test.tsx`. backend share + audit GREEN, frontend 65 files / 495 tests GREEN.
+- **docs sync**: `docs/00 §5 ADR #34` (A13 closure + permissions-expired-cron closure 양립), `docs/01 §14.4`, `docs/02 §7.9`. DB/V_ 마이그레이션 변경 0.
+
+### 핵심 결정 (A13 트랙, 확정)
+
+1. **POST 응답 = 트랜잭션 내 `PermissionRow` 그대로 매핑 (추가 SELECT 0)** — INSERT 시점에 grant row 객체가 이미 메모리에 존재 → `ShareDto` 생성 시 그 자리에서 reuse. by-me/with-me는 페이지 결정 후 `findAllById` IN-batch 1회. 두 경로의 패턴 차이는 의식적 — POST는 단일 row, query는 페이지(N rows)이므로 배치 대상이 다름.
+2. **N+1 회피 = `findAllById` (Spring Data 표준 IN 절)** — 별도 JPQL/native query 추가 거부. MAX_LIMIT=100이 IN 절 길이 상한 보장 → 별도 chunking 불요.
+3. **V6 FK CASCADE invariant** — active share row의 `permission_id`가 가리키는 permission row는 항상 존재. 누락 시 `IllegalStateException` (operationally unreachable, defense-in-depth만). N+1 회피 batch에서 `Map<UUID, PermissionRow>` lookup 시 missing key는 invariant 위반.
+4. **frontend SharesTable 4열 복원** — F5.1에서 3열로 단순화한 결정을 정정. F5.1 당시는 backend wire에 preset이 없어 frontend 표기 불가 → 본 트랙에서 wire 복원과 동시에 컬럼 복원. presetLabel 한글화(read→읽기 / upload→업로드 / edit→편집 / admin→관리).
+5. **subjectLabel = `everyone` → "모든 사용자", 나머지 → `{type} {id.slice(0,8)}`** — UUID 머릿8자 노출은 가독성 vs 식별 가능성 trade-off. department/role 이름 lookup은 별도 트랙(권한 관리 UI) 영역.
+6. **ShareControllerTest wire JSON 검증 강화** — 3 필드 surface는 record 필드 추가만으로 자동 직렬화되지만, drift 방지 위해 controller test에서 `subjectType`/`subjectId`/`preset` JSON path 명시 단언.
+7. **Mockito `grantRow` 로컬 변수 추출** — `ShareQueryServiceTest`에서 `when(permissionRepository.findAllById(...)).thenReturn(List.of(grantRow(...)))` 패턴이 nested-stubbing(`grantRow` 내부 stubbing 호출이 외부 `when` 진행 중에 발생) → `UnfinishedStubbingException`. 해결: `PermissionRow grant = grantRow(...)`로 outer stubbing 진입 전 evaluate.
+8. **rebase 충돌 정책 = 둘 다 보존** — `permissions-expired-cron closure`(master) + `A13 closure`(branch) 모두 ADR #34 cell의 시간순 closure marker 누적이 의도. 한쪽 drop 거부.
+
+### 파급 영향
+
+- **F5 wire drift 정정**: F5.1에서 의식적으로 제거(`backend wire에 surface 못함`)했던 3 필드가 본 트랙으로 복구. 남은 `permissions` 직접 grant UX(만료 시각, message)는 별도 트랙.
+- **ADR #34 누적**: A10 → A12 → SHARE_EXPIRED → permissions-expired-cron → A13 5개 closure marker가 동일 cell에 누적. 다음 트랙도 cell 분할이 아닌 marker append 형태 유지.
+- **frontend audit.ts / queryKeys 등 다른 계약 파일**: 변경 없음.
+- **DB/스키마**: 변경 없음 (V_ 마이그레이션 0개).
+- **잔여 backlog (A13 scope 외)**: department/role subject name lookup, ShareDialog에서 subject picker(현재는 `everyone`만 default UI), `permissions.message` 컬럼 도입 시 ShareDto에 `message` 필드 별도 노출 검토.
+
+---
+
 ## 2026-05-01 — 🏁 permissions-expired-cron 트랙 종료 (`permissions.expires_at` 만료 cron + `permission.expired` audit)
 
 ### 범위
