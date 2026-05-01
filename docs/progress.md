@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-05-01 — 🏁 F5 마일스톤 종료 (Frontend Folder Share UI 확장 + ShareDto wire 정합)
+
+### 범위
+
+F5.0 (worktree `feature/f5-frontend-folder-share-ui` from `7c179d1` F4 closure + dev-docs bootstrap `dev/active/f5-frontend-folder-share-ui/`) → F5.1 (ShareDto wire 10필드 정합 — file_id/folder_id XOR + revokedAt/revokedBy 노출 + subjectType/subjectId/preset 제거 = backend `com.ibizdrive.share.ShareDto` record와 1:1, `api.createShares` → `createFileShares`/`createFolderShares` 분리 + `postShareCreate` 헬퍼, `useShareUiStore` `target: ShareTarget` discriminator 도입, `BulkActionBar`는 `{kind:'file'}` 명시, ShareDialog는 target 기반 + 기존공유 행 표시 단순화(만료+해제만), SharesTable 컬럼 4→3 + folder/file 아이콘 분기) → F5.2 (`useCreateShare` Vars `{target, req}` discriminated 전환 + target.kind 분기 mutationFn, ShareDialog `components/files/` → `components/shares/` 이동 + folder kind 분기 활성 + kind-aware 부제/NOT_FOUND toast, `ClientFilesPage.tsx` import 경로 갱신) → F5.3 (`Breadcrumb` 우측 폴더 공유 진입점 — 비루트 + `can.SHARE` 게이트, `Breadcrumb.test.tsx` 신규 +3 케이스) → F5.4 (`docs/01 §14.4` F4→F5 확장 sync — ShareDto 10필드/매칭식/wire 부재 항목 명시) → F5.5 (PR #30 squash-merge `abb8506` + dev-docs archive).
+
+### 회고
+
+- **commits**: 1 on top of `6f4377f` M12 closure (worktree branch `feature/f5-frontend-folder-share-ui`) → squash-merge `abb8506` on `master`. PR #30 single, CI green (frontend vitest + backend junit 모두 SUCCESS, fix commit 0).
+- **production 파일**: 수정 9 / 이동 1(2파일) / 신설 1.
+  - 수정: `frontend/src/types/share.ts`, `frontend/src/stores/shareUi.ts`, `frontend/src/lib/api.ts`, `frontend/src/hooks/useCreateShare.ts`, `frontend/src/components/shares/SharesTable.tsx`, `frontend/src/components/folders/Breadcrumb.tsx`, `frontend/src/components/files/BulkActionBar.tsx`, `frontend/src/app/(explorer)/files/[...parts]/ClientFilesPage.tsx`, `docs/01-frontend-design.md` §14.4
+  - 이동: `frontend/src/components/files/ShareDialog.{tsx,test.tsx}` → `frontend/src/components/shares/ShareDialog.{tsx,test.tsx}` (소유 경계 정합 — file 전용 컴포넌트 아님)
+  - 신설: `frontend/src/components/folders/Breadcrumb.test.tsx`
+- **test 파일**: 수정 6 / 신설 1. wire-aligned 10필드 fixture 일괄 갱신 + folder kind 케이스 추가. 최종 494/494 GREEN.
+- **docs sync**: `docs/01 §14.4` F4→F5 확장 (트리거 분기 file/folder, target discriminated, mutation 분기 라우트, ShareDto 10필드 명시, SharesTable 3컬럼 정정, A13 backlog 등록).
+
+### 핵심 결정 (f5-frontend-folder-share-ui 트랙, 확정)
+
+1. **ShareDto wire 진실 = backend record** — F4 시점 frontend types가 `subjectType/subjectId/preset` 가정 + `folderId/revokedAt/revokedBy` 누락 = drift. A안 채택(frontend types를 wire에 정렬, ShareDialog 기존공유 행 표시 단순화 + SharesTable preset 컬럼 제거). 복원은 A13(backend join) backlog.
+2. **`createShares` → `createFileShares`/`createFolderShares` 분리** — backend 라우트 분리(POST /api/files|folders/{id}/share)와 1:1 KISS. 단일 메서드 통합 시 endpoint 분기 로직이 클라이언트로 새는 안티패턴.
+3. **useCreateShare 단일 hook 유지, Vars만 discriminated** — 호출자 관점 동일 액션, `qk.shares()` 무효화도 동일. hook 두 개로 쪼개면 무효화 중복.
+4. **ShareDialog 위치 이동 (`files/` → `shares/`)** — 더 이상 file 전용이 아님. 소유 경계 정합.
+5. **폴더 진입점은 Breadcrumb 우측 작은 액션** — 현재 폴더 = URL `folderId`이므로 §19 원칙 1과 정합. 비루트 + `can.SHARE` 게이트. FolderTree row 우클릭 컨텍스트 메뉴는 별도 트랙(범용 폴더 액션 시스템 신설 필요).
+6. **`revokedAt`/`revokedBy` 미노출** — backend가 active 행에서 항상 null. UI 가치 0. 향후 admin 화면 재사용을 위해 wire 노출은 유지하되 UI는 표시 안 함 (YAGNI).
+7. **with-me revoke 미노출 유지** — F4 보수 정책 그대로 (수신자 자진 반납 사양 미정).
+8. **루트 폴더 공유 진입점 차단** — `breadcrumb.length > 1`로 게이트 (정책: 시스템 루트 = 공유 대상 아님).
+
+### 파급 영향
+
+- **frontend backlog**: 폴더 다중 선택 BulkActionBar 공유 액션(folder 다중 선택 자체 부재 → 함께 트랙 필요), FolderTree row 우클릭 컨텍스트 메뉴(범용 액션 시스템), subject picker UI(user/department/role 목록 endpoint 부재).
+- **backend backlog**: **A13 (가칭) — `ShareDto` ↔ `permissions` join** (`subject_type`/`subject_id`/`preset`을 ShareDto에 join → ShareDialog 기존공유 행 풍부화 + SharesTable preset 컬럼 복원). `ShareControllerTest` wire JSON 필드 검증 보강(현 갭).
+- **DB/스키마**: 변경 없음.
+
+---
+
 ## 2026-05-01 — 🏁 M12 closure (Audit Log UI — A2.6 wired status 표기)
 
 ### 범위
