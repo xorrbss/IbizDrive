@@ -86,7 +86,7 @@ export function BulkActionBar() {
 
   const handleShare = () => {
     if (!shareEnabled || !singleItem) return
-    openShare(singleItem.id, singleItem.name)
+    openShare({ kind: 'file', id: singleItem.id, name: singleItem.name })
   }
 
   return (

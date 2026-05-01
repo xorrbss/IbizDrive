@@ -16,29 +16,30 @@ function wrap(qc: QueryClient) {
   return Wrapper
 }
 
+// F5.1: wire-aligned 10-field ShareDto. file 공유 row → fileId set, folderId null (XOR).
 const SHARE_A: ShareDto = {
   id: 'sh-1',
   fileId: 'file-A',
+  folderId: null,
   permissionId: 'p-1',
   sharedBy: '김영수',
-  subjectType: 'user',
-  subjectId: 'me',
-  preset: 'edit',
-  expiresAt: '2026-12-31T23:59:00Z',
   message: null,
+  expiresAt: '2026-12-31T23:59:00Z',
   createdAt: '2026-04-30T10:00:00Z',
+  revokedAt: null,
+  revokedBy: null,
 }
 const SHARE_B: ShareDto = {
   id: 'sh-2',
   fileId: 'file-B',
+  folderId: null,
   permissionId: 'p-2',
   sharedBy: '이지은',
-  subjectType: 'user',
-  subjectId: 'me',
-  preset: 'read',
-  expiresAt: null,
   message: null,
+  expiresAt: null,
   createdAt: '2026-04-30T11:00:00Z',
+  revokedAt: null,
+  revokedBy: null,
 }
 
 function setHook(opts: {
@@ -58,7 +59,7 @@ function setHook(opts: {
   })
 }
 
-describe('SharesTable', () => {
+describe('SharesTable (F5.1 wire-aligned)', () => {
   beforeEach(() => {
     vi.clearAllMocks()
   })
@@ -84,20 +85,42 @@ describe('SharesTable', () => {
     expect(screen.getByRole('status').textContent).toMatch(/받은 공유가 없습니다/)
   })
 
-  it('데이터 — 행 렌더 + preset 한글 라벨 + 만료 표시', () => {
+  it('데이터 — 행 렌더 + 공유한 사람 + 만료 표시 (preset 컬럼은 wire 부재로 제거)', () => {
     setHook({ items: [SHARE_A, SHARE_B] })
     const qc = new QueryClient()
     render(<SharesTable />, { wrapper: wrap(qc) })
     expect(screen.getByRole('grid').getAttribute('aria-rowcount')).toBe('3')
-    // preset edit → '편집'
-    expect(screen.getByText('편집')).toBeTruthy()
-    // preset read → '읽기'
-    expect(screen.getByText('읽기')).toBeTruthy()
     // 만료 없음
     expect(screen.getByText('없음')).toBeTruthy()
     // 공유한 사람
     expect(screen.getByText('김영수')).toBeTruthy()
     expect(screen.getByText('이지은')).toBeTruthy()
+    // 항목 식별자 (file 공유 row → fileId)
+    expect(screen.getByText('file-A')).toBeTruthy()
+    expect(screen.getByText('file-B')).toBeTruthy()
+    // preset 한글 라벨은 더 이상 노출되지 않음
+    expect(screen.queryByText('편집')).toBeNull()
+    expect(screen.queryByText('읽기')).toBeNull()
+  })
+
+  it('folder 공유 row — folderId 표시 (file/folder 양립)', () => {
+    const SHARE_FOLDER: ShareDto = {
+      id: 'sh-3',
+      fileId: null,
+      folderId: 'folder-X',
+      permissionId: 'p-3',
+      sharedBy: '박민수',
+      message: null,
+      expiresAt: null,
+      createdAt: '2026-04-30T12:00:00Z',
+      revokedAt: null,
+      revokedBy: null,
+    }
+    setHook({ items: [SHARE_FOLDER] })
+    const qc = new QueryClient()
+    render(<SharesTable />, { wrapper: wrap(qc) })
+    expect(screen.getByText('folder-X')).toBeTruthy()
+    expect(screen.getByText('박민수')).toBeTruthy()
   })
 
   it('with-me는 revoke 버튼 미노출 (보수 정책)', () => {

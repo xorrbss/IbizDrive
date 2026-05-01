@@ -22,17 +22,18 @@ function wrap(qc: QueryClient) {
   return Wrapper
 }
 
+// F5.1: wire-aligned 10-field ShareDto. file 공유 row → fileId set, folderId null (XOR).
 const SHARE_FOR_FILE: ShareDto = {
   id: 'sh-1',
   fileId: 'f1',
+  folderId: null,
   permissionId: 'p-1',
   sharedBy: 'me',
-  subjectType: 'everyone',
-  subjectId: null,
-  preset: 'read',
-  expiresAt: null,
   message: null,
+  expiresAt: null,
   createdAt: '2026-04-30T10:00:00Z',
+  revokedAt: null,
+  revokedBy: null,
 }
 const SHARE_OTHER_FILE: ShareDto = {
   ...SHARE_FOR_FILE,
@@ -62,7 +63,9 @@ function setHooks(opts: {
   })
 }
 
-describe('ShareDialog (F4)', () => {
+const FILE_TARGET = { kind: 'file' as const, id: 'f1', name: 'doc.pdf' }
+
+describe('ShareDialog (F5.1 wire-aligned)', () => {
   beforeEach(() => {
     resetSonnerToastMock()
     vi.clearAllMocks()
@@ -77,7 +80,7 @@ describe('ShareDialog (F4)', () => {
   })
 
   it('open 시 dialog + 파일명 + everyone 라벨 + 4 preset radio', () => {
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
     expect(screen.getByRole('dialog')).toBeTruthy()
@@ -93,7 +96,7 @@ describe('ShareDialog (F4)', () => {
   })
 
   it('Esc → close', () => {
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
@@ -103,7 +106,7 @@ describe('ShareDialog (F4)', () => {
   it('preset 변경 + 공유 버튼 → useCreateShare.mutate 호출', () => {
     const mutate = vi.fn()
     setHooks({ createMutate: mutate })
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
 
@@ -113,7 +116,7 @@ describe('ShareDialog (F4)', () => {
     expect(mutate).toHaveBeenCalledTimes(1)
     const [vars] = mutate.mock.calls[0]
     expect(vars).toEqual({
-      fileId: 'f1',
+      target: FILE_TARGET,
       req: { subjects: [{ type: 'everyone' }], preset: 'edit' },
     })
   })
@@ -121,7 +124,7 @@ describe('ShareDialog (F4)', () => {
   it('expiresAt 입력 → ISO 8601 변환 + 메시지 trim 포함', () => {
     const mutate = vi.fn()
     setHooks({ createMutate: mutate })
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
 
@@ -143,7 +146,7 @@ describe('ShareDialog (F4)', () => {
       opts.onSuccess?.()
     })
     setHooks({ createMutate: mutate })
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
 
@@ -164,7 +167,7 @@ describe('ShareDialog (F4)', () => {
       },
     )
     setHooks({ createMutate: mutate })
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
 
@@ -175,13 +178,13 @@ describe('ShareDialog (F4)', () => {
     )
   })
 
-  it('기존 공유 목록 — fileId로 필터, 해제 버튼 → useRevokeShare.mutate 호출', () => {
+  it('기존 공유 목록 — target.id로 (fileId ?? folderId) 필터, 해제 버튼 → useRevokeShare.mutate 호출', () => {
     const revokeMutate = vi.fn()
     setHooks({
       revokeMutate,
       shares: [SHARE_FOR_FILE, SHARE_OTHER_FILE],
     })
-    act(() => useShareUiStore.getState().open('f1', 'doc.pdf'))
+    act(() => useShareUiStore.getState().open(FILE_TARGET))
     const qc = new QueryClient()
     render(<ShareDialog />, { wrapper: wrap(qc) })
 
@@ -191,5 +194,26 @@ describe('ShareDialog (F4)', () => {
     fireEvent.click(screen.getByRole('button', { name: '해제' }))
     expect(revokeMutate).toHaveBeenCalledTimes(1)
     expect(revokeMutate.mock.calls[0][0]).toBe('sh-1')
+  })
+
+  it('F5.2: folder kind 진입 → mutate Vars target.kind=folder + 부제 "폴더" 라벨', () => {
+    const mutate = vi.fn()
+    setHooks({ createMutate: mutate })
+    const FOLDER_TARGET = { kind: 'folder' as const, id: 'fld-1', name: '문서함' }
+    act(() => useShareUiStore.getState().open(FOLDER_TARGET))
+    const qc = new QueryClient()
+    render(<ShareDialog />, { wrapper: wrap(qc) })
+
+    expect(screen.getByText('문서함')).toBeTruthy()
+    // 부제에 '폴더' 라벨 노출
+    expect(screen.getByText(/폴더 공유 설정/)).toBeTruthy()
+
+    fireEvent.click(screen.getByRole('button', { name: /^공유$/ }))
+    expect(mutate).toHaveBeenCalledTimes(1)
+    const [vars] = mutate.mock.calls[0]
+    expect(vars).toEqual({
+      target: FOLDER_TARGET,
+      req: { subjects: [{ type: 'everyone' }], preset: 'read' },
+    })
   })
 })

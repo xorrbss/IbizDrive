@@ -656,18 +656,17 @@ export const api = {
    *   404 NOT_FOUND         — file 미존재 / soft-deleted
    *   409 PERMISSION_CONFLICT — 동일 file × subject 중복 grant
    */
-  async createShares(fileId: string, req: ShareCreateRequest): Promise<ShareDto[]> {
-    const res = await fetch(`/api/files/${encodeURIComponent(fileId)}/share`, {
-      method: 'POST',
-      credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(req),
-    })
-    if (!res.ok) {
-      throw await buildApiError(res, `createShares failed: ${res.status}`)
-    }
-    const data = (await res.json()) as { shares: ShareDto[] }
-    return data.shares
+  async createFileShares(fileId: string, req: ShareCreateRequest): Promise<ShareDto[]> {
+    return postShareCreate(`/api/files/${encodeURIComponent(fileId)}/share`, req, 'createFileShares')
+  },
+
+  /**
+   * 폴더 공유 생성 — F5 / A12 (docs/02 §7.9, ADR #34).
+   * file 변형과 동일 envelope ({@code { shares: ShareDto[] }}). 응답 row는 `folderId` NOT NULL,
+   * `fileId` NULL (V6 XOR CHECK). 에러 매핑 동일.
+   */
+  async createFolderShares(folderId: string, req: ShareCreateRequest): Promise<ShareDto[]> {
+    return postShareCreate(`/api/folders/${encodeURIComponent(folderId)}/share`, req, 'createFolderShares')
   },
 
   /**
@@ -698,6 +697,28 @@ export const api = {
   async listSharesWithMe(opts: { cursor?: string; limit?: number } = {}): Promise<SharePage> {
     return fetchSharePage('/api/shares/with-me', opts)
   },
+}
+
+/**
+ * POST /api/{files|folders}/:id/share 공통 fetch — body JSON + 201 응답 envelope `{ shares: ShareDto[] }` 매핑.
+ * F5에서 file/folder 두 변형이 라우트만 다르고 형상이 동일하므로 helper로 추출.
+ */
+async function postShareCreate(
+  path: string,
+  req: ShareCreateRequest,
+  errorLabel: string,
+): Promise<ShareDto[]> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(req),
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `${errorLabel} failed: ${res.status}`)
+  }
+  const data = (await res.json()) as { shares: ShareDto[] }
+  return data.shares
 }
 
 /**

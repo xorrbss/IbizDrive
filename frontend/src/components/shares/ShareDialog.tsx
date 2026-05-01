@@ -8,24 +8,32 @@ import { useSharesByMe } from '@/hooks/useSharesByMe'
 import type { SharePreset } from '@/types/share'
 
 /**
- * 공유 다이얼로그 (F4, docs/01 §14, docs/02 §7.9, ADR #34, 단일 파일).
+ * 공유 다이얼로그 (F4 → F5.2, docs/01 §14, docs/02 §7.9, ADR #34).
  *
- * MVP 정책 (F4 트랙):
+ * F5.2 변경 (F5.1 wire 정합 위에서):
+ * - useCreateShare가 `{target, req}` discriminated를 받으므로 folder kind도 직접 mutate.
+ *   target.kind === 'folder' → POST /api/folders/{id}/share, file → POST /api/files/{id}/share.
+ * - 위치 이동: `components/files/` → `components/shares/` (file 전용 컴포넌트가 아니므로 소유 경계 정합).
+ * - 라벨 kind-aware: 부제 "(파일|폴더) <name>" + NOT_FOUND toast 한국어 분기.
+ *
+ * F5.1에서 굳어진 정책:
+ * - 기존 share 매칭은 `(s.fileId ?? s.folderId) === target.id` (wire XOR).
+ * - 기존 share 행 표시는 만료 시각 + 해제 버튼만 (subject/preset wire에 없음, A13 backlog 시 복원).
+ *
+ * MVP 정책 (유지):
  * - subject = 'everyone' 고정 — frontend user/department/role 목록 endpoint 부재 (별도 트랙).
  * - preset 4값 (read|upload|edit|admin) — `Preset.SHARE`는 V5 CHECK 미지원 (ADR #34 backlog).
  * - expiresAt: HTML5 datetime-local 입력 → `new Date(value).toISOString()` 변환.
  * - message: optional, 1000자 제한은 backend가 검증 (400 BAD_REQUEST).
- * - 해당 fileId의 기존 by-me share 목록 표시 + revoke 버튼 (자기 share만 revoke 가능, backend canRevoke).
  *
- * 에러 envelope: api.createShares가 status/code surface → toast.error 분기.
+ * 에러 envelope: api.create{File,Folder}Shares가 status/code surface → toast.error 분기.
  *   400 BAD_REQUEST / 403 PERMISSION_DENIED / 404 NOT_FOUND / 409 PERMISSION_CONFLICT
  *
  * focus trap: RenameDialog 패턴 동일. Esc 닫기 + 닫힐 때 이전 focus 복귀.
  */
 export function ShareDialog() {
   const isOpen = useShareUiStore((s) => s.isOpen)
-  const fileId = useShareUiStore((s) => s.fileId)
-  const fileName = useShareUiStore((s) => s.fileName)
+  const target = useShareUiStore((s) => s.target)
   const close = useShareUiStore((s) => s.close)
 
   const closeBtnRef = useRef<HTMLButtonElement>(null)
@@ -54,12 +62,13 @@ export function ShareDialog() {
     previousFocusRef.current?.focus?.()
   }, [isOpen])
 
-  if (!isOpen || !fileId) return null
+  if (!isOpen || !target) return null
 
+  // file 공유 row면 fileId, folder 공유 row면 folderId가 채워져 있다 (XOR). target.id와 매칭.
   const existingShares =
     sharesQuery.data?.pages
       .flatMap((p) => p.items)
-      .filter((s) => s.fileId === fileId) ?? []
+      .filter((s) => (s.fileId ?? s.folderId) === target.id) ?? []
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -74,7 +83,7 @@ export function ShareDialog() {
     }
     createShare.mutate(
       {
-        fileId,
+        target,
         req: {
           subjects: [{ type: 'everyone' }],
           preset,
@@ -89,12 +98,13 @@ export function ShareDialog() {
         },
         onError: (err) => {
           const code = (err as Error & { code?: string }).code
+          const subject = target.kind === 'folder' ? '폴더' : '파일'
           if (code === 'PERMISSION_CONFLICT') {
             toast.error('이미 같은 대상에게 공유되어 있습니다')
           } else if (code === 'PERMISSION_DENIED') {
             toast.error('공유 권한이 없습니다')
           } else if (code === 'NOT_FOUND') {
-            toast.error('파일을 찾을 수 없습니다')
+            toast.error(`${subject}을(를) 찾을 수 없습니다`)
           } else {
             toast.error('공유에 실패했습니다')
           }
@@ -138,7 +148,8 @@ export function ShareDialog() {
           공유
         </h2>
         <p className="text-[12.5px] text-fg-muted truncate">
-          <span className="text-fg">{fileName}</span> 공유 설정
+          <span aria-hidden className="mr-1">{target.kind === 'folder' ? '📁' : '📄'}</span>
+          <span className="text-fg">{target.name}</span> {target.kind === 'folder' ? '폴더' : '파일'} 공유 설정
         </p>
 
         <fieldset className="flex flex-col gap-1.5">
@@ -196,9 +207,7 @@ export function ShareDialog() {
               {existingShares.map((s) => (
                 <li key={s.id} className="flex items-center justify-between text-[12.5px]">
                   <span className="text-fg-muted truncate">
-                    {s.subjectType === 'everyone' ? '모든 사용자' : s.subjectId}
-                    {' · '}
-                    {presetLabel(s.preset)}
+                    {s.expiresAt ? `만료 ${formatExpires(s.expiresAt)}` : '무기한'}
                   </span>
                   <button
                     type="button"
@@ -247,4 +256,12 @@ function presetLabel(p: SharePreset): string {
     case 'admin':
       return '관리'
   }
+}
+
+/** ISO 8601 → "YYYY-MM-DD HH:mm" (locale-agnostic, UTC 기준 표시). */
+function formatExpires(iso: string): string {
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return iso
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }

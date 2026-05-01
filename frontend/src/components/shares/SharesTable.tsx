@@ -3,13 +3,18 @@ import { useSharesWithMe } from '@/hooks/useSharesWithMe'
 import type { ShareDto } from '@/types/share'
 
 /**
- * 받은 공유 테이블 (F4, docs/01 §17). 단순 list (MVP는 가상화 없음).
+ * 받은 공유 테이블 (F4 → F5.1, docs/01 §17). 단순 list (MVP는 가상화 없음).
  * docs/01 §11 (4상태) + §12 (aria-rowcount/rowindex) mirror.
  *
- * 컬럼: 파일명 / 공유한 사람 / 권한(preset) / 만료
+ * F5.1 변경 — backend `ShareDto` record 정합:
+ * - preset 컬럼 제거 (record에 없음 → wire drift). 4컬럼 → 3컬럼.
+ * - 항목 식별: file 공유 row면 fileId, folder 공유 row면 folderId 표시 (XOR).
+ *   (fileId/folderId는 raw UUID — F5.3에서 join을 위한 backend 별도 트랙. 현재는 식별자 그대로 노출.)
+ *
+ * 컬럼: 항목(file/folder) / 공유한 사람 / 만료
  * 받은 공유는 backend `canRevoke` 정책상 revoke 불가 — 액션 컬럼 미노출 (보수 정책).
  */
-const GRID_COLS = 'grid grid-cols-[1fr_180px_120px_180px] gap-3 items-center px-4'
+const GRID_COLS = 'grid grid-cols-[1fr_180px_180px] gap-3 items-center px-4'
 
 export function SharesTable() {
   const query = useSharesWithMe()
@@ -49,36 +54,36 @@ export function SharesTable() {
         aria-rowindex={1}
         className={`${GRID_COLS} h-[30px] bg-surface-1 border-y border-border text-[11px] uppercase tracking-[0.04em] font-medium text-fg-muted`}
       >
-        <span role="columnheader">파일</span>
+        <span role="columnheader">항목</span>
         <span role="columnheader">공유한 사람</span>
-        <span role="columnheader">권한</span>
         <span role="columnheader">만료</span>
       </div>
 
       <div className="flex-1 overflow-auto">
-        {items.map((it, idx) => (
-          <div
-            key={it.id}
-            role="row"
-            aria-rowindex={idx + 2}
-            data-share-id={it.id}
-            className={`${GRID_COLS} h-[40px] border-b border-border text-[13px] hover:bg-surface-2`}
-          >
-            <span className="truncate" role="gridcell">
-              <span aria-hidden className="mr-1.5">📄</span>
-              {it.fileId}
-            </span>
-            <span role="gridcell" className="truncate text-fg-muted">
-              {it.sharedBy}
-            </span>
-            <span role="gridcell" className="text-fg-muted">
-              {presetLabel(it.preset)}
-            </span>
-            <span role="gridcell" className="text-fg-muted">
-              {it.expiresAt ? formatDate(it.expiresAt) : '없음'}
-            </span>
-          </div>
-        ))}
+        {items.map((it, idx) => {
+          const isFolder = it.folderId !== null
+          const itemId = it.fileId ?? it.folderId ?? ''
+          return (
+            <div
+              key={it.id}
+              role="row"
+              aria-rowindex={idx + 2}
+              data-share-id={it.id}
+              className={`${GRID_COLS} h-[40px] border-b border-border text-[13px] hover:bg-surface-2`}
+            >
+              <span className="truncate" role="gridcell">
+                <span aria-hidden className="mr-1.5">{isFolder ? '📁' : '📄'}</span>
+                {itemId}
+              </span>
+              <span role="gridcell" className="truncate text-fg-muted">
+                {it.sharedBy}
+              </span>
+              <span role="gridcell" className="text-fg-muted">
+                {it.expiresAt ? formatDate(it.expiresAt) : '없음'}
+              </span>
+            </div>
+          )
+        })}
       </div>
 
       {query.hasNextPage && (
@@ -95,19 +100,6 @@ export function SharesTable() {
       )}
     </div>
   )
-}
-
-function presetLabel(p: ShareDto['preset']): string {
-  switch (p) {
-    case 'read':
-      return '읽기'
-    case 'upload':
-      return '업로드'
-    case 'edit':
-      return '편집'
-    case 'admin':
-      return '관리'
-  }
 }
 
 function formatDate(iso: string): string {
