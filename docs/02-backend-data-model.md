@@ -939,17 +939,18 @@ POST /api/folders/:id/restore
 |---|---|---|---|---|---|---|
 | GET | `/api/folders/:id/files` | `hasPermission(#id, 'folder', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | GET | `/api/files/:id` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| POST | `/api/files` (multipart) | `hasPermission(#req.folderId, 'folder', 'UPLOAD')` | REQUIRED + FOR UPDATE on folder + sibling | `file.originalFilename → normalized_name` | `WHERE deleted_at IS NULL` | 403, 409 RENAME_CONFLICT, 413 QUOTA_EXCEEDED, 415 UNSUPPORTED_MEDIA_TYPE |
 | PATCH | `/api/files/:id` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/files/:id/move` | `hasPermission(#id, 'file', 'MOVE')` AND `hasPermission(#req.targetFolderId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + targetFolder | — | `WHERE deleted_at IS NULL` | 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
 | DELETE | `/api/files/:id` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW(), purge_after = NOW()+30d` | 404 |
 | POST | `/api/files/:id/restore` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
 | POST | `/api/files/:id/versions` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE on file row | — | `WHERE deleted_at IS NULL` | 409 VERSION_CONFLICT, 413 QUOTA_EXCEEDED, 415 |
-| GET | `/api/files/:id/download` | `hasPermission(#id, 'file', 'DOWNLOAD')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/files/:id/download` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | GET | `/api/files/:id/preview` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | GET | `/api/files/:id/versions` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | GET | `/api/files/:id/activity` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 
-> 파일 업로드(tus)는 §7.7에서 별도. 위 표는 메타데이터/버전 mutation 한정.
+> 파일 업로드 = 단일-POST multipart (`POST /api/files`, ADR #36 / A15 closure). tus 프로토콜은 §7.7로 보존되나 ADR #13 supersede에 따라 v1.x 재이월 — MVP 미구현. 메타데이터/버전 mutation은 위 표 내 다른 행 참조.
 
 ```text
 PATCH /api/files/:id
@@ -1006,7 +1007,53 @@ GET /api/files/:id/versions
 
 > **A5 closure 정합 (2026-04-29)**: JSON 응답 키는 camelCase로 wire — 프로젝트 전체 DTO 계약(`FileDto`/`FolderDto`/`PermissionDto`)과 일관. envelope `code`는 §8 정의(`NOT_FOUND` / `PERMISSION_DENIED`)를 그대로 채택 (이전 버전 본문의 `RESOURCE_NOT_FOUND` 표기 정정). 구현체: `FileVersionController` + `FileVersionDto`.
 
-### 7.7 업로드 (tus, ADR #13)
+#### 7.6.1 업로드 (multipart, ADR #36 / A15)
+
+```text
+POST /api/files   (Content-Type: multipart/form-data)
+  Form parts:
+    file       : binary (required)
+    folderId   : UUID   (required)
+    resolution : 'new_version' | 'rename'  (optional — 미지정 시 충돌이면 409)
+  Guard:    @PreAuthorize hasPermission(#req.folderId, 'folder', 'UPLOAD')
+  Limits:   spring.servlet.multipart.{max-file-size, max-request-size} = 100MB
+  Norm:     normalized_name = NormalizeUtil.normalize(file.originalFilename)
+  TX (반드시 트랜잭션 + FOR UPDATE):
+    1) SELECT FOR UPDATE folders WHERE id=:folderId AND deleted_at IS NULL
+    2) UNIQUE (folder_id, normalized_name) WHERE deleted_at IS NULL 검증
+       └ 충돌 시:
+            resolution=new_version → 기존 file row에 file_versions append + UPDATE files.current_version_id
+            resolution=rename      → 자동 suffix `(N)` 부여 → 신규 file row INSERT
+            unset                  → 409 RENAME_CONFLICT
+    3) StorageClient.write(storageKey, in, size)   — storageKey UUID, 객체 키 `{YYYY}/{MM}/{UUID}` (ADR #5)
+    4) INSERT files (신규일 때) + INSERT file_versions
+    5) UPDATE files.current_version_id
+    6) emitAudit(FILE_UPLOADED)
+    7) COMMIT — 실패 시 storage 객체 orphan (MVP 알려진 한계, cleanup job 별도 트랙)
+  Response:
+    201 Created   (신규 파일 INSERT)
+    200 OK        (NEW_VERSION 분기)
+    Body: UploadResponse { file: FileDto, versionId, versionNumber, newFile, resolution }
+  Errors:
+    409 envelope { error: { code: 'RENAME_CONFLICT', message, details: { fileId, fileName } } }
+    413 QUOTA_EXCEEDED, 415 UNSUPPORTED_MEDIA_TYPE, 403 PERMISSION_DENIED
+
+GET /api/files/:id/download
+  Guard:    @PreAuthorize hasPermission(#id, 'file', 'READ')   — ADR #36: DOWNLOAD enum 도입 안 함
+  Response: 200 OK
+    Headers:
+      Content-Type:        version.mimeType (null/invalid → application/octet-stream)
+      Content-Length:      version.sizeBytes
+      ETag:                "<versionId>"
+      Content-Disposition: attachment; filename="<ascii-fallback>"; filename*=UTF-8''<percent-encoded>
+    Body: stream from StorageClient.read(version.storageKey)
+  Audit: emitAudit(FILE_DOWNLOADED)
+  Errors: 404 (deleted or missing), 403 PERMISSION_DENIED
+```
+
+### 7.7 업로드 (tus, ADR #13 — Superseded by ADR #36)
+
+> **Status**: ADR #13 Superseded by ADR #36 (2026-05-02). A15 트랙(`a15-file-upload-download`)에서 단일-POST multipart MVP(§7.6.1)로 재정정. tus 프로토콜은 v1.x 재이월 — 본 §7.7은 v1.x 재개 시 백업 spec으로 보존. MVP에서는 구현 0.
 
 `tus-java-server` 표준 프로토콜. 경로 prefix `/api/files/upload`. S3 multipart는 라이브러리가 내부 위임.
 

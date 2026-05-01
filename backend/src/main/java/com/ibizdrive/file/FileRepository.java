@@ -55,6 +55,17 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     Optional<FileItem> lockByIdAndDeletedAtIsNotNull(@Param("id") UUID id);
 
     /**
+     * 업로드 NEW_VERSION 분기 — 충돌 발견 후 동일 폴더 + 동일 normalized_name 활성 파일을 잠근다 (A15.3).
+     * 동시 업로드 race에서 versionNumber/current_version_id 갱신을 직렬화. partial unique index가
+     * (folder_id, normalized_name) 조합을 활성 row 1개로 보장하므로 결과는 Optional.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT f FROM FileItem f WHERE f.folderId = :folderId "
+         + "AND f.normalizedName = :normalizedName AND f.deletedAt IS NULL")
+    Optional<FileItem> lockActiveByFolderAndNormalizedName(@Param("folderId") UUID folderId,
+                                                           @Param("normalizedName") String normalizedName);
+
+    /**
      * V5 {@code idx_files_unique_name}와 동일 의미의 사전 충돌 검사 (CLAUDE.md §3 원칙 6).
      *
      * <p>사전 검사가 통과해도 UPDATE race가 발생할 수 있으므로 호출자는
