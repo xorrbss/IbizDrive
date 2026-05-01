@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-05-01
+Last Updated: 2026-05-02
 ---
 
 # A16 — Department Subject Picker — context
@@ -17,6 +17,8 @@ Last Updated: 2026-05-01
   - **A16.2 완료**: `PermissionRepository.findEffective` SQL에 dept 매칭 subquery 추가 (`p.subject_id = (SELECT department_id FROM users WHERE id=:userId AND active)`). PermissionRepositoryTest +6 (dept match / wrong dept / null dept / inherit / file chain / combined regression). `./gradlew test` GREEN.
   - **A16.3 완료**: ShareDto 14필드 (subjectName 추가), factory `from(Share, PermissionRow, String)` 갱신. ShareCommandService에 UserRepository+DepartmentRepository 주입 + `resolveSubjectName` 단건 helper(트랜잭션 내 N=subjects.size). ShareQueryService에 두 repo 주입 + `fetchSubjectNames` batch helper(페이지 당 type별 1회 IN 절). everyone → null, lookup miss → null fallback. 신규 테스트: ShareCommandServiceTest +2 (department + lookup miss) + 기존 user happy path subjectName 검증, ShareQueryServiceTest +6 (user / dept / everyone / mixed / miss / empty), ShareControllerTest fixture 14필드 갱신 + 2 envelope 검증. `./gradlew test` BUILD SUCCESSFUL — 666 tests, 0 failures, 188 skipped (baseline 동일).
   - master HEAD baseline: `ab45e7d` (BulkActionBar fix, 2026-05-01).
+- 2026-05-02:
+  - **A16.4 완료** (commit `67c1f69`): `frontend/src/types/department.ts` 신설(`DepartmentSummary { id, name }`), `lib/api.ts:searchDepartments` 추가(A14 1:1 답습), `lib/queryKeys.ts:qk.departments()`+`qk.departmentsSearch(normalized, limit)` 추가, `types/share.ts ShareDto`에 `subjectName: string|null` 필드 추가(backend wire 정합), 기존 ShareDto fixture 8개에 `subjectName: null` 보강. `api.departments.test.ts` 7/7 GREEN. `pnpm test --run` 540/540 GREEN, typecheck/lint clean.
 
 ## Current Execution Contract
 
@@ -27,9 +29,9 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-- **A16.4 Frontend wire backbone (api + types + queryKeys + share 타입 갱신)**
-- A16.1~A16.3 완료 — backend는 dept lookup + 권한 매트릭스 dept 매칭 + Share wire에 subjectName join까지 활성.
-- 다음: `frontend/src/types/department.ts` 신설, `lib/api.ts:searchDepartments` + `lib/queryKeys.ts:qk.departments(...)` 추가, `types/share.ts ShareDto`에 `subjectName: string|null` 추가 (backend wire 정합).
+- **A16.5 useDepartmentSearch 훅** (TDD: useUserSearch 1:1 답습 — debounce 300ms / minLen 2 / keepPreviousData / signal / staleTime 30s).
+- A16.1~A16.4 완료 — frontend wire backbone(api+types+qk+ShareDto.subjectName) 정렬 완료.
+- 다음: `frontend/src/hooks/useDepartmentSearch.test.tsx` (RED) → `useDepartmentSearch.ts` (GREEN).
 
 ## 다음 세션 읽기 순서
 

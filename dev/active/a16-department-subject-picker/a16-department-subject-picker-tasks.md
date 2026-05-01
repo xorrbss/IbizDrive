@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-05-01
+Last Updated: 2026-05-02
 ---
 
 # A16 — Department Subject Picker — TASKS
@@ -12,8 +12,8 @@ Last Updated: 2026-05-01
 | A16.1 backend wire (V7 + Department 도메인) | ✅ 완료 (department 패키지 6개 + tests 4개 + V7 SQL + User.departmentId) |
 | A16.2 PermissionRepository.findEffective dept 분기 | ✅ 완료 (subquery `users.department_id` 매칭, 6 신규 테스트, 회귀 0) |
 | A16.3 ShareDto subjectName 추가 + caller 갱신 | ✅ 완료 (ShareDto 14필드 + ShareCommandService 단건 lookup + ShareQueryService batch fetch, 신규 7 테스트, 회귀 0) |
-| A16.4 Frontend wire backbone | 🟡 ACTIVE |
-| A16.5 useDepartmentSearch 훅 | ⏸ blocked by A16.4 |
+| A16.4 Frontend wire backbone | ✅ 완료 (commit `67c1f69`, DepartmentSummary + searchDepartments + qk.departments + ShareDto.subjectName, 540 tests GREEN) |
+| A16.5 useDepartmentSearch 훅 | 🟡 ACTIVE |
 | A16.6 DepartmentSearchCombobox | ⏸ blocked by A16.5 |
 | A16.7 ShareDialog 통합 + subjectLabel 실 이름 | ⏸ blocked by A16.6 |
 | A16.8 docs sync + PR + master squash-merge + closure archive | ⏸ blocked by A16.7 |
@@ -177,13 +177,13 @@ WHERE
 - `frontend/src/types/user.ts` (타입 모델).
 
 ### 구현 대상
-- [ ] **A16.4.0 RED** — `frontend/src/lib/api.departments.test.ts` 신설 (api.users.test.ts 1:1 답습).
-- [ ] **A16.4.1 GREEN**:
-  - `frontend/src/types/department.ts` 신설 — `DepartmentSummary = { id, name, path: string | null }`.
+- [x] **A16.4.0 RED** — `frontend/src/lib/api.departments.test.ts` 신설 (api.users.test.ts 1:1 답습, 7 tests).
+- [x] **A16.4.1 GREEN**:
+  - `frontend/src/types/department.ts` 신설 — `DepartmentSummary = { id, name }` (ADR #36 minimal surface — path는 v1.x 트리 쿼리 시 별도 wire).
   - `frontend/src/lib/api.ts` — `searchDepartments(...)` 추가.
   - `frontend/src/lib/queryKeys.ts` — `qk.departments()` + `qk.departmentsSearch(normalized, limit)`.
   - `frontend/src/types/share.ts` `ShareDto` 인터페이스에 `subjectName: string | null` 추가 (backend wire 정합).
-- [ ] **A16.4.2 검증** — `pnpm test src/lib/api.departments.test.ts --run` GREEN. typecheck/lint GREEN. 회귀 0.
+- [x] **A16.4.2 검증** — `pnpm test --run` 540 GREEN, typecheck/lint clean, 회귀 0.
 
 ### 검증 참조
 - AC frontend #1.
