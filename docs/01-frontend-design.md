@@ -175,8 +175,8 @@ app/
 │  │     └─ not-found.tsx
 │  ├─ trash/
 │  │  └─ page.tsx                    # <TrashView />
-│  ├─ shared/
-│  │  └─ page.tsx                    # 공유받은 파일
+│  ├─ shares/
+│  │  └─ page.tsx                    # 받은 공유 (F4, with-me)
 │  └─ search/
 │     └─ page.tsx                    # ?q=... 검색 결과
 └─ api/
@@ -445,6 +445,11 @@ export const qk = {
 
   search: (q: string, filters: Filters) => [...qk.all, 'search', q, filters] as const,
   trash: () => [...qk.all, 'trash'] as const,
+
+  // F4: shares (by-me/with-me)
+  shares: () => [...qk.all, 'shares'] as const,
+  sharesByMe: () => [...qk.shares(), 'by-me'] as const,
+  sharesWithMe: () => [...qk.shares(), 'with-me'] as const,
 } as const
 ```
 
@@ -463,6 +468,8 @@ export const qk = {
 | **권한 변경** | ❌ | **광역 무효화** (6.3절 참조) |
 | **새 버전 업로드** | ❌ (current_version_id 바뀜) | 완료 후: `versions(fileId)`, `fileDetail(id)`, `activity(id)` |
 | **즐겨찾기 토글** | 리스트 아이템 플래그 | `quickAccess()` |
+| **공유 생성 (F4)** | ❌ | 완료 후: `shares()` (by-me/with-me 동시) |
+| **공유 해제 (F4)** | ❌ | 완료 후: `shares()` (by-me/with-me 동시) |
 | **SSE 이벤트 수신** | 이벤트 타입별 처리 | 폴백: 관련 리스트 invalidate |
 
 ### 6.3 권한 변경 시 광역 무효화
@@ -861,6 +868,18 @@ export function usePermission(nodeId?: string) {
 | **생산적** (업로드, 새 폴더, 공유) | 비활성 + 툴팁 설명 | 왜 안 되는지 알려줌 |
 | **파괴적** (삭제, 영구 삭제) | 숨김 | 비활성이 오히려 유인 |
 | **조회 불가** (읽기 권한 없음) | 애초에 리스트/트리에 안 뜸 | 백엔드 필터링 |
+
+### 14.4 ShareDialog (F4)
+
+`components/files/ShareDialog.tsx` — 단일 파일 공유 + by-me 목록 + revoke. F4 트랙(2026-05-01).
+
+- 트리거: FileTable/RightPanel 컨텍스트 메뉴 → `useShareUiStore.open(fileId, fileName)`.
+- subject: **'everyone' 고정 (MVP)** — user/department/role 목록 endpoint 부재. 백로그.
+- preset: `read | upload | edit | admin` 4값 (ADR #34, V5 CHECK는 SHARE 미지원).
+- expiresAt: HTML5 datetime-local → `new Date(v).toISOString()`.
+- 기존 by-me share 목록(파일 ID 필터) + `해제` 버튼 → `useRevokeShare`. 백엔드 `canRevoke`(sharedBy==me ‖ ADMIN)가 진실의 출처.
+- 에러 envelope: 409 PERMISSION_CONFLICT / 403 PERMISSION_DENIED / 404 NOT_FOUND / 그 외 → 한국어 toast.error.
+- 무효화: §6.1 `qk.shares()` prefix 1회로 by-me/with-me 동시 갱신.
 
 ---
 

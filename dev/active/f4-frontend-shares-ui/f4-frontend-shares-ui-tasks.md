@@ -9,10 +9,10 @@ Last Updated: 2026-05-01
 | phase | 상태 | 출력 |
 |---|---|---|
 | F4.0 dev-docs bootstrap | ✅ 완료 | plan/context/tasks 3파일 + 게이트 1 정지 |
-| F4.1 types + qk.shares + invalidations | ⏳ 대기 (게이트 1 승인 후) | types/share.ts + queryKeys/invalidations + ≥4 테스트 |
-| F4.2 api 4 메서드 + 테스트 | ⏳ 대기 | api.ts 4 메서드 + api.shares.test.ts ≥15 |
-| F4.3 hooks 4종 + 테스트 | ⏳ 대기 | useCreateShare/useRevokeShare/useSharesByMe/useSharesWithMe + ≥8 테스트 |
-| F4.4 ShareDialog 재구축 + /shares + SharesTable + SharesLink + docs sync | ⏳ 대기 | UI 컴포넌트 + 테스트 ≥11 + docs/01 §6.1/§14/§17 sync |
+| F4.1 types + qk.shares + invalidations | ✅ 완료 (`d8a5a12`) | types/share.ts + queryKeys/invalidations + 6 테스트 |
+| F4.2 api 4 메서드 + 테스트 | ✅ 완료 (`ae9b2c3`) | api.ts 4 메서드 + 19 테스트 |
+| F4.3 hooks 4종 + 테스트 | ✅ 완료 (`7346826`) | 4 hook + 9 테스트 |
+| F4.4 ShareDialog 재구축 + /shares + SharesTable + SharesLink + docs sync | ✅ 완료 (커밋 대기) | UI 6 파일 + 15 테스트 + docs/01 §6.1/§14/§17 sync. 484/484 GREEN, build /shares ○ Static. |
 | F4.5 PR + 마일스톤 종료 | ⏳ 대기 | PR squash-merge + dev-docs archive + progress.md |
 
 ## 작업 항목
