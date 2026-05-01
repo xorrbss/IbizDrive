@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-05-01 — 🏁 F4 마일스톤 종료 (Frontend Shares UI 실연결)
+
+### 범위
+
+F4.0 (worktree `feature/f4-frontend-shares-ui` from `e0957e5` M9 closure + dev-docs bootstrap `dev/active/f4-frontend-shares-ui/`) → F4.1 (`types/share.ts` + `qk.shares()/sharesByMe()/sharesWithMe()` + `invalidations.afterShareCreate/afterShareRevoke` 단일 prefix + 6 tests) → F4.2 (`api.{createShares,revokeShare,listSharesByMe,listSharesWithMe}` 4 메서드 + 19 wire-level 테스트) → F4.3 (`useCreateShare`/`useRevokeShare`/`useSharesByMe`/`useSharesWithMe` 4 hook + 9 테스트) → F4.4 (`ShareDialog` 전면 재작성 + `/shares` 페이지 + `SharesTable` + `SharesLink` + `(explorer)/layout.tsx` mount + docs/01 §6.1/§6.2/§14.4/§17 sync + 15 테스트) → F4.5 (PR #27 squash-merge `d6ab9aa` + dev-docs archive).
+
+### 회고
+
+- **commits**: 5 on top of `e0957e5` M9 close (worktree branch `feature/f4-frontend-shares-ui`) → squash-merge `d6ab9aa` on `master`. PR #27 single, CI green (backend junit 33s + frontend vitest 1m35s 모두 SUCCESS).
+- **production 파일**: 수정 4 / 신설 8.
+  - 수정: `lib/queryKeys.ts`(qk.shares + invalidations), `lib/api.ts`(4 메서드 + fetchSharePage helper), `app/(explorer)/layout.tsx`(SharesLink mount, TrashLink 위), `components/files/ShareDialog.tsx`(mock placeholder → 실연결 전면 재작성).
+  - 신설: `types/share.ts`, `hooks/useCreateShare.ts`, `hooks/useRevokeShare.ts`, `hooks/useSharesByMe.ts`, `hooks/useSharesWithMe.ts`, `components/shares/SharesLink.tsx`, `components/shares/SharesTable.tsx`, `app/(explorer)/shares/page.tsx`+`ClientSharesPage.tsx`.
+- **test 파일**: 수정 1 / 신설 7 — `ShareDialog.test.tsx`(전면 재작성 8건), `api.shares.test.ts`(19), 4 hook 테스트(2/2/3/2), `SharesLink.test.tsx`(2), `SharesTable.test.tsx`(5). 합계 +49 GREEN. 회귀 484/484.
+- **build /shares ○ Static** — useSearchParams 호출 부재 + StatusBar Suspense 기존 wrap(M11)으로 SSG 회귀 0. typecheck/lint clean.
+- **docs/01 sync**: §6.1 `qk.shares()/sharesByMe()/sharesWithMe()` 등재, §6.2 invalidation 매트릭스 +2행(공유 생성/해제), §14.4 ShareDialog backlink('everyone' MVP + preset 4값 + datetime-local + canRevoke 위임), §17 `/shares` 라우팅 등재.
+- **backend 미터치**: A10 share endpoint 4종이 이미 GREEN — F4는 frontend 단독 트랙.
+
+### 핵심 결정 (F4 트랙, 확정)
+
+1. **subject = 'everyone' MVP only** — frontend user/department/role 목록 endpoint 부재(A-future 백로그). ShareDialog는 'everyone' 라벨 고정. subject picker는 후속 트랙에서 typeahead+chip로 도입.
+2. **`/shares` 별도 페이지** — `/trash` 미러 패턴. `/files/[...parts]` 뷰에 share filter 통합 대안은 거부 — `/files`는 storage view, `/shares`는 access view로 분리. Sidebar `SharesLink`는 **TrashLink 위**(positive nav 위, destructive nav 아래).
+3. **revoke = backend 위임** — `canRevoke`(sharedBy==me ‖ ADMIN)는 backend 진실의 출처. ShareDialog는 by-me share만 노출(자기 share=revoke 가능 자동 보장). `/shares`(with-me)는 revoke 버튼 미노출(보수 정책 — 수신자가 자기 권한 자진 반납은 사양 결정 후).
+4. **preset 4값** — `read | upload | edit | admin` (ADR #34, V5 CHECK는 SHARE 미지원이라 wire에서 제외). 추후 SHARE 도입 시 backend 먼저 V_ migration + ADR 갱신.
+5. **invalidations 단일 prefix** — `afterShareCreate/Revoke` 모두 `qk.shares()` 1회 → by-me/with-me 동시 갱신. KISS(co-located in queryKeys.ts, 별도 파일 미생성).
+6. **expiresAt 변환** — HTML5 `datetime-local` 입력 → `new Date(v).toISOString()`(NaN check + 한국어 toast). timezone은 브라우저 로컬 → ISO 8601 UTC.
+7. **에러 envelope code 분기** — `PERMISSION_CONFLICT`(이미 같은 대상…), `PERMISSION_DENIED`(권한 없음), `NOT_FOUND`(파일 없음), 그 외 폴백. backend `docs/02 §8` 에러 코드 계약 1:1 매핑.
+
+### 파급 영향
+
+- **frontend backlog**: subject picker UI(F-future, A-future 의존). with-me revoke(수신자 자진 반납) UI는 backend 사양 결정 후. folder share UI는 별도 트랙(A12 closure progress entry 참조).
+- **backend**: 미터치. A10/A11/A12 endpoint 4종이 그대로 이번 frontend의 backbone.
+- **DB/스키마**: 변경 없음.
+
+---
+
 ## 2026-05-01 — 🏁 A12 마일스톤 종료 (Backend folder share endpoint)
 
 ### 범위
