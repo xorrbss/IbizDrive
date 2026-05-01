@@ -13,9 +13,8 @@ Last Updated: 2026-05-01
 | A15.2 FileUploadService RED | ✅ done |
 | A15.3 FileUploadService GREEN | ✅ done |
 | A15.4 POST /api/files controller | ✅ done |
-| A15.5 GET /api/files/:id/download controller | 🟡 next |
-| A15.5 GET /api/files/:id/download controller | ⬜ pending |
-| A15.6 Frontend api.uploadFile 실 XHR | ⬜ pending |
+| A15.5 GET /api/files/:id/download controller | ✅ done |
+| A15.6 Frontend api.uploadFile 실 XHR | 🟡 next |
 | A15.7 closure (docs sync + PR + archive) | ⬜ pending |
 
 ---
@@ -221,7 +220,7 @@ Last Updated: 2026-05-01
 
 ---
 
-## ⬜ A15.5 — GET /api/files/:id/download
+## ✅ A15.5 — GET /api/files/:id/download
 
 ### 작업 전 필독
 - `docs/02 §5.2` RFC 5987 헤더, `§7.6` download row.
