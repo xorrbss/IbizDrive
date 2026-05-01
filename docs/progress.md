@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-01 — 🏁 F2 마일스톤 종료 (Frontend usePermission 실연결)
+
+### 범위
+
+F2.0 (dev-docs bootstrap — `dev/active/f2-frontend-permissions-realconnect/` plan/context/tasks 3 파일, A9→F1 직렬화 패턴 미러) → F2.1 (`api.getEffectivePermissions(nodeId?)` 본체 mock(80ms + admin preset 8 권한 하드코딩) → `fetch('/api/me/effective-permissions')` + inline `{permissions}.permissions` 매핑 + 비-OK 시 `status` 필드 가진 Error throw + `api.permissions.test.ts` fetch wire 9 케이스 RED→GREEN) → F2.2 (PR #25 squash-merge `76dda90` + dev-docs archive).
+
+### 회고
+
+- **commits**: 2 on top of A11 close `097e904` (worktree branch `feature/f2-frontend-permissions-realconnect`) → squash-merge `76dda90` on `master`. PR #25 single, CI green (backend junit 36s + frontend vitest 1m27s 모두 SUCCESS).
+- **production 파일**: 1 수정 — `frontend/src/lib/api.ts` `getEffectivePermissions` 본체 교체 (14줄 → 18줄). 시그니처 `(nodeId?: string) => Promise<Permission[]>` 무수정 — 호출부(`usePermission.ts`, `BulkActionBar.tsx` consumer 등) drift 0.
+- **test 파일**: 1 갱신 — `api.permissions.test.ts` 전면 재작성(fetch wire 계약 + 응답 매핑 + 401/404/5xx + qk 키 9건). 이전 mock 한정 2건 → fetch wire 9건.
+- **frontend 회귀 0**: 전체 `pnpm test` 427/427 GREEN (55 suites). `pnpm typecheck` + `pnpm lint` clean.
+
+### 핵심 결정 (F2 트랙, 확정)
+
+1. **호출부 시그니처 무수정** (drift 0) — `usePermission` / `PermissionFlags` Record 변환 / consumer 전부 무수정. F1 패턴 그대로.
+2. **매핑 inline (KISS)** — 별도 `permissionsMapper.ts` 파일 신설 회피. `api.ts` 내부 단일 라인(`(await res.json()).permissions`) 매핑.
+3. **에러 envelope 글로벌 위임** — fetch 함수는 `!res.ok` 시 `status` 필드 가진 Error throw만. 401/403 화면 분기는 글로벌 `QueryCache.onError`에 위임 (F1 패턴 동일). 본 트랙에서 envelope handler 추가 변경 없음.
+4. **AbortSignal 미전파** — 현 호출부(`queryFn: () => api.getEffectivePermissions(nodeId)`)가 signal 미전달이라 api 시그니처에 `options.signal` 추가 안 함. 미래 hook 갱신 시 backward-compat으로 추가 가능.
+5. **PURGE 정책 동일** — backend `IbizDrivePermissionEvaluator.resolveAll`이 PURGE를 Preset 미포함 사유로 skip. 이전 mock도 PURGE 제외였으므로 frontend 동작 변화 없음.
+6. **`pnpm-lock.yaml` 미커밋** — 프로젝트는 `package-lock.json` 추적(npm). 워크트리 셋업 시 `pnpm install`이 생성한 lockfile은 로컬 artifact로 untracked 유지.
+7. **A9→F1 직렬화 패턴 재확인** — backend endpoint(A11) → frontend swap(F2) 직렬화. F1.1처럼 단일 mock body 교체 + 호출부 drift 0이 다음 mock→fetch swap의 표준.
+
+### 다음 트랙 후보
+
+- **F4 — Frontend Shares UI** (A10 share endpoint 노출). docs/01 §6/§14 신설 필요 → 설계 추가 후 진입.
+- **A12 — folder 공유** (A10 ADR #34 backlog).
+- **A11 후속 — `SHARE_EXPIRED` 자동 전환 배치** (cron + `expires_at` 도과 row → `revoked_at` set + audit emit).
+- **F3 — useStorageQuota 실연결** (`api.getStorageQuota` mock → 실제 endpoint, 단 backend quota API 미신설). 백엔드 트랙 선행 필요.
+
+---
+
 ## 2026-05-01 — 🏁 A11 마일스톤 종료 (Effective Permissions Endpoint Backend)
 
 ### 범위
