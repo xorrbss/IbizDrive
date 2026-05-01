@@ -235,7 +235,7 @@ CREATE INDEX idx_shares_active     ON shares(shared_by, created_at DESC) WHERE r
 CREATE INDEX idx_shares_permission ON shares(permission_id);  -- /api/shares/with-me JOIN
 ```
 
-> `POST /api/folders/:id/share` endpoint는 MVP 미도입(`folder_id` 컬럼은 schema 양립 — 향후 ADR로 endpoint만 추가). `SHARE_EXPIRED` audit cron 및 SSE `share.created/revoked` emission도 별도 트랙(deferred).
+> `POST /api/folders/:id/share` endpoint는 A12 트랙 `a12-folder-shares-endpoint`에서 도입(§7.9, ADR #34). `SHARE_EXPIRED` audit cron 및 SSE `share.created/revoked` emission은 별도 트랙(deferred).
 
 ### 2.8 audit_log (append-only)
 
@@ -1100,13 +1100,14 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
 
 ### 7.9 공유 (Shares, ADR #34)
 
-> A10 트랙 `a10-shares` 구현. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 첫 활성화 — `SHARE_EXPIRED` cron / folder share endpoint / SSE emission 모두 별도 트랙(deferred).
+> A10 트랙 `a10-shares`(file POST + by-me/with-me + DELETE), A12 트랙 `a12-folder-shares-endpoint`(folder POST) 구현. `shares` 테이블은 V6 마이그레이션에서 도입(§2.7). `SHARE_CREATED`/`SHARE_REVOKED` audit 활성화 — `SHARE_EXPIRED` cron / SSE emission 은 별도 트랙(deferred).
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
 | GET | `/api/shares/by-me` | `isAuthenticated()` | — | — | `WHERE revoked_at IS NULL` | — |
 | GET | `/api/shares/with-me` | `isAuthenticated()` | — | — | `WHERE revoked_at IS NULL AND subject_type='user' AND subject_id=actor` (MVP) | — |
 | POST | `/api/files/:id/share` | `hasPermission(#fileId, 'file', 'SHARE')` | REQUIRED | — | `files.deleted_at IS NULL` | 400, 404, 409 |
+| POST | `/api/folders/:id/share` | `hasPermission(#folderId, 'folder', 'SHARE')` | REQUIRED | — | `folders.deleted_at IS NULL` | 400, 404, 409 |
 | DELETE | `/api/shares/:shareId` | `@shareCommandService.canRevoke(#shareId, principal)` | REQUIRED | — | `revoked_at IS NULL` (이미 revoked → 404) | 403, 404 |
 
 ```text
@@ -1130,6 +1131,20 @@ POST /api/files/:fileId/share                              (ADR #34)
             404 NOT_FOUND         (file 미존재 또는 soft-deleted)
             409 PERMISSION_CONFLICT (V5 idx_permissions_unique 위반 — 동일 file × subject 중복 grant)
 
+POST /api/folders/:folderId/share                          (ADR #34, A12)
+  Guard:    hasPermission(#folderId, 'folder', 'SHARE')
+  Request:  { subjects: [...], preset, expiresAt?, message? }   # file 변형과 동일 wire format
+  Response: 201 { shares: ShareDto[] }
+              # ShareDto.folderId NOT NULL, fileId NULL (V6 shares XOR CHECK 와 1:1)
+  TX:       file 변형과 동형. for each subject:
+              (1) INSERT permissions(node_type='folder') → PermissionGrantedEvent → audit `permission.granted`
+              (2) INSERT shares(folder_id 채움, file_id NULL) → ShareCreatedEvent → audit `share.created`
+            전체 단일 트랜잭션. UNIQUE 위반 시 전체 rollback.
+  Errors:   400 BAD_REQUEST       (file 변형과 동일 검증 — subjects 비어있음, message > 1000자, expiresAt past, preset='share')
+            404 NOT_FOUND         (folder 미존재 또는 soft-deleted)
+            409 PERMISSION_CONFLICT (V5 idx_permissions_unique 위반 — 동일 folder × subject 중복 grant)
+  Note:     by-me / with-me / DELETE endpoint 는 file/folder share 모두 자연 노출 — repository SQL 분기 없음.
+
 DELETE /api/shares/:shareId                                (ADR #34)
   Guard:    @shareCommandService.canRevoke(#shareId, principal)
               # share.shared_by == principal.userId  ||  principal.role == ADMIN
@@ -1138,7 +1153,7 @@ DELETE /api/shares/:shareId                                (ADR #34)
             → share.revoked_at = NOW(), share.revoked_by = actor → save
             → permissionRepository.deleteById(share.permission_id)   -- 공유받은 사람의 접근 즉시 회수
             → ShareRevokedEvent → audit `share.revoked`
-              metadata:     { shareId, permissionId, originalSharedBy, fileId }
+              metadata:     { shareId, permissionId, originalSharedBy, fileId|folderId }   # XOR per row, A12
               before_state: snapshot(share)
             -- audit `permission.revoked` 는 emit 하지 않음 (이중 발행 회피, ADR #34)
   Errors:   403 PERMISSION_DENIED, 404 NOT_FOUND (이미 revoked 포함)
