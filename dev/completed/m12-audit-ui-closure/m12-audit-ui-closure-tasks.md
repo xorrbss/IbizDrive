@@ -11,7 +11,7 @@ Last Updated: 2026-05-01
 | M12C.0 bootstrap | ✅ 완료 |
 | M12C.1 page.tsx 주석 정정 | ✅ 완료 |
 | M12C.2 docs closure 표기 | ✅ 완료 |
-| M12C.3 smoke + PR + archive | 🟡 active (commit/PR 진행 중) |
+| M12C.3 smoke + PR + archive | ✅ 완료 (PR #29 squash-merge `a32fc01`, 2026-05-01) |
 
 ## M12C.0 — bootstrap
 
