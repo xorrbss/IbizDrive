@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-01 — 🏁 M16 follow-up Grid 가상화 종료 (`useGridColumns` + row 단위 `useVirtualizer`)
+
+### 범위
+
+M16V.0 (worktree `feature/m16-grid-virtual` from `9cba282` A13 closure + dev-docs bootstrap `dev/active/m16-grid-virtual/`) → M16V.1 (`frontend/src/hooks/useGridColumns.ts` 신설 — container width를 ResizeObserver로 구독해 `Math.max(1, floor((width+gap)/(min+gap)))` columns 산출, SSR 안전 초기 1) → M16V.2 (`FileTable.tsx` grid 분기 row 단위 가상화 — 별도 `gridContainerRef` + `gridVirtualizer` 인스턴스, `count = ceil(items / columns)`, `estimateSize = 168`(고정), virtualRow 안에서 inline `gridTemplateColumns: repeat(N, minmax(0,1fr))`로 슬라이스 렌더, `data-grid-virtual="true"` 마커, `aria-rowcount`를 `gridRowCount`로 정정) → M16V.3 (`handleKeyDown` ArrowUp/Down 시 `view==='grid'` 분기로 `gridVirtualizer.scrollToIndex(Math.floor(idx/columns))` 호출, list 분기는 무수정) → M16V.4 (vitest `useGridColumns.test.ts` 4 케이스 + `FileTable.test.tsx`에 `@tanstack/react-virtual`/`ResizeObserver` mock + grid 마커 검증 1 추가, 기존 list/grid 시나리오 무수정) → M16V.5 (`docs/01 §18 row 16` footnote에 가상화 closed 마커 + `docs/progress.md` 본 entry + dev-docs archive).
+
+### 회고
+
+- **commits**: 1 on top of `9cba282` A13 closure (worktree branch `feature/m16-grid-virtual`) → squash-merge 예정. 단일 PR.
+- **production 파일**: 신설 1 / 수정 1.
+  - 신설: `frontend/src/hooks/useGridColumns.ts`
+  - 수정: `frontend/src/components/files/FileTable.tsx`
+- **test 파일**: 신설 1 / 수정 1. `frontend/src/hooks/useGridColumns.test.ts`(4) + `FileTable.test.tsx` (+1 신규 `data-grid-virtual` 마커 검증, mock 인프라 추가).
+- **검증**: `pnpm test` **66 files / 500 tests GREEN** (baseline 65/495 → +1/+5). `pnpm typecheck` + `pnpm lint` clean.
+- **docs sync**: `docs/01 §18 row 16` footnote 가상화 closed 마커 + v1.x 잔여 명시.
+
+### 핵심 결정 (M16V 트랙, 확정)
+
+1. **두 개의 virtualizer 인스턴스(list/grid) — view 분기 안에서만 active** — 단일 인스턴스의 view-aware count 분기는 dependency 폭발/coupling 야기. 분기는 서로 다른 컴포넌트 트리이므로 자연 격리(unmount/mount).
+2. **`CARD_ROW_HEIGHT = 168` 고정 estimate** — 가변 높이(`measureElement`)는 v1.x. KISS — 카드 내부 layout 안정.
+3. **inline style `gridTemplateColumns`** — Tailwind dynamic class(`grid-cols-${n}`)는 JIT 미스. `gap`도 inline. KISS.
+4. **키보드 1D 유지** — `focusedIndex ±1`. grid 모드는 `Math.floor(idx/columns)`로 row index scroll만 추가. 좌/우 wrap (2D 네비게이션)은 v1.x.
+5. **list 분기 코드 zero-touch** — 회귀 0 강제. 추가 변경은 (a) grid 전용 ref/virtualizer 추가, (b) focus selector view-aware fallback 1 line, (c) `handleKeyDown` 내 scroll 분기 helper 1개로 격리.
+6. **`aria-rowcount` 정정** — 기존 grid는 `items.length`로 잘못 표기. `gridRowCount`(=ceil(items/columns))가 ARIA 의미상 정확.
+7. **테스트 mock 전략** — `@tanstack/react-virtual` 테스트 파일 단위 mock(전 항목 visible 반환)으로 jsdom 0-viewport 한계 우회. ResizeObserver는 인라인 클래스 stub. **전역 setup 변경 없음** — 영향 격리.
+8. **lockfile 미포함** — repo가 `pnpm-lock.yaml`을 트랙 안 함(.gitignore 미설정이지만 master 부재). 본 PR도 미포함 정책 유지.
+
+### 파급 영향
+
+- **M16 본체(2026-04-29) 비범위 절 진행**: M16 closure 시 `가상화 / 2D 키보드 / DnD / 썸네일`을 v1.x로 분리한 결정 중 **가상화만** closed. 나머지 3개는 그대로 v1.x 잔여.
+- **M16V scope 외 backlog**: Grid 2D 키보드 wrap (좌/우 + columns 기반 ↑/↓), Grid DnD (list useDraggable 재사용 + drop target 시각화), 썸네일 이미지 (backend thumbnail API 후), 가변 카드 높이 (`measureElement`).
+- **DB/스키마**: 변경 없음.
+- **다른 계약 파일(`queryKeys`, `audit.ts` 등)**: 변경 없음.
+
+---
+
 ## 2026-05-01 — 🏁 A13 트랙 종료 (`ShareDto` ↔ `permissions` join 복원, subject/preset surface)
 
 ### 범위

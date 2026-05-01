@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
 import { useViewParam } from '@/hooks/useViewParam'
+import { useGridColumns } from '@/hooks/useGridColumns'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useSelectionStore } from '@/stores/selection'
 import { FileRow } from './FileRow'
@@ -23,6 +24,13 @@ import type { FileItem } from '@/types/file'
 
 const ROW_HEIGHT = 40
 
+// Grid 가상화 (M16V) — row(카드 1줄) 추정 높이 + auto-fill 산식 입력값.
+// 카드 내부: p-3(24) + icon36 + mt-2(8) + name 2-line(~32) + mt-1(4) + meta(14) + border ≈ 124~140
+// row gap-3(12) 포함 → 168px estimate. 가변 높이는 v1.x.
+const CARD_ROW_HEIGHT = 168
+const GRID_MIN_COL_WIDTH = 140
+const GRID_GAP = 12
+
 // 현 M5 단계 — 5열 유지 (M7에서 체크박스/액션 컬럼 추가 시 재매핑)
 const GRID_COLS = 'grid grid-cols-[28px_1fr_110px_130px_90px] gap-3 items-center px-4'
 
@@ -36,6 +44,8 @@ export function FileTable({ folderId }: Props) {
   const { data: items, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
+  // Grid 모드 전용 scroll container (가상화 대상). list 분기에서는 무시되고, grid 분기에서만 attach.
+  const gridContainerRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const { open: openFile } = useOpenFile()
@@ -65,11 +75,14 @@ export function FileTable({ folderId }: Props) {
   }, [folderId, clear])
 
   // 포커스된 DOM 요소 동기화 (스크린 리더)
+  // view에 따라 scroll element가 달라지므로 둘 다 조회 (querySelector는 active 분기에만 매치)
   useEffect(() => {
     if (focusedIndex < 0 || !items) return
-    const row = scrollRef.current?.querySelector(
-      `[data-file-id="${items[focusedIndex]?.id}"]`
-    ) as HTMLElement | null
+    const id = items[focusedIndex]?.id
+    if (!id) return
+    const selector = `[data-file-id="${id}"]`
+    const row = (scrollRef.current?.querySelector(selector) ??
+      gridContainerRef.current?.querySelector(selector)) as HTMLElement | null
     row?.focus()
   }, [focusedIndex, items])
 
@@ -98,6 +111,21 @@ export function FileTable({ folderId }: Props) {
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 10,
+  })
+
+  // Grid 가상화 (M16V) — 별도 인스턴스. count는 row 단위(=ceil(items / columns)).
+  // 두 virtualizer는 각자 분기 안에서만 active(나머지는 unmount)이므로 동시 활성화는 없음.
+  const gridColumns = useGridColumns(gridContainerRef, {
+    minColWidth: GRID_MIN_COL_WIDTH,
+    gap: GRID_GAP,
+  })
+  const gridSafeColumns = Math.max(1, gridColumns)
+  const gridRowCount = Math.ceil(rowCount / gridSafeColumns)
+  const gridVirtualizer = useVirtualizer({
+    count: gridRowCount,
+    getScrollElement: () => gridContainerRef.current,
+    estimateSize: () => CARD_ROW_HEIGHT,
+    overscan: 4,
   })
 
   const handleOpen = useCallback(
@@ -136,6 +164,18 @@ export function FileTable({ folderId }: Props) {
 
       const orderedIds = items.map((it) => it.id)
 
+      // Grid 모드는 1D index를 row index로 매핑해 scrollToIndex 호출 (M16V).
+      // 좌/우 wrap navigation (2D 키보드)은 v1.x — 본 트랙은 ↑/↓ 1D 유지.
+      const scrollToFocused = (idx: number) => {
+        if (view === 'grid') {
+          gridVirtualizer.scrollToIndex(Math.floor(idx / gridSafeColumns), {
+            align: 'auto',
+          })
+        } else {
+          virtualizer.scrollToIndex(idx, { align: 'auto' })
+        }
+      }
+
       switch (e.key) {
         case 'ArrowDown': {
           e.preventDefault()
@@ -143,7 +183,7 @@ export function FileTable({ folderId }: Props) {
             let next = prev + 1
             while (next < items.length && pendingIds.has(items[next].id)) next++
             if (next >= items.length) return prev
-            virtualizer.scrollToIndex(next, { align: 'auto' })
+            scrollToFocused(next)
             // Shift: 범위 확장 (anchor 유지). Ctrl/Meta: focus only.
             if (e.shiftKey) {
               selectRange(items[next].id, orderedIds)
@@ -158,7 +198,7 @@ export function FileTable({ folderId }: Props) {
             let next = prev - 1
             while (next >= 0 && pendingIds.has(items[next].id)) next--
             if (next < 0) return prev
-            virtualizer.scrollToIndex(next, { align: 'auto' })
+            scrollToFocused(next)
             if (e.shiftKey) {
               selectRange(items[next].id, orderedIds)
             }
@@ -257,6 +297,9 @@ export function FileTable({ folderId }: Props) {
       clear,
       handleOpen,
       virtualizer,
+      gridVirtualizer,
+      gridSafeColumns,
+      view,
       openRename,
       deleteBulk,
       folderId,
@@ -273,26 +316,56 @@ export function FileTable({ folderId }: Props) {
   else if (view === 'grid') body = (
     <div
       role="grid"
-      aria-rowcount={items.length}
+      aria-rowcount={gridRowCount}
       aria-multiselectable={true}
       aria-label="파일 그리드"
+      data-grid-virtual="true"
       className="flex-1 min-h-0 overflow-auto outline-none p-4"
       tabIndex={0}
       onKeyDown={handleKeyDown}
-      ref={scrollRef}
+      ref={gridContainerRef}
     >
-      <div className="grid grid-cols-[repeat(auto-fill,minmax(140px,1fr))] gap-3">
-        {items.map((item, idx) => (
-          <FileCard
-            key={item.id}
-            item={item}
-            isFocused={focusedIndex === idx}
-            isSelected={selectedIds.has(item.id)}
-            isPending={pendingIds.has(item.id)}
-            onClick={handleRowClick}
-            onDoubleClick={handleOpen}
-          />
-        ))}
+      {/*
+        가상화 (M16V): row 단위로 mount. 컬럼 수는 useGridColumns가 컨테이너 width로 계산.
+        Tailwind dynamic class(`grid-cols-${n}`) JIT 미스 회피 위해 gridTemplateColumns는 inline.
+       */}
+      <div
+        className="relative w-full"
+        style={{ height: `${gridVirtualizer.getTotalSize()}px` }}
+      >
+        {gridVirtualizer.getVirtualItems().map((virtualRow) => {
+          const rowStart = virtualRow.index * gridSafeColumns
+          const rowEnd = Math.min(rowStart + gridSafeColumns, items.length)
+          return (
+            <div
+              key={virtualRow.index}
+              className="absolute left-0 right-0 grid"
+              style={{
+                top: 0,
+                transform: `translateY(${virtualRow.start}px)`,
+                height: `${virtualRow.size}px`,
+                gridTemplateColumns: `repeat(${gridSafeColumns}, minmax(0, 1fr))`,
+                gap: `${GRID_GAP}px`,
+                paddingBottom: `${GRID_GAP}px`,
+              }}
+            >
+              {items.slice(rowStart, rowEnd).map((item, offset) => {
+                const idx = rowStart + offset
+                return (
+                  <FileCard
+                    key={item.id}
+                    item={item}
+                    isFocused={focusedIndex === idx}
+                    isSelected={selectedIds.has(item.id)}
+                    isPending={pendingIds.has(item.id)}
+                    onClick={handleRowClick}
+                    onDoubleClick={handleOpen}
+                  />
+                )
+              })}
+            </div>
+          )
+        })}
       </div>
     </div>
   )

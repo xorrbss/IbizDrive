@@ -1454,7 +1454,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 13 | **디자인 토큰 적용** (M13, 완료 2026-04-25) | `:root` 토큰 + `@theme inline` + 모든 className 토큰화. 기준: `design-reference/IbizDrive.html` |
 | 14 | **Visual Identity** | TopBar(검색/테마 토글/아바타) + Lucide 아이콘 도입 + FileRow 밀도 재조정 + StatusBar 하단. M13 토큰 위에서 JSX 추가 |
 | 15 | **Layout Extras** | SortChip(정렬 드롭다운) + ViewSwitch(List/Grid 토글) + StorageBar(사이드바 하단) + RightPanel 탭(세부정보/버전/활동/권한) |
-| 16 | **Grid View** | FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글 |
+| 16 | **Grid View** | FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글. 본체 closed 2026-04-29 (PR #16). 가상화 closed 2026-05-01 (M16V follow-up: `useGridColumns` + row 단위 `useVirtualizer` + 키보드 scrollToIndex `Math.floor(idx/columns)` 매핑). v1.x 잔여: 2D 키보드 wrap / DnD / 썸네일 / 가변 높이. |
 | v1.x | **tus 재개 업로드** | UploadStore 계약 유지, 훅만 교체 |
 | v1.x | **SSE 실시간 동기화** | `file.created` 등 이벤트 반영, 폴백 폴링 |
 
