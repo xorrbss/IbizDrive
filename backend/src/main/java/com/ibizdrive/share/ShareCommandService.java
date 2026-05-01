@@ -218,18 +218,11 @@ public class ShareCommandService {
     }
 
     /**
-     * DELETE /api/shares/:shareId — share revoke (docs/02 §7.9, ADR #34 결정 1).
+     * DELETE /api/shares/:shareId — 사용자/관리자 의도 revoke (docs/02 §7.9, ADR #34 결정 1).
      *
-     * <p>흐름:
-     * <ol>
-     *   <li>{@link ShareRepository#lockByIdAndRevokedAtIsNull}로 row lock + 활성 확인 → 미존재면 404.</li>
-     *   <li>snapshot 캡처 (event publish 시 사용 — V6 ON DELETE CASCADE로 row가 사라지기 때문).</li>
-     *   <li>{@code revoked_at = NOW()}, {@code revoked_by = actor}로 UPDATE — lock 보유 상태에서 의도 표시.</li>
-     *   <li>{@link PermissionRepository#deleteById}로 permissions row 직접 삭제 → V6 CASCADE로 share row도 함께 사라짐.
-     *       {@link PermissionService#revokePermission}을 우회 — {@code PermissionRevokedEvent} 미발행
-     *       (이중 audit 회피, ADR #34 결정 1).</li>
-     *   <li>{@link ShareRevokedEvent} publish → {@code ShareAuditListener}가 {@code share.revoked} INSERT.</li>
-     * </ol>
+     * <p>{@link #lockAndCascadeRevoke} helper에 흐름을 위임하고 본 메서드는 actor 검증 +
+     * {@link ShareRevokedEvent} publish만 책임. {@link #expireShare}와 helper를 공유하나
+     * 발행 이벤트가 달라 audit listener에서 {@code share.revoked} ↔ {@code share.expired} 분기.
      *
      * <p>권한 가드는 {@link #canRevoke}가 {@code @PreAuthorize}에서 1차 처리. 본 메서드는 권한 검사를
      * 다시 하지 않는다 — controller-service 분리 일관성.
@@ -241,40 +234,101 @@ public class ShareCommandService {
         if (shareId == null) throw new IllegalArgumentException("shareId must not be null");
         if (actorId == null) throw new IllegalArgumentException("actorId must not be null");
 
-        Share share = shareRepository.lockByIdAndRevokedAtIsNull(shareId)
-            .orElseThrow(() -> new ResourceNotFoundException("share not found or already revoked: " + shareId));
-
-        // V6 CASCADE 직전 snapshot — event payload용. share row는 곧 삭제됨.
-        // file/folder XOR — 둘 중 정확히 한 쪽이 NOT NULL (V6 CHECK 보증).
-        UUID fileId = share.getFileId();
-        UUID folderId = share.getFolderId();
-        UUID permissionId = share.getPermissionId();
-        UUID originalSharedBy = share.getSharedBy();
-        Instant originalCreatedAt = share.getCreatedAt();
-        Instant originalExpiresAt = share.getExpiresAt();
-        String originalMessage = share.getMessage();
-
-        // 의도 표시 — lock 안에서 revoked_at/revoked_by set. 다음 줄의 permission delete가 CASCADE로 row를 지움.
-        share.setRevokedAt(Instant.now());
-        share.setRevokedBy(actorId);
-        shareRepository.saveAndFlush(share);
-
-        // permission row 직접 삭제 → V6 ON DELETE CASCADE → share row 함께 사라짐.
-        // PermissionService.revokePermission 우회 — PermissionRevokedEvent 미발행 (이중 audit 회피).
-        permissionRepository.deleteById(permissionId);
+        Snapshot snap = lockAndCascadeRevoke(shareId, actorId);
 
         eventPublisher.publishEvent(new ShareRevokedEvent(
             actorId,
             shareId,
-            fileId,
-            folderId,
-            permissionId,
-            originalSharedBy,
-            originalCreatedAt,
-            originalExpiresAt,
-            originalMessage
+            snap.fileId(),
+            snap.folderId(),
+            snap.permissionId(),
+            snap.originalSharedBy(),
+            snap.originalCreatedAt(),
+            snap.originalExpiresAt(),
+            snap.originalMessage()
         ));
     }
+
+    /**
+     * 시스템 트리거 만료 — {@link ShareExpirationJob}이 {@code shares.expires_at <= NOW()} row를
+     * 발견하면 본 메서드 호출 (ADR #34 backlog "SHARE_EXPIRED 배치 cron" closure).
+     *
+     * <p>{@link #revokeShare}와 동일한 cascade 흐름이지만 (1) actor 인자 부재 (시스템 트리거,
+     * {@code revoked_by=NULL}) (2) {@link ShareExpiredEvent} 발행으로 audit이 {@code share.expired}로 기록.
+     *
+     * <p>controller 매핑이 없는 internal API — {@code @PreAuthorize} 미적용. 호출 경로는 Spring application
+     * context 내 {@link ShareExpirationJob}만이며, race condition(사용자 직접 revoke 직전)은 lock helper의
+     * {@code Optional.orElseThrow}가 {@link ResourceNotFoundException}으로 보호 → cron 호출 측이 swallow + 다음 row.
+     *
+     * @throws ResourceNotFoundException share 미존재 또는 이미 revoke된 share (race-safe)
+     */
+    @Transactional
+    public void expireShare(UUID shareId) {
+        if (shareId == null) throw new IllegalArgumentException("shareId must not be null");
+
+        Snapshot snap = lockAndCascadeRevoke(shareId, /*revokedBy=*/ null);
+
+        eventPublisher.publishEvent(new ShareExpiredEvent(
+            shareId,
+            snap.fileId(),
+            snap.folderId(),
+            snap.permissionId(),
+            snap.originalSharedBy(),
+            snap.originalCreatedAt(),
+            snap.originalExpiresAt(),
+            snap.originalMessage()
+        ));
+    }
+
+    /**
+     * {@link #revokeShare}/{@link #expireShare} 공통 helper — lock + snapshot + revoked_at SET +
+     * permission cascade-delete까지 일괄 수행. 호출자는 반환된 {@link Snapshot}으로 도메인 이벤트만 publish.
+     *
+     * <p>흐름:
+     * <ol>
+     *   <li>{@link ShareRepository#lockByIdAndRevokedAtIsNull}로 row lock + 활성 확인 → 미존재면 404.</li>
+     *   <li>snapshot 캡처 — V6 ON DELETE CASCADE 직전 event payload용 보존.</li>
+     *   <li>{@code revoked_at=NOW()}, {@code revoked_by=revokedBy(nullable)} UPDATE — lock 보유 의도 표시.</li>
+     *   <li>{@link PermissionRepository#deleteById}로 permission row 직접 삭제 → V6 CASCADE로 share row 함께 삭제.
+     *       {@link PermissionService#revokePermission} 우회 → {@code PermissionRevokedEvent} 미발행
+     *       (이중 audit 회피, ADR #34 결정 1).</li>
+     * </ol>
+     *
+     * @param revokedBy nullable — 사용자 revoke는 actor UUID, 시스템 만료는 {@code null}
+     */
+    private Snapshot lockAndCascadeRevoke(UUID shareId, UUID revokedBy) {
+        Share share = shareRepository.lockByIdAndRevokedAtIsNull(shareId)
+            .orElseThrow(() -> new ResourceNotFoundException("share not found or already revoked: " + shareId));
+
+        // file/folder XOR — V6 CHECK 보증, listener에서 분기.
+        Snapshot snap = new Snapshot(
+            share.getFileId(),
+            share.getFolderId(),
+            share.getPermissionId(),
+            share.getSharedBy(),
+            share.getCreatedAt(),
+            share.getExpiresAt(),
+            share.getMessage()
+        );
+
+        share.setRevokedAt(Instant.now());
+        share.setRevokedBy(revokedBy);
+        shareRepository.saveAndFlush(share);
+
+        permissionRepository.deleteById(snap.permissionId());
+        return snap;
+    }
+
+    /** {@link #lockAndCascadeRevoke} 결과 — event payload 조립 직전 보존된 share row 상태. */
+    private record Snapshot(
+        UUID fileId,
+        UUID folderId,
+        UUID permissionId,
+        UUID originalSharedBy,
+        Instant originalCreatedAt,
+        Instant originalExpiresAt,
+        String originalMessage
+    ) {}
 
     /**
      * DELETE /api/shares/:shareId의 SpEL 가드. {@link com.ibizdrive.permission.PermissionService#canRevokePermission}

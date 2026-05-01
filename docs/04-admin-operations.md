@@ -313,9 +313,11 @@ S3 객체:
 | `quota.warning` | 매일 08:00 | 쿼터 80%+ 사용자에게 알림 |
 | `backup.snapshot` | 매일 02:00 | DB 스냅샷 |
 | `audit.archive` | 매월 1일 | 감사 로그 월별 파티션 아카이빙 |
-| `share.expire` | 매시간 | 만료된 공유 회수 |
+| `share.expire` | default 5분 | `shares.expires_at <= NOW() AND revoked_at IS NULL` row를 자동 만료 (`share-expired-cron`, 2026-05-01). [‡] |
 
 > [†] `purge.expired` (A7) 정책 상세: docs/02 §7.11.1. **DB-only** (storage 모듈 부재) — S3 객체는 orphan으로 잔존, audit `after_state.orphanStorageKeys` (cap=1000)에 기록. Properties: `app.purge.{enabled, max-per-run, cron, zone}`. Audit: `SYSTEM_PURGE_EXECUTED` summary-only 1건/run. ROLE 없음 (system actor).
+>
+> [‡] `share.expire` 정책 상세: docs/02 §7.9.1. ADR #34 backlog closure. Properties: `app.share.expiration.{enabled(default false), batch-size(200), cron("0 */5 * * * *"), zone("Asia/Seoul")}`. 단위 처리(per-row 트랜잭션) — `ShareCommandService.expireShare(shareId)`가 `revoked_by=NULL` 시스템 트리거로 `revoked_at` set + `permissions` row delete. Audit `share.expired`는 `actor_id=NULL`, `metadata.trigger='system.expiration'`. 다중 인스턴스 안전(V6 row-level pessimistic lock).
 
 ---
 

@@ -560,4 +560,95 @@ class ShareCommandServiceTest {
         when(details.getUser()).thenReturn(u);
         return details;
     }
+
+    // ── SHARE_EXPIRED — expireShare ──────────────────────────────────────────
+
+    @Test
+    void expireShare_throwsNotFound_whenShareMissingOrAlreadyRevoked() {
+        UUID shareId = UUID.randomUUID();
+        when(shareRepository.lockByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.empty());
+
+        // race-safe: 사용자가 직접 revoke 직전이면 동일 NotFound로 처리 → cron이 swallow.
+        assertThatThrownBy(() -> service.expireShare(shareId))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(permissionRepository, never()).deleteById(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void expireShare_setsRevokedByNull_deletesPermission_publishesShareExpiredEvent_fileShare() {
+        UUID shareId = UUID.randomUUID();
+        UUID sharePermissionId = UUID.randomUUID();
+        UUID shareFileId = UUID.randomUUID();
+        UUID sharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
+        Instant expiresAt = Instant.parse("2026-04-30T23:59:59Z");
+
+        Share share = mock(Share.class);
+        when(share.getFileId()).thenReturn(shareFileId);
+        when(share.getFolderId()).thenReturn(null);
+        when(share.getPermissionId()).thenReturn(sharePermissionId);
+        when(share.getSharedBy()).thenReturn(sharedBy);
+        when(share.getCreatedAt()).thenReturn(createdAt);
+        when(share.getExpiresAt()).thenReturn(expiresAt);
+        when(share.getMessage()).thenReturn("expired msg");
+        when(shareRepository.lockByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.of(share));
+
+        service.expireShare(shareId);
+
+        // 시스템 트리거 — revoked_by=NULL 명시.
+        verify(share).setRevokedAt(any());
+        verify(share).setRevokedBy(null);
+        verify(shareRepository).saveAndFlush(share);
+        verify(permissionRepository).deleteById(sharePermissionId);
+        verify(permissionService, never()).revokePermission(any(), any());
+
+        ArgumentCaptor<ShareExpiredEvent> evCaptor = ArgumentCaptor.forClass(ShareExpiredEvent.class);
+        verify(eventPublisher).publishEvent(evCaptor.capture());
+        ShareExpiredEvent ev = evCaptor.getValue();
+        assertThat(ev.shareId()).isEqualTo(shareId);
+        assertThat(ev.fileId()).isEqualTo(shareFileId);
+        assertThat(ev.folderId()).isNull();
+        assertThat(ev.permissionId()).isEqualTo(sharePermissionId);
+        assertThat(ev.originalSharedBy()).isEqualTo(sharedBy);
+        assertThat(ev.originalCreatedAt()).isEqualTo(createdAt);
+        assertThat(ev.originalExpiresAt()).isEqualTo(expiresAt);
+        assertThat(ev.originalMessage()).isEqualTo("expired msg");
+
+        // ShareRevokedEvent는 절대 발행하지 않음 — 의미론 분리.
+        verify(eventPublisher, never()).publishEvent(any(ShareRevokedEvent.class));
+    }
+
+    @Test
+    void expireShare_folderShare_publishesEventWithFolderIdAndNullFileId() {
+        UUID shareId = UUID.randomUUID();
+        UUID sharePermissionId = UUID.randomUUID();
+        UUID shareFolderId = UUID.randomUUID();
+        UUID sharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-03-15T10:00:00Z");
+
+        Share share = mock(Share.class);
+        when(share.getFileId()).thenReturn(null);
+        when(share.getFolderId()).thenReturn(shareFolderId);
+        when(share.getPermissionId()).thenReturn(sharePermissionId);
+        when(share.getSharedBy()).thenReturn(sharedBy);
+        when(share.getCreatedAt()).thenReturn(createdAt);
+        when(shareRepository.lockByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.of(share));
+
+        service.expireShare(shareId);
+
+        ArgumentCaptor<ShareExpiredEvent> evCaptor = ArgumentCaptor.forClass(ShareExpiredEvent.class);
+        verify(eventPublisher).publishEvent(evCaptor.capture());
+        ShareExpiredEvent ev = evCaptor.getValue();
+        assertThat(ev.fileId()).isNull();
+        assertThat(ev.folderId()).isEqualTo(shareFolderId);
+        assertThat(ev.permissionId()).isEqualTo(sharePermissionId);
+    }
+
+    @Test
+    void expireShare_throwsIllegalArgument_whenShareIdNull() {
+        assertThatThrownBy(() -> service.expireShare(null))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
 }

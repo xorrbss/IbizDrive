@@ -1,6 +1,7 @@
 package com.ibizdrive.audit;
 
 import com.ibizdrive.share.ShareCreatedEvent;
+import com.ibizdrive.share.ShareExpiredEvent;
 import com.ibizdrive.share.ShareRevokedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -91,6 +92,44 @@ public class ShareAuditListener {
             ));
         } catch (RuntimeException ex) {
             log.error("audit emission failed for event={}", AuditEventType.SHARE_REVOKED, ex);
+        }
+    }
+
+    /**
+     * 시스템 트리거 만료 — {@link ShareExpiredEvent}를 {@link AuditEventType#SHARE_EXPIRED}로 매핑.
+     *
+     * <p>{@link #onShareRevoked}와 형태 동일하나 (1) {@code actor_id=NULL} (시스템 트리거)
+     * (2) IP/UA 부재 (cron은 web request 컨텍스트 외) (3) {@code metadata.trigger='system.expiration'} 추가 —
+     * audit consumer가 사용자 revoke와 자동 만료를 구분 가능하도록 필드 보존.
+     */
+    @EventListener
+    public void onShareExpired(ShareExpiredEvent event) {
+        String nodeKey = event.fileId() != null ? "file_id" : "folder_id";
+        UUID nodeId = event.fileId() != null ? event.fileId() : event.folderId();
+        String before = revokeStateJson(
+            nodeKey, nodeId, event.permissionId(),
+            event.originalSharedBy(),
+            event.originalCreatedAt(), event.originalExpiresAt(),
+            event.originalMessage()
+        );
+        String metadata = "{\"" + nodeKey + "\":\"" + nodeId + "\""
+            + ",\"permission_id\":\"" + event.permissionId() + "\""
+            + ",\"original_shared_by\":\"" + event.originalSharedBy() + "\""
+            + ",\"trigger\":\"system.expiration\"}";
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.SHARE_EXPIRED,
+                /*actorId=*/ null,
+                /*ip=*/ null,
+                /*userAgent=*/ null,
+                AuditTargetType.SHARE,
+                event.shareId(),
+                before,
+                null,
+                metadata
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event={}", AuditEventType.SHARE_EXPIRED, ex);
         }
     }
 

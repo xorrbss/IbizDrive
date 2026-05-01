@@ -2,6 +2,7 @@ package com.ibizdrive.audit;
 
 import com.ibizdrive.permission.Preset;
 import com.ibizdrive.share.ShareCreatedEvent;
+import com.ibizdrive.share.ShareExpiredEvent;
 import com.ibizdrive.share.ShareRevokedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -213,5 +214,91 @@ class ShareAuditListenerTest {
         assertThat(ev.metadata())
             .contains("\"folder_id\":\"" + folderId + "\"")
             .doesNotContain("\"file_id\"");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // SHARE_EXPIRED — system-trigger expiration (ADR #34 backlog closure)
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void onShareExpired_recordsBeforeStateSnapshotWithSystemMetadata() {
+        UUID shareId = UUID.randomUUID();
+        UUID fileId = UUID.randomUUID();
+        UUID permissionId = UUID.randomUUID();
+        UUID originalSharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
+        Instant expiresAt = Instant.parse("2026-04-30T00:00:00Z");
+
+        listener.onShareExpired(new ShareExpiredEvent(
+            shareId, fileId, null, permissionId,
+            originalSharedBy, createdAt, expiresAt, "expired msg"
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.SHARE_EXPIRED);
+        // 시스템 트리거 — actor_id NULL, IP/UA 부재 (cron은 web request 컨텍스트 외).
+        assertThat(ev.actorId()).isNull();
+        assertThat(ev.actorIp()).isNull();
+        assertThat(ev.userAgent()).isNull();
+        assertThat(ev.targetType()).isEqualTo(AuditTargetType.SHARE);
+        assertThat(ev.targetId()).isEqualTo(shareId);
+        // CASCADE로 share row가 사라지므로 before_state가 유일한 기록 (revoke와 동일).
+        assertThat(ev.beforeState())
+            .contains("\"file_id\":\"" + fileId + "\"")
+            .contains("\"permission_id\":\"" + permissionId + "\"")
+            .contains("\"shared_by\":\"" + originalSharedBy + "\"")
+            .contains("\"created_at\":\"2026-04-01T00:00:00Z\"")
+            .contains("\"expires_at\":\"2026-04-30T00:00:00Z\"")
+            .contains("\"message\":\"expired msg\"");
+        assertThat(ev.afterState()).isNull();
+        // metadata.trigger='system.expiration'으로 사용자 revoke과 구분.
+        assertThat(ev.metadata())
+            .contains("\"file_id\":\"" + fileId + "\"")
+            .contains("\"permission_id\":\"" + permissionId + "\"")
+            .contains("\"original_shared_by\":\"" + originalSharedBy + "\"")
+            .contains("\"trigger\":\"system.expiration\"");
+    }
+
+    @Test
+    void onShareExpired_folderVariant_emitsFolderIdJsonKey() {
+        UUID shareId = UUID.randomUUID();
+        UUID folderId = UUID.randomUUID();
+        UUID permissionId = UUID.randomUUID();
+        UUID originalSharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
+
+        listener.onShareExpired(new ShareExpiredEvent(
+            shareId, null, folderId, permissionId,
+            originalSharedBy, createdAt, Instant.parse("2026-04-30T00:00:00Z"), null
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.SHARE_EXPIRED);
+        assertThat(ev.beforeState())
+            .contains("\"folder_id\":\"" + folderId + "\"")
+            .doesNotContain("\"file_id\"");
+        assertThat(ev.metadata())
+            .contains("\"folder_id\":\"" + folderId + "\"")
+            .contains("\"trigger\":\"system.expiration\"")
+            .doesNotContain("\"file_id\"");
+    }
+
+    @Test
+    void onShareExpired_swallowsAuditFailure() {
+        doThrow(new RuntimeException("db down")).when(auditService).record(any());
+
+        // ADR #24 — 실패는 ERROR 로그만 + 비즈니스 흐름에 영향 없음.
+        listener.onShareExpired(new ShareExpiredEvent(
+            UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
+            UUID.randomUUID(), Instant.now(), Instant.now(), null
+        ));
+
+        verify(auditService).record(any());
     }
 }

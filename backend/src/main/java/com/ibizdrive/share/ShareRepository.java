@@ -42,6 +42,24 @@ public interface ShareRepository extends JpaRepository<Share, UUID> {
     Optional<Share> lockByIdAndRevokedAtIsNull(@Param("id") UUID id);
 
     /**
+     * SHARE_EXPIRED cron 후보 스캔 — {@code revoked_at IS NULL AND expires_at IS NOT NULL AND
+     * expires_at <= :now}. 결과는 oldest-first 순 (동일 분 내 다중 만료의 처리 안정성).
+     *
+     * <p>{@link ShareExpirationJob}이 batch-size 한도로 호출 → 각 id에 대해 별도 트랜잭션의
+     * {@link ShareCommandService#expireShare}에서 다시 lock을 획득. 본 쿼리는 lock 미사용 (스냅샷 조회).
+     *
+     * @param now   기준 시각 (보통 {@link java.time.Instant#now()}).
+     * @param limit batch-size 상한 — JPA Pageable로 LIMIT 매핑.
+     */
+    @Query("SELECT s.id FROM Share s WHERE s.revokedAt IS NULL "
+         + "AND s.expiresAt IS NOT NULL AND s.expiresAt <= :now "
+         + "ORDER BY s.expiresAt ASC, s.id ASC")
+    List<UUID> findExpiredActiveIds(
+        @Param("now") Instant now,
+        org.springframework.data.domain.Pageable limit
+    );
+
+    /**
      * GET /api/shares/by-me — actor가 만든 active share (revoked_at IS NULL) cursor 페이지.
      *
      * <p>cursor가 {@code null}이면 첫 페이지. 비어있으면 expired 후보도 포함되지 않음 — expires_at 도과
