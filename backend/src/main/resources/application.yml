@@ -34,8 +34,12 @@ spring:
     timeout: PT30M
 
   servlet:
+    # A15 (ADR #36 가칭, ADR #13 재정정): MVP는 단일-POST multipart. tus는 v1.x 이월.
     multipart:
-      enabled: false  # tus 사용 (A4)
+      enabled: true
+      max-file-size: 100MB
+      max-request-size: 110MB
+      file-size-threshold: 1MB    # 디스크 spill 임계값 — 메모리 보호
 
 server:
   port: 8080
@@ -76,6 +80,10 @@ app:
 
 ibizdrive:
   storage:
+    # A15 (ADR #36 가칭) — MVP는 type=local만 동작. s3는 v1.x.
+    type: local
+    local:
+      root: ./uploads
     s3:
       endpoint: http://localhost:9000
       region: us-east-1

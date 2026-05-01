@@ -32,6 +32,14 @@ public interface FileVersionRepository extends JpaRepository<FileVersion, UUID> 
     boolean existsByStorageKey(UUID storageKey);
 
     /**
+     * 새 version append 시 versionNumber 결정용 (A15.3 — NEW_VERSION 분기). file_versions에
+     * 행이 없으면 NULL 반환 → 호출자가 1로 처리. {@code idx_versions_file (file_id, version_number DESC)}
+     * 인덱스 활용.
+     */
+    @Query("SELECT MAX(v.versionNumber) FROM FileVersion v WHERE v.fileId = :fileId")
+    Integer findMaxVersionNumberByFileId(@Param("fileId") UUID fileId);
+
+    /**
      * A7 hard purge 보조 — 삭제 대상 file row의 모든 version에 대해 {@code storage_key}를 수집.
      * audit {@code SYSTEM_PURGE_EXECUTED.after_state.orphanStorageKeys}에 기록되며, 실 S3 객체
      * 삭제는 storage 모듈 도입 시점에 처리(ADR #31).

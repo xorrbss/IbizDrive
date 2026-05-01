@@ -6,7 +6,6 @@ import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
 import type { DepartmentSummary } from '@/types/department'
-import { FakeXHR } from './fakeXhr'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
 
@@ -305,52 +304,26 @@ export const api = {
     return target
   },
 
-  // M5: FakeXHR 반환. 실제 백엔드 도입 시 내부 구현만 XMLHttpRequest로 교체.
+  /**
+   * A15 — 파일 업로드 (`POST /api/files`, multipart). docs/02 §6.1 + §7.6.
+   *
+   * 실 {@link XMLHttpRequest}를 반환 — useUpload가 progress/onload/onerror/abort 인터페이스로
+   * 사용. 응답 status 분기는 호출자(useUpload) 책임:
+   * - 201 Created → 신규 파일 INSERT
+   * - 200 OK     → resolution=new_version으로 기존 파일에 새 version 추가
+   * - 409        → ApiError envelope `{ error: { code: 'RENAME_CONFLICT', ... } }`. 호출자는
+   *                conflict 상태로 전환 후 사용자에게 resolution 재요청 (UploadConflictDialog).
+   * - 403/413/5xx → uploadErrors.ts classifyError 매핑
+   *
+   * 세션 쿠키 전송을 위해 {@code withCredentials = true}.
+   */
   uploadFile(params: {
     file: File
     folderId: string
     resolution?: 'new_version' | 'rename'
     newName?: string
-  }): FakeXHR {
-    const effectiveName = params.newName ?? params.file.name
-    // 충돌 검사: resolution이 없고 동일 폴더에 같은 이름이 있으면 409 시뮬레이션
-    // (resolution='new_version'|'rename'은 이미 사용자가 해결 방법을 선택한 상태이므로 스킵)
-    const conflictExisting = !params.resolution
-      ? MOCK_FILES.find(
-          (f) => f.parentId === params.folderId && f.name === effectiveName,
-        )
-      : null
-    const xhr = new FakeXHR({
-      simulateConflict: conflictExisting
-        ? { fileId: conflictExisting.id, fileName: conflictExisting.name }
-        : null,
-      // 200 성공 시 MOCK_FILES에 반영 (실제 서버의 커밋 단계를 시뮬레이션)
-      onServerSuccess: () => {
-        const now = new Date().toISOString()
-        if (params.resolution === 'new_version') {
-          const existing = MOCK_FILES.find(
-            (f) => f.parentId === params.folderId && f.name === effectiveName,
-          )
-          if (existing) {
-            existing.size = params.file.size
-            existing.updatedAt = now
-            existing.updatedBy = '나'
-            existing.mimeType = params.file.type || existing.mimeType
-            return
-          }
-        }
-        MOCK_FILES.push({
-          id: `file_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          name: effectiveName,
-          type: 'file',
-          mimeType: params.file.type || null,
-          size: params.file.size,
-          updatedAt: now,
-          updatedBy: '나',
-          parentId: params.folderId,
-        })
-      },
-    })
+  }): XMLHttpRequest {
+    const xhr = new XMLHttpRequest()
     const form = new FormData()
     const fileToSend = params.newName
       ? new File([params.file], params.newName, { type: params.file.type })
@@ -359,10 +332,8 @@ export const api = {
     form.append('folderId', params.folderId)
     if (params.resolution) form.append('resolution', params.resolution)
 
-    const url = `/files/upload?folderId=${encodeURIComponent(params.folderId)}${
-      params.resolution ? `&resolution=${params.resolution}` : ''
-    }`
-    xhr.open('POST', url)
+    xhr.open('POST', '/api/files')
+    xhr.withCredentials = true
     xhr.send(form)
     return xhr
   },

@@ -871,14 +871,14 @@ export function usePermission(nodeId?: string) {
 
 ### 14.4 ShareDialog (F4 → F5 → A13 → F6 → A16)
 
-`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활 → F6(2026-05-01) A14 `GET /api/users/search`로 user picker 추가 → **A16(2026-05-01~02)** A16 `GET /api/departments/search` (docs/02 §7.15, ADR #36)을 활용해 subject picker에 **department 옵션** 추가 + ShareDto.subjectName surface.
+`components/shares/ShareDialog.tsx` — 파일/폴더 공유 + by-me 목록 + revoke. F4(파일, 2026-05-01) → F5(폴더 양립, 2026-05-01) → A13(2026-05-01) `ShareDto` ↔ permissions join 복원으로 subject/preset 표시 부활 → F6(2026-05-01) A14 `GET /api/users/search`로 user picker 추가 → **A16(2026-05-01~02)** A16 `GET /api/departments/search` (docs/02 §7.15, ADR #37)을 활용해 subject picker에 **department 옵션** 추가 + ShareDto.subjectName surface.
 
 - **트리거**:
   - 파일: `BulkActionBar` 단일 선택 시 `공유` 버튼 → `useShareUiStore.open({kind:'file', id, name})`.
   - 폴더: `Breadcrumb` 우측 `공유` 버튼(현재 폴더 = URL `folderId`, 비루트만) → `open({kind:'folder', id, name})`.
 - **store 형상**: `target: ShareTarget = {kind:'file'|'folder', id, name}` discriminated. ShareDialog는 `target` 단일 선택자로 일반화.
 - **mutation**: `useCreateShare` Vars `{target, req}` → target.kind === 'folder' ? POST `/api/folders/{id}/share` : POST `/api/files/{id}/share` (api.createFolderShares / createFileShares 분리).
-- **subject picker (F6 → A16)** — `subjectType` 라디오 3종 (`everyone` | `user` | `department`), default `everyone`. **role은 v1.x backlog** — schema impedance(role enum vs role-grant lookup, ADR #36 결정 #5)로 UI 미노출. backend는 `subject_type='role'` persistable이므로 v1.x 활성화 시 frontend만 변경.
+- **subject picker (F6 → A16)** — `subjectType` 라디오 3종 (`everyone` | `user` | `department`), default `everyone`. **role은 v1.x backlog** — schema impedance(role enum vs role-grant lookup, ADR #37 결정 #5)로 UI 미노출. backend는 `subject_type='role'` persistable이므로 v1.x 활성화 시 frontend만 변경.
   - `user` 라디오 선택 시 `<UserSearchCombobox value={selectedUser} onChange={setSelectedUser}/>` 마운트.
   - `department` 라디오 선택 시 `<DepartmentSearchCombobox value={selectedDept} onChange={setSelectedDept}/>` 마운트 (A16).
   - 라디오 토글 시 inactive subject 리셋 (everyone 선택 → user/dept 둘 다 null, user 선택 → dept null, dept 선택 → user null).
@@ -901,12 +901,12 @@ export function usePermission(nodeId?: string) {
 - preset: `read | upload | edit | admin` 4값 (ADR #34, V5 CHECK는 SHARE 미지원).
 - expiresAt: HTML5 datetime-local → `new Date(v).toISOString()`.
 - 기존 by-me share 목록 매칭: `(s.fileId ?? s.folderId) === target.id` (wire `shares` 행은 file_id/folder_id XOR — V6 CHECK).
-- 기존 share 행 표시 (A13 → A16): `subjectLabel(subjectType, subjectId, subjectName) · presetLabel(preset) · 만료/무기한 + 해제`. **subjectName 우선** (A16, ADR #36) — `subjectName != null`이면 그대로 표시. null fallback 시 subject UUID 머릿8자(가독성). everyone은 "모든 사용자".
+- 기존 share 행 표시 (A13 → A16): `subjectLabel(subjectType, subjectId, subjectName) · presetLabel(preset) · 만료/무기한 + 해제`. **subjectName 우선** (A16, ADR #37) — `subjectName != null`이면 그대로 표시. null fallback 시 subject UUID 머릿8자(가독성). everyone은 "모든 사용자".
 - `해제` → `useRevokeShare`. 백엔드 `canRevoke`(sharedBy==me ‖ ADMIN)가 진실의 출처.
 - 에러 envelope: 409 PERMISSION_CONFLICT / 403 PERMISSION_DENIED / 404 NOT_FOUND(파일|폴더 분기) / 그 외 → 한국어 toast.error.
 - 무효화: §6.1 `qk.shares()` prefix 1회로 by-me/with-me 동시 갱신 (file/folder 무관 동일).
 - **ShareDto wire** (14필드, backend `com.ibizdrive.share.ShareDto` record와 1:1):
-  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset, subjectName|null}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface. **A16(ADR #36)**에서 `subjectName` 추가 — user→display_name, department→name, everyone/lookup miss → null.
+  `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset, subjectName|null}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface. **A16(ADR #37)**에서 `subjectName` 추가 — user→display_name, department→name, everyone/lookup miss → null.
 - **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. A13에서 컬럼 4열로 복원: `항목 | 공유한 사람 | 권한 | 만료`. preset은 한국어 라벨(읽기/업로드/편집/관리). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
 
 ---

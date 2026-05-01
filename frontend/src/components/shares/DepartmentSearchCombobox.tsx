@@ -4,7 +4,7 @@ import { useDepartmentSearch } from '@/hooks/useDepartmentSearch'
 import type { DepartmentSummary } from '@/types/department'
 
 /**
- * A16.6 — 부서 검색 콤보박스 (A16 / docs/02 §7.x, ADR #36).
+ * A16.6 — 부서 검색 콤보박스 (A16 / docs/02 §7.15, ADR #37).
  *
  * UserSearchCombobox(F6.3) 1:1 답습 — 표시 필드만 변경(displayName+email → name).
  * WAI-ARIA 1.2 Combobox + Listbox 패턴.
