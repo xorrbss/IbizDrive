@@ -8,8 +8,8 @@ Last Updated: 2026-05-01
 
 | Phase | Status | Note |
 |---|---|---|
-| A15.0 bootstrap | 🟡 in_progress | dev-docs 3파일 작성 중. ADR #13 재정정 초안은 A15.7 closure에 포함. |
-| A15.1 StorageClient + LocalFs | ⬜ pending | — |
+| A15.0 bootstrap | ✅ done | dev-docs 3파일 commit `b98b044`. ADR #13 재정정 초안은 A15.7 closure에 포함. |
+| A15.1 StorageClient + LocalFs | ✅ done | interface + LocalFs impl + properties + 9 RED→GREEN tests. `ibizdrive.storage.*` 네임스페이스 (existing convention). |
 | A15.2 FileUploadService RED | ⬜ pending | — |
 | A15.3 FileUploadService GREEN | ⬜ pending | — |
 | A15.4 POST /api/files | ⬜ pending | — |
@@ -28,8 +28,8 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-**A15.0 bootstrap** — dev-docs 3파일 commit + ADR #13 재정정 메모는 A15.7 closure 단계에 포함.
-다음 step: bootstrap commit 후 **A15.1 StorageClient + LocalFs** 진입.
+**A15.2 FileUploadService RED** — service 시그니처 + 단위 테스트.
+직전 완료: A15.1 (storage abstraction + LocalFs impl + 9 tests GREEN, full suite 회귀 0).
 
 ## 다음 세션 읽기 순서
 

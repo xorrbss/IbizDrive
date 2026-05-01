@@ -8,9 +8,9 @@ Last Updated: 2026-05-01
 
 | Phase | Status |
 |---|---|
-| A15.0 bootstrap | 🟡 in_progress |
-| A15.1 StorageClient + LocalFs | ⬜ pending |
-| A15.2 FileUploadService RED | ⬜ pending |
+| A15.0 bootstrap | ✅ done |
+| A15.1 StorageClient + LocalFs | ✅ done |
+| A15.2 FileUploadService RED | 🟡 next |
 | A15.3 FileUploadService GREEN | ⬜ pending |
 | A15.4 POST /api/files controller | ⬜ pending |
 | A15.5 GET /api/files/:id/download controller | ⬜ pending |
@@ -27,7 +27,31 @@ Last Updated: 2026-05-01
 
 ---
 
-## ⬜ A15.1 — StorageClient + LocalFs
+## ✅ A15.1 — StorageClient + LocalFs (DONE)
+
+**Commit**: TBD (this phase commit pending below).
+**산출물**:
+- `backend/src/main/java/com/ibizdrive/storage/StorageClient.java` (interface)
+- `backend/src/main/java/com/ibizdrive/storage/StorageProperties.java` (record `ibizdrive.storage.*`)
+- `backend/src/main/java/com/ibizdrive/storage/LocalFsStorageClient.java` (impl, atomic rename, traversal guard)
+- `backend/src/main/java/com/ibizdrive/storage/StorageConfig.java` (`@EnableConfigurationProperties`)
+- `backend/src/main/resources/application.yml` (`ibizdrive.storage.{type, local.root}` 추가)
+- `backend/src/test/java/com/ibizdrive/storage/LocalFsStorageClientTest.java` (9 cases GREEN)
+
+**검증**: `./gradlew test --tests "com.ibizdrive.storage.*"` 9/9 GREEN. full suite 회귀 0.
+
+**핵심 결정**:
+- 네임스페이스 = `ibizdrive.storage.*` (infra), `app.*`은 cron/business 보존.
+- `matchIfMissing=true` → 기본 활성. type=s3 시 v1.x.
+- atomic move (`StandardCopyOption.ATOMIC_MOVE` + `REPLACE_EXISTING`) — 동일 key race + 부분 쓰기 차단.
+- traversal 방어 (resolve+normalize startsWith root).
+- size 불일치 시 IOException + tmp 정리.
+- delete idempotent (`Files.deleteIfExists`).
+- `s3` block은 application.yml에 잔존하지만 v1.x까지 unused (`StorageProperties`는 type+local만 노출).
+
+---
+
+## ⬜ A15.1 — StorageClient + LocalFs (HISTORY ANCHOR — 위 done 블록 참조)
 
 ### 작업 전 필독
 - `docs/02 §5` 저장소 정책 (객체 키 구조, RFC 5987 다운로드 헤더, MVP는 checksum/scan v1.x 분리).

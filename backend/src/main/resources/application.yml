@@ -76,6 +76,10 @@ app:
 
 ibizdrive:
   storage:
+    # A15 (ADR #36 가칭) — MVP는 type=local만 동작. s3는 v1.x.
+    type: local
+    local:
+      root: ./uploads
     s3:
       endpoint: http://localhost:9000
       region: us-east-1
