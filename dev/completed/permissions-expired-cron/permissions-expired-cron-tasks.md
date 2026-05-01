@@ -14,7 +14,7 @@ Last Updated: 2026-05-01
 | PE.3 job + properties + config + yml | ✅ 완료 |
 | PE.4 tests | ✅ 완료 |
 | PE.5 docs | ✅ 완료 |
-| PE.6 PR + closure | 🟡 진행 중 |
+| PE.6 PR + closure | ✅ 완료 |
 
 ## PE.0 — bootstrap
 

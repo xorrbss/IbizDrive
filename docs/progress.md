@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-01 — 🏁 permissions-expired-cron 트랙 종료 (`permissions.expires_at` 만료 cron + `permission.expired` audit)
+
+### 범위
+
+PE.0 (worktree `feature/permissions-expired-cron` from `544afc9` F5 closure + dev-docs bootstrap `dev/active/permissions-expired-cron/`) → PE.1 (`PermissionExpiredEvent` 신규 record + `PermissionRepository.lockById(UUID)` PESSIMISTIC_WRITE + `findExpiredActiveIds(Instant, Pageable)` JPQL + `PermissionService.expirePermission(UUID)` lock→snapshot→DELETE→publish) → PE.2 (`AuditEventType.PERMISSION_EXPIRED("permission.expired")` + `PermissionAuditListener.onPermissionExpired` system metadata helper + `frontend/src/types/audit.ts` union 추가) → PE.3 (`PermissionExpirationProperties` record + `PermissionExpirationJob @ConditionalOnProperty + @Scheduled` + `SchedulingConfig` 등록 + `application.yml` `app.permission.expiration.*` 블록 default disabled) → PE.4 (Mockito-only `PermissionExpirationJobTest` 6개 + `PermissionServiceExpireTest` 5개 + `PermissionAuditListenerTest.onPermissionExpired_*` 3개 + Testcontainers `PermissionRepositoryTest.findExpiredActiveIds_*` 4개) → PE.5 (`docs/00 §5 ADR #34` closure 마커 추가 + `docs/02 §2.6` 본문 1줄 + 신규 `§7.10.1` 9-row 정책 표 + `docs/03 §4.1` enum mirror + `docs/04 §13` 배치 표 row + `[‡‡]` footnote) → PE.6 (PR #31 fix commit 1 후 squash-merge `00d05d6` + dev-docs archive).
+
+### 회고
+
+- **commits**: 2 on top of `544afc9` F5 closure (worktree branch `feature/permissions-expired-cron`) → squash-merge `00d05d6` on `master`. PR #31 single, 초기 backend CI 1 fail (`PermissionRepositoryTest.findExpiredActiveIds_returnsOnlyExpiredOldestFirst` — `idx_permissions_unique` 위반: 동일 `(folder, user, "user", user)` tuple에 read/edit/admin 3 row 시도) → fix commit `4e7b3a5` (subject 3명 분리). 재실행 frontend vitest + backend junit 모두 GREEN.
+- **production 파일**: 신설 3 / 수정 7.
+  - 신설: `PermissionExpiredEvent.java`, `PermissionExpirationProperties.java`, `PermissionExpirationJob.java`
+  - 수정: `PermissionRepository.java`, `PermissionService.java`, `AuditEventType.java`, `PermissionAuditListener.java`, `SchedulingConfig.java`, `application.yml`, `frontend/src/types/audit.ts`
+- **test 파일**: 신설 2 / 수정 2. `PermissionExpirationJobTest`(6) + `PermissionServiceExpireTest`(5) + `PermissionAuditListenerTest`(+3) + `PermissionRepositoryTest`(+4 + helper). 597/597 GREEN.
+- **docs sync**: `docs/00 §5 ADR #34`, `docs/02 §2.6` + 신규 `§7.10.1`, `docs/03 §4.1`, `docs/04 §13`. grep `permission.expired|permissions-expired-cron|PERMISSION_EXPIRED|permission.expire` — 4개 docs + `audit.ts` + `AuditEventType.java` 일관.
+
+### 핵심 결정 (permissions-expired-cron 트랙, 확정)
+
+1. **DELETE only (soft-delete 불가)** — `permissions` 테이블에 `revoked_at` 컬럼 부재. SHARE_EXPIRED는 `shares.revoked_at=NOW()` + `permissions` row delete의 2단계지만, 본 트랙은 `permissions` row 단일 DELETE. 향후 soft-delete 필요 시 별도 마이그레이션.
+2. **lockById 단일 조건 lock** — SHARE의 `lockByIdAndRevokedAtIsNull`(조건부) 대비 단순. race 시(다른 cron 인스턴스 / 사용자 직접 revoke) lock-then-query miss → `ResourceNotFoundException` → job swallow. 분산락 별도 도입 불요.
+3. **revoke와 expire helper 추출 거부** — KISS. lock 메서드 다름(`findById` vs `lockById`) + event 타입 다름(`PermissionRevokedEvent` vs `PermissionExpiredEvent`) → helper 추출이 가독성 ↓. SHARE 트랙에서도 동일 판단.
+4. **`expirationMetadataJson` 별도 helper** — grant/revoke의 `resourceMetadataJson` 형식 보존하면서 `"trigger":"system.expiration"` 키만 추가. listener 책임 안에 응집.
+5. **cron의 가치 = (a) DB cleanup, (b) audit row** — `findEffective`가 이미 `expires_at > NOW()` 필터링하므로 cron이 없어도 만료 grant는 보안 평가에서 제외됨. 따라서 cron의 보안적 효과는 0, 운영적 효과(테이블 비대 방지 + 만료 추적성)만 의미.
+6. **default disabled** — SHARE 트랙과 동일 패턴. staging/prod에서 명시적으로 `app.permission.expiration.enabled=true`로 활성화.
+7. **테스트 unique 위반 수정 = subject 분리** — `idx_permissions_unique=(resource_type, resource_id, subject_type, subject_id)`는 `preset`을 키에 포함하지 않음. 동일 (resource, subject) 위에 다른 preset row를 만들 수 없음. 테스트는 owner/subject1/subject2/subject3 4명 user 분리로 해결.
+
+### 파급 영향
+
+- **ADR #34 backlog**: SHARE_EXPIRED(2026-05-01) closure 시 잔여로 표기됐던 `permissions.expires_at` 직접 grant 만료 cron이 본 트랙으로 closed. 두 트랙 모두 audit row `metadata.trigger='system.expiration'`로 system 트리거 분별. SSE emission(`permission.expired`)은 ADR #14 인프라 milestone까지 그대로 deferred.
+- **frontend**: `audit.ts` union member 1줄 추가만 — 향후 audit log UI(M12)에서 자동 인식. 별도 UI 작업 불필요.
+- **운영 가이드 (`docs/04 §13`)**: 배치 작업 표에 `permission.expire` row 추가 — `app.permission.expiration.{enabled, batch-size, cron, zone}` 4 properties 명시.
+- **DB/스키마**: 변경 없음 (V_ 마이그레이션 0개).
+
+---
+
 ## 2026-05-01 — 🏁 F5 마일스톤 종료 (Frontend Folder Share UI 확장 + ShareDto wire 정합)
 
 ### 범위
