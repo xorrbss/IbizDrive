@@ -46,6 +46,32 @@ A15.0 (worktree `feature/a15-file-upload-download` from `09d4b52` A14 closure + 
 
 ---
 
+## 2026-05-01 — fix: BulkActionBar — 폴더 단일 선택 시 공유 버튼 활성화
+
+### 변경
+
+`frontend/src/components/files/BulkActionBar.tsx` — 공유 버튼의 `singleItem.type === 'file'` 가드 제거 + `handleShare` `kind: singleItem.type` 분기 + tooltip "단일 파일 선택 시 사용 가능" → "단일 항목 선택 시 사용 가능". 폴더 공유 endpoint(A12) + ShareDialog folder 분기(F5.2) + useCreateShare folder 변형이 모두 closed 상태이므로 BulkActionBar의 file-only 가드만 남아 있던 drift를 정정.
+
+### 회고
+
+- **production 파일**: 수정 1 (`BulkActionBar.tsx` — 3 line edit).
+- **test 파일**: 수정 1 (`BulkActionBar.test.tsx` — 신규 describe 블록 + 4 케이스: file-kind 진입, folder-kind 진입, 다중 비활성, cache-miss 비활성).
+- **검증**: `pnpm test --run` **533/533 GREEN** (baseline 529 → +4). `pnpm typecheck` + `pnpm lint` clean.
+- **트랙 단위**: dev-docs 미생성 — 단일 atomic 변경(CLAUDE.md OPERATIONAL RULES "원자적 변경"). worktree 미생성, master 위 단일 commit.
+
+### 핵심 결정 (확정)
+
+1. **다중(2+) 공유는 비활성 유지** — wire는 `POST /api/{files|folders}/:id/share` 단건. 다중 공유는 (a) 클라이언트 반복 호출 (b) batch endpoint 신설 정책 미정 → 별도 트랙. 본 변경 scope는 단일 선택만.
+2. **F5 closure backlog 글 정정** — "폴더 다중 선택 자체 부재"는 부정확. selection store(`Set<string>`) + FileTable 통합 row 모델로 폴더 다중 선택은 F4 시점부터 동작 중이었음. 진짜 missing은 BulkActionBar 공유 버튼의 file-only 가드 1줄.
+3. **dev-docs 트랙 미생성** — 변경 단위가 1 컴포넌트 / 3 line / 4 테스트 케이스. 트랙 prelude(plan/context/tasks 3파일 + worktree + 6 phase)는 over-engineering.
+
+### 파급 영향
+
+- **frontend backlog 정리**: F5 closure의 "폴더 다중 선택 BulkActionBar 공유 액션" 항목 → folder-kind 단일 진입 부분 closed. 다중 공유는 backlog 잔존.
+- **DB/스키마/wire**: 변경 없음.
+
+---
+
 ## 2026-05-01 — 🏁 F6 트랙 종료 (Frontend Share Subject Picker — User)
 
 ### 범위

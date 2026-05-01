@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { BulkActionBar } from './BulkActionBar'
 import { useSelectionStore } from '@/stores/selection'
 import { useRenameUiStore } from '@/stores/renameUi'
+import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useSortParams } from '@/hooks/useSortParams'
@@ -173,6 +174,94 @@ describe('BulkActionBar — 이름 변경 버튼', () => {
     })
     expect(useRenameUiStore.getState().targetId).toBe('fo1')
     expect(useRenameUiStore.getState().targetName).toBe('폴더A')
+  })
+})
+
+// ─── 공유 버튼 — file/folder 단일 선택 시 활성, 다중은 비활성 ─────────────────
+//
+// 폴더 공유 endpoint(A12) + ShareDialog folder 분기(F5.2) + useCreateShare folder
+// 변형이 모두 closed → BulkActionBar 차원에서 폴더 공유 진입을 막을 이유가 없다.
+// 다중(2+) 선택은 단일 호출 wire(POST /:id/share)와 매칭되지 않아 비활성 유지.
+
+describe('BulkActionBar — 공유 버튼', () => {
+  beforeEach(() => {
+    act(() => {
+      useSelectionStore.getState().clear()
+      useShareUiStore.getState().close()
+    })
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: ITEMS,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    vi.mocked(useCurrentFolder).mockReturnValue({
+      folderId: 'root',
+      folder: { id: 'root', name: 'root', slugPath: [] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCurrentFolder>)
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
+  })
+
+  it('단일 파일 선택 시 활성: 클릭하면 ShareDialog가 file kind로 열린다', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    expect(btn.getAttribute('title')).toBeNull()
+    act(() => {
+      fireEvent.click(btn)
+    })
+    const state = useShareUiStore.getState()
+    expect(state.isOpen).toBe(true)
+    expect(state.target).toEqual({ kind: 'file', id: 'f1', name: 'alpha.txt' })
+  })
+
+  it('단일 폴더 선택 시 활성: 클릭하면 ShareDialog가 folder kind로 열린다', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('fo1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    expect(btn.getAttribute('title')).toBeNull()
+    act(() => {
+      fireEvent.click(btn)
+    })
+    const state = useShareUiStore.getState()
+    expect(state.isOpen).toBe(true)
+    expect(state.target).toEqual({ kind: 'folder', id: 'fo1', name: '폴더A' })
+  })
+
+  it('다중 선택 시 비활성 + tooltip', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+      useSelectionStore.getState().toggle('f2')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    expect(btn.getAttribute('title')).toBe('단일 항목 선택 시 사용 가능')
+    act(() => {
+      fireEvent.click(btn)
+    })
+    expect(useShareUiStore.getState().isOpen).toBe(false)
+  })
+
+  it('단일 선택이지만 cache miss(items=undefined)면 비활성', () => {
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 })
 

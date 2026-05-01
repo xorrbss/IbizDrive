@@ -54,8 +54,9 @@ export function BulkActionBar() {
   // 양쪽을 모두 지원하므로 BulkActionBar에서 추가로 막을 이유가 없다.
   // 캐시 미스(items 미로딩)는 disabled로 안전하게 폴백.
   const renameEnabled = count === 1 && !!singleItem
-  // M8: 공유는 단일 파일만 (폴더 공유는 v1.x). 캐시 미스 시 disabled 폴백.
-  const shareEnabled = count === 1 && !!singleItem && singleItem.type === 'file'
+  // 공유는 단일 항목만 (다중 공유 wire는 별도 트랙). file/folder 모두 활성 — A12(폴더 endpoint)
+  // + F5.2(ShareDialog folder 분기) closure로 양쪽 진입 가능. 캐시 미스 시 disabled 폴백.
+  const shareEnabled = count === 1 && !!singleItem
 
   if (count === 0) return null
 
@@ -86,7 +87,7 @@ export function BulkActionBar() {
 
   const handleShare = () => {
     if (!shareEnabled || !singleItem) return
-    openShare({ kind: 'file', id: singleItem.id, name: singleItem.name })
+    openShare({ kind: singleItem.type, id: singleItem.id, name: singleItem.name })
   }
 
   return (
@@ -135,7 +136,7 @@ export function BulkActionBar() {
             type="button"
             onClick={handleShare}
             disabled={!shareEnabled}
-            title={shareEnabled ? undefined : '단일 파일 선택 시 사용 가능'}
+            title={shareEnabled ? undefined : '단일 항목 선택 시 사용 가능'}
             aria-disabled={!shareEnabled || undefined}
             className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
           >
