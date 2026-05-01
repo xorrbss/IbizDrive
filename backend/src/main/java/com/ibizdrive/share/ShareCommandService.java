@@ -1,6 +1,8 @@
 package com.ibizdrive.share;
 
 import com.ibizdrive.common.error.ResourceNotFoundException;
+import com.ibizdrive.department.Department;
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.Folder;
@@ -11,6 +13,8 @@ import com.ibizdrive.permission.PermissionService;
 import com.ibizdrive.permission.Preset;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
+import com.ibizdrive.user.User;
+import com.ibizdrive.user.UserRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -61,6 +65,8 @@ public class ShareCommandService {
     private final PermissionService permissionService;
     private final PermissionRepository permissionRepository;
     private final ShareRepository shareRepository;
+    private final UserRepository userRepository;
+    private final DepartmentRepository departmentRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public ShareCommandService(FileRepository fileRepository,
@@ -68,12 +74,16 @@ public class ShareCommandService {
                                PermissionService permissionService,
                                PermissionRepository permissionRepository,
                                ShareRepository shareRepository,
+                               UserRepository userRepository,
+                               DepartmentRepository departmentRepository,
                                ApplicationEventPublisher eventPublisher) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.permissionService = permissionService;
         this.permissionRepository = permissionRepository;
         this.shareRepository = shareRepository;
+        this.userRepository = userRepository;
+        this.departmentRepository = departmentRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -145,7 +155,9 @@ public class ShareCommandService {
                 request.message()
             ));
             // A13: grant는 본 트랜잭션에서 막 INSERT한 row → ShareDto join용으로 그대로 사용.
-            created.add(ShareDto.from(share, grant));
+            // A16: subject 표시명 단건 lookup — N=subjects.size()이며 SHARE preset 일괄 생성 시 일반적으로 1~10건 이내.
+            String subjectName = resolveSubjectName(subject.type(), subjectId);
+            created.add(ShareDto.from(share, grant, subjectName));
         }
         return created;
     }
@@ -215,9 +227,32 @@ public class ShareCommandService {
                 request.message()
             ));
             // A13: file 변형과 동형 — grant를 ShareDto join에 그대로 사용.
-            created.add(ShareDto.from(share, grant));
+            // A16: subject 표시명 단건 lookup — file 변형과 동일 흐름.
+            String subjectName = resolveSubjectName(subject.type(), subjectId);
+            created.add(ShareDto.from(share, grant, subjectName));
         }
         return created;
+    }
+
+    /**
+     * A16 — subject 표시명 단건 lookup. user → {@code users.display_name}, department → {@code departments.name},
+     * everyone → null. soft-delete 또는 dangling FK 시에도 null 허용 (frontend가 fallback 표시).
+     *
+     * <p><b>왜 단건 lookup</b>: 본 메서드는 트랜잭션 당 N=subjects.size() 호출 — 일반 케이스 1~10건. 별도 batch
+     * 최적화는 over-engineering (KISS). ShareQueryService(by-me/with-me 페이지)는 대조적으로 batch 사용.
+     *
+     * <p>{@code subjectId == null}은 everyone case에서 정상이며 user/department에서는 V5 CHECK가 차단 — 방어적
+     * null 반환.
+     */
+    private String resolveSubjectName(String subjectType, UUID subjectId) {
+        if (subjectId == null) return null;
+        if ("user".equals(subjectType)) {
+            return userRepository.findById(subjectId).map(User::getDisplayName).orElse(null);
+        }
+        if ("department".equals(subjectType)) {
+            return departmentRepository.findById(subjectId).map(Department::getName).orElse(null);
+        }
+        return null;
     }
 
     /**

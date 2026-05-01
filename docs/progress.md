@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-05-02 — 🏁 A16 트랙 종료 (Department Subject Picker — Domain 도입 + 3-way picker)
+
+### 범위
+
+A16.0 (worktree `feature/a16-department-subject-picker` from `ab45e7d` BulkActionBar fix + dev-docs bootstrap) → A16.1 (V7 마이그레이션 — `departments` 테이블 + `users.department_id` FK + ltree extension + Department 도메인 6파일 entity/Repository/Service/Controller/2 DTOs + V7MigrationIT 9 + DepartmentRepositoryTest 5 + DepartmentSearchServiceTest 11 + DepartmentSearchControllerTest 4) → A16.2 (`PermissionRepository.findEffective` SQL에 dept 매칭 subquery 추가; PermissionRepositoryTest +6) → A16.3 (`ShareDto.subjectName` 필드 추가 + factory 갱신 + ShareCommandService.resolveSubjectName 단건 helper + ShareQueryService.fetchSubjectNames batch helper + everyone/lookup-miss null fallback; ShareCommand/QueryServiceTest +8 + ShareControllerTest fixture 14필드 갱신) → A16.4 (`frontend/src/types/department.ts` 신설 + `lib/api.ts:searchDepartments` + `lib/queryKeys.ts:qk.departments()`/`qk.departmentsSearch` + `types/share.ts ShareDto.subjectName` + 8 fixture `subjectName: null` 보강; `api.departments.test.ts` 7 GREEN) → A16.5 (`useDepartmentSearch` hook — useUserSearch 1:1 답습; 5 tests GREEN) → A16.6 (`DepartmentSearchCombobox.tsx` — UserSearchCombobox 1:1 답습, 표시 필드만 name; 12 tests GREEN) → A16.7 (ShareDialog — subjectType 3-way 라디오 + DepartmentSearchCombobox 마운트 + dept submit 분기 + `subjectLabel(type, id, subjectName)` subjectName-first fallback; +7 tests GREEN) → A16.8 (docs sync `docs/00 ADR #37` + `docs/02 §2.1/§2.2/§7.9/§7.15` + `docs/03 §3.3/§3.4/§3.5` + `docs/01 §14.4` + 본 progress entry + PR + master squash-merge + closure archive). **참고**: master에 A15가 먼저 머지되며 ADR #36을 점유 — A16 ADR은 #37로 재번호.
+
+### 회고
+
+- **commits**: 8 on top of `ab45e7d` (worktree branch `feature/a16-department-subject-picker`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 12 / 수정 8.
+  - backend 신설: `Department.java`, `DepartmentRepository.java`, `DepartmentSearchService.java`, `DepartmentSearchController.java`, `DepartmentSummaryDto.java`, `DepartmentSearchResponse.java`, `V7__departments_users_dept.sql`
+  - backend 수정: `User.java`, `PermissionRepository.java`, `ShareDto.java`, `ShareCommandService.java`, `ShareQueryService.java`
+  - frontend 신설: `types/department.ts`, `hooks/useDepartmentSearch.ts`, `components/shares/DepartmentSearchCombobox.tsx`
+  - frontend 수정: `lib/api.ts`, `lib/queryKeys.ts`, `types/share.ts`, `components/shares/ShareDialog.tsx`
+- **test**: backend +35 (V7MigrationIT 9 + DepartmentRepositoryTest 5 + DepartmentSearchServiceTest 11 + DepartmentSearchControllerTest 4 + PermissionRepositoryTest +6); frontend `api.departments.test.ts` 7 + `useDepartmentSearch.test.tsx` 5 + `DepartmentSearchCombobox.test.tsx` 12 + `ShareDialog.test.tsx` +7. 최종 backend `./gradlew test` GREEN 666 tests, frontend `pnpm test --run` GREEN 565/565 (baseline 533 → +32). `pnpm typecheck` + `pnpm lint` + `pnpm build` clean.
+- **docs sync**: ADR #37 신설 / `docs/02 §2.2 V7 + §7.9 subjectName + §7.15 dept search` / `docs/03 §3.3 dept subject + §3.4 findEffective dept 분기 + §3.5 dept search guard` / `docs/01 §14.4 ShareDialog 3-way picker + DepartmentSearchCombobox + subjectName fallback`.
+
+### 핵심 결정 (A16 트랙, 확정 → ADR #37)
+
+1. **Department 도메인 도입 (V7)** — A14 결정 시점("V_ 마이그레이션 0")의 제약 해소. `departments` 테이블 + `users.department_id` FK 활성화. LTREE 컬럼은 schema 도입만, 애플리케이션은 flat 사용 (KISS, 트리 v1.x deferred).
+2. **권한 평가 SQL 변경 필수** — A14 결정 #4 검증 정정. `PermissionRepository.findEffective`에 `subject_type='department' AND subject_id = (SELECT department_id FROM users WHERE id=:userId AND active)` OR 분기 추가. NULL/비활성 사용자는 unmatched(false). dept 후손 자동 포함은 v1.x deferred.
+3. **ShareDto.subjectName = backend join (A13 패턴 답습)** — nullable 필드 1개 추가. user→users.display_name, department→departments.name, everyone/lookup miss → null. POST는 트랜잭션 내 단건 helper, by-me/with-me는 페이지 결정 후 batch helper(type별 1회 IN 절). 단건 lookup endpoint 미추가.
+4. **Frontend = F6 답습 1:1** — `useDepartmentSearch`/`DepartmentSearchCombobox`는 user 변형의 동형. 일반화 거부 — 추상화 정당화 3+ 규칙 미충족 (KISS, ULTIMATE INVARIANT 5).
+5. **Role share UI 보류** — schema impedance(role enum vs role-grant lookup). picker 라디오 3종(everyone/user/department)으로 한정. backend `subject_type='role'` persistable 유지 — v1.x role-share 트랙으로 분리.
+6. **`subjectLabel` subjectName-first fallback** — `subjectName != null`이면 그대로 표시. null fallback 시 type+UUID 머릿8자(기존 동작 보존). everyone은 항상 "모든 사용자".
+
+### 파급 영향
+
+- **DB**: V7 마이그레이션 추가. 기존 V1~V6 무변경. `departments` 테이블 신설 + `users.department_id` FK 활성화.
+- **wire**: ShareDto 13 → 14 필드 (`subjectName: string|null` 추가). Frontend fixture 8 위치 보강.
+- **권한 평가**: `findEffective` OR 분기 추가. user/everyone/role grant는 기존 동작 보존, dept grant 신규 매칭.
+- **frontend backlog**: F6 closure의 "department 옵션 backlog" 항목 closed. role 옵션은 v1.x backlog로 잔존.
+
+---
+
 ## 2026-05-02 — 🏁 A15 트랙 종료 (Storage 모듈 + 파일 업로드/다운로드 endpoint)
 
 ### 범위

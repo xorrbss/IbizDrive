@@ -1,6 +1,8 @@
 package com.ibizdrive.share;
 
 import com.ibizdrive.common.error.ResourceNotFoundException;
+import com.ibizdrive.department.Department;
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.Folder;
@@ -11,6 +13,7 @@ import com.ibizdrive.permission.PermissionService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
+import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -63,6 +66,10 @@ class ShareCommandServiceTest {
     PermissionRepository permissionRepository;
     @Mock
     ShareRepository shareRepository;
+    @Mock
+    UserRepository userRepository;
+    @Mock
+    DepartmentRepository departmentRepository;
     @Mock
     ApplicationEventPublisher eventPublisher;
 
@@ -174,6 +181,9 @@ class ShareCommandServiceTest {
         when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
         when(permissionService.grantPermission(eq("file"), eq(fileId), eq("user"),
             eq(subjectId), any(), any(), eq(actorId))).thenReturn(grant);
+        // A16 — subject 표시명 단건 lookup. nested stubbing 회피: 외부 thenReturn 호출 전에 User mock을 미리 빌드.
+        User aliceMock = userWithName("Alice");
+        when(userRepository.findById(subjectId)).thenReturn(Optional.of(aliceMock));
 
         ShareCreateRequest req = new ShareCreateRequest(
             List.of(new ShareCreateRequest.Subject("user", subjectId)),
@@ -195,6 +205,8 @@ class ShareCommandServiceTest {
         assertThat(saved.subjectType()).isEqualTo("user");
         assertThat(saved.subjectId()).isEqualTo(subjectId);
         assertThat(saved.preset()).isEqualTo("edit");
+        // A16 — user displayName이 subjectName으로 join.
+        assertThat(saved.subjectName()).isEqualTo("Alice");
 
         verify(shareRepository, times(1)).saveAndFlush(any(Share.class));
 
@@ -212,7 +224,7 @@ class ShareCommandServiceTest {
 
     @Test
     void createShares_everyoneSubject_passesNullSubjectIdToGrantPermission() {
-        PermissionRow grant = grantRow(UUID.randomUUID());
+        PermissionRow grant = grantRow(UUID.randomUUID(), "everyone", null, "read");
         when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
         when(permissionService.grantPermission(eq("file"), eq(fileId), eq("everyone"),
             eq(null), any(), any(), eq(actorId))).thenReturn(grant);
@@ -222,10 +234,63 @@ class ShareCommandServiceTest {
             "read", null, null
         );
 
-        service.createShares(fileId, req, actorId);
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
 
         verify(permissionService).grantPermission(eq("file"), eq(fileId), eq("everyone"),
             eq(null), any(), any(), eq(actorId));
+        // A16 — everyone subject → subjectName=null. user/dept lookup 미호출 (resolveSubjectName 가드).
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).subjectName()).isNull();
+        verify(userRepository, never()).findById(any());
+        verify(departmentRepository, never()).findById(any());
+    }
+
+    @Test
+    void createShares_departmentSubject_resolvesDeptName() {
+        // A16 — subject_type='department' 분기는 departmentRepository.findById로 dept name resolve.
+        UUID deptId = UUID.randomUUID();
+        UUID grantId = UUID.randomUUID();
+        PermissionRow grant = grantRow(grantId, "department", deptId, "read");
+        when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
+        when(permissionService.grantPermission(eq("file"), eq(fileId), eq("department"),
+            eq(deptId), any(), any(), eq(actorId))).thenReturn(grant);
+        // nested stubbing 회피.
+        Department engMock = deptWithName("Engineering");
+        when(departmentRepository.findById(deptId)).thenReturn(Optional.of(engMock));
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("department", deptId)),
+            "read", null, null
+        );
+
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).subjectType()).isEqualTo("department");
+        assertThat(result.get(0).subjectName()).isEqualTo("Engineering");
+        // user repository는 dept share에서 호출되지 않음.
+        verify(userRepository, never()).findById(any());
+    }
+
+    @Test
+    void createShares_userSubjectLookupMiss_returnsNullSubjectName() {
+        // A16 — soft-delete 등으로 user를 찾지 못해도 share 생성은 계속 (subjectName=null fallback).
+        UUID subjectId = UUID.randomUUID();
+        PermissionRow grant = grantRow(UUID.randomUUID(), "user", subjectId, "read");
+        when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
+        when(permissionService.grantPermission(eq("file"), eq(fileId), eq("user"),
+            eq(subjectId), any(), any(), eq(actorId))).thenReturn(grant);
+        when(userRepository.findById(subjectId)).thenReturn(Optional.empty());
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", subjectId)),
+            "read", null, null
+        );
+
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).subjectName()).isNull();
     }
 
     @Test
@@ -466,6 +531,20 @@ class ShareCommandServiceTest {
         when(row.getSubjectId()).thenReturn(subjectId);
         when(row.getPreset()).thenReturn(preset);
         return row;
+    }
+
+    /** A16 — User mock with displayName for subjectName lookup tests. */
+    private static User userWithName(String displayName) {
+        User u = mock(User.class);
+        when(u.getDisplayName()).thenReturn(displayName);
+        return u;
+    }
+
+    /** A16 — Department mock with name for subjectName lookup tests. */
+    private static Department deptWithName(String name) {
+        Department d = mock(Department.class);
+        when(d.getName()).thenReturn(name);
+        return d;
     }
 
     // ── A10.3 — revokeShare ──────────────────────────────────────────────

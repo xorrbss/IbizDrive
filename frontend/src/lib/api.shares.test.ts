@@ -36,6 +36,7 @@ const FILE_SHARE_FIXTURE: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'read',
+  subjectName: null,
 }
 
 const FOLDER_SHARE_FIXTURE: ShareDto = {
@@ -52,6 +53,7 @@ const FOLDER_SHARE_FIXTURE: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'edit',
+  subjectName: null,
 }
 
 describe('api.createFileShares', () => {

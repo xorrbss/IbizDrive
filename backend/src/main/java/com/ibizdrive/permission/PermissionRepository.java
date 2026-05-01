@@ -23,8 +23,10 @@ import java.util.UUID;
  *   <li><strong>상속</strong>: file이 속한 폴더와 그 모든 조상 폴더(루트까지)에서 부여된 grant + file 자체에
  *       부여된 grant. 폴더 리소스의 경우는 폴더 자체와 조상.</li>
  *   <li><strong>subject 매칭</strong>: ({@code subject_type='user'} AND {@code subject_id=:userId})
- *       OR ({@code subject_type='everyone'}). department/role 멤버십 확장은 A5+ — A4.3 evaluator가
- *       department/role 매핑이 필요해지면 본 메서드 시그니처를 확장하거나 evaluator 측에서 OR 조합.</li>
+ *       OR ({@code subject_type='everyone'})
+ *       OR ({@code subject_type='department'} AND {@code subject_id} = 사용자의 직속 {@code users.department_id}).
+ *       후자는 A16/ADR #36에서 활성화 — flat dept matching (LTREE 트리는 v1.x 이월). role 멤버십은 v1.x 이월
+ *       (ADR #36 — schema impedance, role 변경 grant 무효화 위험).</li>
  *   <li><strong>만료</strong>: {@code expires_at IS NULL} OR {@code expires_at > NOW()}.</li>
  *   <li><strong>soft delete</strong>: 삭제된 폴더({@code folders.deleted_at IS NOT NULL})는 조상
  *       체인에서 제외 — 휴지통에 들어간 폴더는 권한 상속 경로에서 끊김.</li>
@@ -86,6 +88,15 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
             (
               (p.subject_type = 'user' AND p.subject_id = CAST(:userId AS uuid))
               OR p.subject_type = 'everyone'
+              OR (
+                p.subject_type = 'department'
+                AND p.subject_id = (
+                    SELECT department_id FROM users
+                    WHERE id = CAST(:userId AS uuid)
+                      AND deleted_at IS NULL
+                      AND is_active = TRUE
+                )
+              )
             )
             AND (p.expires_at IS NULL OR p.expires_at > NOW())
         """, nativeQuery = true)

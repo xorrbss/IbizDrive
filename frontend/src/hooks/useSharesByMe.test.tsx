@@ -32,6 +32,7 @@ const SHARE: ShareDto = {
   subjectType: 'everyone',
   subjectId: null,
   preset: 'read',
+  subjectName: null,
 }
 
 describe('useSharesByMe', () => {

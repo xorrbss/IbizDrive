@@ -70,6 +70,15 @@ export const qk = {
   usersSearch: (normalized: string, limit: number) =>
     [...qk.users(), 'search', normalized, limit] as const,
 
+  // ── 부서 검색 (A16, docs/02 §7.x, ADR #36) ──
+  departments: () => [...qk.all, 'departments'] as const,
+  /**
+   * 부서 검색 결과 키 — normalized query + limit. usersSearch 1:1 답습.
+   * normalize는 `q.trim().toLowerCase()`. cursor 미지원.
+   */
+  departmentsSearch: (normalized: string, limit: number) =>
+    [...qk.departments(), 'search', normalized, limit] as const,
+
   // ── 감사 로그 (M12, mock) ──
   audit: () => [...qk.all, 'audit'] as const,
   /** 페이지/필터까지 포함된 정확한 단일 키. 필터 변경 시 자동 재요청. */
