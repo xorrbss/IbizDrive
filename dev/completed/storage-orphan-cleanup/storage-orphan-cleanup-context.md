@@ -14,7 +14,7 @@ Last Updated: 2026-05-02
 | OC.3 Repository active set | ✅ done | streamActiveStorageKeys() — `SELECT v.storageKey FROM FileVersion v` (no deleted_at filter, trash 보호). Hibernate fetchSize=200 + readOnly hint. 3 신규 repository 테스트(Docker 가용 시 검증). |
 | OC.4 Service GREEN | ✅ done | runDailyCleanup(maxPerRun, graceHours): liveSet 적재→walk→diff→delete→audit. @Transactional(readOnly=true). 8 mockito 유닛 테스트 (happy/empty/cap/per-row 실패 isolation/non-uuid skip/audit JSON/invalid args/walk IOException). |
 | OC.5 Job + integration test | ✅ done | StorageOrphanCleanupJob (@ConditionalOnProperty + @Scheduled) + Disabled integration test (bean 미등록 검증) + E2E integration test (실 Postgres + LocalFs @TempDir). Docker 미가용 환경 자동 skip. |
-| OC.6 closure | ⬜ pending | — |
+| OC.6 closure | ✅ done | docs sync (ADR #37 + 02 §5.6 + 04 §13 + 03 §4.1) + progress entry + dev-docs archive + PR + squash-merge. |
 
 ## Current Execution Contract
 

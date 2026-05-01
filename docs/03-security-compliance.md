@@ -443,6 +443,7 @@ type AuditEventType =
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'
+  | 'storage.orphan.cleaned'  // 활성화 (`storage-orphan-cleanup`, 2026-05-02, ADR #37) — actor_id=NULL, target_type=system, metadata={runId,scanned,candidates,deleted,failed,truncated,durationMs}, docs/02 §5.6
   // 감사 로그 자체
   | 'audit.exported'   // docs/04 §7.2 — CSV/JSON 내보내기 자체도 감사 기록
 ```
