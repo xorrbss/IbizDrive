@@ -13,7 +13,7 @@ Last Updated: 2026-05-01
 | F6.2 useUserSearch 훅 | ✅ 완료 (commit `96ab0ee`, 5 tests GREEN) |
 | F6.3 UserSearchCombobox 컴포넌트 | ✅ 완료 (commit `0e1e3a0`, 12 tests GREEN) |
 | F6.4 ShareDialog 통합 | ✅ 완료 (commit `e8db794`, 5 tests GREEN, 전체 524→529) |
-| F6.5 docs sync + PR + archive | 🟡 active |
+| F6.5 docs sync + PR + archive | ✅ 완료 (PR #35 squash-merge `c0d3ec2`) |
 
 ---
 
@@ -229,11 +229,9 @@ subjects: [{ type: 'everyone' }]
   - `UserSearchCombobox`/`useUserSearch` 등재
   - subjectType 라디오 흐름 다이어그램(텍스트)
 - [x] **F6.5.2 progress.md** F6 closure 라인
-- [ ] **F6.5.3 PR**:
-  - `git push -u origin feature/f6-user-search-picker`
-  - `gh pr create --title "feat(f6): share subject picker — user search 통합" --body <hereDoc>`
-- [ ] **F6.5.4 게이트 — 사용자 승인** : `gh pr merge --squash --delete-branch`
-- [ ] **F6.5.5 closure**:
+- [x] **F6.5.3 PR**: PR #35 (`feat(f6): share subject picker — user search 통합`)
+- [x] **F6.5.4 게이트 — 사용자 승인** : squash-merge `c0d3ec2` (2026-05-01 11:57Z)
+- [x] **F6.5.5 closure**:
   - master pull
   - `dev/active/f6-user-search-picker/` → `dev/completed/`로 이동
   - closure commit + push
