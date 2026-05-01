@@ -14,8 +14,8 @@ Last Updated: 2026-05-01
 | A15.3 FileUploadService GREEN | ✅ done |
 | A15.4 POST /api/files controller | ✅ done |
 | A15.5 GET /api/files/:id/download controller | ✅ done |
-| A15.6 Frontend api.uploadFile 실 XHR | 🟡 next |
-| A15.7 closure (docs sync + PR + archive) | ⬜ pending |
+| A15.6 Frontend api.uploadFile 실 XHR | ✅ done |
+| A15.7 closure (docs sync + PR + archive) | 🟡 next |
 
 ---
 
@@ -260,7 +260,9 @@ Last Updated: 2026-05-01
 
 ---
 
-## ⬜ A15.6 — Frontend api.uploadFile 실 XHR
+## ✅ A15.6 — Frontend api.uploadFile 실 XHR
+
+**완료 (2026-05-01)**: `frontend/src/lib/api.ts` `uploadFile`이 실 `XMLHttpRequest`로 `POST /api/files` (multipart) 호출. `withCredentials = true`. FormData = `file` + `folderId` + optional `resolution`. MOCK_FILES side-effect 제거 (backend authoritative). `frontend/src/lib/fakeXhr.ts` + `fakeXhr.test.ts` 삭제 (`api.uploadFile`만 유일한 import 였음). `frontend/src/hooks/useUpload.ts`는 `XhrLike = XMLHttpRequest`로 전환 + 409 envelope `{ error: { code: 'RENAME_CONFLICT', details: { fileId, fileName } } }` 파싱(폴백: `conflictWith` undefined → `UploadConflictDialog`가 `task.file.name`로 fallback). 신규 `frontend/src/lib/api.upload.test.ts` 4 wire-contract 테스트 + `useUpload.test.ts`는 `vi.stubGlobal('XMLHttpRequest', MockXHR)` 패턴으로 9 테스트 재작성. typecheck/lint/test (527/527) GREEN.
 
 ### 작업 전 필독
 - `frontend/src/lib/api.ts:307-` (현재 FakeXHR 분기).

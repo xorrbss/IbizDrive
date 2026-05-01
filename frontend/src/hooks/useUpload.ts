@@ -4,17 +4,16 @@ import { useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { qk } from '@/lib/queryKeys'
 import { classifyError } from '@/lib/uploadErrors'
-import type { FakeXHR } from '@/lib/fakeXhr'
 import {
   useUploadStore,
   type UploadConflictResolution,
   type UploadTask,
 } from '@/stores/upload'
 
-type XhrLike = FakeXHR
+type XhrLike = XMLHttpRequest
 
 /**
- * useUpload — store의 queued task를 감지해 transport(FakeXHR)를 기동/취소한다.
+ * useUpload — store의 queued task를 감지해 transport(XMLHttpRequest)를 기동/취소한다.
  *
  * - queued → uploading (XHR 시작)
  * - onprogress → updateTask(progress)
@@ -75,14 +74,20 @@ export function useUpload() {
           return
         }
         if (xhr.status === 409) {
+          // backend envelope: { error: { code: 'RENAME_CONFLICT', details? } }.
+          // details에 충돌 파일 정보(fileId/fileName)가 있으면 surface — 없으면 conflictWith
+          // undefined로 두면 UploadConflictDialog가 task.file.name으로 폴백.
           let conflictWith: UploadTask['conflictWith'] | undefined
           try {
             const body = JSON.parse(xhr.responseText) as {
-              existing?: { fileId: string; fileName: string }
+              error?: { details?: { fileId?: string; fileName?: string } }
             }
-            conflictWith = body.existing
+            const d = body.error?.details
+            if (d?.fileId && d?.fileName) {
+              conflictWith = { fileId: d.fileId, fileName: d.fileName }
+            }
           } catch {
-            // ignore
+            // ignore — body 부재/JSON 파싱 실패 시 conflictWith undefined 유지
           }
           const apply = useUploadStore.getState().applyToAll
           if (apply && apply !== 'skip') {

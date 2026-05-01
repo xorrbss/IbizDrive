@@ -2,6 +2,7 @@
 Last Updated: 2026-05-01
 ---
 
+
 # A15 Context — Storage 모듈 + 파일 업로드/다운로드 endpoint
 
 ## SESSION PROGRESS
@@ -14,7 +15,7 @@ Last Updated: 2026-05-01
 | A15.3 FileUploadService GREEN | ✅ done | upload(...) 구현 (folder lock + conflict 이중 가드 + storage write + INSERT files+versions + current_version_id + emitAudit). FileVersionRepository.findMaxVersionNumberByFileId 추가. FileRepository.lockActiveByFolderAndNormalizedName 추가. RENAME suffix `(N)` 자동. |
 | A15.4 POST /api/files | ✅ done | FileUploadController + UploadResponse DTO + multipart 활성화 (max 100MB). 8/8 controller tests GREEN. resolution wire format `new_version`/`rename`/null. |
 | A15.5 GET /api/files/:id/download | ✅ done | FileDownloadService + FileDownloadController + DownloadHandle. RFC 5987 Content-Disposition (filename + filename*=UTF-8'') + ETag(versionId) + Content-Type fallback (octet-stream). audit FILE_DOWNLOADED. 7 service + 6 controller tests GREEN. 권한 = file READ. |
-| A15.6 Frontend api.uploadFile 실 XHR | ⬜ pending | — |
+| A15.6 Frontend api.uploadFile 실 XHR | ✅ done | `api.uploadFile` → `new XMLHttpRequest()` + `POST /api/files` (multipart) + `withCredentials=true`. fakeXhr.ts/fakeXhr.test.ts 삭제. useUpload는 XMLHttpRequest 타입으로 전환 + 409 envelope `{error.details:{fileId,fileName}}` 파싱(폴백 conflictWith undefined). MOCK_FILES side-effect 제거(backend authoritative). 신규 api.upload.test.ts 4개 + useUpload.test.ts 9개(MockXHR global stub). 527/527 GREEN, typecheck/lint clean. |
 | A15.7 closure | ⬜ pending | — |
 
 ## Current Execution Contract
@@ -28,8 +29,8 @@ Last Updated: 2026-05-01
 
 ## 현재 active task
 
-**A15.6 Frontend api.uploadFile 실 XHR** — `frontend/src/lib/api.ts`의 FakeXHR 분기 제거 + 실 `XMLHttpRequest` 사용. M5 이벤트 인터페이스(progress/complete/error) 보존. `frontend/src/lib/fakeXhr.ts` 영향 grep 후 삭제 또는 dev-only stub 격리. UploadDock/upload store/ConflictDialog 인터페이스 변경 0 검증. `pnpm test --run && pnpm typecheck && pnpm lint` GREEN.
-직전 완료: A15.5 (FileDownloadController 6 + FileDownloadService 7 GREEN, full suite 회귀 0).
+**A15.7 closure** — ADR #13 재정정 + 신규 ADR #36 (storage abstraction + multipart MVP), `docs/02 §6.1/§7.6/§7.7` sync, `docs/progress.md` A15 closure entry, PR 생성, dev-docs archive.
+직전 완료: A15.6 (api.uploadFile real XMLHttpRequest 교체, fakeXhr 모듈 삭제, useUpload 타입 전환 + 409 envelope details 파싱, 527/527 GREEN).
 
 ## 다음 세션 읽기 순서
 
