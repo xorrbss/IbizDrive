@@ -44,7 +44,7 @@ class ShareAuditListenerTest {
         Instant expiresAt = Instant.parse("2030-01-01T00:00:00Z");
 
         listener.onShareCreated(new ShareCreatedEvent(
-            ACTOR, shareId, fileId, permissionId, "user", subjectId, Preset.EDIT, expiresAt, "hello"
+            ACTOR, shareId, fileId, null, permissionId, "user", subjectId, Preset.EDIT, expiresAt, "hello"
         ));
 
         ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
@@ -72,7 +72,7 @@ class ShareAuditListenerTest {
     @Test
     void onShareCreated_handlesNullSubjectIdAndMessage() {
         listener.onShareCreated(new ShareCreatedEvent(
-            ACTOR, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+            ACTOR, UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
             "everyone", null, Preset.READ, null, null
         ));
 
@@ -88,7 +88,7 @@ class ShareAuditListenerTest {
     @Test
     void onShareCreated_escapesQuotesInMessage() {
         listener.onShareCreated(new ShareCreatedEvent(
-            ACTOR, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+            ACTOR, UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
             "user", UUID.randomUUID(), Preset.READ, null, "say \"hi\"\nbye"
         ));
 
@@ -108,7 +108,7 @@ class ShareAuditListenerTest {
         Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
 
         listener.onShareRevoked(new ShareRevokedEvent(
-            ACTOR, shareId, fileId, permissionId, originalSharedBy,
+            ACTOR, shareId, fileId, null, permissionId, originalSharedBy,
             createdAt, null, "tk msg"
         ));
 
@@ -139,7 +139,7 @@ class ShareAuditListenerTest {
 
         // ADR #24 — 실패는 ERROR 로그만 + 비즈니스 흐름에 영향 없음.
         listener.onShareCreated(new ShareCreatedEvent(
-            ACTOR, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+            ACTOR, UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
             "user", UUID.randomUUID(), Preset.READ, null, null
         ));
 
@@ -151,10 +151,67 @@ class ShareAuditListenerTest {
         doThrow(new RuntimeException("db down")).when(auditService).record(any());
 
         listener.onShareRevoked(new ShareRevokedEvent(
-            ACTOR, UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(),
+            ACTOR, UUID.randomUUID(), UUID.randomUUID(), null, UUID.randomUUID(),
             UUID.randomUUID(), Instant.now(), null, null
         ));
 
         verify(auditService).record(any());
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // A12 — folder variant (file_id 대신 folder_id JSON 키로 분기)
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void onShareCreated_folderVariant_emitsFolderIdJsonKey() {
+        UUID shareId = UUID.randomUUID();
+        UUID folderId = UUID.randomUUID();
+        UUID permissionId = UUID.randomUUID();
+        UUID subjectId = UUID.randomUUID();
+
+        listener.onShareCreated(new ShareCreatedEvent(
+            ACTOR, shareId, null, folderId, permissionId,
+            "user", subjectId, Preset.EDIT, null, "folder share"
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.SHARE_CREATED);
+        assertThat(ev.targetId()).isEqualTo(shareId);
+        // folder_id 키로 출현하고 file_id는 없어야 함.
+        assertThat(ev.afterState())
+            .contains("\"folder_id\":\"" + folderId + "\"")
+            .doesNotContain("\"file_id\"");
+        assertThat(ev.metadata())
+            .contains("\"folder_id\":\"" + folderId + "\"")
+            .doesNotContain("\"file_id\"");
+    }
+
+    @Test
+    void onShareRevoked_folderVariant_emitsFolderIdJsonKey() {
+        UUID shareId = UUID.randomUUID();
+        UUID folderId = UUID.randomUUID();
+        UUID permissionId = UUID.randomUUID();
+        UUID originalSharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
+
+        listener.onShareRevoked(new ShareRevokedEvent(
+            ACTOR, shareId, null, folderId, permissionId, originalSharedBy,
+            createdAt, null, null
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent ev = captor.getValue();
+
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.SHARE_REVOKED);
+        assertThat(ev.beforeState())
+            .contains("\"folder_id\":\"" + folderId + "\"")
+            .doesNotContain("\"file_id\"");
+        assertThat(ev.metadata())
+            .contains("\"folder_id\":\"" + folderId + "\"")
+            .doesNotContain("\"file_id\"");
     }
 }

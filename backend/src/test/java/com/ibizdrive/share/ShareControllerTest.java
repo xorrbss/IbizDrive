@@ -127,6 +127,83 @@ class ShareControllerTest {
             .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // ── POST /api/folders/{folderId}/share — A12 ───────────────────────
+
+    @Test
+    void createFolderShare_returns201WithSharesEnvelope() {
+        UUID folderId = UUID.randomUUID();
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "edit", null, null
+        );
+        Share s = makeFolderShare(folderId);
+        when(commandService.createFolderShares(eq(folderId), eq(req), eq(ACTOR)))
+            .thenReturn(List.of(s));
+
+        ResponseEntity<Map<String, List<ShareDto>>> res =
+            controller.createFolderShare(folderId, req, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(res.getBody()).containsKey("shares");
+        List<ShareDto> dtos = res.getBody().get("shares");
+        assertThat(dtos).hasSize(1);
+        assertThat(dtos.get(0).id()).isEqualTo(s.getId());
+        // file POST의 createShares가 호출되지 않아야 — folder path 분기 확인.
+        verify(commandService).createFolderShares(folderId, req, ACTOR);
+    }
+
+    @Test
+    void createFolderShare_multipleSubjects_returnsAllSharesInOrder() {
+        UUID folderId = UUID.randomUUID();
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(
+                new ShareCreateRequest.Subject("user", UUID.randomUUID()),
+                new ShareCreateRequest.Subject("department", UUID.randomUUID())
+            ),
+            "read", null, "msg"
+        );
+        Share s1 = makeFolderShare(folderId);
+        Share s2 = makeFolderShare(folderId);
+        when(commandService.createFolderShares(eq(folderId), eq(req), eq(ACTOR)))
+            .thenReturn(List.of(s1, s2));
+
+        ResponseEntity<Map<String, List<ShareDto>>> res =
+            controller.createFolderShare(folderId, req, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(res.getBody().get("shares")).hasSize(2);
+        assertThat(res.getBody().get("shares").get(0).id()).isEqualTo(s1.getId());
+        assertThat(res.getBody().get("shares").get(1).id()).isEqualTo(s2.getId());
+    }
+
+    @Test
+    void createFolderShare_propagatesResourceNotFound() {
+        UUID folderId = UUID.randomUUID();
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "read", null, null
+        );
+        when(commandService.createFolderShares(any(), any(), any()))
+            .thenThrow(new ResourceNotFoundException("folder not found"));
+
+        assertThatThrownBy(() -> controller.createFolderShare(folderId, req, principal))
+            .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    @Test
+    void createFolderShare_propagatesIllegalArgument() {
+        UUID folderId = UUID.randomUUID();
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "share", null, null
+        );
+        when(commandService.createFolderShares(any(), any(), any()))
+            .thenThrow(new IllegalArgumentException("preset 'share' is not persistable"));
+
+        assertThatThrownBy(() -> controller.createFolderShare(folderId, req, principal))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     // ── DELETE /api/shares/{shareId} ────────────────────────────────────
 
     @Test
@@ -215,6 +292,17 @@ class ShareControllerTest {
         s.setId(UUID.randomUUID());
         s.setFileId(fileId);
         s.setFolderId(null);
+        s.setPermissionId(UUID.randomUUID());
+        s.setSharedBy(ACTOR);
+        s.setCreatedAt(Instant.now());
+        return s;
+    }
+
+    private static Share makeFolderShare(UUID folderId) {
+        Share s = new Share();
+        s.setId(UUID.randomUUID());
+        s.setFileId(null);
+        s.setFolderId(folderId);
         s.setPermissionId(UUID.randomUUID());
         s.setSharedBy(ACTOR);
         s.setCreatedAt(Instant.now());

@@ -3,6 +3,8 @@ package com.ibizdrive.share;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.folder.Folder;
+import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
@@ -55,17 +57,20 @@ public class ShareCommandService {
     private static final int MESSAGE_MAX_LENGTH = 1000;
 
     private final FileRepository fileRepository;
+    private final FolderRepository folderRepository;
     private final PermissionService permissionService;
     private final PermissionRepository permissionRepository;
     private final ShareRepository shareRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public ShareCommandService(FileRepository fileRepository,
+                               FolderRepository folderRepository,
                                PermissionService permissionService,
                                PermissionRepository permissionRepository,
                                ShareRepository shareRepository,
                                ApplicationEventPublisher eventPublisher) {
         this.fileRepository = fileRepository;
+        this.folderRepository = folderRepository;
         this.permissionService = permissionService;
         this.permissionRepository = permissionRepository;
         this.shareRepository = shareRepository;
@@ -130,6 +135,76 @@ public class ShareCommandService {
                 actorId,
                 share.getId(),
                 file.getId(),
+                null,                                  // folderId — file path
+                grant.getId(),
+                subject.type(),
+                subjectId,
+                preset,
+                request.expiresAt(),
+                request.message()
+            ));
+            created.add(share);
+        }
+        return created;
+    }
+
+    /**
+     * A12 — POST /api/folders/:folderId/share 트랜잭션 처리. {@link #createShares}(file)와 동형이며,
+     * 차이는 (1) {@link FolderRepository}로 active folder 검증 (2) {@code share.setFolderId(folderId)} +
+     * {@code share.setFileId(null)} (3) {@link PermissionService#grantPermission}에 {@code "folder"} 전달
+     * (4) {@link ShareCreatedEvent}에 {@code folderId} 채움 (XOR invariant).
+     *
+     * <p>입력 검증/공통 helper(parsePreset/validateMessage/expiresAt 미래)는 file 변형과 1:1 재사용.
+     */
+    @Transactional
+    public List<Share> createFolderShares(UUID folderId, ShareCreateRequest request, UUID actorId) {
+        if (folderId == null) throw new IllegalArgumentException("folderId must not be null");
+        if (actorId == null) throw new IllegalArgumentException("actorId must not be null");
+        if (request == null) throw new IllegalArgumentException("request must not be null");
+
+        Preset preset = parsePreset(request.preset());
+        validateMessage(request.message());
+        if (request.expiresAt() != null && !request.expiresAt().isAfter(Instant.now())) {
+            throw new IllegalArgumentException("expiresAt must be in the future");
+        }
+        List<ShareCreateRequest.Subject> subjects = request.subjects();
+        if (subjects == null || subjects.isEmpty()) {
+            throw new IllegalArgumentException("subjects must not be empty");
+        }
+
+        Folder folder = folderRepository.findByIdAndDeletedAtIsNull(folderId)
+            .orElseThrow(() -> new ResourceNotFoundException("folder not found: " + folderId));
+
+        List<Share> created = new ArrayList<>(subjects.size());
+        for (ShareCreateRequest.Subject subject : subjects) {
+            if (subject == null || subject.type() == null) {
+                throw new IllegalArgumentException("subject.type must not be null");
+            }
+            UUID subjectId = "everyone".equals(subject.type()) ? null : subject.id();
+
+            PermissionRow grant = permissionService.grantPermission(
+                "folder", folder.getId(), subject.type(), subjectId,
+                preset, request.expiresAt(), actorId
+            );
+
+            Share share = new Share();
+            share.setId(UUID.randomUUID());
+            share.setFileId(null);                          // folder share — XOR invariant
+            share.setFolderId(folder.getId());
+            share.setPermissionId(grant.getId());
+            share.setSharedBy(actorId);
+            share.setMessage(request.message());
+            share.setExpiresAt(request.expiresAt());
+            share.setCreatedAt(Instant.now());
+            share.setRevokedAt(null);
+            share.setRevokedBy(null);
+            shareRepository.saveAndFlush(share);
+
+            eventPublisher.publishEvent(new ShareCreatedEvent(
+                actorId,
+                share.getId(),
+                null,                                  // fileId — folder path
+                folder.getId(),
                 grant.getId(),
                 subject.type(),
                 subjectId,
@@ -170,7 +245,9 @@ public class ShareCommandService {
             .orElseThrow(() -> new ResourceNotFoundException("share not found or already revoked: " + shareId));
 
         // V6 CASCADE 직전 snapshot — event payload용. share row는 곧 삭제됨.
+        // file/folder XOR — 둘 중 정확히 한 쪽이 NOT NULL (V6 CHECK 보증).
         UUID fileId = share.getFileId();
+        UUID folderId = share.getFolderId();
         UUID permissionId = share.getPermissionId();
         UUID originalSharedBy = share.getSharedBy();
         Instant originalCreatedAt = share.getCreatedAt();
@@ -190,6 +267,7 @@ public class ShareCommandService {
             actorId,
             shareId,
             fileId,
+            folderId,
             permissionId,
             originalSharedBy,
             originalCreatedAt,

@@ -3,6 +3,8 @@ package com.ibizdrive.share;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.folder.Folder;
+import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
@@ -54,6 +56,8 @@ class ShareCommandServiceTest {
     @Mock
     FileRepository fileRepository;
     @Mock
+    FolderRepository folderRepository;
+    @Mock
     PermissionService permissionService;
     @Mock
     PermissionRepository permissionRepository;
@@ -66,16 +70,21 @@ class ShareCommandServiceTest {
     ShareCommandService service;
 
     UUID fileId;
+    UUID folderId;
     UUID actorId;
     FileItem file;
+    Folder folder;
 
     @BeforeEach
     void setUp() {
         fileId = UUID.randomUUID();
+        folderId = UUID.randomUUID();
         actorId = UUID.randomUUID();
         // FileItem has package-protected no-arg ctor — mock + stub getter to avoid cross-package access.
         file = mock(FileItem.class);
         when(file.getId()).thenReturn(fileId);
+        folder = mock(Folder.class);
+        when(folder.getId()).thenReturn(folderId);
     }
 
     @Test
@@ -264,6 +273,173 @@ class ShareCommandServiceTest {
         assertThat(result.get(0).getMessage()).isEqualTo(exact1000);
     }
 
+    // ── A12 — createFolderShares (folder variant) ────────────────────────
+
+    @Test
+    void createFolderShares_throwsNotFound_whenFolderMissing() {
+        when(folderRepository.findByIdAndDeletedAtIsNull(folderId)).thenReturn(Optional.empty());
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "read", null, null
+        );
+
+        assertThatThrownBy(() -> service.createFolderShares(folderId, req, actorId))
+            .isInstanceOf(ResourceNotFoundException.class);
+
+        verify(permissionService, never()).grantPermission(
+            any(), any(), any(), any(), any(), any(), any());
+        verify(shareRepository, never()).saveAndFlush(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void createFolderShares_rejectsEmptySubjects() {
+        ShareCreateRequest req = new ShareCreateRequest(List.of(), "read", null, null);
+
+        assertThatThrownBy(() -> service.createFolderShares(folderId, req, actorId))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("subjects");
+
+        verify(folderRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void createFolderShares_rejectsPresetShare_v5CheckIncompatible() {
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "share", null, null
+        );
+
+        assertThatThrownBy(() -> service.createFolderShares(folderId, req, actorId))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("share");
+    }
+
+    @Test
+    void createFolderShares_rejectsExpiresAtInPast() {
+        Instant past = Instant.now().minus(1, ChronoUnit.HOURS);
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "read", past, null
+        );
+
+        assertThatThrownBy(() -> service.createFolderShares(folderId, req, actorId))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("future");
+    }
+
+    @Test
+    void createFolderShares_rejectsMessageOver1000Chars() {
+        String tooLong = "x".repeat(1001);
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", UUID.randomUUID())),
+            "read", null, tooLong
+        );
+
+        assertThatThrownBy(() -> service.createFolderShares(folderId, req, actorId))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("1000");
+    }
+
+    @Test
+    void createFolderShares_singleUserSubject_passesFolderTypeAndSetsXorInvariant() {
+        UUID subjectId = UUID.randomUUID();
+        UUID grantId = UUID.randomUUID();
+        PermissionRow grant = grantRow(grantId);
+        when(folderRepository.findByIdAndDeletedAtIsNull(folderId)).thenReturn(Optional.of(folder));
+        when(permissionService.grantPermission(eq("folder"), eq(folderId), eq("user"),
+            eq(subjectId), any(), any(), eq(actorId))).thenReturn(grant);
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("user", subjectId)),
+            "edit", null, "folder hello"
+        );
+
+        List<Share> result = service.createFolderShares(folderId, req, actorId);
+
+        assertThat(result).hasSize(1);
+        Share saved = result.get(0);
+        // V6 XOR — folderId NOT NULL, fileId NULL.
+        assertThat(saved.getFolderId()).isEqualTo(folderId);
+        assertThat(saved.getFileId()).isNull();
+        assertThat(saved.getPermissionId()).isEqualTo(grantId);
+        assertThat(saved.getSharedBy()).isEqualTo(actorId);
+        assertThat(saved.getMessage()).isEqualTo("folder hello");
+
+        // PermissionService에 nodeType="folder" 전달 (file path와 분기 확인).
+        verify(permissionService).grantPermission(eq("folder"), eq(folderId), eq("user"),
+            eq(subjectId), any(), any(), eq(actorId));
+        verify(shareRepository, times(1)).saveAndFlush(any(Share.class));
+
+        ArgumentCaptor<ShareCreatedEvent> evCaptor = ArgumentCaptor.forClass(ShareCreatedEvent.class);
+        verify(eventPublisher, times(1)).publishEvent(evCaptor.capture());
+        ShareCreatedEvent ev = evCaptor.getValue();
+        // file/folder XOR invariant in event payload.
+        assertThat(ev.fileId()).isNull();
+        assertThat(ev.folderId()).isEqualTo(folderId);
+        assertThat(ev.permissionId()).isEqualTo(grantId);
+        assertThat(ev.subjectType()).isEqualTo("user");
+        assertThat(ev.subjectId()).isEqualTo(subjectId);
+        assertThat(ev.preset().wire()).isEqualTo("edit");
+    }
+
+    @Test
+    void createFolderShares_multipleSubjects_callsGrantPermissionPerSubject() {
+        UUID s1 = UUID.randomUUID();
+        UUID s2 = UUID.randomUUID();
+        PermissionRow grant1 = grantRow(UUID.randomUUID());
+        PermissionRow grant2 = grantRow(UUID.randomUUID());
+        when(folderRepository.findByIdAndDeletedAtIsNull(folderId)).thenReturn(Optional.of(folder));
+        when(permissionService.grantPermission(eq("folder"), eq(folderId), eq("user"),
+            eq(s1), any(), any(), eq(actorId))).thenReturn(grant1);
+        when(permissionService.grantPermission(eq("folder"), eq(folderId), eq("department"),
+            eq(s2), any(), any(), eq(actorId))).thenReturn(grant2);
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(
+                new ShareCreateRequest.Subject("user", s1),
+                new ShareCreateRequest.Subject("department", s2)
+            ),
+            "upload", null, null
+        );
+
+        List<Share> result = service.createFolderShares(folderId, req, actorId);
+
+        assertThat(result).hasSize(2);
+        verify(permissionService, times(2)).grantPermission(
+            eq("folder"), eq(folderId), any(), any(), any(), any(), any());
+        verify(shareRepository, times(2)).saveAndFlush(any(Share.class));
+        verify(eventPublisher, times(2)).publishEvent(any(ShareCreatedEvent.class));
+    }
+
+    @Test
+    void revokeShare_folderShare_publishesEventWithFolderIdAndNullFileId() {
+        UUID shareId = UUID.randomUUID();
+        UUID sharePermissionId = UUID.randomUUID();
+        UUID shareFolderId = UUID.randomUUID();
+        UUID sharedBy = UUID.randomUUID();
+        Instant createdAt = Instant.parse("2026-04-01T00:00:00Z");
+
+        Share share = mock(Share.class);
+        when(share.getFileId()).thenReturn(null);              // folder share — XOR
+        when(share.getFolderId()).thenReturn(shareFolderId);
+        when(share.getPermissionId()).thenReturn(sharePermissionId);
+        when(share.getSharedBy()).thenReturn(sharedBy);
+        when(share.getCreatedAt()).thenReturn(createdAt);
+        when(shareRepository.lockByIdAndRevokedAtIsNull(shareId)).thenReturn(Optional.of(share));
+
+        service.revokeShare(shareId, actorId);
+
+        verify(permissionRepository).deleteById(sharePermissionId);
+
+        ArgumentCaptor<ShareRevokedEvent> evCaptor = ArgumentCaptor.forClass(ShareRevokedEvent.class);
+        verify(eventPublisher).publishEvent(evCaptor.capture());
+        ShareRevokedEvent ev = evCaptor.getValue();
+        assertThat(ev.fileId()).isNull();
+        assertThat(ev.folderId()).isEqualTo(shareFolderId);
+        assertThat(ev.permissionId()).isEqualTo(sharePermissionId);
+    }
+
     /** PermissionRow ctor도 package-protected — service는 row.getId()만 쓰므로 mock으로 충분. */
     private PermissionRow grantRow(UUID id) {
         PermissionRow row = mock(PermissionRow.class);
@@ -319,6 +495,7 @@ class ShareCommandServiceTest {
         assertThat(ev.actorId()).isEqualTo(actorId);
         assertThat(ev.shareId()).isEqualTo(shareId);
         assertThat(ev.fileId()).isEqualTo(shareFileId);
+        assertThat(ev.folderId()).isNull();   // A12 — file path XOR invariant
         assertThat(ev.permissionId()).isEqualTo(sharePermissionId);
         assertThat(ev.originalSharedBy()).isEqualTo(sharedBy);
         assertThat(ev.originalCreatedAt()).isEqualTo(createdAt);
