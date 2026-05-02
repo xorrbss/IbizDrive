@@ -12,11 +12,16 @@ import { useLogout } from '@/hooks/useLogout'
  *
  * <p>로그아웃: useLogout이 onSettled에서 캐시 clear → 즉시 router.replace('/login')로
  * AuthGuard 우회 redirect. mutateAsync 실패도 catch해서 같은 경로 진행 — 사용자 의도가 로그아웃.
+ *
+ * <p>m-admin-entry: roles에 'ADMIN'이 포함된 경우 "관리자 페이지" 진입 링크 노출.
+ * 보안 가드가 아니라 UX 진입 동선이며, 백엔드 가드는 별도 트랙에서 강제(docs/04 §1).
  */
 export function UserMenu() {
   const { data } = useMe()
   const logout = useLogout()
   const router = useRouter()
+
+  const isAdmin = !!data?.roles?.includes('ADMIN')
 
   const onClick = async () => {
     try {
@@ -28,8 +33,16 @@ export function UserMenu() {
   }
 
   return (
-    <div className="flex flex-col gap-1 px-2 py-2 mt-1 border-t border-border">
-      <div className="flex items-center justify-between gap-2">
+    <div className="flex flex-col gap-1 mt-1 border-t border-border">
+      {isAdmin && (
+        <Link
+          href="/admin"
+          className="mx-2 mt-2 px-2 py-1 rounded text-[11px] text-center text-fg-2 border border-border hover:bg-surface-2 hover:text-fg"
+        >
+          관리자 페이지
+        </Link>
+      )}
+      <div className="flex items-center justify-between gap-2 px-2 py-2">
         <div className="min-w-0 flex flex-col">
           <span className="text-[12px] font-medium text-fg truncate">
             {data?.user?.name ?? '사용자'}
@@ -49,7 +62,7 @@ export function UserMenu() {
       </div>
       <Link
         href="/account/password"
-        className="text-[11px] text-fg-muted underline hover:text-fg self-start"
+        className="mx-2 mb-2 text-[11px] text-fg-muted underline hover:text-fg self-start"
       >
         비밀번호 변경
       </Link>
