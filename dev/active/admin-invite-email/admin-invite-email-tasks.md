@@ -9,14 +9,14 @@ Last Updated: 2026-05-03
 | Phase | 상태 |
 |---|---|
 | P1 — backend AdminUserService + temp PW + audit emission (TDD) | ✅ 완료 (2026-05-03) |
-| P2 — backend AdminUserController + Security 가드 (TDD) | ⬜ 대기 |
+| P2 — backend AdminUserController + Security 가드 (TDD) | ✅ 완료 (2026-05-03) |
 | P3 — frontend api + hook (TDD) | ⬜ 대기 |
 | P4 — frontend `/admin/users` page (TDD) | ⬜ 대기 |
 | P5 — closure (docs sync + archive + PR) | ⬜ 대기 |
 
 ---
 
-## 현재 active phase: **P2**
+## 현재 active phase: **P3**
 
 ---
 
@@ -85,16 +85,16 @@ Last Updated: 2026-05-03
 
 ### 작업 항목
 
-- [ ] `backend/src/test/java/com/ibizdrive/admin/AdminUserControllerTest.java` 신설
-  - [ ] `invite_200_admin`
-  - [ ] `invite_401_anonymous`
-  - [ ] `invite_403_member`
-  - [ ] `invite_400_validation` (email 누락/형식, displayName blank, role invalid)
-  - [ ] `invite_409_duplicateEmail`
-- [ ] `backend/.../admin/AdminUserController.java` 신설 (`@PostMapping("/api/admin/users")`, `@PreAuthorize("hasRole('ADMIN')")`)
-- [ ] `backend/.../admin/AdminInviteUserRequest.java` 신설 (Bean Validation: `@NotBlank @Email @Size(max=254)` email, `@NotBlank @Size(min=1, max=100)` displayName, `@NotNull` role)
-- [ ] `DuplicateEmailException` 핸들러 재사용 확인 (`AuthExceptionHandler` 또는 `@ControllerAdvice`)
-- [ ] `./gradlew test` BUILD SUCCESSFUL
+- [x] `backend/src/test/java/com/ibizdrive/admin/AdminUserControllerTest.java` 신설
+  - [x] `invite_200_admin`
+  - [x] `invite_401_anonymous`
+  - [x] `invite_403_member`
+  - [x] `invite_400_validation` (email 형식, displayName blank, role null — 3개 split)
+  - [x] `invite_409_duplicateEmail`
+- [x] `backend/.../admin/AdminUserController.java` 신설 (`@PostMapping("/api/admin/users")`, `@PreAuthorize("hasRole('ADMIN')")`)
+- [x] `backend/.../admin/AdminInviteUserRequest.java` 신설 (Bean Validation: `@NotBlank @Email @Size(max=254)` email, `@NotBlank @Size(max=100)` displayName, `@NotNull` role)
+- [x] `DuplicateEmailException` 핸들러 재사용 확인 (`AuthExceptionHandler` 기존 매핑 재사용 — 신규 핸들러 없음)
+- [x] `./gradlew test` BUILD SUCCESSFUL (회귀 0)
 - [ ] commit: `feat(admin-invite-email): P2 backend AdminUserController + admin role guard (TDD)`
 
 ### 작업 전 필독

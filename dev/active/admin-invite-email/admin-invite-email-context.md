@@ -9,6 +9,7 @@ Last Updated: 2026-05-03
 - 2026-05-03: bootstrap. 5 phase 계획 고정 (P1 backend service+TDD / P2 backend controller+security TDD / P3 frontend api+hook TDD / P4 frontend page TDD / P5 closure).
 - 코드 변경 0. dev-docs 3파일만.
 - 2026-05-03: P1 완료. branch `wip/admin-invite-email` (from master). `AdminUserServiceTest` 7건 + 구현 5파일(`AdminUserService`, `TempPasswordGenerator`, `AdminUserCreatedEvent`, `AdminAuditListener`, `AdminInviteUserResponse`). `./gradlew test` BUILD SUCCESSFUL (회귀 0). 임시 PW 비노출 invariant 테스트로 강제 (Jackson JSON에 tempPassword/password/hash 키 부재 검증). audit emit coverage 31/42 → 32/42 (코드 경로 추가, P5 docs 표 갱신 예정).
+- 2026-05-03: P2 완료. `AdminUserControllerTest` 7건(200/401/403/400×3/409) + 구현 2파일(`AdminUserController`, `AdminInviteUserRequest`). `@PreAuthorize("hasRole('ADMIN')")` + Bean Validation. `DuplicateEmailException` → 409 매핑 `AuthExceptionHandler` 기존 핸들러 재사용 (신규 핸들러 0). `SecurityConfig` 변경 0. `./gradlew test` BUILD SUCCESSFUL (회귀 0). 응답 JSON에 tempPassword/password/passwordHash 키 부재 jsonPath 검증.
 
 ## Current Execution Contract
 
@@ -20,9 +21,9 @@ Last Updated: 2026-05-03
 
 ## 현재 active task
 
-P2 — 백엔드: `AdminUserController` (`POST /api/admin/users`) + `@PreAuthorize("hasRole('ADMIN')")` + `AdminInviteUserRequest` Bean Validation, TDD.
+P3 — 프론트엔드: `frontend/src/lib/api.ts` `adminInviteUser()` + `useAdminInviteUser` hook, TDD.
 
-진입점: `dev/active/admin-invite-email/admin-invite-email-tasks.md` Phase 2.
+진입점: `dev/active/admin-invite-email/admin-invite-email-tasks.md` Phase 3.
 
 ## 다음 세션 읽기 순서
 
