@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-05-03 — 🏁 auth-must-change-pw 트랙 종료 (ADR #21 mustChangePassword UX 강제 closure)
+
+### 범위
+
+`dev/active/auth-must-change-pw/` bootstrap → P1 backend TDD (PasswordResetService.change()/reset()이 PW hash 갱신 직후 `User.clearMustChangePassword()` 호출 — 단일 트랜잭션 내 영속화. 이 클리어 없으면 프론트 enforce가 무한 redirect 루프) → P2 frontend LoginPage TDD (`postLoginTarget` 헬퍼로 redirect 단일화 — `me.user.mustChangePassword=true` 시 `next` 무시하고 `/account/password?force=1`) → P3 AuthGuard TDD (`usePathname` 도입 + 로그인 사용자라도 `mustChangePassword=true && pathname!=='/account/password'`이면 bounce, `/account/password` 자체에서는 통과로 무한 루프 회피) → P4 `/account/password` force UI TDD (`?force=1` 시 amber 배너 `role=alert` + "돌아가기" hide + 성공 시 `router.replace('/files')`, `usePasswordChange.onSuccess`가 `qk.authMe()` invalidate) → P5 closure (docs/03 §2.7 "강제 비밀번호 변경 UX" 절 신설 + §2.8 운영자 초대 reservation note 보강 + 본 entry + dev-docs archive + stacked PR).
+
+### 회고
+
+- **commits**: 3개 + closure.
+  - `1b9d360 wip(auth-must-change-pw): dev-docs bootstrap (plan/context/tasks)`
+  - `7e8e4cc feat(auth-must-change-pw): P1 backend change/reset clear mustChangePassword (TDD)` — PasswordResetServiceTest +2 (change_clearsMustChangePasswordFlag, reset_clearsMustChangePasswordFlag) + sampleUserWithMustChange 헬퍼
+  - `cab34c1 feat(auth-must-change-pw): P2+P3+P4 frontend mustChangePassword UX (TDD)` — LoginPage/AuthGuard/account/password page + 3 신규 테스트 파일(11 케이스)
+  - + closure commit (docs/03/progress/archive)
+- **production 신설/수정**:
+  - backend: `User.clearMustChangePassword()` 신설 + `PasswordResetService.change()/reset()` 양쪽 호출 추가.
+  - frontend: `LoginPage` (`postLoginTarget` 헬퍼 + 두 redirect 분기 분기), `AuthGuard` (`usePathname` + mustChangePassword guard + `data` undefined 가드), `/account/password/page` (Suspense 경계 + `useSearchParams('force')` + 배너 + 돌아가기 조건부 렌더 + force 모드 redirect), `usePasswordChange` (onSuccess invalidate `qk.authMe`).
+  - tests 신설: `PasswordResetServiceTest +2` / `LoginPage page.test.tsx (3)` / `AuthGuard.test.tsx (3)` / `account/password page.test.tsx (5)` = 합 13.
+- **docs sync**:
+  - `docs/03 §2.7` 끝에 "강제 비밀번호 변경 UX (auth-must-change-pw 트랙, 2026-05-03)" 절 신설 — 백엔드 클리어 + 프론트 LoginPage·AuthGuard·force UI·invalidation flow 명시.
+  - `docs/03 §2.8` 운영자 초대 reservation note 보강 — 강제 변경 UX는 §2.7로 분리되어 활성화 완료, admin invite endpoint만 도입하면 즉시 동작.
+- **dev-docs**: `dev/active/auth-must-change-pw/` (3파일) → closure 후 `dev/completed/`로 이동 + `dev/process/auth-must-change-pw.md` 정리.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — PasswordResetServiceTest 신규 2 + 기존 통과, 회귀 0.
+  - frontend `pnpm typecheck && pnpm lint && pnpm vitest run` — 685/685 통과 (681 → +13 케이스 일부 기존 테스트 통합 후 net +4 테스트 파일, 신규 11 → total 685).
+
+### 핵심 결정 (auth-must-change-pw 트랙)
+
+1. **백엔드 클리어가 선결조건**: 프론트 enforce(redirect)만 추가하면 `change()`/`reset()` 후에도 플래그가 true로 남아 무한 redirect. `clearMustChangePassword()`를 mutator로 도입(boolean setter 노출 회피, idempotent — 자발적 변경 false→false 무해).
+2. **`reset()`도 클리어**: ADR #21 §2.8 "사용자가 reset link로 PW 설정 → mustChangePassword=false 처리"와 일치. 자발적 분실 reset은 원래 false였을 가능성 높지만 idempotent라 무해.
+3. **`postLoginTarget` 헬퍼**: useEffect(이미 로그인) + onSubmit(신규 로그인) 두 경로의 redirect 결정 로직을 단일 함수로 통합 — 분기 누락 위험 제거.
+4. **`usePathname` 도입 vs 기존 `window.location`**: 새 가드 분기에서만 `usePathname()`을 쓰고, 기존 401 분기의 `next` 구성은 `window.location.search`까지 포함하므로 그대로 유지. 변경 최소화 원칙(KISS).
+5. **`/account/password`가 force redirect의 종착점**: AuthGuard에서 `pathname === '/account/password'` 예외 처리로 무한 루프 회피. force=1 query는 정보 표시(배너)와 변경 성공 후 `/files` redirect 트리거 용도. 진실의 출처는 `me.user.mustChangePassword`(useMe staleTime 60s + invalidate).
+6. **`usePasswordChange.onSuccess`에서 useMe invalidate**: force 모드 → `/files` 전환 시 AuthGuard가 stale 플래그(true)로 bounce하지 않도록. `await qc.invalidateQueries({ queryKey: qk.authMe() })`로 refetch 완료 후 `router.replace('/files')` 실행.
+7. **audit 변동 없음**: `USER_PASSWORD_CHANGED`/`USER_PASSWORD_RESET`이 이미 emit. 플래그 변화에 별도 이벤트 추가 안 함 (audit emit coverage 31/42 유지).
+
+### 다음 세션 컨텍스트
+
+- **password 정책 강화** — min=8 → min=12 + zxcvbn/HIBP, /signup·/reset·/change 양쪽 적용 (ADR #19 본문 정합 회복).
+- **이메일 송신 비동기화** — `@Async` + `TaskExecutor`로 forgot 응답 latency 균일화.
+- **이메일 초대 endpoint** (`POST /api/admin/users` invite-by-email) — ADR #21 잔여 admin 트랙. 강제 UX는 본 트랙으로 닫혔으므로 endpoint만 추가하면 end-to-end flow 완성.
+- **rate limit on /forgot** — 동일 email/IP 분당 1회 등 (브루트포스 enumeration 추가 방어).
+
+---
+
 ## 2026-05-02 — 🏁 a1.5-email-infra 트랙 종료 (Spring Mail + password reset/change + 3 endpoints + 3 pages, ADR #42·#43)
 
 ### 범위

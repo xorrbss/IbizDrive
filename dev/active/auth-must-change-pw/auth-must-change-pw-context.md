@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-05-02
+Last Updated: 2026-05-03
 ---
 
 # Context — auth-must-change-pw
@@ -7,6 +7,12 @@ Last Updated: 2026-05-02
 ## SESSION PROGRESS
 
 - 2026-05-02 세션 0: dev-docs bootstrap, 컨텍스트 수집, 범위 고정. 새 브랜치 `wip/auth-must-change-pw` 생성 (origin/master fdb57c7).
+- 2026-05-03 세션 1: P1~P5 전체 완료.
+  - P1 (7e8e4cc): backend `User.clearMustChangePassword()` + `PasswordResetService.change()/reset()` 클리어 호출 + 단위 테스트 2건 (TDD).
+  - P2~P4 (cab34c1): frontend LoginPage `postLoginTarget` helper + AuthGuard pathname 가드 + `/account/password` force UI + `usePasswordChange` qk.authMe invalidate. 신규 테스트 11건.
+  - P5 (closure commit): docs/03 §2.7 강제 비밀번호 변경 UX 서브섹션 + §2.8 운영자 초대 reservation note update + docs/progress.md 트랙 closure entry.
+  - 검증: backend `./gradlew test` BUILD SUCCESSFUL, frontend `pnpm vitest run` 681/681, typecheck/lint clean.
+- 게이트 도달: master push + PR 생성은 사용자 승인 대기.
 
 ## Current Execution Contract
 
@@ -18,7 +24,7 @@ Last Updated: 2026-05-02
 
 ## 현재 active task
 
-P1 — Backend: PasswordResetService change()/reset()에서 mustChangePassword 클리어 (TDD)
+(트랙 종료) — master push + PR 게이트 대기 중.
 
 ## 다음 세션 읽기 순서
 
