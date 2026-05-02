@@ -694,6 +694,23 @@ export function createResumableUpload(file, targetFolderId, callbacks) {
 
 → 같은 `UploadStore` 계약을 유지하므로 훅 구현만 교체 가능.
 
+### 9.5 다운로드 (M-Download)
+
+`BulkActionBar` 다운로드 버튼은 단일 **파일** 선택 시 활성. `api.downloadFile(id)`이
+programmatic anchor 클릭(`<a href="/api/files/{id}/download">` + body append + click +
+remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리거.
+
+- cookie 인증은 same-origin GET → 브라우저 자동 동봉 (별도 `withCredentials` 불요)
+- RFC 5987 `Content-Disposition: attachment; filename*=UTF-8''...`을 backend가 처리하므로
+  파일명 자동 적용
+- 진행률은 브라우저 다운로드 매니저 책임 → fire-and-forget
+- 가드: 단일 파일 선택만 활성. 폴더는 "파일만 다운로드 가능" tooltip, 다중은 "단일
+  파일 선택 시 사용 가능", 캐시 미스(`useFilesInFolder` data undefined) disabled 폴백
+- 다중 zip 다운로드는 별도 트랙(out of scope)
+
+권한은 backend `hasPermission(#id, 'file', 'READ')` (ADR #36 — DOWNLOAD enum 미도입).
+`usePermission().DOWNLOAD`(M8)는 UX 게이트, 진실의 출처는 backend READ 가드.
+
 ---
 
 ## 10. 검색 견고성 (v3 보강)
