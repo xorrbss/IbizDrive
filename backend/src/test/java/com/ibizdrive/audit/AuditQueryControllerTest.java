@@ -176,6 +176,22 @@ class AuditQueryControllerTest {
     }
 
     @Test
+    void targetTypeAndTargetId_areForwardedToService() throws Exception {
+        UUID fileX = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+        mvc.perform(get("/api/admin/audit")
+                .with(user(member))
+                .param("targetType", "file")
+                .param("targetId", fileX.toString()))
+            .andExpect(status().isOk());
+
+        ArgumentCaptor<AuditQueryFilters> filtersCap = ArgumentCaptor.forClass(AuditQueryFilters.class);
+        verify(queryService).search(filtersCap.capture(), anyInt(), anyInt(), any(), any());
+        AuditQueryFilters f = filtersCap.getValue();
+        assertEquals("file", f.targetType());
+        assertEquals(fileX, f.targetId());
+    }
+
+    @Test
     void blankFilters_areNormalizedToNull() throws Exception {
         mvc.perform(get("/api/admin/audit")
                 .with(user(admin))

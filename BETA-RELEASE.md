@@ -1,7 +1,7 @@
 # IbizDrive — Beta Release Checklist (사내 베타)
 
 Last Updated: 2026-05-02
-Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화)
+Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure
 
 > **본 문서의 목적**: 사내 베타 GO/NO-GO 결정에 필요한 단일 페이지 체크리스트.
 > docs/03 §1.3 STRIDE matrix + docs/04 §13 cron + 인프라 게이트를 한 곳으로 모음.
@@ -16,8 +16,8 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 
 | 항목 | 상태 | 검증 |
 |---|---|---|
-| backend test GREEN | ✓ | `cd backend && ./gradlew test` — 75 classes / 723 tests / 522 PASS / 201 skip(no Docker IT) / 0 fail |
-| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 563/563 |
+| backend test GREEN | ✓ | `cd backend && ./gradlew test` — BUILD SUCCESSFUL (M-RP.4 audit filter + RP-2 정책 신규 검증 포함) |
+| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 647/647 (M-RP.1~4 누계 +84 tests) |
 | frontend typecheck/lint/build | ✓ | `pnpm typecheck && pnpm lint && pnpm build` 모두 exit 0 |
 | 코드 위반 (CLAUDE.md §3 11개 원칙) | ✓ FAIL 0 | `findings/principle-conformance.md` |
 | STRIDE 매트릭스 evidence | ✓ 28/28 매핑 | `findings/stride-gap-analysis.md` |
@@ -91,9 +91,10 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | 항목 | 상태 |
 |---|---|
 | audit_log append-only (DB-level REVOKE) | ✓ V4 + `AuditLogAppendOnlyTest` |
-| audit emit coverage | 41 enum 중 26 emit (63%) — 미사용 15는 모두 deferred 항목 (mvp-qa-security Phase 2) |
+| audit emit coverage | 41 enum 중 28 emit (68%) — `VERSION_DOWNLOADED`/`VERSION_RESTORED` 신규 emit (M-RP.2) |
 | `@PreAuthorize` 미보호 mutation | 0 (mvp-qa-security P2.3 검증) |
 | 권한 evaluator (`IbizDrivePermissionEvaluator`) | ✓ A4 + A11/A16 closure |
+| audit query — file 단위 활동 조회 | ✓ M-RP.4 (`?targetType=file&targetId=`) — RP-2 정책: 파일 READ 보유 시 actor 제한 우회 (ADR #40) |
 
 ## 7. v1.x deferred 명시 (사내 베타 가정)
 
@@ -125,7 +126,29 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 
 §2/§3/§8은 staging/prod 인프라 셋업 시점에 채워야 함. **현재 master 시점 = 코드 게이트만 PASS, 인프라 게이트는 운영팀 책임으로 미정 = NO-GO 상태이지만 코드 측 readiness는 완료**.
 
-## 10. 참조
+## 10. RightPanel 4탭 완성 (M-RP 트랙)
+
+| 탭 | 상태 | 비고 |
+|---|---|---|
+| Detail | ✓ pre-MVP | 파일 메타 표시 |
+| Versions | ✓ M-RP.1~2 | read-only list + 버전별 다운로드/복원 (ADR #39 옵션 A — current_version_id 재지정, denormalized 메타 동기화) |
+| Permissions | ✓ M-RP.3 | 9 chip held/unheld 시각 구분 |
+| Activity | ✓ M-RP.4 | 파일 단위 audit timeline (ADR #40 RP-2 정책) |
+
+> 모든 탭은 비활성 시 fetch 차단(`enabled: tab === 'X'`) — 불필요 네트워크 0.
+
+## 11. 버전 관리 (M-RP.2)
+
+| 항목 | 상태 |
+|---|---|
+| `GET /api/files/{fileId}/versions` | ✓ A5 (read) |
+| `GET /api/files/{fileId}/versions/{versionId}/download` | ✓ M-RP.2 — RFC 5987 + READ 가드 + `VERSION_DOWNLOADED` audit |
+| `POST /api/files/{fileId}/versions/{versionId}/restore` | ✓ M-RP.2 — `@Transactional` + SELECT FOR UPDATE + EDIT 가드 + `VERSION_RESTORED` audit |
+| 복원 의미론 | 옵션 A (current_version_id 재지정, 새 version 생성 안 함) — ADR #39 |
+| denormalized 메타 동기화 | `files.size_bytes` / `files.mime_type` — `FileUploadService:214-217` invariant 보존 |
+| 멱등 | 같은 versionId 재호출 시 audit 추가 0 |
+
+## 12. 참조
 
 - 트랙 산출: `dev/active/mvp-qa-security-week-11-12/findings/`
   - `baseline-report.md` — 1차 베이스라인

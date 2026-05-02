@@ -10,6 +10,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.LocalDate;
+import java.util.UUID;
 
 /**
  * 감사 로그 조회 endpoint — docs/02 §7.12 (rename: {@code /api/admin/audit-logs} → {@code /api/admin/audit}).
@@ -40,6 +41,8 @@ public class AuditQueryController {
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate toDate,
         @RequestParam(name = "actorQuery", required = false) String actorQuery,
         @RequestParam(name = "eventType", required = false) String eventType,
+        @RequestParam(name = "targetType", required = false) String targetType,
+        @RequestParam(name = "targetId", required = false) UUID targetId,
         @RequestParam(name = "page", required = false, defaultValue = "1") int page,
         @RequestParam(name = "pageSize", required = false, defaultValue = "20") int pageSize,
         @AuthenticationPrincipal IbizDriveUserDetails principal
@@ -48,7 +51,9 @@ public class AuditQueryController {
             fromDate,
             toDate,
             blankToNull(actorQuery),
-            blankToNull(eventType)
+            blankToNull(eventType),
+            blankToNull(targetType),
+            targetId
         );
         return queryService.search(
             filters,

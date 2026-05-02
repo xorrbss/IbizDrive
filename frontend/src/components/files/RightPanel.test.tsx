@@ -12,10 +12,19 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(mockQuery),
 }))
 
-// Mock api.getFileDetail
+// Mock api.getFileDetail + listFileVersions (M-RP.1) + getEffectivePermissions (M-RP.3) + listFileActivity (M-RP.4)
 const getFileDetailMock = vi.fn()
+const listFileVersionsMock = vi.fn()
+const getEffectivePermissionsMock = vi.fn()
+const listFileActivityMock = vi.fn()
 vi.mock('@/lib/api', () => ({
-  api: { getFileDetail: (...args: unknown[]) => getFileDetailMock(...args) },
+  api: {
+    getFileDetail: (...args: unknown[]) => getFileDetailMock(...args),
+    listFileVersions: (...args: unknown[]) => listFileVersionsMock(...args),
+    getEffectivePermissions: (...args: unknown[]) =>
+      getEffectivePermissionsMock(...args),
+    listFileActivity: (...args: unknown[]) => listFileActivityMock(...args),
+  },
 }))
 
 import { RightPanel } from './RightPanel'
@@ -31,6 +40,17 @@ describe('RightPanel', () => {
   beforeEach(() => {
     replaceMock.mockReset()
     getFileDetailMock.mockReset()
+    listFileVersionsMock.mockReset()
+    listFileVersionsMock.mockResolvedValue([])
+    getEffectivePermissionsMock.mockReset()
+    getEffectivePermissionsMock.mockResolvedValue([])
+    listFileActivityMock.mockReset()
+    listFileActivityMock.mockResolvedValue({
+      entries: [],
+      total: 0,
+      page: 1,
+      pageSize: 20,
+    })
     mockQuery = ''
   })
 
@@ -120,7 +140,7 @@ describe('RightPanel', () => {
     expect(screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected')).toBe('false')
   })
 
-  it('M15.4 — 탭 클릭 시 active 변경 + placeholder 표시', async () => {
+  it('M-RP.4 — 활동 탭 클릭 시 listFileActivity 호출 + 빈 상태 메시지', async () => {
     mockQuery = 'file=file_abc'
     getFileDetailMock.mockResolvedValue({
       id: 'file_abc',
@@ -133,9 +153,211 @@ describe('RightPanel', () => {
       parentId: 'root',
     })
     wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '활동' }))
+    expect(
+      screen.getByRole('tab', { name: '활동' }).getAttribute('aria-selected'),
+    ).toBe('true')
+    await waitFor(() => {
+      expect(screen.getByText('활동 내역이 없습니다.')).toBeTruthy()
+    })
+    expect(listFileActivityMock).toHaveBeenCalledWith('file_abc', 1, 20)
+  })
+
+  it('M-RP.4 — 활동 탭에서 list 렌더 (eventType + actor 표시)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    listFileActivityMock.mockResolvedValue({
+      entries: [
+        {
+          id: '101',
+          occurredAt: '2026-04-30T10:00:00Z',
+          eventType: 'file.uploaded',
+          actorId: 'u1',
+          actorName: '김영수',
+          resourceType: 'file',
+          resourceId: 'file_abc',
+          resourceName: null,
+          ip: '203.0.113.10',
+          metadata: null,
+        },
+      ],
+      total: 1,
+      page: 1,
+      pageSize: 20,
+    })
+    wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '활동' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('파일 활동 타임라인')).toBeTruthy()
+    })
+    expect(screen.getByText('업로드')).toBeTruthy()
+    expect(screen.getByText('김영수')).toBeTruthy()
+  })
+
+  it('M-RP.4 — 비-activity 탭에서는 listFileActivity 호출 안 됨 (conditional render)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(getFileDetailMock).toHaveBeenCalled()
+    })
+    expect(listFileActivityMock).not.toHaveBeenCalled()
+  })
+
+  it('M-RP.3 — 권한 탭 클릭 시 권한 chip 9개 렌더 + 보유 권한 강조', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    getEffectivePermissionsMock.mockResolvedValue(['READ', 'DOWNLOAD'])
+    wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '권한' }))
+    expect(
+      screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected'),
+    ).toBe('true')
+    const list = await screen.findByLabelText('파일 권한 목록')
+    expect(list.querySelectorAll('li').length).toBe(9)
+    await waitFor(() => {
+      expect(
+        document
+          .querySelector('[data-permission="READ"]')
+          ?.getAttribute('data-held'),
+      ).toBe('true')
+    })
+    expect(
+      document
+        .querySelector('[data-permission="EDIT"]')
+        ?.getAttribute('data-held'),
+    ).toBe('false')
+    expect(getEffectivePermissionsMock).toHaveBeenCalledWith('file_abc')
+  })
+
+  it('M-RP.3 — 비-permissions 탭에서는 getEffectivePermissions 호출 안 됨', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(getFileDetailMock).toHaveBeenCalled()
+    })
+    expect(getEffectivePermissionsMock).not.toHaveBeenCalled()
+  })
+
+  it('M-RP.1 — 버전 탭 클릭 시 빈 상태 메시지 표시 (listFileVersions=[])', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    listFileVersionsMock.mockResolvedValue([])
+    wrap(<RightPanel />)
     fireEvent.click(screen.getByRole('tab', { name: '버전' }))
     expect(screen.getByRole('tab', { name: '버전' }).getAttribute('aria-selected')).toBe('true')
-    expect(screen.getByText(/버전 히스토리.*준비 중/)).toBeTruthy()
+    await waitFor(() => {
+      expect(screen.getByText('버전이 없습니다.')).toBeTruthy()
+    })
+    expect(listFileVersionsMock).toHaveBeenCalledWith('file_abc')
+  })
+
+  it('M-RP.1 — 버전 탭에서 list 렌더 + 현재 버전 badge', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    listFileVersionsMock.mockResolvedValue([
+      {
+        id: 'v2',
+        versionNumber: 2,
+        sizeBytes: 2048,
+        scanStatus: 'clean',
+        uploadedBy: '김영수',
+        uploadedAt: '2026-04-30T10:00:00Z',
+        isCurrent: true,
+      },
+      {
+        id: 'v1',
+        versionNumber: 1,
+        sizeBytes: 1024,
+        scanStatus: 'clean',
+        uploadedBy: '김영수',
+        uploadedAt: '2026-04-29T10:00:00Z',
+        isCurrent: false,
+      },
+    ])
+    wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '버전' }))
+    await waitFor(() => {
+      expect(screen.getByLabelText('파일 버전 목록')).toBeTruthy()
+    })
+    expect(screen.getByText('v2')).toBeTruthy()
+    expect(screen.getByText('v1')).toBeTruthy()
+    expect(screen.getByLabelText('현재 버전')).toBeTruthy()
+  })
+
+  it('M-RP.1 — 비-versions 탭에서는 listFileVersions 호출 안 됨 (conditional render)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    // detail 탭이 default — versions API 미호출 보장
+    await waitFor(() => {
+      expect(getFileDetailMock).toHaveBeenCalled()
+    })
+    expect(listFileVersionsMock).not.toHaveBeenCalled()
   })
 
   it('에러 시 에러 메시지 표시', async () => {

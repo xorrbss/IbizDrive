@@ -164,6 +164,96 @@ class FileDownloadServiceTest {
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // M-RP.2.1 — downloadVersion (version-pin)
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void downloadVersion_returnsHandleAndEmitsVersionDownloaded() throws IOException {
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "Hello.txt", VERSION_ID);
+        UUID otherVersionId = UUID.fromString("66666666-6666-6666-6666-666666666666");
+        FileVersion version = newVersion(otherVersionId, FILE_ID, "text/plain", 5, STORAGE_KEY);
+        InputStream stream = new ByteArrayInputStream("hello".getBytes());
+        when(fileRepository.findByIdAndDeletedAtIsNull(FILE_ID)).thenReturn(Optional.of(file));
+        when(fileVersionRepository.findById(otherVersionId)).thenReturn(Optional.of(version));
+        when(storageClient.read(STORAGE_KEY.toString())).thenReturn(stream);
+
+        DownloadHandle handle = service.downloadVersion(FILE_ID, otherVersionId, ACTOR);
+
+        assertThat(handle.file()).isSameAs(file);
+        assertThat(handle.version()).isSameAs(version);
+        assertThat(handle.stream()).isSameAs(stream);
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent event = captor.getValue();
+        assertThat(event.eventType()).isEqualTo(AuditEventType.VERSION_DOWNLOADED);
+        assertThat(event.actorId()).isEqualTo(ACTOR);
+        assertThat(event.targetType()).isEqualTo(AuditTargetType.FILE);
+        assertThat(event.targetId()).isEqualTo(FILE_ID);
+        assertThat(event.afterState()).contains(otherVersionId.toString());
+    }
+
+    @Test
+    void downloadVersion_fileMissing_throwsFileNotFound_noAudit() throws IOException {
+        when(fileRepository.findByIdAndDeletedAtIsNull(FILE_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.downloadVersion(FILE_ID, VERSION_ID, ACTOR))
+            .isInstanceOf(FileNotFoundException.class);
+
+        verify(storageClient, never()).read(anyString());
+        verify(auditService, never()).record(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void downloadVersion_versionMissing_throwsFileNotFound() {
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "Hello.txt", VERSION_ID);
+        when(fileRepository.findByIdAndDeletedAtIsNull(FILE_ID)).thenReturn(Optional.of(file));
+        when(fileVersionRepository.findById(VERSION_ID)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.downloadVersion(FILE_ID, VERSION_ID, ACTOR))
+            .isInstanceOf(FileNotFoundException.class)
+            .hasMessageContaining("version not found");
+    }
+
+    @Test
+    void downloadVersion_crossFileVersion_throwsFileNotFound_noAudit() throws IOException {
+        // version의 fileId가 path fileId와 다르면 cross-file 우회 시도 → 404.
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "Hello.txt", VERSION_ID);
+        UUID otherFileId = UUID.fromString("77777777-7777-7777-7777-777777777777");
+        FileVersion strayVersion = newVersion(VERSION_ID, otherFileId, "text/plain", 5, STORAGE_KEY);
+        when(fileRepository.findByIdAndDeletedAtIsNull(FILE_ID)).thenReturn(Optional.of(file));
+        when(fileVersionRepository.findById(VERSION_ID)).thenReturn(Optional.of(strayVersion));
+
+        assertThatThrownBy(() -> service.downloadVersion(FILE_ID, VERSION_ID, ACTOR))
+            .isInstanceOf(FileNotFoundException.class)
+            .hasMessageContaining("does not belong to file");
+
+        verify(storageClient, never()).read(anyString());
+        verify(auditService, never()).record(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void downloadVersion_storageIoFailure_throwsIllegalState_noAudit() throws IOException {
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "Hello.txt", VERSION_ID);
+        FileVersion version = newVersion(VERSION_ID, FILE_ID, "text/plain", 5, STORAGE_KEY);
+        when(fileRepository.findByIdAndDeletedAtIsNull(FILE_ID)).thenReturn(Optional.of(file));
+        when(fileVersionRepository.findById(VERSION_ID)).thenReturn(Optional.of(version));
+        when(storageClient.read(STORAGE_KEY.toString())).thenThrow(new IOException("disk gone"));
+
+        assertThatThrownBy(() -> service.downloadVersion(FILE_ID, VERSION_ID, ACTOR))
+            .isInstanceOf(IllegalStateException.class)
+            .hasMessageContaining("storage read failed");
+
+        verify(auditService, never()).record(org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void downloadVersion_nullVersionId_throwsIllegalArgument() {
+        assertThatThrownBy(() -> service.downloadVersion(FILE_ID, null, ACTOR))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // helpers
     // ──────────────────────────────────────────────────────────────────
 

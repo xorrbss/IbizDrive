@@ -12,8 +12,6 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
 import java.util.UUID;
 
 /**
@@ -73,7 +71,7 @@ public class FileDownloadController {
         FileVersion version = handle.version();
 
         MediaType contentType = parseContentType(version.getMimeType());
-        String contentDisposition = buildContentDisposition(file.getName());
+        String contentDisposition = ContentDispositionHeaders.build(file.getName());
 
         return ResponseEntity.ok()
             .contentType(contentType)
@@ -98,36 +96,4 @@ public class FileDownloadController {
         }
     }
 
-    /**
-     * RFC 5987 {@code Content-Disposition: attachment; filename="..."; filename*=UTF-8''...}.
-     *
-     * <p>{@code filename}은 비ASCII/특수문자 안전 ASCII fallback (legacy UA 호환). {@code filename*}은
-     * UTF-8 percent-encoded — 모던 브라우저가 우선시.
-     *
-     * <p>{@link URLEncoder#encode}는 form encoding(공백 → {@code +})이므로 {@code +}는 RFC 3986 percent
-     * 표현({@code %20})으로 후처리.
-     */
-    private static String buildContentDisposition(String displayName) {
-        String safeAscii = sanitizeAscii(displayName);
-        String utf8Pct = URLEncoder.encode(displayName, StandardCharsets.UTF_8)
-            .replace("+", "%20");
-        return "attachment; filename=\"" + safeAscii + "\"; filename*=UTF-8''" + utf8Pct;
-    }
-
-    /**
-     * 비ASCII 문자를 {@code _}로 치환하고, RFC 6266 token 깨짐을 유발하는 {@code "}/백슬래시도 제거 —
-     * legacy UA용 fallback. 모던 UA는 filename* 사용.
-     */
-    private static String sanitizeAscii(String name) {
-        StringBuilder sb = new StringBuilder(name.length());
-        for (int i = 0; i < name.length(); i++) {
-            char c = name.charAt(i);
-            if (c < 0x20 || c >= 0x7F || c == '"' || c == '\\') {
-                sb.append('_');
-            } else {
-                sb.append(c);
-            }
-        }
-        return sb.toString();
-    }
 }

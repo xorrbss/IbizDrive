@@ -25,8 +25,11 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -43,7 +46,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *
  * <p>Docker 미가용 환경에서는 자동 스킵 ({@code disabledWithoutDocker=true}).
  *
- * <p>검증 매트릭스 (7 케이스 / docs/02 §7.6 + ADR #29):
+ * <p>검증 매트릭스 (list / docs/02 §7.6 + ADR #29):
  * <ol>
  *   <li>ADMIN — 200 + DESC 정렬</li>
  *   <li>AUDITOR — 200 (Role-level READ 통과)</li>
@@ -52,6 +55,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  *   <li>존재하지 않는 fileId — 404 NOT_FOUND envelope</li>
  *   <li>soft-deleted file — 404 (휴지통 노출 차단)</li>
  *   <li>{@code isCurrent} 정확성 — file.currentVersionId와의 동등성</li>
+ * </ol>
+ *
+ * <p>검증 매트릭스 (restore / M-RP.2.2 + ADR #39):
+ * <ol>
+ *   <li>ADMIN restore → 200 {@code { file: FileDto }}, currentVersionId 갱신, {@code VERSION_RESTORED} audit 1건</li>
+ *   <li>이미 current인 version 재호출 → 200 멱등 + audit emit X (DB row 변경 없음)</li>
+ *   <li>MEMBER without grant → 403 PERMISSION_DENIED ({@code required=[EDIT]})</li>
+ *   <li>MEMBER with READ-only grant → 403 (EDIT 미보유)</li>
+ *   <li>MEMBER with EDIT grant → 200</li>
+ *   <li>cross-file version (다른 파일의 versionId) → 404 + audit emit X</li>
+ *   <li>soft-deleted file → 404</li>
  * </ol>
  */
 @SpringBootTest
@@ -208,6 +222,143 @@ class FileVersionControllerTest {
             .andExpect(jsonPath("$.versions[0].isCurrent").value(false))
             .andExpect(jsonPath("$.versions[1].isCurrent").value(false))
             .andExpect(jsonPath("$.versions[2].isCurrent").value(false));
+    }
+
+    // ─── M-RP.2.2 restore 매트릭스 ───────────────────────────────────────
+
+    @Test
+    void restore_admin_setsCurrent_returnsFileDto_emitsAudit() throws Exception {
+        // current = v2, restore target = v1 (older)
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, v1Id)
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.file.id").value(fileId.toString()))
+            .andExpect(jsonPath("$.file.currentVersionId").value(v1Id.toString()));
+
+        UUID dbCurrent = jdbc.queryForObject(
+            "SELECT current_version_id FROM files WHERE id = ?", UUID.class, fileId);
+        assertThat(dbCurrent).isEqualTo(v1Id);
+
+        // denormalized 메타 동기화 — files.size_bytes/mime_type가 v1 값으로 갱신 (FileUploadService:214-217 invariant).
+        // saveVersion 헬퍼는 size_bytes = 1024 * versionNumber → v1 = 1024.
+        Long dbSize = jdbc.queryForObject(
+            "SELECT size_bytes FROM files WHERE id = ?", Long.class, fileId);
+        assertThat(dbSize).isEqualTo(1024L);
+        String dbMime = jdbc.queryForObject(
+            "SELECT mime_type FROM files WHERE id = ?", String.class, fileId);
+        assertThat(dbMime).isEqualTo("text/plain");
+
+        Integer auditCount = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM audit_log " +
+            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            Integer.class, fileId);
+        assertThat(auditCount).isEqualTo(1);
+
+        String beforeJson = jdbc.queryForObject(
+            "SELECT before_state::text FROM audit_log " +
+            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            String.class, fileId);
+        String afterJson = jdbc.queryForObject(
+            "SELECT after_state::text FROM audit_log " +
+            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            String.class, fileId);
+        assertThat(beforeJson).contains(v2Id.toString());
+        assertThat(afterJson).contains(v1Id.toString());
+    }
+
+    @Test
+    void restore_alreadyCurrent_isIdempotent_noAudit() throws Exception {
+        // current = v2, restore = v2 → no-op
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, v2Id)
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.file.currentVersionId").value(v2Id.toString()));
+
+        Integer auditCount = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM audit_log " +
+            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            Integer.class, fileId);
+        assertThat(auditCount).isEqualTo(0);
+    }
+
+    @Test
+    void restore_memberWithoutGrant_returns403() throws Exception {
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, v1Id)
+                .with(user(member)).with(csrf()))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.error.code").value("PERMISSION_DENIED"))
+            .andExpect(jsonPath("$.error.details.required[0]").value("EDIT"));
+    }
+
+    @Test
+    void restore_memberWithReadOnlyGrant_returns403() throws Exception {
+        // READ-only는 EDIT 권한 없으므로 거부 — docs/03 §3 권한 매트릭스
+        permissionService.grantPermission(
+            "file", fileId,
+            "user", member.getUser().getId(),
+            Preset.READ, null, admin.getUser().getId()
+        );
+
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, v1Id)
+                .with(user(member)).with(csrf()))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.error.code").value("PERMISSION_DENIED"));
+    }
+
+    @Test
+    void restore_memberWithEditGrant_succeeds() throws Exception {
+        permissionService.grantPermission(
+            "file", fileId,
+            "user", member.getUser().getId(),
+            Preset.EDIT, null, admin.getUser().getId()
+        );
+
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, v1Id)
+                .with(user(member)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.file.currentVersionId").value(v1Id.toString()));
+    }
+
+    @Test
+    void restore_crossFileVersion_returns404_noAudit() throws Exception {
+        // 다른 파일에 속한 version으로 본 파일의 current를 바꾸려는 우회 시도 차단.
+        UUID otherFileId = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
+            "VALUES (?, ?, 'other.txt', 'other.txt', ?, 0)",
+            otherFileId, folderId, admin.getUser().getId()
+        );
+        UUID strayVersionId = saveVersion(otherFileId, 1, admin.getUser().getId());
+
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, strayVersionId)
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
+
+        // current_version_id 변경 없음
+        UUID dbCurrent = jdbc.queryForObject(
+            "SELECT current_version_id FROM files WHERE id = ?", UUID.class, fileId);
+        assertThat(dbCurrent).isEqualTo(v2Id);
+
+        Integer auditCount = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM audit_log " +
+            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            Integer.class, fileId);
+        assertThat(auditCount).isEqualTo(0);
+    }
+
+    @Test
+    void restore_softDeletedFile_returns404() throws Exception {
+        jdbc.update(
+            "UPDATE files SET deleted_at = NOW(), purge_after = NOW() + INTERVAL '30 days' " +
+            "WHERE id = ?",
+            fileId
+        );
+
+        mvc.perform(post("/api/files/{fileId}/versions/{versionId}/restore", fileId, v1Id)
+                .with(user(admin)).with(csrf()))
+            .andExpect(status().isNotFound())
+            .andExpect(jsonPath("$.error.code").value("NOT_FOUND"));
     }
 
     // ====================== helpers ======================

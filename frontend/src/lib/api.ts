@@ -3,6 +3,7 @@ import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type { Permission } from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
+import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
 import type { DepartmentSummary } from '@/types/department'
@@ -206,6 +207,84 @@ export const api = {
     const found = MOCK_FILES.find((f) => f.id === id)
     if (!found) throw { status: 404, code: 'NOT_FOUND' }
     return found
+  },
+
+  /**
+   * M-RP.1 — 파일 버전 리스트 (docs/02 §7.6, A5.2 endpoint).
+   *
+   * backend `GET /api/files/{fileId}/versions` 직접 호출. 응답 envelope `{ versions: [...] }` 풀어서
+   * 배열만 반환 (호출부 `useFileVersions`가 `data` 자체를 list로 다루도록).
+   *
+   * 정렬은 backend가 versionNumber DESC로 보장 (FileVersionRepository.findByFileIdOrderByVersionNumberDesc).
+   * 권한 가드는 backend `@PreAuthorize hasPermission(#fileId, 'file', 'READ')` — 비READ는 403.
+   *
+   * 에러: 비-OK 응답은 status 필드 가진 Error throw (getEffectivePermissions와 동일 패턴 — QueryCache.onError 분기).
+   */
+  async listFileVersions(fileId: string): Promise<FileVersionDto[]> {
+    const res = await fetch(
+      `/api/files/${encodeURIComponent(fileId)}/versions`,
+      {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      },
+    )
+    if (!res.ok) {
+      const err = new Error(
+        `listFileVersions fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const data = (await res.json()) as { versions: FileVersionDto[] }
+    return data.versions
+  },
+
+  /**
+   * M-RP.2.1 — 특정 version 핀 다운로드 (docs/02 §7.6, ADR #39).
+   *
+   * `downloadFile`과 동일한 anchor click 패턴 — fetch+Blob 미사용 이유는 §M-Download 주석 참고
+   * (cookie 자동 동봉, RFC 5987 헤더 처리, 큰 파일 메모리 미적재).
+   *
+   * 권한은 backend `hasPermission(#fileId, 'file', 'READ')`. version은 backend가 cross-file 가드
+   * (`version.fileId != path fileId` → 404)를 service 레이어에서 재검증.
+   */
+  downloadVersion(fileId: string, versionId: string): void {
+    const a = document.createElement('a')
+    a.href = `/api/files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/download`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  },
+
+  /**
+   * M-RP.2.2 — 특정 version을 file의 current로 재지정 (옵션 A, ADR #39).
+   *
+   * backend `POST /api/files/{fileId}/versions/{versionId}/restore` — 200 envelope `{ file: FileDto }`.
+   * 멱등: 이미 current인 version을 다시 호출해도 200 (audit emit 없음). 호출자(useRestoreVersion)는
+   * 본 함수 resolve 후 `qk.fileDetail(fileId)` + `qk.fileVersions(fileId)` invalidate.
+   *
+   * 응답 본문(FileDto)은 mutation 결과의 신선한 상태이지만 invalidate 후 재요청으로 충분하므로
+   * 반환값을 void로 단순화 (KISS — caller에 envelope 형 변환 부담 회피).
+   *
+   * 권한은 backend `hasPermission(#fileId, 'file', 'EDIT')` — READ만 보유한 사용자는 403.
+   */
+  async restoreVersion(fileId: string, versionId: string): Promise<void> {
+    const res = await fetch(
+      `/api/files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/restore`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      },
+    )
+    if (!res.ok) {
+      const err = new Error(
+        `restoreVersion failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
   },
 
   // M9.1 — 단건 soft delete (휴지통 이동). 호출자(useDeleteBulk)는 selection 단위로
@@ -553,6 +632,71 @@ export const api = {
     const totalBytes = 50 * 1024 * 1024 * 1024 // 50 GB
     const usedBytes = Math.round(totalBytes * 0.75) // 75% placeholder
     return { usedBytes, totalBytes }
+  },
+
+  /**
+   * M-RP.4.2 — 특정 파일의 활동 타임라인 (RightPanel `activity` 탭).
+   *
+   * backend `GET /api/admin/audit?targetType=file&targetId=<id>&page&pageSize` (ADR #40 RP-2).
+   * 권한 분기는 backend AuditQueryService:
+   * - ADMIN/AUDITOR: 전체 actor 이벤트
+   * - MEMBER + 호출자가 file에 READ 보유: actor 제한 우회 → 모든 사용자의 액션 노출
+   * - MEMBER + READ 미보유: 기존 actor=self 정책 (자기 액션만 또는 빈 페이지)
+   *
+   * 응답 매핑은 `getAuditLogs`와 동일 — actorId/actorName null 폴백 + AuditLogPage shape.
+   * MVP 스코프: 페이지 1만 (더보기 v1.x — `useFileActivity`에 옵션 추가 시 hook 인자만 확장).
+   */
+  async listFileActivity(
+    fileId: string,
+    page = 1,
+    pageSize = 20,
+  ): Promise<AuditLogPage> {
+    const params = new URLSearchParams()
+    params.set('targetType', 'file')
+    params.set('targetId', fileId)
+    params.set('page', String(page))
+    params.set('pageSize', String(pageSize))
+
+    const res = await fetch(`/api/admin/audit?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(`listFileActivity failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const raw = (await res.json()) as {
+      entries: Array<{
+        id: string
+        occurredAt: string
+        eventType: AuditLogEntry['eventType']
+        actorId: string | null
+        actorName: string | null
+        resourceType: AuditLogEntry['resourceType']
+        resourceId: string | null
+        resourceName: string | null
+        ip: string | null
+        metadata: Record<string, unknown> | null
+      }>
+      total: number
+      page: number
+      pageSize: number
+    }
+    const entries: AuditLogEntry[] = raw.entries.map((e) => ({
+      id: e.id,
+      occurredAt: e.occurredAt,
+      eventType: e.eventType,
+      actorId: e.actorId ?? 'system',
+      actorName: e.actorName ?? 'system',
+      resourceType: e.resourceType,
+      resourceId: e.resourceId,
+      resourceName: e.resourceName,
+      ip: e.ip,
+      metadata: e.metadata,
+    }))
+    return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   },
 
   async getAuditLogs(
