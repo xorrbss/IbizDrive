@@ -134,6 +134,34 @@ public class AuthService {
         user.recordLoginAt(OffsetDateTime.now());
         userRepository.save(user);
 
+        LoginResponse response = establishSession(user, req, res);
+
+        // ADR #24 — 표준 success 이벤트 발행 (AuthAuditListener가 audit_log INSERT).
+        // SecurityContext가 SecurityContextHolder에 set된 이후 publish하여 listener가
+        // 동일 요청 스레드에서 principal을 일관되게 본다.
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        eventPublisher.publishEvent(new AuthenticationSuccessEvent(auth));
+
+        return response;
+    }
+
+    /**
+     * 인증된 사용자에 대한 세션 발급 + SecurityContext 영속화. login 성공 직후 또는 self-signup
+     * 직후 자동 로그인 시 공용 (ADR #41 — SignupService가 호출).
+     *
+     * <p>책임:
+     * <ol>
+     *   <li>session fixation 방어 — 기존 세션이 없으면 새로 생성, 있으면 sessionId 회전.</li>
+     *   <li>{@link IbizDriveUserDetails} principal 기반 Authentication 생성 + SecurityContextHolder 갱신.</li>
+     *   <li>{@link SecurityContextRepository#saveContext}로 새 sessionId 기반 HttpSession에 영속화.</li>
+     *   <li>permissions cache key 산출 + session attribute에 기록 (validity 검증·invalidation 추적용).</li>
+     * </ol>
+     *
+     * <p>본 메서드는 audit emission을 수행하지 않는다. 호출자가 도메인에 맞는 이벤트
+     * (login: {@link AuthenticationSuccessEvent}, signup: {@link UserRegisteredEvent})를 publish해야 한다.
+     * 그렇지 않으면 audit_log에 흔적이 남지 않는다.
+     */
+    public LoginResponse establishSession(User user, HttpServletRequest req, HttpServletResponse res) {
         // session fixation 방어 — 새 sessionId 발급 (docs/03 §2.3, ADR #20).
         // 기존 세션이 없으면 먼저 생성 후 changeSessionId() 호출.
         req.getSession(true);
@@ -155,9 +183,6 @@ public class AuthService {
         session.setAttribute("userId", user.getId().toString());
         session.setAttribute("issuedAt", System.currentTimeMillis());
         session.setAttribute("permissionsCacheKey", cacheKey);
-
-        // ADR #24 — 표준 success 이벤트 발행 (AuthAuditListener가 audit_log INSERT).
-        eventPublisher.publishEvent(new AuthenticationSuccessEvent(auth));
 
         return LoginResponse.from(user, cacheKey);
     }

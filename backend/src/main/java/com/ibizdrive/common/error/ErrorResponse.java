@@ -35,4 +35,12 @@ public record ErrorResponse(
     public static ErrorResponse validationError(Object details) {
         return new ErrorResponse("VALIDATION_ERROR", null, null, details);
     }
+
+    /**
+     * ADR #41 회원가입 — 동일 이메일이 이미 활성 사용자로 존재.
+     * envelope: {@code { code: "CONFLICT", reason: "DUPLICATE_EMAIL" }}.
+     */
+    public static ErrorResponse duplicateEmail() {
+        return new ErrorResponse("CONFLICT", "DUPLICATE_EMAIL", null, null);
+    }
 }

@@ -1,6 +1,7 @@
 package com.ibizdrive.common.error;
 
 import com.ibizdrive.auth.AccountLockedException;
+import com.ibizdrive.auth.DuplicateEmailException;
 import com.ibizdrive.auth.InvalidCredentialsException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -30,6 +31,15 @@ public class AuthExceptionHandler {
     public ResponseEntity<ErrorResponse> locked(AccountLockedException ex) {
         return ResponseEntity.status(HttpStatus.LOCKED)
             .body(ErrorResponse.accountLocked(ex.getRetryAfterSeconds()));
+    }
+
+    /**
+     * ADR #41 회원가입 — 동일 email 활성 사용자 존재 시 409.
+     */
+    @ExceptionHandler(DuplicateEmailException.class)
+    public ResponseEntity<ErrorResponse> duplicateEmail(DuplicateEmailException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ErrorResponse.duplicateEmail());
     }
 
     /**

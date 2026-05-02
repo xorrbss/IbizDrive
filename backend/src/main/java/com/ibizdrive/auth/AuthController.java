@@ -2,6 +2,7 @@ package com.ibizdrive.auth;
 
 import com.ibizdrive.auth.dto.LoginRequest;
 import com.ibizdrive.auth.dto.LoginResponse;
+import com.ibizdrive.auth.dto.SignupRequest;
 import com.ibizdrive.permission.PermissionCacheKeyService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.User;
@@ -40,13 +41,16 @@ import org.springframework.web.bind.annotation.RestController;
 public class AuthController {
 
     private final AuthService authService;
+    private final SignupService signupService;
     private final ApplicationEventPublisher eventPublisher;
     private final PermissionCacheKeyService permissionCacheKeyService;
 
     public AuthController(AuthService authService,
+                          SignupService signupService,
                           ApplicationEventPublisher eventPublisher,
                           PermissionCacheKeyService permissionCacheKeyService) {
         this.authService = authService;
+        this.signupService = signupService;
         this.eventPublisher = eventPublisher;
         this.permissionCacheKeyService = permissionCacheKeyService;
     }
@@ -56,6 +60,19 @@ public class AuthController {
                                HttpServletRequest httpReq,
                                HttpServletResponse httpRes) {
         return authService.login(req.email(), req.password(), httpReq, httpRes);
+    }
+
+    /**
+     * ADR #41 self-signup. 비로그인 상태에서 호출 가능 — SecurityConfig가 {@code /api/auth/signup}을
+     * permitAll + CSRF 면제로 노출. 회원가입 직후 자동 로그인되어 SESSION 쿠키가 발급되며 응답 shape는
+     * {@link LoginResponse}와 동일 (UX 일관성). 첫 가입자는 ADMIN, 이후 MEMBER (SignupService 결정).
+     */
+    @PostMapping("/signup")
+    @ResponseStatus(HttpStatus.CREATED)
+    public LoginResponse signup(@Valid @RequestBody SignupRequest req,
+                                HttpServletRequest httpReq,
+                                HttpServletResponse httpRes) {
+        return signupService.signup(req, httpReq, httpRes);
     }
 
     /**
