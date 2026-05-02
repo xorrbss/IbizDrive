@@ -17,6 +17,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -282,6 +283,70 @@ class PermissionControllerTest {
 
         // 노드 미존재 시 evaluator 미호출.
         verify(evaluator, never()).resolveAll(any(), anyString(), any());
+    }
+
+    // ── list (M8.0) ────────────────────────────────────────────────────
+
+    @Test
+    void list_folderPlural_normalizesAndDelegates() {
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.of(mock(Folder.class)));
+
+        UUID permId = UUID.randomUUID();
+        PermissionDto dto = new PermissionDto(
+            permId, "folder", RESOURCE_ID,
+            "user", SUBJECT_ID, "edit", ACTOR, null, Instant.now(), "Alice"
+        );
+        when(permissionService.listPermissions("folder", RESOURCE_ID))
+            .thenReturn(List.of(dto));
+
+        ResponseEntity<Map<String, List<PermissionDto>>> res =
+            controller.list("folders", RESOURCE_ID);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        List<PermissionDto> items = res.getBody().get("items");
+        assertThat(items).hasSize(1);
+        assertThat(items.get(0).id()).isEqualTo(permId);
+        assertThat(items.get(0).subjectName()).isEqualTo("Alice");
+        // file repository는 folder 분기에서 미조회.
+        verify(fileRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void list_fileSingular_lookupViaRepository() {
+        when(fileRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.of(mock(FileItem.class)));
+        when(permissionService.listPermissions("file", RESOURCE_ID))
+            .thenReturn(List.of());
+
+        ResponseEntity<Map<String, List<PermissionDto>>> res =
+            controller.list("file", RESOURCE_ID);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody().get("items")).isEmpty();
+        verify(folderRepository, never()).findByIdAndDeletedAtIsNull(any());
+    }
+
+    @Test
+    void list_folderMissing_throwsNotFound() {
+        when(folderRepository.findByIdAndDeletedAtIsNull(RESOURCE_ID))
+            .thenReturn(Optional.empty());
+
+        assertThatThrownBy(() ->
+            controller.list("folders", RESOURCE_ID))
+            .isInstanceOf(ResourceNotFoundException.class)
+            .hasMessageContaining("folder");
+
+        verify(permissionService, never()).listPermissions(anyString(), any());
+    }
+
+    @Test
+    void list_unsupportedResourcePath_throwsBadRequest() {
+        assertThatThrownBy(() ->
+            controller.list("shares", RESOURCE_ID))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        verify(permissionService, never()).listPermissions(anyString(), any());
     }
 
     // ── helpers ────────────────────────────────────────────────────────

@@ -1314,17 +1314,30 @@ GET /api/shares/with-me?cursor=&limit=                     (ADR #34, MVP scope, 
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| GET | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
+| GET | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` | — | — | `WHERE deleted_at IS NULL` | 403, 404 |
 | POST | `/api/:resource/:id/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` (구표기 `'ADMIN'` alias) | REQUIRED | — | — | 400, 403, 404, 409 |
 | DELETE | `/api/permissions/:permissionId` | `PermissionService.canRevokePermission(#permissionId, currentUser)` | REQUIRED | — | — | 403, 404 |
 | GET | `/api/me/effective-permissions?nodeId=` | isAuthenticated | — | — | `WHERE deleted_at IS NULL` | 400, 401, 404 |
 
 ```text
+GET /api/:resource/:id/permissions                  (M8.0)
+  Guard:    hasPermission(#id, #resource, 'PERMISSION_ADMIN')   # POST/DELETE 와 대칭 — grant 분포는 권한 관리 정보
+  Response: 200 { items: PermissionDto[] }
+              # 정렬: created_at ASC, id ASC (audit-style oldest-first)
+              # 페이지네이션 미적용 — MVP 단일 리소스의 grant 수가 작다는 가정
+              # PermissionDto.subjectName: A16/ADR #36 ShareDto 미러 — user→users.display_name,
+              #   department→departments.name, everyone/lookup miss(soft-delete 등) → null
+              # 만료(`expires_at <= NOW()`) row 도 포함 — admin UI 가 cron 정리 전 만료-pending 가시화
+  Errors:   403 PERMISSION_DENIED (PERMISSION_ADMIN 미보유)
+            404 NOT_FOUND (resource 미존재 또는 deleted_at NOT NULL)
+  Note:     resource ∈ { 'folder', 'file' }. POST/DELETE 와 동일 path normalization (단수/복수 모두 허용).
+            POST 응답의 PermissionDto 는 subjectName=null — 호출자가 필요 시 list 재조회로 표시명 획득.
+
 POST /api/:resource/:id/permissions
   Request:  { subject: { type: 'user'|'department'|'role'|'everyone', id?: UUID }, preset: 'read'|'upload'|'edit'|'admin', expiresAt? }
               # subject.id 는 type='everyone' 일 때만 NULL (V5 CHECK 와 일치)
               # preset 은 ADR #28 — 4값 (deny/share 제외, share 는 별도 shares 테이블)
-  Response: 201 { permission: PermissionDto }
+  Response: 201 { permission: PermissionDto }   # PermissionDto.subjectName=null (M8.0)
   TX:       INSERT permissions + emit PermissionGrantedEvent
               → PermissionAuditListener (REQUIRES_NEW) → audit_log (permission.granted, target_type=permission)
   Errors:   400 BAD_REQUEST (subject_id ↔ everyone 위반, preset 미지원, expiresAt past)

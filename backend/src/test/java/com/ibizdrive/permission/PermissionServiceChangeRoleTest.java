@@ -1,5 +1,6 @@
 package com.ibizdrive.permission;
 
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
@@ -49,7 +50,9 @@ class PermissionServiceChangeRoleTest {
         userRepository = mock(UserRepository.class);
         permissionRepository = mock(PermissionRepository.class);
         publisher = mock(ApplicationEventPublisher.class);
-        service = new PermissionService(userRepository, permissionRepository, publisher);
+        service = new PermissionService(
+            userRepository, permissionRepository,
+            mock(DepartmentRepository.class), publisher);
     }
 
     private User userWithRole(Role role) {

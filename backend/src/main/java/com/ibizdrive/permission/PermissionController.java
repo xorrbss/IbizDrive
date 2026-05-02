@@ -112,6 +112,33 @@ public class PermissionController {
     }
 
     /**
+     * M8.0 — resource-level grant 목록 조회 (docs/02 §7.10).
+     *
+     * <p><b>인가</b>: {@code @PreAuthorize("hasPermission(#id, #resource, 'PERMISSION_ADMIN')")} —
+     * POST/DELETE 와 대칭. grant 분포는 권한 관리 정보이므로 일반 READ 권한으로는 노출하지 않는다 (베타 GO
+     * 게이트, m8 트랙 closure 의 핵심 결정).
+     *
+     * <p>{@code resource} path 는 {@link #normalizeResourceType} 로 단수형 정규화. 리소스 미존재 시
+     * {@link ResourceNotFoundException} → 404. service 가 created_at ASC, id ASC 정렬 + subjectName
+     * batch resolve 한 결과를 {@code { items: PermissionDto[] }} 로 wrap.
+     *
+     * <p><b>페이지네이션 미적용</b> — 단일 리소스의 grant 수가 작다는 가정 (docs/02 §7.10). 향후 운영 데이터
+     * 누적 후 cursor 도입은 별도 트랙.
+     */
+    @GetMapping("/{resource}/{id}/permissions")
+    @PreAuthorize("hasPermission(#id, #resource, 'PERMISSION_ADMIN')")
+    public ResponseEntity<Map<String, List<PermissionDto>>> list(
+        @PathVariable("resource") String resource,
+        @PathVariable("id") UUID id
+    ) {
+        String resourceType = normalizeResourceType(resource);
+        ensureResourceExists(resourceType, id);
+
+        List<PermissionDto> items = permissionService.listPermissions(resourceType, id);
+        return ResponseEntity.ok(Map.of("items", items));
+    }
+
+    /**
      * A11 — 현재 사용자의 effective 권한 조회 (docs/02 §7.10 line 1173).
      *
      * <p>{@code nodeId} 미지정 시 ROLE 기반 권한만 반환 (전역 권한 컨텍스트). 지정 시 해당 노드(folder
