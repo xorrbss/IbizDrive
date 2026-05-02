@@ -7,6 +7,7 @@ import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
 import type { DepartmentSummary } from '@/types/department'
+import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
 
@@ -906,6 +907,84 @@ export const api = {
   async listSharesWithMe(opts: { cursor?: string; limit?: number } = {}): Promise<SharePage> {
     return fetchSharePage('/api/shares/with-me', opts)
   },
+
+  // ── 인증 (auth-pages, ADR #41) ──────────────────────────────────────────
+
+  /**
+   * `POST /api/auth/signup` (ADR #41). 회원가입 + 자동 세션 발급. CSRF 토큰 미필요
+   * (SecurityConfig가 ignoringRequestMatchers로 면제).
+   *
+   * 응답 body는 login과 동일 shape ({@link AuthSession}). 첫 user는 backend에서 ADMIN으로 결정.
+   * 409 DUPLICATE_EMAIL / 400 VALIDATION_ERROR는 buildApiError로 status+code 부여 throw.
+   */
+  async signup(params: SignupParams): Promise<AuthSession> {
+    const res = await fetch('/api/auth/signup', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `signup failed: ${res.status}`)
+    }
+    return (await res.json()) as AuthSession
+  },
+
+  /**
+   * `POST /api/auth/login`. CSRF 토큰 필수 — 사전 발급(`/api/auth/csrf` 쿠키 GET) 후 헤더 동봉.
+   * `ensureCsrfToken`이 캐시된 쿠키가 없으면 자동 부트스트랩.
+   *
+   * 401 UNAUTHORIZED/INVALID_CREDENTIALS, 423 ACCOUNT_LOCKED는 status+code로 분기 가능.
+   */
+  async login(params: LoginParams): Promise<AuthSession> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch('/api/auth/login', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `login failed: ${res.status}`)
+    }
+    return (await res.json()) as AuthSession
+  },
+
+  /**
+   * `POST /api/auth/logout`. 204 NO_CONTENT, SESSION 쿠키 만료. 미인증(401) 시에도 호출자는
+   * 폴백 처리하지 않고 그대로 throw — UI 측에서 어쨌든 로그인 화면 redirect.
+   */
+  async logout(): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `logout failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * `GET /api/auth/me`. 인증된 사용자 정보 조회. 401(미인증)은 caller가 분기 가능하도록
+   * status 부여 throw — `useMe`가 catch → null 반환.
+   */
+  async me(): Promise<AuthSession> {
+    const res = await fetch('/api/auth/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `me failed: ${res.status}`)
+    }
+    return (await res.json()) as AuthSession
+  },
 }
 
 /**
@@ -956,16 +1035,55 @@ async function fetchSharePage(
 /**
  * backend ApiError envelope { error: { code, message, details } } 를 안전 파싱해
  * Error에 status/code를 부여한다. JSON 파싱 실패 시 status만 부여 — UX layer가 status로 분기 가능.
+ *
+ * <p>인증 endpoint(docs/02 §7.4)는 flat shape `{ code, reason, retryAfterSec, details }`을 사용 —
+ * envelope.error.code 미존재 시 root code를 폴백으로 사용 (login 401 INVALID_CREDENTIALS,
+ * signup 409 DUPLICATE_EMAIL, 400 VALIDATION_ERROR).
  */
 async function buildApiError(res: Response, fallbackMessage: string): Promise<Error> {
-  const err = new Error(fallbackMessage) as Error & { status: number; code?: string }
+  const err = new Error(fallbackMessage) as Error & {
+    status: number
+    code?: string
+    reason?: string
+  }
   err.status = res.status
   try {
-    const body = (await res.json()) as { error?: { code?: string } }
+    const body = (await res.json()) as {
+      error?: { code?: string }
+      code?: string
+      reason?: string
+    }
     if (body?.error?.code) err.code = body.error.code
+    else if (body?.code) err.code = body.code
+    if (body?.reason) err.reason = body.reason
   } catch {
     // 본문이 없거나 JSON이 아니면 status만으로 충분 (audit 패턴 일관)
   }
   return err
+}
+
+/**
+ * CSRF token cookie(`XSRF-TOKEN`) 조회. 없으면 backend `/api/auth/csrf` GET으로 부트스트랩.
+ * Spring Security `CookieCsrfTokenRepository.withHttpOnlyFalse()`가 발급하는 쿠키 (HttpOnly=false)이므로
+ * `document.cookie`로 읽을 수 있다. login/logout 등 mutation 직전 1회 호출.
+ *
+ * SSR 컨텍스트(typeof document === 'undefined')에서는 빈 문자열 반환 — 호출은 항상 클라이언트
+ * 컴포넌트에서 발생하므로 실용 영향 없음.
+ */
+async function ensureCsrfToken(): Promise<string> {
+  if (typeof document === 'undefined') return ''
+  let token = readCookie('XSRF-TOKEN')
+  if (!token) {
+    await fetch('/api/auth/csrf', { method: 'GET', credentials: 'include' })
+    token = readCookie('XSRF-TOKEN')
+  }
+  return token ?? ''
+}
+
+function readCookie(name: string): string | null {
+  if (typeof document === 'undefined') return null
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]+)`))
+  return match ? decodeURIComponent(match[1]) : null
 }
 

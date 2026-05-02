@@ -99,6 +99,14 @@ export const qk = {
   /** 페이지/필터까지 포함된 정확한 단일 키. 필터 변경 시 자동 재요청. */
   auditLogs: (filters: AuditLogFilters, page: number, pageSize: number) =>
     [...qk.audit(), 'logs', filters, page, pageSize] as const,
+
+  // ── 인증 (auth-pages, ADR #41) ──
+  auth: () => [...qk.all, 'auth'] as const,
+  /**
+   * 현재 로그인 사용자(`/api/auth/me`) 캐시 키. login/logout/signup 후 무효화.
+   * 401(미인증)도 정상 캐시값(null)으로 다룬다 — useMe가 retry false 처리.
+   */
+  authMe: () => [...qk.auth(), 'me'] as const,
 } as const
 
 // ─── 무효화 전략 헬퍼 ──────────────────────────────────────────────────────
