@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-02
-Status: 🚧 IN PROGRESS
+Status: 🏁 COMPLETE
 ---
 
 # M-Download — BulkActionBar 다운로드 와이어링

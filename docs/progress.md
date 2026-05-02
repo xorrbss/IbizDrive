@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-05-02 — 🏁 M-Download 트랙 종료 (BulkActionBar 다운로드 와이어링 — A15 frontend gap closure)
+
+### 범위
+
+DL.0 (worktree `feature/m-download-wire` from `4e3da46` master + dev-docs bootstrap `dev/active/m-download-wire/` 3파일) → DL.1 RED→GREEN (`api.downloadFile(id)` programmatic anchor click helper — `<a href="/api/files/{id}/download">` + body append + click + remove. `BulkActionBar.handleDownload` file-only 가드 — `count===1 && singleItem.type==='file'`. 폴더는 "파일만 다운로드 가능" tooltip, 다중은 "단일 파일 선택 시 사용 가능", 캐시 미스 disabled 폴백 — rename/share 패턴 일관. `console.warn` 스텁 제거. 신규 테스트: `frontend/src/lib/api.downloadFile.test.ts` 3 케이스 + `BulkActionBar.test.tsx` 다운로드 describe 4 케이스) → DL.2 (closure: `docs/01 §9.5` 다운로드 단락 신설, `docs/progress.md` top entry, dev-docs archive, PR + master squash-merge).
+
+### 회고
+
+- **commits**: 2 on top of `4e3da46` master (worktree branch `feature/m-download-wire`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 0 / 수정 2.
+  - 수정: `frontend/src/lib/api.ts` (`api.downloadFile` 메서드 추가, +18줄)
+  - 수정: `frontend/src/components/files/BulkActionBar.tsx` (`downloadEnabled` + `downloadTitle` + `handleDownload` 와이어링 + 버튼 disabled/title/aria-disabled props, 스텁 제거)
+- **test**: 신설 1 / 수정 1. `api.downloadFile.test.ts` 3 GREEN; `BulkActionBar.test.tsx` 4 케이스 추가(12→16). 최종 frontend `pnpm test --run` GREEN 601/601 (baseline 594 → +7 다운로드 케이스). `pnpm typecheck` + `pnpm lint` + `pnpm build` clean.
+- **docs sync**: `docs/01-frontend-design.md §9.5` 다운로드 단락 신설 (anchor click 채택 근거 + file-only 가드 정책 + ADR #36 권한 backlink).
+
+### 핵심 결정 (M-Download 트랙)
+
+1. **anchor `<a>` click 채택** (XHR/fetch + Blob 대신) — cookie 인증 same-origin 자동 동봉, RFC 5987 Content-Disposition을 backend가 처리(docs/02 §7.6.1)하므로 파일명 자동 적용, 100MB까지의 파일을 메모리에 적재하지 않고 스트림 → 디스크. 진행률은 브라우저 다운로드 매니저 책임 → UI 추가 0. 함수 5줄. KISS / YAGNI 충족.
+2. **file-only 가드** — backend `GET /api/files/{id}/download`은 파일 단건만 지원(폴더 zip은 별도 트랙). BulkActionBar에서 폴더 선택 시 비활성 + tooltip "파일만 다운로드 가능"으로 사용자 혼란 차단.
+3. **fire-and-forget** — 다운로드 후 토스트 / 진행률 / 결과 처리 없음. 브라우저 매니저가 사용자 피드백 책임. 추가하면 YAGNI 위배. 실패는 브라우저 표시(404/403도 attachment 응답이 아니라 JSON envelope이라 다운로드 매니저가 파일로 저장하긴 하지만 — 권한 게이트는 `usePermission().DOWNLOAD`가 1차 차단).
+4. **DOWNLOAD enum 미사용** — backend `hasPermission('file', 'READ')` 가드(ADR #36). frontend `usePermission().DOWNLOAD`는 UX 게이트, 진실의 출처는 backend READ.
+5. **rename/share 패턴 답습** — `count === 1 && !!singleItem` 가드 + `xEnabled` boolean + `disabled/title/aria-disabled` props 동일 형태. 새 추상화 0.
+
+### 파급 영향
+
+- **`docs/01 §9.5`**: 다운로드 단락 신설.
+- **frontend backlog 정리**: A15 closure entry의 "BulkActionBar download 스텁" 항목 closed. 잔여(다중 zip 다운로드, preview/inline 분기, 진행률 UI)는 별도 트랙.
+- **DB/스키마/backend**: 변경 0 — frontend-only 트랙. backend A15.5는 이미 완전 구현.
+
+---
+
 ## 2026-05-02 — 🏁 M16VK 트랙 종료 (Grid View 2D 키보드 wrap — M16V backlog closure)
 
 ### 범위

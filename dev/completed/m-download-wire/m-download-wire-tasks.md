@@ -1,6 +1,6 @@
 ---
 Last Updated: 2026-05-02
-Status: 🚧 IN PROGRESS
+Status: 🏁 COMPLETE
 ---
 
 # Tasks — M-Download
@@ -10,8 +10,8 @@ Status: 🚧 IN PROGRESS
 | Phase | 상태 |
 |---|---|
 | DL.0 bootstrap | ✅ 완료 |
-| DL.1 RED→GREEN | ⏳ 진행 |
-| DL.2 closure | ⏳ 대기 |
+| DL.1 RED→GREEN | ✅ 완료 |
+| DL.2 closure | ✅ 완료 |
 
 ## DL.0 — bootstrap
 
