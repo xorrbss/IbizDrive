@@ -1,7 +1,7 @@
 # IbizDrive — Beta Release Checklist (사내 베타)
 
 Last Updated: 2026-05-02
-Source: `mvp-qa-security-week-11-12` 트랙 closure (master 90274c7 + Phase 3 fix)
+Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화)
 
 > **본 문서의 목적**: 사내 베타 GO/NO-GO 결정에 필요한 단일 페이지 체크리스트.
 > docs/03 §1.3 STRIDE matrix + docs/04 §13 cron + 인프라 게이트를 한 곳으로 모음.
@@ -33,8 +33,8 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure (master 90274c7 + Phase 3 fi
 
 ### 2.2 쿠키 / 세션
 
-- [ ] `application.yml` `server.servlet.session.cookie.secure=true` (현재 dev `false`, staging/prod profile 필요)
-- [ ] `application-prod.yml` 또는 환경 변수로 분리 권장 (Phase 4 backlog)
+- [x] `application-prod.yml`에서 `server.servlet.session.cookie.secure=true` (mvp-prod-profile closure) — `SPRING_PROFILES_ACTIVE=prod` 활성 시 자동
+- [x] `application-prod.yml` 분리 (mvp-prod-profile closure) — `ProdProfileConfigTest`로 회귀 차단
 - [x] `http-only=true`, `same-site=lax` (이미 설정)
 
 ### 2.3 시크릿
@@ -52,16 +52,18 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure (master 90274c7 + Phase 3 fi
 
 ## 3. 운영 cron 활성화
 
-`application.yml` 또는 환경 변수로 staging/prod에서 enable. 모두 default `false`.
+`application-prod.yml`이 모두 `enabled=true`로 override (mvp-prod-profile closure). `SPRING_PROFILES_ACTIVE=prod` 활성 시 자동.
+`ProdProfileConfigTest`가 키 누락/오타를 회귀 차단.
 
-| Cron | 활성화 옵션 | 추천 |
+| Cron | 활성화 옵션 | prod profile |
 |---|---|---|
-| `purge.expired` | `app.purge.enabled=true` | **활성** — 휴지통 30일 후 hard delete |
-| `share.expire` | `app.share.expiration.enabled=true` | **활성** — 만료된 공유 자동 expire + audit |
-| `permission.expire` | `app.permission.expiration.enabled=true` | **활성** — 만료된 권한 cleanup + audit |
-| `storage.orphan.cleanup` | `app.storage.orphan-cleanup.enabled=true` | **활성** — 일일 storage 객체 회수 (ADR #38) |
+| `purge.expired` | `app.purge.enabled=true` | ✓ — 휴지통 30일 후 hard delete |
+| `share.expire` | `app.share.expiration.enabled=true` | ✓ — 만료된 공유 자동 expire + audit |
+| `permission.expire` | `app.permission.expiration.enabled=true` | ✓ — 만료된 권한 cleanup + audit |
+| `storage.orphan.cleanup` | `app.storage.orphan-cleanup.enabled=true` | ✓ — 일일 storage 객체 회수 (ADR #38) |
 
 > 단일 인스턴스 가정 — 멀티 인스턴스 시 `@SchedulerLock` 도입 필요(ADR backlog).
+> default profile(dev/test/CI)에서는 모두 `false` 유지 — 무영향.
 
 ## 4. 보안 헤더 / CSRF
 
@@ -104,9 +106,9 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure (master 90274c7 + Phase 3 fi
 
 ## 8. 모니터링 (사내 베타 최소)
 
-- [ ] application logs 수집 (`com.ibizdrive` INFO 이상)
+- [ ] application logs 수집 (`com.ibizdrive` INFO 이상) — *운영자 책임 (외부 log shipper: fluent-bit / Promtail / Datadog agent)*
 - [ ] audit_log SELECT 권한 (AUDITOR/ADMIN role)을 사내 보안 담당자에게 부여
-- [ ] 슬랙 webhook (장애 알림) — *권장 (사내 베타 최소)*
+- [ ] 슬랙 webhook (장애 알림) — *운영자 책임 (외부 log shipper의 alert rule, in-process logback appender 비채택, v1.x 관측성 트랙)*
 - [ ] DB connection pool 사용률 — *v1.x (Actuator 도입 시점)*
 
 ## 9. 베타 출시 GO 결정
@@ -115,11 +117,11 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure (master 90274c7 + Phase 3 fi
 
 - [x] §1 코드 베이스 게이트 (모든 행 ✓)
 - [ ] §2 인프라 게이트 (운영자 sign-off)
-- [ ] §3 cron 4종 활성화 + 1회 dry-run 확인
+- [x] §3 cron 4종 prod profile에서 자동 활성 (mvp-prod-profile closure) — 운영 1회 dry-run은 staging 가동 시점에 확인
 - [x] §4 보안 헤더 (코드 적용)
 - [x] §5 인증 / 세션 (코드 적용)
 - [x] §6 감사 / 권한 (코드 적용)
-- [ ] §8 모니터링 최소 (슬랙 webhook + audit 조회 권한 부여)
+- [ ] §8 모니터링 최소 (외부 log shipper + audit 조회 권한 부여) — 운영자 셋업
 
 §2/§3/§8은 staging/prod 인프라 셋업 시점에 채워야 함. **현재 master 시점 = 코드 게이트만 PASS, 인프라 게이트는 운영팀 책임으로 미정 = NO-GO 상태이지만 코드 측 readiness는 완료**.
 

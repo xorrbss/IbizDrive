@@ -1,0 +1,40 @@
+# BETA-RELEASE prod profile — `BETA-RELEASE.md` §1·§3·§5 코드 게이트.
+#
+# 활성화 방법:
+#   `SPRING_PROFILES_ACTIVE=prod` 환경 변수 또는
+#   `--spring.profiles.active=prod` JVM 인자.
+#
+# 본 파일이 하는 것:
+#   1. 4개 운영 cron 활성화 (`purge`, `share-expiration`, `permission-expiration`,
+#      `storage-orphan-cleanup`) — 기본값은 `application.yml`에서 모두 false.
+#   2. 세션 쿠키 Secure 강제 (HTTPS only).
+#
+# 본 파일이 하지 않는 것 (운영자 책임 = 환경 변수 또는 사내 시크릿 저장소 주입):
+#   - `SPRING_DATASOURCE_PASSWORD` — dev default 사용 절대 금지 (`BETA-RELEASE.md` §2.3).
+#   - `IBIZDRIVE_CORS_ALLOWED_ORIGINS` — 사내 도메인으로 override (default `http://localhost:3000`).
+#   - `IBIZDRIVE_SLACK_WEBHOOK_URL` — Slack 알림 비활성 시 빈 값 / 미설정 (`logback-spring.xml` 참조).
+#   - HTTPS 종단 / HSTS — 리버스 프록시 또는 ALB 책임 (docs/03 §2 참조).
+#
+# 본 파일은 dev/test 환경에 영향 0 — `spring.profiles.active=prod`일 때만 머지된다.
+# 단위 검증: `backend/src/test/java/com/ibizdrive/config/ProdProfileConfigTest.java`.
+
+server:
+  servlet:
+    session:
+      cookie:
+        secure: true        # HTTPS only — 운영 리버스 프록시가 TLS 종단 필수
+
+# 운영 cron 활성화 (`SchedulingConfig`는 항상 @EnableScheduling, 잡 빈은 enabled 게이트로 등록).
+# 단일 인스턴스 가정 — 멀티 인스턴스 시 `@SchedulerLock` 필요(`BETA-RELEASE.md` §3 주).
+app:
+  purge:
+    enabled: true
+  share:
+    expiration:
+      enabled: true
+  permission:
+    expiration:
+      enabled: true
+  storage:
+    orphan-cleanup:
+      enabled: true
