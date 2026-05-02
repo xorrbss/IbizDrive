@@ -1,7 +1,7 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
-import type { Permission } from '@/types/permission'
+import type { Permission, PermissionListItem } from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
@@ -621,6 +621,42 @@ export const api = {
     }
     const data = (await res.json()) as { permissions: Permission[] }
     return data.permissions
+  },
+
+  /**
+   * M8.1 — 리소스에 부여된 grant 목록 (docs/02 §7.10 — `GET /api/{folders|files}/:id/permissions`).
+   *
+   * BE 가드: `@PreAuthorize hasPermission(#id, #resource, 'PERMISSION_ADMIN')` — 관리자만 호출 가능.
+   * 응답 envelope `{ items: PermissionListItem[] }` 의 `items` 만 풀어 반환 (페이지네이션 없음 — BE
+   * 가 단일 리소스 grant 수가 작다고 가정). 정렬은 BE 가 created_at ASC, id ASC 보장.
+   *
+   * `subjectName` 은 BE 가 user/department batch resolve 한 표시명 (A16 ShareDto 동형). soft-delete /
+   * everyone / 미해결은 null — 컴포넌트 측 fallback.
+   *
+   * 에러: 비-OK 응답은 status 필드 가진 Error throw (getEffectivePermissions 와 동일 패턴 —
+   * QueryCache.onError 401/403/404 분기).
+   *
+   * @param resourceType 'folder' | 'file' — URL 경로에서 복수형 ('folders'/'files') 으로 변환.
+   *   BE controller `normalizeResourceType` 이 양쪽 형태를 흡수하나, FE 는 컨벤션상 복수형 사용.
+   */
+  async listResourcePermissions(
+    resourceType: 'folder' | 'file',
+    id: string,
+  ): Promise<PermissionListItem[]> {
+    const res = await fetch(`/api/${resourceType}s/${id}/permissions`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `listResourcePermissions fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const data = (await res.json()) as { items: PermissionListItem[] }
+    return data.items
   },
 
   /**

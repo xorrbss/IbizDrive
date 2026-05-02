@@ -42,6 +42,35 @@ export const PRESETS: readonly Preset[] = ['read', 'upload', 'edit', 'share', 'a
  * `PURGE`는 어떤 preset에도 포함되지 않는다 (시스템 ROLE ADMIN 한정 — docs/03 line 334).
  * "DELETE (자기 것)" 등 세부 조건은 백엔드 service 레벨 — 본 매핑은 권한 enum 보유 여부만.
  */
+/**
+ * Subject 종류 — V5 `permissions.subject_type` CHECK 제약과 동일.
+ * `everyone` grant 는 `subject_id IS NULL` (DTO `subjectId === null`).
+ */
+export type SubjectType = 'user' | 'department' | 'everyone'
+
+/**
+ * `GET /api/{folders|files}/:id/permissions` 응답 row (M8.1).
+ *
+ * 백엔드 {@link com.ibizdrive.permission.dto.PermissionDto} 미러 — 변경 시 양쪽 동시 갱신
+ * (CLAUDE.md §4 계약 파일 표). `subjectName` 은 backend 가 user/department batch resolve 한 표시명
+ * (A16 ShareDto 동형). soft-delete / everyone / 미해결 케이스에서는 `null`.
+ *
+ * 본 list 는 PERMISSION_ADMIN 보유자만 호출 가능 (BE `@PreAuthorize`) — 일반 사용자에게는
+ * 컴포넌트가 조건부 미렌더 (UX 가드, 보안 X).
+ */
+export type PermissionListItem = {
+  id: string
+  resourceType: 'folder' | 'file'
+  resourceId: string
+  subjectType: SubjectType
+  subjectId: string | null
+  preset: Preset
+  grantedBy: string
+  expiresAt: string | null
+  createdAt: string
+  subjectName: string | null
+}
+
 export const PRESET_PERMISSIONS: Readonly<Record<Preset, ReadonlySet<Permission>>> = {
   read: new Set<Permission>(['READ', 'DOWNLOAD']),
   upload: new Set<Permission>(['READ', 'UPLOAD', 'DOWNLOAD']),
