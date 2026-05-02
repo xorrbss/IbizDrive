@@ -168,6 +168,9 @@ public class PasswordResetService {
             .orElseThrow(() -> new InvalidPasswordResetTokenException("user-missing"));
 
         user.changePasswordHash(passwordEncoder.encode(newPassword));
+        // ADR #21 — admin이 임시 PW + reset link를 함께 발급한 케이스에 mustChangePassword 클리어.
+        // 자발적 reset(원래 false)에는 idempotent.
+        user.clearMustChangePassword();
         userRepository.save(user);
 
         token.markUsed(now);
@@ -206,6 +209,8 @@ public class PasswordResetService {
         }
 
         user.changePasswordHash(passwordEncoder.encode(newPassword));
+        // ADR #21 — admin invite/임시 PW 사용자가 첫 변경을 마치면 강제 redirect 루프 종결.
+        user.clearMustChangePassword();
         userRepository.save(user);
 
         // 현재 세션은 보존, 그 외 모든 세션 invalidate.
