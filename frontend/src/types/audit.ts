@@ -36,6 +36,7 @@ export type AuditEventType =
   | 'share.revoked'
   | 'share.expired'
   // 인증
+  | 'user.registered'
   | 'user.login.success'
   | 'user.login.failed'
   | 'user.logout'

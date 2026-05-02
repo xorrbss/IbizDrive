@@ -32,6 +32,7 @@ import java.util.Map;
  *   <li>{@code /api/health} — permitAll (smoke)</li>
  *   <li>{@code /api/auth/csrf} — permitAll (토큰 발급, 인증 전 호출)</li>
  *   <li>{@code /api/auth/login} — permitAll (로그인 endpoint, A1.3)</li>
+ *   <li>{@code /api/auth/signup} — permitAll + CSRF 면제 (self-signup, ADR #41)</li>
  *   <li>나머지 — authenticated (anyRequest)</li>
  * </ul>
  *
@@ -101,7 +102,10 @@ public class SecurityConfig {
         return http
             .csrf(csrf -> csrf
                 .csrfTokenRepository(csrfRepo)
-                .csrfTokenRequestHandler(csrfHandler))
+                .csrfTokenRequestHandler(csrfHandler)
+                // ADR #41 self-signup — 비로그인 상태에서 호출되므로 사전 CSRF 토큰 발급이 부담.
+                // permitAll + ignore 조합으로 단순화. 다른 mutation endpoint는 인증 후 토큰 발급되므로 영향 없음.
+                .ignoringRequestMatchers("/api/auth/signup"))
             // MVP-fix (mvp-qa-security Phase 3): Spring Security 6 default 헤더를 명시화.
             // 현재 default(미명시 시)도 동일하게 활성화되지만, Spring Security 7+ 기본값 변동
             // 가능성 방어 + 보안 정책 가시성 확보 (docs/03 §1.3 Information Disclosure / Tampering).
@@ -122,6 +126,7 @@ public class SecurityConfig {
                 .requestMatchers("/api/health").permitAll()
                 .requestMatchers("/api/auth/csrf").permitAll()
                 .requestMatchers("/api/auth/login").permitAll()
+                .requestMatchers("/api/auth/signup").permitAll()
                 .anyRequest().authenticated())
             .exceptionHandling(eh -> eh
                 .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))

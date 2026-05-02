@@ -1,5 +1,6 @@
 package com.ibizdrive.audit;
 
+import com.ibizdrive.auth.UserRegisteredEvent;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
 import org.slf4j.Logger;
@@ -73,6 +74,26 @@ public class AuthAuditListener {
             null,
             null,
             metadata
+        ));
+    }
+
+    /**
+     * ADR #41 self-signup → audit_log {@code user.registered} INSERT.
+     * SignupService가 user.save 직후 publish. login.success와 별개 이벤트로 기록되어
+     * 가입과 자동 로그인이 동일 audit row에 합쳐지지 않는다.
+     */
+    @EventListener
+    public void onRegistered(UserRegisteredEvent event) {
+        safeRecord(AuditEventType.USER_REGISTERED, new AuditEvent(
+            AuditEventType.USER_REGISTERED,
+            event.userId(),
+            WebRequestContextHolder.currentIp(),
+            WebRequestContextHolder.currentUserAgent(),
+            AuditTargetType.USER,
+            event.userId(),
+            null,
+            null,
+            null
         ));
     }
 

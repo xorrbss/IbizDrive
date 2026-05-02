@@ -72,6 +72,9 @@ class LoginControllerIntegrationTest {
     @MockBean
     private DbUserDetailsService dbUserDetailsService; // SecurityConfig 컴포넌트 그래프 충족용
 
+    @MockBean
+    private SignupService signupService; // ADR #41 — AuthController 의존성, 본 테스트는 signup 미사용
+
     private static final String EMAIL = "alice@example.com";
     private static final String VALID_PW = "Sup3rSecret_Pw_12";
     private User active;

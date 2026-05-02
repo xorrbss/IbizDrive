@@ -57,6 +57,9 @@ class AuthMeLogoutIntegrationTest {
     @MockBean
     private DbUserDetailsService dbUserDetailsService; // SecurityConfig 그래프 충족용
 
+    @MockBean
+    private SignupService signupService; // ADR #41 — AuthController 의존성, 본 테스트는 signup 미사용
+
     private IbizDriveUserDetails principal;
 
     @BeforeEach
