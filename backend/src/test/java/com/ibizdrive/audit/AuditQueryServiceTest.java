@@ -3,6 +3,8 @@ package com.ibizdrive.audit;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibizdrive.audit.dto.AuditLogEntryDto;
 import com.ibizdrive.audit.dto.AuditLogPageDto;
+import com.ibizdrive.permission.Permission;
+import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.user.Role;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -24,7 +26,9 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.net.InetAddress;
 import java.time.LocalDate;
+import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -52,13 +56,50 @@ class AuditQueryServiceTest {
     @TestConfiguration
     static class TestConfig {
         @Bean
-        AuditQueryService auditQueryService(JdbcTemplate jdbc, ObjectMapper om) {
-            return new AuditQueryService(jdbc, om);
+        AuditQueryService auditQueryService(JdbcTemplate jdbc, ObjectMapper om, PermissionResolver pr) {
+            return new AuditQueryService(jdbc, om, pr);
         }
 
         @Bean
         ObjectMapper objectMapper() {
             return new ObjectMapper();
+        }
+
+        /**
+         * RP-2 권한 분기 테스트용 stub. 실제 PermissionResolver는 PermissionRepository(JPA) 의존이므로
+         * @DataJpaTest 환경에서 직접 인스턴스화하기에 비용이 크다. {@code grant(...)}로 명시 권한 매핑만
+         * true를 반환하고 그 외에는 false. {@code permissionRepository=null}이지만 isGranted를 override
+         * 해서 슈퍼 호출을 차단하므로 NPE 없음.
+         */
+        @Bean
+        StubPermissionResolver permissionResolver() {
+            return new StubPermissionResolver();
+        }
+    }
+
+    static class StubPermissionResolver extends PermissionResolver {
+        private final Set<String> grants = ConcurrentHashMap.newKeySet();
+
+        StubPermissionResolver() {
+            super(null);
+        }
+
+        void grant(UUID userId, String type, UUID id, Permission p) {
+            grants.add(key(userId, type, id, p));
+        }
+
+        void clear() {
+            grants.clear();
+        }
+
+        @Override
+        public boolean isGranted(UUID userId, String resourceType, UUID resourceId, Permission required) {
+            if (userId == null || resourceType == null || resourceId == null || required == null) return false;
+            return grants.contains(key(userId, resourceType, resourceId, required));
+        }
+
+        private static String key(UUID userId, String type, UUID id, Permission p) {
+            return userId + ":" + type + ":" + id + ":" + p;
         }
     }
 
@@ -79,6 +120,9 @@ class AuditQueryServiceTest {
     private AuditQueryService queryService;
 
     @Autowired
+    private StubPermissionResolver stubResolver;
+
+    @Autowired
     private JdbcTemplate jdbc;
 
     @Autowired
@@ -92,6 +136,8 @@ class AuditQueryServiceTest {
     void seed() throws Exception {
         // 컨테이너는 클래스 단위 lifecycle — 테스트 간 row 잔여 방지 위해 wipe.
         wipeAuditAndUsers();
+        // stub PermissionResolver는 singleton bean — 테스트 간 grant 누수 방지.
+        stubResolver.clear();
 
         alice = seedUser("alice@example.com", "김영수");
         bob   = seedUser("bob@example.com",   "Bob");
@@ -162,7 +208,7 @@ class AuditQueryServiceTest {
     @Test
     void filter_eventType_exactMatch() {
         AuditLogPageDto page = queryService.search(
-            new AuditQueryFilters(null, null, null, "file.uploaded"),
+            new AuditQueryFilters(null, null, null, "file.uploaded", null, null),
             1, 50, admin, Role.ADMIN);
         assertEquals(3, page.total());
         assertTrue(page.entries().stream().allMatch(e -> "file.uploaded".equals(e.eventType())));
@@ -171,12 +217,12 @@ class AuditQueryServiceTest {
     @Test
     void filter_actorQuery_partialAndCaseInsensitive() {
         AuditLogPageDto page = queryService.search(
-            new AuditQueryFilters(null, null, "김", null),
+            new AuditQueryFilters(null, null, "김", null, null, null),
             1, 50, admin, Role.ADMIN);
         assertEquals(3, page.total(), "김영수(alice) 3건");
 
         AuditLogPageDto bobUpper = queryService.search(
-            new AuditQueryFilters(null, null, "BOB", null),  // 대소문자 무시
+            new AuditQueryFilters(null, null, "BOB", null, null, null),  // 대소문자 무시
             1, 50, admin, Role.ADMIN);
         assertEquals(2, bobUpper.total());
     }
@@ -185,13 +231,13 @@ class AuditQueryServiceTest {
     void filter_dateRange_inclusiveBothEnds() {
         // 2026-04-25만: 시점 2(09:00) + 시점 3(12:00) = 2건
         AuditLogPageDto oneDay = queryService.search(
-            new AuditQueryFilters(LocalDate.of(2026, 4, 25), LocalDate.of(2026, 4, 25), null, null),
+            new AuditQueryFilters(LocalDate.of(2026, 4, 25), LocalDate.of(2026, 4, 25), null, null, null, null),
             1, 50, admin, Role.ADMIN);
         assertEquals(2, oneDay.total());
 
         // 2026-04-25 ~ 2026-04-26 (양 끝 포함): 시점 2,3,4,5 = 4건
         AuditLogPageDto twoDay = queryService.search(
-            new AuditQueryFilters(LocalDate.of(2026, 4, 25), LocalDate.of(2026, 4, 26), null, null),
+            new AuditQueryFilters(LocalDate.of(2026, 4, 25), LocalDate.of(2026, 4, 26), null, null, null, null),
             1, 50, admin, Role.ADMIN);
         assertEquals(4, twoDay.total());
     }
@@ -217,12 +263,96 @@ class AuditQueryServiceTest {
     @Test
     void emptyResult_returnsZeroAndEmptyList() {
         AuditLogPageDto page = queryService.search(
-            new AuditQueryFilters(null, null, "__no_such_actor__", null),
+            new AuditQueryFilters(null, null, "__no_such_actor__", null, null, null),
             1, 20, admin, Role.ADMIN);
         assertEquals(0L, page.total());
         assertTrue(page.entries().isEmpty());
         assertEquals(1, page.page());
         assertEquals(20, page.pageSize());
+    }
+
+    // ─── M-RP.4 — targetType/targetId 필터 + RP-2 권한 분기 ─────────────────────────
+
+    @Test
+    void filter_targetType_only() {
+        // 시드: file 4건(시점 1,2,3,5) + user 1건(시점 4). targetType=file → 4건.
+        AuditLogPageDto page = queryService.search(
+            new AuditQueryFilters(null, null, null, null, "file", null),
+            1, 50, admin, Role.ADMIN);
+        assertEquals(4, page.total());
+        assertTrue(page.entries().stream().allMatch(e -> "file".equals(e.resourceType())));
+    }
+
+    @Test
+    void filter_targetId_pinpoints_specificResource() throws Exception {
+        // 별도 파일 UUID로 alice + bob 이벤트 1건씩 INSERT. 동일 targetId로 필터 → 2건.
+        UUID fileX = UUID.randomUUID();
+        insertAudit(alice, "file.uploaded", "file", fileX,
+            "2026-04-27 09:00:00+00", InetAddress.getByName("203.0.113.10"), "{}");
+        insertAudit(bob, "file.downloaded", "file", fileX,
+            "2026-04-27 10:00:00+00", InetAddress.getByName("203.0.113.20"), "{}");
+
+        AuditLogPageDto page = queryService.search(
+            new AuditQueryFilters(null, null, null, null, "file", fileX),
+            1, 50, admin, Role.ADMIN);
+        assertEquals(2, page.total());
+    }
+
+    @Test
+    void rp2_member_withReadOnFile_seesAllActorsEvents() throws Exception {
+        // alice가 fileX에 대해 본인+bob의 이벤트를 모두 조회하려면 fileX READ 보유 필요.
+        UUID fileX = UUID.randomUUID();
+        insertAudit(alice, "file.uploaded", "file", fileX,
+            "2026-04-27 09:00:00+00", InetAddress.getByName("203.0.113.10"), "{}");
+        insertAudit(bob, "file.downloaded", "file", fileX,
+            "2026-04-27 10:00:00+00", InetAddress.getByName("203.0.113.20"), "{}");
+
+        // alice에 fileX READ grant — RP-2 우회 조건 충족.
+        stubResolver.grant(alice, "file", fileX, Permission.READ);
+
+        AuditLogPageDto page = queryService.search(
+            new AuditQueryFilters(null, null, null, null, "file", fileX),
+            1, 50, alice, Role.MEMBER);
+        assertEquals(2, page.total(), "RP-2: READ 보유 시 다른 actor(bob)의 이벤트도 노출");
+        assertTrue(page.entries().stream().anyMatch(e -> bob.equals(e.actorId())));
+    }
+
+    @Test
+    void rp2_member_withoutReadOnFile_stillScopedToSelf() throws Exception {
+        UUID fileX = UUID.randomUUID();
+        insertAudit(alice, "file.uploaded", "file", fileX,
+            "2026-04-27 09:00:00+00", InetAddress.getByName("203.0.113.10"), "{}");
+        insertAudit(bob, "file.downloaded", "file", fileX,
+            "2026-04-27 10:00:00+00", InetAddress.getByName("203.0.113.20"), "{}");
+        // grant 호출 없음 → READ 미보유.
+
+        AuditLogPageDto page = queryService.search(
+            new AuditQueryFilters(null, null, null, null, "file", fileX),
+            1, 50, alice, Role.MEMBER);
+        assertEquals(1, page.total(), "READ 미보유 시 기존 정책: 자기 actor 이벤트만");
+        assertTrue(page.entries().stream().allMatch(e -> alice.equals(e.actorId())));
+    }
+
+    @Test
+    void rp2_doesNotApply_whenTargetTypeIsNotFile() {
+        // targetType=user 같은 비-file 리소스에는 RP-2 우회가 적용되지 않는다.
+        UUID userId = UUID.randomUUID();
+        stubResolver.grant(alice, "user", userId, Permission.READ);  // 우회 안 됨 (file 전용)
+
+        AuditLogPageDto page = queryService.search(
+            new AuditQueryFilters(null, null, null, null, "user", userId),
+            1, 50, alice, Role.MEMBER);
+        // 시드에 alice의 user 이벤트 1건(시점 4) — target_id는 다른 UUID라 0건.
+        assertEquals(0, page.total());
+    }
+
+    @Test
+    void noRegression_whenTargetFiltersAreNull_existingPolicyApplies() {
+        // M12 회귀 차단: 새 필드 미지정 시 기존 동작 (alice MEMBER → 자기 3건만) 유지.
+        AuditLogPageDto page = queryService.search(
+            AuditQueryFilters.empty(), 1, 50, alice, Role.MEMBER);
+        assertEquals(3, page.total());
+        assertTrue(page.entries().stream().allMatch(e -> alice.equals(e.actorId())));
     }
 
     // ─── 헬퍼 ─────────────────────────────────────────────────────────────────
@@ -253,13 +383,19 @@ class AuditQueryServiceTest {
      */
     private void insertAudit(UUID actorId, String eventType, String targetType,
                              String occurredAt, InetAddress ip, String metadataJson) {
+        insertAudit(actorId, eventType, targetType, UUID.randomUUID(), occurredAt, ip, metadataJson);
+    }
+
+    /** RP-2 테스트용 — target_id를 명시 지정. */
+    private void insertAudit(UUID actorId, String eventType, String targetType, UUID targetId,
+                             String occurredAt, InetAddress ip, String metadataJson) {
         TransactionTemplate tt = new TransactionTemplate(txManager);
         tt.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         tt.executeWithoutResult(status -> jdbc.update(
             "INSERT INTO audit_log(occurred_at, event_type, actor_id, actor_ip, target_type, " +
             " target_id, metadata) VALUES (?::timestamptz, ?, ?, ?::inet, ?, ?, ?::jsonb)",
             occurredAt, eventType, actorId, ip.getHostAddress(), targetType,
-            UUID.randomUUID(), metadataJson
+            targetId, metadataJson
         ));
     }
 }

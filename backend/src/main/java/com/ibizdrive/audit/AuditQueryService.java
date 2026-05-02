@@ -4,6 +4,8 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibizdrive.audit.dto.AuditLogEntryDto;
 import com.ibizdrive.audit.dto.AuditLogPageDto;
+import com.ibizdrive.permission.Permission;
+import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.user.Role;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -23,11 +25,15 @@ import java.util.UUID;
  * <ul>
  *   <li>{@link Role#ADMIN}, {@link Role#AUDITOR}: 전체 audit_log 조회</li>
  *   <li>{@link Role#MEMBER}: {@code actor_id = viewer.id} 강제 (자기 활동만)</li>
+ *   <li><b>RP-2 (M-RP.4)</b>: {@code targetType="file"} + {@code targetId} 지정 + 호출자가 해당
+ *       파일에 {@link Permission#READ} 보유 → MEMBER도 actor 제한을 우회하고 모든 actor의 이벤트
+ *       조회. 활동 타임라인 UI("이 파일의 history")의 본질적 의미. 그 외에는 기존 정책 유지
+ *       (ADR #40 closure).</li>
  * </ul>
  *
  * <p><b>JdbcTemplate 채택 이유</b>: write 경로({@link AuditService})가 이미 JdbcTemplate +
  * {@code ?::jsonb}/{@code ?::inet} 캐스트를 사용하므로 read 경로도 동일 스택으로 통일.
- * JPA Specification은 6개 필터에 비해 빌드/테스트 비용이 과대 — KISS (CLAUDE.md §3 원칙 1).
+ * JPA Specification은 8개 필터에 비해 빌드/테스트 비용이 과대 — KISS (CLAUDE.md §3 원칙 1).
  *
  * <p><b>날짜 변환</b>: {@code AuditQueryFilters}의 {@code LocalDate}는 UTC 자정 기준으로
  * {@code OffsetDateTime} 경계로 확장 (docs/03 §4.2 UTC 저장 정책).
@@ -46,12 +52,19 @@ public class AuditQueryService {
     private static final String FROM_JOIN =
         "FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id";
 
+    /** RP-2 권한 분기 대상 리소스 타입. file 외에는 적용 안 함 (KISS — folder activity는 v1.x). */
+    private static final String RP2_RESOURCE_TYPE_FILE = "file";
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
+    private final PermissionResolver permissionResolver;
 
-    public AuditQueryService(JdbcTemplate jdbc, ObjectMapper objectMapper) {
+    public AuditQueryService(JdbcTemplate jdbc,
+                             ObjectMapper objectMapper,
+                             PermissionResolver permissionResolver) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
+        this.permissionResolver = permissionResolver;
     }
 
     /**
@@ -75,7 +88,8 @@ public class AuditQueryService {
         StringBuilder where = new StringBuilder("WHERE 1=1");
 
         // MEMBER scope 강제 — ADR #1 트랙결정 #4. 권한 분기는 service 단일 진입점에서.
-        if (viewerRole == Role.MEMBER) {
+        // RP-2 (ADR #40): targetType=file + targetId + 호출자 READ 보유 시 actor 제한을 건너뛴다.
+        if (viewerRole == Role.MEMBER && !rp2BypassesActorScope(filters, viewerId)) {
             where.append(" AND a.actor_id = ?");
             args.add(viewerId);
         }
@@ -96,6 +110,14 @@ public class AuditQueryService {
             where.append(" AND a.occurred_at < ?");
             // inclusive 끝 — 다음 날 00:00 UTC exclusive.
             args.add(OffsetDateTime.of(filters.toDate().plusDays(1).atStartOfDay(), ZoneOffset.UTC));
+        }
+        if (filters.targetType() != null && !filters.targetType().isBlank()) {
+            where.append(" AND a.target_type = ?");
+            args.add(filters.targetType());
+        }
+        if (filters.targetId() != null) {
+            where.append(" AND a.target_id = ?");
+            args.add(filters.targetId());
         }
 
         // total: 별도 COUNT — pagination 메타와 entries 분리.
@@ -118,6 +140,26 @@ public class AuditQueryService {
         );
 
         return new AuditLogPageDto(entries, total, safePage, safeSize);
+    }
+
+    /**
+     * RP-2 (ADR #40): MEMBER 호출자가 file 활동 타임라인을 조회할 때 actor 제한을 우회할지 결정.
+     *
+     * <p>적용 조건 모두 만족 시 true:
+     * <ul>
+     *   <li>{@code targetType="file"} + {@code targetId != null} (특정 파일 활동 타임라인)</li>
+     *   <li>호출자가 해당 파일에 {@link Permission#READ} 보유 (resource-level grant — 재귀 상속 포함)</li>
+     * </ul>
+     *
+     * <p>READ 미보유 시 false → 기존 actor=self 정책 유지(빈 결과 또는 자기 액션만 노출). 명시적 403은
+     * 던지지 않는다 — 비공개 파일에 대한 존재 자체를 노출하지 않기 위한 보수적 처리.
+     */
+    private boolean rp2BypassesActorScope(AuditQueryFilters filters, UUID viewerId) {
+        if (!RP2_RESOURCE_TYPE_FILE.equals(filters.targetType())) return false;
+        if (filters.targetId() == null) return false;
+        return permissionResolver.isGranted(
+            viewerId, RP2_RESOURCE_TYPE_FILE, filters.targetId(), Permission.READ
+        );
     }
 
     private AuditLogEntryDto mapRow(java.sql.ResultSet rs, int rowNum) throws java.sql.SQLException {

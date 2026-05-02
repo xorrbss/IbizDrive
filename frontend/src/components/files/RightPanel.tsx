@@ -5,6 +5,7 @@ import { useFileDetail } from '@/hooks/useFileDetail'
 import type { FileItem } from '@/types/file'
 import { VersionsTab } from './VersionsTab'
 import { PermissionsTab } from './PermissionsTab'
+import { ActivityTab } from './ActivityTab'
 
 /**
  * RightPanel: ?file=<id> 에 대응하는 파일 상세 패널.
@@ -14,7 +15,8 @@ import { PermissionsTab } from './PermissionsTab'
  * - Parallel route 대신 query param 사용 (§19 원칙 2)
  * - M15: 4-tab 도입 (세부정보/버전/활동/권한)
  * - M-RP.1: 버전 탭 wiring 활성.
- * - M-RP.3: 권한 탭 wiring 활성 (read-only). 활동은 M-RP.4에서 활성.
+ * - M-RP.3: 권한 탭 wiring 활성 (read-only).
+ * - M-RP.4: 활동 탭 wiring 활성 (ADR #40 RP-2 — file scoped activity).
  *
  * 설계: docs/01 §11 (로딩/에러/빈 상태), §17.5 (useOpenFile), §18 row 15 (M15)
  */
@@ -113,19 +115,12 @@ export function RightPanel() {
         )}
         {/* M-RP.1: versions 탭 활성화. 조건부 렌더로 비활성 탭에서는 mount 안 됨 → fetch 차단. */}
         {tab === 'versions' && <VersionsTab fileId={fileId} />}
-        {tab === 'activity' && <ComingSoon label="활동 타임라인" />}
+        {/* M-RP.4: activity 탭 활성화. 조건부 렌더로 비활성 탭에서는 mount 안 됨 → fetch 차단. */}
+        {tab === 'activity' && <ActivityTab fileId={fileId} />}
         {/* M-RP.3: permissions 탭 활성화. 조건부 렌더로 비활성 탭에서는 mount 안 됨 → fetch 차단. */}
         {tab === 'permissions' && <PermissionsTab fileId={fileId} />}
       </div>
     </aside>
-  )
-}
-
-function ComingSoon({ label }: { label: string }) {
-  return (
-    <div className="text-fg-muted text-[12px] py-4 text-center">
-      {label} — 준비 중
-    </div>
   )
 }
 

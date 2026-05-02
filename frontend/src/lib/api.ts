@@ -634,6 +634,71 @@ export const api = {
     return { usedBytes, totalBytes }
   },
 
+  /**
+   * M-RP.4.2 — 특정 파일의 활동 타임라인 (RightPanel `activity` 탭).
+   *
+   * backend `GET /api/admin/audit?targetType=file&targetId=<id>&page&pageSize` (ADR #40 RP-2).
+   * 권한 분기는 backend AuditQueryService:
+   * - ADMIN/AUDITOR: 전체 actor 이벤트
+   * - MEMBER + 호출자가 file에 READ 보유: actor 제한 우회 → 모든 사용자의 액션 노출
+   * - MEMBER + READ 미보유: 기존 actor=self 정책 (자기 액션만 또는 빈 페이지)
+   *
+   * 응답 매핑은 `getAuditLogs`와 동일 — actorId/actorName null 폴백 + AuditLogPage shape.
+   * MVP 스코프: 페이지 1만 (더보기 v1.x — `useFileActivity`에 옵션 추가 시 hook 인자만 확장).
+   */
+  async listFileActivity(
+    fileId: string,
+    page = 1,
+    pageSize = 20,
+  ): Promise<AuditLogPage> {
+    const params = new URLSearchParams()
+    params.set('targetType', 'file')
+    params.set('targetId', fileId)
+    params.set('page', String(page))
+    params.set('pageSize', String(pageSize))
+
+    const res = await fetch(`/api/admin/audit?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(`listFileActivity failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const raw = (await res.json()) as {
+      entries: Array<{
+        id: string
+        occurredAt: string
+        eventType: AuditLogEntry['eventType']
+        actorId: string | null
+        actorName: string | null
+        resourceType: AuditLogEntry['resourceType']
+        resourceId: string | null
+        resourceName: string | null
+        ip: string | null
+        metadata: Record<string, unknown> | null
+      }>
+      total: number
+      page: number
+      pageSize: number
+    }
+    const entries: AuditLogEntry[] = raw.entries.map((e) => ({
+      id: e.id,
+      occurredAt: e.occurredAt,
+      eventType: e.eventType,
+      actorId: e.actorId ?? 'system',
+      actorName: e.actorName ?? 'system',
+      resourceType: e.resourceType,
+      resourceId: e.resourceId,
+      resourceName: e.resourceName,
+      ip: e.ip,
+      metadata: e.metadata,
+    }))
+    return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
+  },
+
   async getAuditLogs(
     filters: AuditLogFilters = {},
     page = 1,

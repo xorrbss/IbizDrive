@@ -42,6 +42,14 @@ export const qk = {
    * version restore 후 (M-RP.2). detail/versions 둘 다 invalidate 필요.
    */
   fileVersions: (id: string) => [...qk.files(), 'versions', id] as const,
+  /**
+   * 파일 활동 타임라인 (M-RP.4) — RightPanel `activity` 탭.
+   * backend `GET /api/admin/audit?targetType=file&targetId=<id>&page&pageSize` 응답 캐시.
+   * page/pageSize 변경 시 자동 재요청 (audit page key 패턴 mirror).
+   * 무효화: 본 트랙 mutation 없음 — append-only audit_log이므로 staleTime + refetch on focus로 충분.
+   */
+  fileActivity: (id: string, page: number, pageSize: number) =>
+    [...qk.files(), 'activity', id, page, pageSize] as const,
 
   // ── 휴지통 (M9) ──
   trash: () => [...qk.all, 'trash'] as const,
