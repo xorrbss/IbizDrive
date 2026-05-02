@@ -860,6 +860,9 @@ CSRF 정책:
 | POST | `/api/auth/logout` | isAuthenticated | REQUIRED (audit) | — | — | 403 CSRF_MISMATCH |
 | GET  | `/api/auth/me` | isAuthenticated | — | — | — | 401 UNAUTHORIZED |
 | GET  | `/api/auth/csrf` | permitAll | — | — | — | — |
+| POST | `/api/auth/password/forgot` | permitAll | REQUIRED (token+email+audit) | email→lowercase | — | 400 VALIDATION_ERROR |
+| POST | `/api/auth/password/reset` | permitAll | REQUIRED (token verify+pw update+session invalidate+audit) | — | — | 400 VALIDATION_ERROR, 400 INVALID_TOKEN |
+| POST | `/api/auth/password/change` | isAuthenticated | REQUIRED (pw verify+update+other sessions invalidate+audit) | — | — | 400 VALIDATION_ERROR, 401 INVALID_CREDENTIALS, 403 CSRF_MISMATCH |
 
 > **Norm 컬럼**: 이메일은 `NormalizeUtil.normalize()` (NFC + 파일명 정규화) 적용 대상 아님. `email.trim().toLowerCase()` 별도 적용 (docs/03 §2.7).
 > **TX 컬럼**: login은 audit + loginfail Redis 카운터 부수효과 있음 → REQUIRED. logout은 session.invalidate + audit.
@@ -935,9 +938,58 @@ GET /api/auth/csrf
   Note:     Spring Security CookieCsrfTokenRepository.withHttpOnlyFalse() 기본 동작.
             mutation 요청 전 클라가 1회 호출 → XSRF-TOKEN 쿠키 → JS가 읽어
             X-CSRF-Token 헤더로 전송 (double-submit).
+
+POST /api/auth/password/forgot                     (A1.5, ADR #42·#43)
+  Headers:  (CSRF 불필요 — SecurityConfig ignoringRequestMatchers)
+  Request:  { email: string }
+  Validation:
+    - email: @Email + @NotBlank, 최대 254자
+  Response: 200 { message: '입력하신 이메일로 재설정 링크를 보냈습니다.' }
+            (anti-enumeration — 이메일 미존재여도 동일 응답·동일 latency 목표)
+  Side-effects:
+            - 이메일 존재 시: password_reset_tokens INSERT (token_hash=SHA-256, expires_at=now+30m)
+            - EmailService.sendPasswordReset(email, rawToken) — dev=콘솔, prod=SMTP
+            - audit: user.password.forgot_requested (이메일 존재여부 무관, found 플래그)
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'email', rule: 'format' | 'length' } }
+
+POST /api/auth/password/reset                      (A1.5, ADR #42·#43)
+  Headers:  (CSRF 불필요 — SecurityConfig ignoringRequestMatchers)
+  Request:  { token: string, newPassword: string }
+  Validation:
+    - token: @NotBlank
+    - newPassword: @NotBlank, 8~128자
+  Response: 200 { message: '비밀번호가 변경되었습니다.' }
+  Side-effects:
+            - token_hash 매칭 + expires_at>now + used_at=null 검증 후 used_at=now (UPDATE)
+            - users.password_hash = bcrypt(newPassword)
+            - 해당 사용자의 모든 SPRING_SESSION DELETE (FindByIndexNameSessionRepository)
+            - audit: user.password.reset
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'newPassword', rule: 'length' } }
+    400 INVALID_TOKEN     { } (만료·이미 사용·미존재 — 동일 코드)
+
+POST /api/auth/password/change                     (A1.5, ADR #43)
+  Headers:  X-CSRF-Token: <token>           (필수)
+            Cookie: SESSION=<id>            (인증 필요)
+  Request:  { currentPassword: string, newPassword: string }
+  Validation:
+    - currentPassword: @NotBlank, 최대 200자
+    - newPassword: @NotBlank, 8~128자
+  Response: 200 { message: '비밀번호가 변경되었습니다.' }
+  Side-effects:
+            - currentPassword bcrypt match 확인 (불일치 → 401 INVALID_CREDENTIALS)
+            - users.password_hash = bcrypt(newPassword)
+            - **현재 세션 제외** 다른 모든 세션 invalidate (FindByIndexNameSessionRepository.findByPrincipalName)
+            - audit: user.password.changed
+  Errors:
+    400 VALIDATION_ERROR    { details: { field: 'newPassword', rule: 'length' } }
+    401 UNAUTHORIZED        (미인증 세션)
+    401 INVALID_CREDENTIALS { } (현재 비밀번호 불일치)
+    403 CSRF_MISMATCH
 ```
 
-**관련 audit 이벤트** (docs/03 §2.10): `user.login.success` / `user.login.failed` / `user.logout` / `user.session.expired` / `user.locked` / `user.unlocked` / `user.password.changed` (A1.5).
+**관련 audit 이벤트** (docs/03 §2.10): `user.login.success` / `user.login.failed` / `user.logout` / `user.session.expired` / `user.locked` / `user.unlocked` / `user.password.changed` / `user.password.forgot_requested` (A1.5) / `user.password.reset` (A1.5).
 
 ### 7.5 폴더 (Folders)
 

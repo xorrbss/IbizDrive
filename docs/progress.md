@@ -5,6 +5,58 @@
 
 ---
 
+## 2026-05-02 — 🏁 a1.5-email-infra 트랙 종료 (Spring Mail + password reset/change + 3 endpoints + 3 pages, ADR #42·#43)
+
+### 범위
+
+`dev/active/a1.5-email-infra/` bootstrap → P1 EmailService 추상화 (`EmailService` interface + `ConsoleEmailService @Profile("!prod")` + `SmtpEmailService @Profile("prod")` + spring-boot-starter-mail) → P2 V8 `password_reset_tokens` migration (token_hash CHAR(64) UNIQUE + user_id FK + expires_at + used_at + created_at, idx_password_reset_tokens_user_id) + JPA entity/repo → P3 POST `/api/auth/password/forgot` TDD (anti-enumeration 200 always + audit user.password.forgot_requested) → P4 POST `/api/auth/password/reset` TDD (token verify + bcrypt update + 모든 세션 invalidate + audit user.password.reset) → P5 POST `/api/auth/password/change` TDD (current pw verify + 다른 세션만 invalidate + audit user.password.changed) → P6 frontend (api 3 메서드 + 3 hooks + `(auth)/forgot-password` + `(auth)/reset-password?token=` + `(explorer)/account/password` + login 링크 + UserMenu 링크) → P7 closure (ADR #42·#43 + docs/03 §2.7 password reset 절 + docs/02 §7.4 endpoint 표·request/response 블록 + audit 이벤트 동기화 + 본 entry + archive + stacked PR).
+
+### 회고
+
+- **commits**: 6개 + closure.
+  - `f...` P1 EmailService abstraction (Console/Smtp + Profile dispatch)
+  - `673fbdc` P2 V8 password_reset_tokens + entity/repo
+  - `6dd4488` P3 POST /api/auth/password/forgot (TDD)
+  - `95e8a3c` P4 POST /api/auth/password/reset (TDD)
+  - `8ade712` P5 POST /api/auth/password/change (TDD)
+  - `d82b271` P6 frontend pages /forgot|reset|account/password
+  - + closure commit (ADR/docs/03/docs/02/progress/archive)
+- **production 신설/수정**:
+  - backend 신설: `EmailService` interface + `ConsoleEmailService` + `SmtpEmailService` + V8 migration + `PasswordResetToken` entity/repo + `PasswordResetService` (forgot/reset/change) + `PasswordController` + 3 DTO + 신규 `InvalidTokenException` + tests 4 (controller 3 + service).
+  - backend 수정: `SecurityConfig` (`/api/auth/password/forgot|reset` permitAll + CSRF ignore), `AuditEventType` (USER_PASSWORD_FORGOT_REQUESTED + USER_PASSWORD_RESET 추가, USER_PASSWORD_CHANGED 활성), `AuthExceptionHandler` (INVALID_TOKEN 매핑).
+  - frontend 신설: 3 hooks (`usePasswordForgot`/`usePasswordReset`/`usePasswordChange`) + 3 pages (`(auth)/forgot-password`/`(auth)/reset-password`/`(explorer)/account/password`).
+  - frontend 수정: `api.ts` (3 메서드 — forgot/reset CSRF skip, change CSRF 사용), `(auth)/login/page` (잊으셨나요 링크), `UserMenu` (비밀번호 변경 링크).
+- **docs sync**:
+  - `docs/00 §5`: ADR #42 (EmailService Profile 분기), ADR #43 (token SHA-256 hash + 30분 TTL + 1회 사용 + anti-enumeration).
+  - `docs/03 §2.7` 직후 password reset/change 절 신설(엔드포인트·토큰·세션 invalidation 정책·이메일 인프라).
+  - `docs/03 §2.10` audit 표 +2 (`user.password.forgot_requested`, `user.password.reset`).
+  - `docs/03 §4.1` AuditEventType TS union +2 (ADR #43 활성).
+  - `docs/02 §7.4` endpoint 표 +3 + request/response 블록 +3.
+- **dev-docs**: `dev/active/a1.5-email-infra/` → closure 후 `dev/completed/`.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — 신규 PasswordControllerForgotTest(3) + PasswordControllerResetTest(4) + PasswordControllerChangeTest(5) + PasswordResetServiceTest(8) = 20개, 회귀 0.
+  - frontend `pnpm typecheck && pnpm lint && pnpm build` clean — 3 신규 페이지 정적 prerender.
+
+### 핵심 결정 (a1.5)
+
+1. **ADR #42 — EmailService Profile 분기**: dev/test=`ConsoleEmailService`(stdout 로그), prod=`SmtpEmailService`(JavaMailSender). 인터페이스 단일 진입점 `sendPasswordReset(email, rawToken)`. SMTP 설정은 `application-prod.yml` (host/port/username/password 환경변수).
+2. **ADR #43 — Password reset token 정책**: 평문 토큰은 응답·DB 저장 X. SHA-256 hex hash만 저장. TTL 30분. 1회 사용(used_at 기록). 만료/사용/미존재 모두 동일 INVALID_TOKEN 응답(side-channel 차단).
+3. **Anti-enumeration**: `/forgot` 응답·메시지 동일, audit에는 `found` 플래그로 분리 기록. latency는 best-effort(이메일 송신 비동기화는 v1.x).
+4. **세션 invalidation 비대칭**: `/reset` = 모든 세션 종료(분실·탈취 가정), `/change` = 현재 세션만 보존(다른 디바이스만 종료). `FindByIndexNameSessionRepository.findByPrincipalName` 사용.
+5. **CSRF asymmetry**: `/forgot`·`/reset`은 SecurityConfig `ignoringRequestMatchers` (anonymous), `/change`는 인증 + double-submit 유지.
+6. **mustChangePassword 활성 시점**: ADR #21 잔여 — 첫 로그인 강제 변경 UX는 v1.x. 현 트랙은 자발적 `/account/password` + 잊었을 때 `/forgot-password` 두 경로만 활성.
+7. **audit emit coverage 29 → 31**: USER_PASSWORD_FORGOT_REQUESTED + USER_PASSWORD_RESET 활성 (USER_PASSWORD_CHANGED는 ADR #41 트랙에서 enum만 추가, 본 트랙에서 emit).
+
+### 다음 세션 컨텍스트
+
+- **mustChangePassword UX 강제** — 로그인 직후 `/account/password` redirect (ADR #21 잔여, v1.x).
+- **password 정책 강화** — min=8 → min=12 + zxcvbn/HIBP, /reset·/change 양쪽 적용.
+- **이메일 송신 비동기화** — `@Async` + `TaskExecutor`로 forgot 응답 latency 균일화(현재는 동기 송신 — dev console은 무비용, prod SMTP는 best-effort).
+- **이메일 초대 endpoint** (`POST /api/admin/users` invite-by-email) — ADR #21 잔여, EmailService 재사용.
+- **rate limit on /forgot** — 동일 email/IP 분당 1회 등(브루트포스 enumeration 추가 방어).
+
+---
+
 ## 2026-05-02 — 🏁 auth-pages 트랙 종료 (셀프 가입 + first-user-ADMIN + /login·/signup + 401 가드, ADR #41)
 
 ### 범위
