@@ -96,6 +96,14 @@ app:
       grace-hours: 24
       batch-size: 200
 
+# a1.5 이메일 — 발신자 주소 + 재설정 링크 base URL.
+# dev는 ConsoleEmailService가 활성화되어 SMTP 미설정으로도 부팅 가능.
+# prod는 application-prod.yml이 spring.mail.* 환경변수를 추가 주입.
+app:
+  email:
+    from: noreply@ibizdrive.local
+  app-url: http://localhost:3000
+
 ibizdrive:
   storage:
     # A15 (ADR #36 가칭) — MVP는 type=local만 동작. s3는 v1.x.

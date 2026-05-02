@@ -24,6 +24,21 @@ server:
       cookie:
         secure: true        # HTTPS only — 운영 리버스 프록시가 TLS 종단 필수
 
+# a1.5 SMTP 발송 — 실제 값은 운영자 환경변수로 주입 (사내 시크릿 저장소).
+# 미주입 시 JavaMailSender 빈 미등록 → SmtpEmailService 부팅 실패 → 무음 발송 방지.
+spring:
+  mail:
+    host: ${SPRING_MAIL_HOST}
+    port: ${SPRING_MAIL_PORT:587}
+    username: ${SPRING_MAIL_USERNAME}
+    password: ${SPRING_MAIL_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+
 # 운영 cron 활성화 (`SchedulingConfig`는 항상 @EnableScheduling, 잡 빈은 enabled 게이트로 등록).
 # 단일 인스턴스 가정 — 멀티 인스턴스 시 `@SchedulerLock` 필요(`BETA-RELEASE.md` §3 주).
 app:
