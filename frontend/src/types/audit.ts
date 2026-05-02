@@ -41,6 +41,8 @@ export type AuditEventType =
   | 'user.login.failed'
   | 'user.logout'
   | 'user.password.changed'
+  | 'user.password.forgot_requested'
+  | 'user.password.reset'
   | 'user.mfa.enabled'
   // 관리자
   | 'admin.user.created'

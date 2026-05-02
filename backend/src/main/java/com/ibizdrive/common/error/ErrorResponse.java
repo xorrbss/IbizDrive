@@ -43,4 +43,11 @@ public record ErrorResponse(
     public static ErrorResponse duplicateEmail() {
         return new ErrorResponse("CONFLICT", "DUPLICATE_EMAIL", null, null);
     }
+
+    /**
+     * a1.5 비밀번호 재설정 — 토큰이 만료/사용됨/존재하지 않음 (이유 비공개 — enumeration 방지).
+     */
+    public static ErrorResponse invalidToken() {
+        return new ErrorResponse("INVALID_TOKEN", null, null, null);
+    }
 }

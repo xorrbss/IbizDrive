@@ -27,6 +27,11 @@ dependencies {
     // SpringBoot autoconfig가 @EnableAspectJAutoProxy를 활성화 → @Aspect 빈이 자동 등록.
     implementation("org.springframework.boot:spring-boot-starter-aop")
 
+    // Mail — a1.5 password reset/forgot 흐름의 이메일 전송 (EmailService 추상화).
+    // dev/default 프로파일은 ConsoleEmailService(stdout dump)만 사용하므로 SMTP 서버 없이도 부팅.
+    // prod 프로파일에서만 JavaMailSender 빈 + SmtpEmailService 활성. spring.mail.* 환경변수 주입 필요.
+    implementation("org.springframework.boot:spring-boot-starter-mail")
+
     // Spring Session (JDBC, ADR #12 + 사용자 명시)
     implementation("org.springframework.session:spring-session-jdbc")
 

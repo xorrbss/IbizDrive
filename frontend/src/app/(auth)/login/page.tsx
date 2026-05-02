@@ -108,6 +108,9 @@ function LoginForm() {
         계정이 없으신가요?{' '}
         <Link href="/signup" className="underline">회원가입</Link>
       </p>
+      <p className="text-xs text-fg-muted text-center">
+        <Link href="/forgot-password" className="underline">비밀번호를 잊으셨나요?</Link>
+      </p>
     </form>
   )
 }

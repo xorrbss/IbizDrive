@@ -261,7 +261,37 @@
 
 - **사전 공격 방지(zxcvbn/HIBP)**: 도입 안 함 (외부 의존·UX 부담) → v1.x.
 - **이메일 정규화**: `email = email.trim().toLowerCase()` (별도 로직, `NormalizeUtil.normalize()` 적용 대상 아님 — 파일/폴더명 전용).
-- **비밀번호 변경**: A1.5 — `POST /api/auth/password/change`, 현재 PW 확인 + 새 PW 정책 검증 + 모든 세션 무효화.
+
+**비밀번호 분실/재설정/변경 (a1.5, ADR #42 + #43, 2026-05-02 closure)**
+
+3개 endpoint:
+
+| 메서드 | 경로 | 인증 | CSRF | 동작 |
+|---|---|---|---|---|
+| `POST` | `/api/auth/password/forgot` | 비로그인 | 면제 | 가입자 → 토큰 생성 + 메일 발송 / 미가입자 → no-op. 두 경우 모두 200 동일 응답 (anti-enumeration) |
+| `POST` | `/api/auth/password/reset` | 비로그인 (token 인증) | 면제 | 토큰 hash 매칭 + TTL/used 검사 → PW 갱신 + **모든 세션 invalidate** |
+| `POST` | `/api/auth/password/change` | 인증 필수 | 필수 | 현재 PW BCrypt 검증 → 새 PW 갱신 + **현재 세션 보존**, 다른 세션만 invalidate |
+
+토큰 정책 (`password_reset_tokens` 테이블, V8):
+
+- **저장** = SHA-256 hex (64자), 평문은 메일 본문에만.
+- **TTL** = 30분 (`expires_at = created_at + 30m`).
+- **1회 사용** = `used_at` set 후 동일 토큰은 INVALID_TOKEN.
+- **다중 토큰 허용** — 같은 사용자 forgot 여러 번 호출 시 모든 active 토큰 유효 (race/UX 부담 회피).
+- **사유 비공개** — 만료/사용됨/미존재 모두 400 INVALID_TOKEN 단일 코드 (token enumeration 방지).
+- **rate-limit 미도입** — v1.x 별도 트랙.
+
+세션 무효화 정책 차이:
+
+- **reset**: PW 변경이 기존 모든 세션을 무효화 — `FindByIndexNameSessionRepository.findByPrincipalName(email)` → `deleteById` loop, `keepSessionId=null`.
+- **change**: 현재 세션은 보존하여 사용자가 강제 로그아웃되지 않음. 다른 기기/세션은 모두 invalidate, `keepSessionId=session.getId()`.
+
+이메일 인프라 (ADR #42):
+
+- `EmailService` 인터페이스 + profile 분기 — `ConsoleEmailService(@Profile("!prod"))`는 stdout 로깅 (dev/test SMTP 의존성 제거), `SmtpEmailService(@Profile("prod"))`는 `JavaMailSender` 위임.
+- 발송 실패는 `EmailDeliveryException`으로 표면화하되 forgot은 swallow + ERROR 로그 (anti-enumeration 200 유지).
+- HTML 템플릿/i18n/비동기 큐 모두 v1.x 분리.
+- **Anti-enumeration timing leak** = 알려진 한계 (가입자만 SMTP 라운드트립). v1.x rate-limit + 비동기 큐 트랙에서 재검토.
 
 ### 2.8 사용자 등록 (ADR #21 → ADR #41 supersede, 2026-05-02)
 
@@ -303,7 +333,9 @@
 | `user.login.failed` | 로그인 실패 | `invalid_credentials` / `locked` / `csrf_mismatch` |
 | `user.logout` | 명시적 로그아웃 | — |
 | `user.session.expired` | idle/absolute timeout | `idle` / `absolute` |
-| `user.password.changed` | 비밀번호 변경 (A1.5) | — |
+| `user.password.changed` | 비밀번호 변경 (A1.5 P5, ADR #43) | — |
+| `user.password.forgot_requested` | 비밀번호 분실 토큰 발급 + 메일 발송 (A1.5 P3, ADR #43) — 가입자에 한해 발생 (anti-enumeration) | — |
+| `user.password.reset` | 토큰 + 새 PW로 재설정 성공 (A1.5 P4, ADR #43) | — |
 | `user.locked` | 5회 실패 후 락 진입 | — |
 | `user.unlocked` | 관리자 수동 해제 (A4) | `admin_action` |
 
@@ -451,7 +483,9 @@ type AuditEventType =
   | 'user.login.success'
   | 'user.login.failed'
   | 'user.logout'
-  | 'user.password.changed'
+  | 'user.password.changed'           // A1.5 P5 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43)
+  | 'user.password.forgot_requested'  // A1.5 P3 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43) — 가입자만 emit (anti-enumeration)
+  | 'user.password.reset'             // A1.5 P4 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43)
   | 'user.mfa.enabled'
   // 관리자
   | 'admin.user.created'

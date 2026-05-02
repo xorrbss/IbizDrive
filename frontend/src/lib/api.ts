@@ -985,6 +985,64 @@ export const api = {
     }
     return (await res.json()) as AuthSession
   },
+
+  // ── 비밀번호 재설정/변경 (a1.5) ───────────────────────────────────────────
+
+  /**
+   * `POST /api/auth/password/forgot`. anti-enumeration — 가입/미가입 무관 200 동일 응답.
+   * SecurityConfig가 ignoringRequestMatchers로 CSRF 면제 (signup 패턴 동일).
+   */
+  async passwordForgot(email: string): Promise<{ message: string }> {
+    const res = await fetch('/api/auth/password/forgot', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ email }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `passwordForgot failed: ${res.status}`)
+    }
+    return (await res.json()) as { message: string }
+  },
+
+  /**
+   * `POST /api/auth/password/reset`. 토큰 + 새 비밀번호. 토큰 무효 시 400 INVALID_TOKEN.
+   * CSRF 면제 (signup/forgot 동일 정책).
+   */
+  async passwordReset(token: string, newPassword: string): Promise<{ message: string }> {
+    const res = await fetch('/api/auth/password/reset', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ token, newPassword }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `passwordReset failed: ${res.status}`)
+    }
+    return (await res.json()) as { message: string }
+  },
+
+  /**
+   * `POST /api/auth/password/change`. 인증 + CSRF 필수. 현재 PW 미일치 시 401 INVALID_CREDENTIALS.
+   * 성공 시 다른 모든 세션이 invalidate되며 현재 세션은 유지된다.
+   */
+  async passwordChange(currentPassword: string, newPassword: string): Promise<{ message: string }> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch('/api/auth/password/change', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `passwordChange failed: ${res.status}`)
+    }
+    return (await res.json()) as { message: string }
+  },
 }
 
 /**
