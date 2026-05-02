@@ -5,6 +5,7 @@ import com.ibizdrive.audit.AuditEventType;
 import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
+import com.ibizdrive.auth.InvalidCredentialsException;
 import com.ibizdrive.email.EmailDeliveryException;
 import com.ibizdrive.email.EmailService;
 import com.ibizdrive.user.User;
@@ -176,6 +177,42 @@ public class PasswordResetService {
 
         auditService.record(new AuditEvent(
             AuditEventType.USER_PASSWORD_RESET,
+            user.getId(),
+            WebRequestContextHolder.currentIp(),
+            WebRequestContextHolder.currentUserAgent(),
+            AuditTargetType.USER,
+            user.getId(),
+            null,
+            null,
+            null
+        ));
+    }
+
+    /**
+     * 인증된 사용자의 비밀번호 변경 (P5).
+     *
+     * <p>현재 비밀번호 BCrypt 검증 → 새 비밀번호로 갱신 → 다른 모든 세션 invalidate.
+     * 현재 세션({@code currentSessionId})은 보존하여 사용자가 강제 로그아웃되지 않는다.
+     *
+     * <p>currentPassword 미일치 시 {@link InvalidCredentialsException} → 401
+     * (login 실패와 동일 코드 — enumeration/UX 일관성).
+     *
+     * <p>비밀번호 정책 검증은 DTO의 {@link jakarta.validation.constraints.Size}가 담당.
+     */
+    @Transactional
+    public void change(User user, String currentPassword, String newPassword, String currentSessionId) {
+        if (!passwordEncoder.matches(currentPassword, user.getPasswordHash())) {
+            throw new InvalidCredentialsException();
+        }
+
+        user.changePasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        // 현재 세션은 보존, 그 외 모든 세션 invalidate.
+        invalidateAllSessions(user.getEmail(), currentSessionId);
+
+        auditService.record(new AuditEvent(
+            AuditEventType.USER_PASSWORD_CHANGED,
             user.getId(),
             WebRequestContextHolder.currentIp(),
             WebRequestContextHolder.currentUserAgent(),

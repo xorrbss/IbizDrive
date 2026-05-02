@@ -1,9 +1,14 @@
 package com.ibizdrive.auth.password;
 
+import com.ibizdrive.auth.password.dto.ChangePasswordRequest;
 import com.ibizdrive.auth.password.dto.ForgotPasswordRequest;
 import com.ibizdrive.auth.password.dto.MessageResponse;
 import com.ibizdrive.auth.password.dto.ResetPasswordRequest;
+import com.ibizdrive.user.IbizDriveUserDetails;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -33,6 +38,10 @@ public class PasswordController {
         "비밀번호가 재설정되었습니다. 새 비밀번호로 다시 로그인하세요."
     );
 
+    private static final MessageResponse CHANGE_RESPONSE = MessageResponse.of(
+        "비밀번호가 변경되었습니다. 다른 기기의 세션은 모두 종료되었습니다."
+    );
+
     private final PasswordResetService passwordResetService;
 
     public PasswordController(PasswordResetService passwordResetService) {
@@ -56,5 +65,28 @@ public class PasswordController {
     public MessageResponse reset(@Valid @RequestBody ResetPasswordRequest req) {
         passwordResetService.reset(req.token(), req.newPassword());
         return RESET_RESPONSE;
+    }
+
+    /**
+     * 인증된 사용자의 비밀번호 변경 (P5). 현재 세션은 보존하고 다른 모든 세션을 invalidate.
+     * currentPassword 미일치 시 401 INVALID_CREDENTIALS (login 실패와 동일).
+     *
+     * <p>SecurityConfig의 {@code anyRequest().authenticated()}가 미인증을 401로 차단하므로
+     * 본 핸들러는 인증된 principal에서만 호출된다. CSRF는 default 정책 (signup/forgot/reset과 달리
+     * ignore 미적용 — 인증 사용자이므로 토큰 발급 가능).
+     */
+    @PostMapping("/change")
+    public MessageResponse change(@Valid @RequestBody ChangePasswordRequest req,
+                                  @AuthenticationPrincipal IbizDriveUserDetails principal,
+                                  HttpServletRequest httpReq) {
+        HttpSession session = httpReq.getSession(false);
+        String currentSessionId = (session != null) ? session.getId() : null;
+        passwordResetService.change(
+            principal.getUser(),
+            req.currentPassword(),
+            req.newPassword(),
+            currentSessionId
+        );
+        return CHANGE_RESPONSE;
     }
 }

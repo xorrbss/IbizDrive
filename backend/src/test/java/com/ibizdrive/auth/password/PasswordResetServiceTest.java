@@ -3,6 +3,7 @@ package com.ibizdrive.auth.password;
 import com.ibizdrive.audit.AuditEvent;
 import com.ibizdrive.audit.AuditEventType;
 import com.ibizdrive.audit.AuditService;
+import com.ibizdrive.auth.InvalidCredentialsException;
 import com.ibizdrive.email.EmailDeliveryException;
 import com.ibizdrive.email.EmailService;
 import com.ibizdrive.user.Role;
@@ -261,6 +262,75 @@ class PasswordResetServiceTest {
             .isInstanceOf(InvalidPasswordResetTokenException.class);
 
         verifyNoInteractions(userRepository);
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // P5 change() — 인증 사용자 PW 변경 + 다른 세션만 invalidate
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void change_validCurrentPassword_updatesAndInvalidatesOtherSessions() {
+        User user = sampleUser("alice@example.com", "Alice");
+        when(passwordEncoder.matches(eq("CurrentSecret123!"), eq(user.getPasswordHash())))
+            .thenReturn(true);
+
+        // 3개 세션 — 그중 "current-session-id" 만 보존되어야 함
+        MapSession sCurrent = new MapSession();
+        // MapSession ID는 자동 생성 — 우리 시나리오에 맞게 알려진 값으로 변경
+        String currentId = "current-session-id";
+        MapSession s1 = new MapSession();
+        MapSession s2 = new MapSession();
+        when(sessionRepository.findByPrincipalName("alice@example.com"))
+            .thenReturn(Map.of(currentId, sCurrent, s1.getId(), s1, s2.getId(), s2));
+
+        service.change(user, "CurrentSecret123!", "NewSecret456!", currentId);
+
+        // PW 갱신
+        assertThat(user.getPasswordHash()).startsWith("{bcrypt}$2a$12$NewSecret456!");
+        verify(userRepository).save(user);
+        // 현재 세션 보존, 다른 세션 삭제
+        verify(sessionRepository, never()).deleteById(currentId);
+        verify(sessionRepository).deleteById(s1.getId());
+        verify(sessionRepository).deleteById(s2.getId());
+        // audit
+        ArgumentCaptor<AuditEvent> auditCap = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(auditCap.capture());
+        assertThat(auditCap.getValue().eventType()).isEqualTo(AuditEventType.USER_PASSWORD_CHANGED);
+        assertThat(auditCap.getValue().actorId()).isEqualTo(user.getId());
+    }
+
+    @Test
+    void change_wrongCurrentPassword_throwsInvalidCredentials() {
+        User user = sampleUser("alice@example.com", "Alice");
+        when(passwordEncoder.matches(eq("WrongPassword!"), eq(user.getPasswordHash())))
+            .thenReturn(false);
+
+        assertThatThrownBy(() ->
+            service.change(user, "WrongPassword!", "NewSecret456!", "session-id"))
+            .isInstanceOf(InvalidCredentialsException.class);
+
+        // PW 미변경, save·session·audit 모두 미호출
+        assertThat(user.getPasswordHash()).isEqualTo("{bcrypt}$2a$12$dummy");
+        verifyNoInteractions(userRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void change_nullCurrentSessionId_invalidatesAllSessions() {
+        // 호출자(controller)가 session 없는 환경에서 null 전달 — 모든 세션 invalidate (보수적 fallback).
+        User user = sampleUser("alice@example.com", "Alice");
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+        MapSession s1 = new MapSession();
+        MapSession s2 = new MapSession();
+        when(sessionRepository.findByPrincipalName("alice@example.com"))
+            .thenReturn(Map.of(s1.getId(), s1, s2.getId(), s2));
+
+        service.change(user, "CurrentSecret123!", "NewSecret456!", null);
+
+        verify(sessionRepository).deleteById(s1.getId());
+        verify(sessionRepository).deleteById(s2.getId());
     }
 
     private static User sampleUser(String email, String displayName) {
