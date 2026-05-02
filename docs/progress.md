@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-05-02 — 🏁 m-rp-rightpanel-completion 트랙 종료 (RightPanel 4탭 완성 + 버전 다운로드/복원)
+
+### 범위
+
+`dev/active/m-rp-rightpanel-completion/` bootstrap (plan/context/tasks 3파일) → M-RP.1 versions 탭 read-only(G1) → M-RP.2 버전별 download/restore endpoint + UI(G2 사용자 sign-off 옵션 A + denormalized 메타 동기화 자체 리뷰 보강) → M-RP.3 permissions 탭 wiring(G3) → M-RP.4 activity 탭 wiring + AuditQueryFilters 확장(G4 closure).
+
+### 회고
+
+- **commits**: 4개 + closure.
+  - `fa24169 wip(m-rp): rightpanel versions tab snapshot` — M-RP.1 작업 스냅샷
+  - `71ee56b feat(m-rp.2): version download/restore + audit emit + denorm sync` — M-RP.2 (ADR #39)
+  - `b91e28d feat(m-rp.3): RightPanel permissions 탭 wiring` — M-RP.3
+  - `cc9c886 feat(m-rp.4): file activity timeline + RP-2 audit scope` — M-RP.4 (ADR #40)
+  - + closure commit (BETA-RELEASE/progress/ADR/archive)
+- **production 파일 수정/신설**: backend 6 (FileVersionController/Service + AuditQueryFilters/Service/Controller + tests), frontend 신설 7 + 수정 다수 (VersionsTab/PermissionsTab/ActivityTab + 훅 + api/queryKeys + RightPanel 통합).
+- **docs sync**: `docs/01 §17.5` (RightPanel 4탭 활성화), `docs/02 §7.6/§7.12` (version + audit endpoint), `docs/03 §4` (VERSION_* emit + RP-2 정책), `docs/00 §5` (ADR #39, #40 추가).
+- **신설**: `BETA-RELEASE.md §10·§11` (RightPanel 4탭 + 버전 관리 — 본 closure로 추가).
+- **dev-docs**: `dev/active/m-rp-rightpanel-completion/` (3파일) — closure 후 `dev/completed/`로 이동.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL (M-RP.4 audit filter + RP-2 정책 신규 검증 포함, 회귀 0).
+  - frontend `pnpm test --run` **647/647** (M-RP 트랙 누계 +84 tests vs mvp-qa-security baseline 563/563).
+  - typecheck/lint clean.
+
+### 핵심 결정 (M-RP 트랙)
+
+1. **ADR #39 — 버전 복원 의미론 = 옵션 A (current_version_id 재지정)**: 새 version row 생성하지 않고 `files.current_version_id`만 재지정. 멱등(같은 versionId 재호출 시 audit 0). denormalized 메타(`files.size_bytes`/`files.mime_type`)도 동기화 — `FileUploadService:214-217` invariant 보존(자체 리뷰에서 발견 + 보강).
+2. **ADR #40 — RP-2 정책 (activity 탭 권한 범위)**: `targetType="file"` + `targetId` 지정 + 호출자가 해당 파일 `READ` 보유 시 actor 제한 우회(다른 사용자 활동 노출 허용). 그 외 기존 정책(자기 actor만) 유지. RP-2 = "파일 단위 활동 timeline은 파일 권한 보유자에게 모두 보여야 한다"는 UX 요구를 충족하면서 audit 노출 최소화.
+3. **모든 탭 fetch gate**: 비활성 탭은 `enabled: tab === 'X'`로 fetch 차단 — 불필요 네트워크 0, RightPanel 마운트 비용 최소화.
+4. **M12 audit logs 페이지 회귀 0**: AuditQueryFilters 신규 필드는 nullable additive — 기존 호출부 무영향. 테스트로 명시 검증.
+5. **VERSION_DOWNLOADED / VERSION_RESTORED audit emit 활성화**: audit emit coverage 26 → 28 enum (63% → 68%).
+
+### 다음 세션 컨텍스트
+
+- M-RP 트랙 closure로 RightPanel 4탭 완전 wiring. 다음 작업 후보:
+  - admin frontend (사용자/부서/권한/스토리지/정책/시스템 페이지) — v1.x 후순위
+  - audit emit 추가 13 enum (대부분 `ADMIN_*` + ADR #9 audit_level + ADR #18 MFA 의존) — v1.x
+  - RightPanel "더보기" 페이지네이션 (현재 activity/versions 첫 페이지만) — UX backlog
+- BETA-RELEASE.md §1 코드 게이트 ✓ 유지 — 베타 readiness 변동 없음 (인프라 게이트 운영팀 sign-off 대기).
+
+### 블로커
+
+없음.
+
+---
+
 ## 2026-05-02 — 🏁 mvp-qa-security 트랙 종료 (Week 11-12 MVP QA + 보안 점검 + 베타 readiness)
 
 ### 범위
