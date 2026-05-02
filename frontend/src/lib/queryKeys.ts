@@ -35,6 +35,13 @@ export const qk = {
    */
   filesListPrefix: (folderId: string) => [...qk.files(), 'list', folderId] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
+  /**
+   * 파일 버전 리스트 (M-RP.1) — RightPanel `versions` 탭.
+   * backend `GET /api/files/{fileId}/versions` 응답을 캐시. 동일 fileId의 detail/list와 keyspace 분리.
+   * 무효화 시점: 새 version 업로드 후 (A15.4 upload result `resolution=new_version`),
+   * version restore 후 (M-RP.2). detail/versions 둘 다 invalidate 필요.
+   */
+  fileVersions: (id: string) => [...qk.files(), 'versions', id] as const,
 
   // ── 휴지통 (M9) ──
   trash: () => [...qk.all, 'trash'] as const,

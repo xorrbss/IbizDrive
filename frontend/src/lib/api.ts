@@ -3,6 +3,7 @@ import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type { Permission } from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
+import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
 import type { DepartmentSummary } from '@/types/department'
@@ -206,6 +207,37 @@ export const api = {
     const found = MOCK_FILES.find((f) => f.id === id)
     if (!found) throw { status: 404, code: 'NOT_FOUND' }
     return found
+  },
+
+  /**
+   * M-RP.1 — 파일 버전 리스트 (docs/02 §7.6, A5.2 endpoint).
+   *
+   * backend `GET /api/files/{fileId}/versions` 직접 호출. 응답 envelope `{ versions: [...] }` 풀어서
+   * 배열만 반환 (호출부 `useFileVersions`가 `data` 자체를 list로 다루도록).
+   *
+   * 정렬은 backend가 versionNumber DESC로 보장 (FileVersionRepository.findByFileIdOrderByVersionNumberDesc).
+   * 권한 가드는 backend `@PreAuthorize hasPermission(#fileId, 'file', 'READ')` — 비READ는 403.
+   *
+   * 에러: 비-OK 응답은 status 필드 가진 Error throw (getEffectivePermissions와 동일 패턴 — QueryCache.onError 분기).
+   */
+  async listFileVersions(fileId: string): Promise<FileVersionDto[]> {
+    const res = await fetch(
+      `/api/files/${encodeURIComponent(fileId)}/versions`,
+      {
+        method: 'GET',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      },
+    )
+    if (!res.ok) {
+      const err = new Error(
+        `listFileVersions fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const data = (await res.json()) as { versions: FileVersionDto[] }
+    return data.versions
   },
 
   // M9.1 — 단건 soft delete (휴지통 이동). 호출자(useDeleteBulk)는 selection 단위로
