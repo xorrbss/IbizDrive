@@ -11,12 +11,12 @@ Last Updated: 2026-05-03
 | P1 — backend AdminUserService + temp PW + audit emission (TDD) | ✅ 완료 (2026-05-03) |
 | P2 — backend AdminUserController + Security 가드 (TDD) | ✅ 완료 (2026-05-03) |
 | P3 — frontend api + hook (TDD) | ✅ 완료 (2026-05-03) |
-| P4 — frontend `/admin/users` page (TDD) | ⬜ 대기 |
+| P4 — frontend `/admin/users` page (TDD) | ✅ 완료 (2026-05-03) |
 | P5 — closure (docs sync + archive + PR) | ⬜ 대기 |
 
 ---
 
-## 현재 active phase: **P4**
+## 현재 active phase: **P5**
 
 ---
 
@@ -169,9 +169,9 @@ Last Updated: 2026-05-03
 
 ### 작업 항목
 
-- [ ] `frontend/src/app/admin/users/page.test.tsx` 신설
-- [ ] `frontend/src/app/admin/users/page.tsx` 신설 (form: email/displayName/role select, submit, 성공/실패 표시)
-- [ ] `pnpm typecheck && pnpm lint && pnpm vitest run` 통과
+- [x] `frontend/src/app/admin/users/page.test.tsx` 신설 (6 tests: 렌더/role 옵션/성공+reset/409/403/기타)
+- [x] `frontend/src/app/admin/users/page.tsx` 신설 (form: email/displayName/role select, submit, 성공/실패 표시)
+- [x] `pnpm typecheck && pnpm lint && pnpm vitest run` 통과 (682 tests)
 - [ ] commit: `feat(admin-invite-email): P4 /admin/users invite form (TDD)`
 
 ### 작업 전 필독

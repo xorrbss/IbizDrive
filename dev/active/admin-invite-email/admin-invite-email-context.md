@@ -11,6 +11,7 @@ Last Updated: 2026-05-03
 - 2026-05-03: P1 완료. branch `wip/admin-invite-email` (from master). `AdminUserServiceTest` 7건 + 구현 5파일(`AdminUserService`, `TempPasswordGenerator`, `AdminUserCreatedEvent`, `AdminAuditListener`, `AdminInviteUserResponse`). `./gradlew test` BUILD SUCCESSFUL (회귀 0). 임시 PW 비노출 invariant 테스트로 강제 (Jackson JSON에 tempPassword/password/hash 키 부재 검증). audit emit coverage 31/42 → 32/42 (코드 경로 추가, P5 docs 표 갱신 예정).
 - 2026-05-03: P2 완료. `AdminUserControllerTest` 7건(200/401/403/400×3/409) + 구현 2파일(`AdminUserController`, `AdminInviteUserRequest`). `@PreAuthorize("hasRole('ADMIN')")` + Bean Validation. `DuplicateEmailException` → 409 매핑 `AuthExceptionHandler` 기존 핸들러 재사용 (신규 핸들러 0). `SecurityConfig` 변경 0. `./gradlew test` BUILD SUCCESSFUL (회귀 0). 응답 JSON에 tempPassword/password/passwordHash 키 부재 jsonPath 검증.
 - 2026-05-03: P3 완료. `api.adminInviteUser` (api.ts + AdminInviteUserParams/Response 타입 export, CSRF 헤더) + `useAdminInviteUser` 위임형 mutation hook + 테스트 6건(api wire 4 / hook 2). `passwordChange`/`usePasswordChange` 패턴 1:1 매칭. typecheck + lint + vitest run 676 pass (회귀 0).
+- 2026-05-03: P4 완료. `/admin/users` page.tsx (form: email/displayName/role select MEMBER|AUDITOR|ADMIN) + page.test.tsx 6건(렌더/role 옵션/성공+reset/409 duplicate/403 permission/기타). `(explorer)/account/password` 폼 패턴 재사용. role state 타입은 `AdminInviteUserParams['role']` 재사용. typecheck + lint + vitest run 682 pass (+6, 회귀 0).
 
 ## Current Execution Contract
 
@@ -22,9 +23,9 @@ Last Updated: 2026-05-03
 
 ## 현재 active task
 
-P4 — 프론트엔드: `/admin/users` 페이지 form (email/displayName/role select) + 성공/실패 UX, TDD.
+P5 — closure: docs sync (00 ADR #21, 02 §7.4, 03 §2.7/§2.8/§2.10, progress.md) + dev/active → dev/completed 이동 + PR open (게이트).
 
-진입점: `dev/active/admin-invite-email/admin-invite-email-tasks.md` Phase 4.
+진입점: `dev/active/admin-invite-email/admin-invite-email-tasks.md` Phase 5.
 
 ## 다음 세션 읽기 순서
 

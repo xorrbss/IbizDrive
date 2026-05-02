@@ -2,8 +2,11 @@
 task: admin-invite-email
 last_updated: 2026-05-03
 working_files:
-  - (P4 next) frontend/src/app/admin/users/page.tsx
-  - (P4 next) frontend/src/app/admin/users/page.test.tsx
+  - (P5 next) docs/00-overview.md
+  - (P5 next) docs/02-backend-data-model.md
+  - (P5 next) docs/03-security-compliance.md
+  - (P5 next) docs/progress.md
+  - (P5 next) dev/active/admin-invite-email/ → dev/completed/
 ---
 
 # Session ownership — admin-invite-email
@@ -11,38 +14,28 @@ working_files:
 ## P1 완료 (2026-05-03)
 
 - branch: `wip/admin-invite-email` (from master)
-- 신규 파일:
-  - backend/src/main/java/com/ibizdrive/admin/AdminUserService.java
-  - backend/src/main/java/com/ibizdrive/admin/TempPasswordGenerator.java
-  - backend/src/main/java/com/ibizdrive/admin/AdminUserCreatedEvent.java
-  - backend/src/main/java/com/ibizdrive/admin/AdminAuditListener.java
-  - backend/src/main/java/com/ibizdrive/admin/AdminInviteUserResponse.java
-  - backend/src/test/java/com/ibizdrive/admin/AdminUserServiceTest.java
+- backend service+temp PW+audit emission
 
 ## P2 완료 (2026-05-03)
 
-- 신규 파일:
-  - backend/src/main/java/com/ibizdrive/admin/AdminUserController.java
-  - backend/src/main/java/com/ibizdrive/admin/AdminInviteUserRequest.java
-  - backend/src/test/java/com/ibizdrive/admin/AdminUserControllerTest.java
-- `SecurityConfig` 변경 0. `DuplicateEmailException → 409` 기존 매핑 재사용.
+- backend controller + role guard
 
 ## P3 완료 (2026-05-03)
 
-- 수정:
-  - frontend/src/lib/api.ts (`adminInviteUser` 메서드 + AdminInviteUserParams/Response 타입 export)
-- 신규:
-  - frontend/src/lib/api.adminInviteUser.test.ts (4 tests)
-  - frontend/src/hooks/useAdminInviteUser.ts
-  - frontend/src/hooks/useAdminInviteUser.test.tsx (2 tests)
+- frontend api + hook
 
-## working_files (P4 active)
+## P4 완료 (2026-05-03)
 
-- frontend/src/app/admin/users/page.tsx (신규)
-- frontend/src/app/admin/users/page.test.tsx (신규)
+- frontend `/admin/users` page (form + 성공/실패 UX)
+
+## working_files (P5 active)
+
+- docs/00-overview.md (ADR #21 admin 트랙 closure 메모)
+- docs/02-backend-data-model.md §7.4 (endpoint 표 +1 + request/response)
+- docs/03-security-compliance.md §2.7 (cross-link), §2.8 (활성화 완료), §2.10 (audit 표 +1)
+- docs/progress.md (entry + audit emit coverage 31/42 → 32/42)
+- dev/active/admin-invite-email/ → dev/completed/admin-invite-email/
 
 ## Notes
 
-- P4: form (email/displayName/role select) + `useAdminInviteUser.mutate` + onSuccess(reset+안내) / onError(409=duplicate, 403=permission, etc).
-- 참고: `frontend/src/app/(explorer)/account/password/page.tsx` (form + 성공/실패 처리), `frontend/src/app/admin/audit/logs/page.tsx` (admin 페이지 layout).
-- P5 closure (docs + archive + PR).
+- PR open은 게이트 — 사용자 confirm 필요. 본 트랙 외 코드 변경 0.
