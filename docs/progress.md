@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-02 — 🏁 auth-pages 트랙 종료 (셀프 가입 + first-user-ADMIN + /login·/signup + 401 가드, ADR #41)
+
+### 범위
+
+`dev/active/auth-pages/` bootstrap (plan/context/tasks 3파일) → P1 backend signup TDD (SignupService 6 RED→GREEN + AuthControllerSignupTest 6 + AuthService.establishSession extract + AuditEventType.USER_REGISTERED + UserRegisteredEvent + AuthAuditListener.onRegistered + DuplicateEmailException + AuthExceptionHandler) → P2 SecurityConfig (`/api/auth/signup` permitAll + CSRF ignore) → P3 frontend api/hooks (api.signup/login/logout/me + ensureCsrfToken + buildApiError flat envelope + qk.authMe + useMe/useLogin/useSignup/useLogout + types/auth.ts) → P4 pages (`/login` Suspense wrap + `/signup` + `(auth)` 미니멀 layout + `(explorer)` AuthGuard + UserMenu) → P5 closure(ADR #21 supersede + ADR #41 + docs/03 §2.8/§4.1 + BETA-RELEASE §1·§5·§6 + 본 entry + archive + PR).
+
+### 회고
+
+- **commits**: 3개 + closure.
+  - `70662bb feat(auth-pages): P1+P2 backend signup + SecurityConfig` — TDD GREEN, 6+6 신규 + 기존 13개 @MockBean SignupService 추가
+  - `8ca3540 feat(auth-pages): P3 frontend api/hooks (signup/login/logout/me)` — typecheck/lint/test 통과
+  - `334cf8d feat(auth-pages): P4 /login·/signup pages + (explorer) 401 guard` — typecheck/lint/test/build 통과
+  - + closure commit (ADR/docs/BETA-RELEASE/progress/archive)
+- **production 파일 수정/신설**: backend 신설 5 (SignupRequest/SignupService/UserRegisteredEvent/DuplicateEmailException + tests 2) + 수정 6 (AuthController/AuthService/AuditEventType/AuthAuditListener/AuthExceptionHandler/ErrorResponse/SecurityConfig + 기존 2 tests `@MockBean`), frontend 신설 7 (types/auth + 4 hooks + 2 components) + 신설 3 pages (login/signup/auth-layout) + 수정 3 (api/queryKeys/(explorer)layout/audit-types).
+- **docs sync**: `docs/00 §5` ADR #41 추가 + ADR #21 Status: Superseded, `docs/03 §2.8` 셀프 가입 정책 재작성 + `§4.1` USER_REGISTERED enum 추가 + `§2.10` user.registered 이벤트 추가, `BETA-RELEASE` Source/§1/§5/§6 갱신.
+- **dev-docs**: `dev/active/auth-pages/` (3파일) — closure 후 `dev/completed/`로 이동.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL (signup TDD +12 신규, 회귀 0).
+  - frontend `pnpm test --run` **647/647** (M-RP 트랙 baseline 유지 — auth pages/hooks는 thin wrappers + Suspense 의존성으로 typecheck/lint/build 검증으로 대체).
+  - frontend `pnpm typecheck && pnpm lint && pnpm build` clean (login/signup 정적 prerender 3.3kB 각).
+
+### 핵심 결정 (auth-pages 트랙)
+
+1. **ADR #41 — 셀프 가입 + first-user-ADMIN supersede ADR #21**: BETA 진입 차단(첫 가입자 부재) 해소. `userRepository.count() == 0`이면 ADMIN 부여, 그 외 MEMBER. race는 MVP single-instance + tx 직렬화로 차단(엄밀 보장은 advisory lock — v1.x).
+2. **CSRF asymmetry**: `/api/auth/signup`은 `permitAll()` + `csrf().ignoringRequestMatchers` (첫 호출 token preflight 마찰 회피). login/logout은 ADR #12 그대로 double-submit 유지.
+3. **AuthService.establishSession extract**: login 기존 세션 발급 로직을 public 헬퍼로 추출 → signup이 동일 helper 호출. `changeSessionId()` 호출 동일, AuthenticationSuccessEvent는 caller 책임(login만 발행, signup은 별도 USER_REGISTERED).
+4. **password min=8 정정**: ADR #19(min 12)을 가입 진입 마찰 최소화로 8로 정정. v1.x 정책 강화 트랙으로 분리.
+5. **useMe 401→null 매핑**: AuthGuard와 비로그인 페이지가 동일 hook으로 분기. retry false + staleTime 60s. AuthGuard는 `useSearchParams` 의존 제거(window.location in useEffect)로 prerender Suspense 마찰 회피.
+6. **useLogout intent-driven**: onSettled에서 `qc.clear()` — 401/네트워크 실패도 사용자 의도가 로그아웃이므로 캐시는 비운다.
+7. **audit emit coverage 28 → 29**: USER_REGISTERED 활성화. 42 enum 중 29 emit (69%).
+
+### 다음 세션 컨텍스트
+
+- **운영자 user 초대 endpoint** (`POST /api/admin/users`, ADR #21 잔여 부분) — v1.x reserve. 사내 도메인 배포 시 admin이 user를 사전 생성하는 수요는 BETA 운영 진입 후 결정.
+- **email 인증 + 이메일 초대 (A1.5)** — 이메일 인프라 도입 시점에 self-signup에 verification 추가.
+- **password 정책 강화 트랙** — min=8 → min=12, zxcvbn/HIBP 사전 공격 방지 (ADR #19 본문은 그대로).
+- **first-user-ADMIN advisory lock 보강** — 다중 인스턴스 도입 시점에 PostgreSQL `pg_advisory_xact_lock(<key>)`로 race 엄밀 보장.
+
+---
+
 ## 2026-05-02 — 🏁 m-rp-rightpanel-completion 트랙 종료 (RightPanel 4탭 완성 + 버전 다운로드/복원)
 
 ### 범위

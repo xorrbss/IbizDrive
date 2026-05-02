@@ -263,13 +263,23 @@
 - **이메일 정규화**: `email = email.trim().toLowerCase()` (별도 로직, `NormalizeUtil.normalize()` 적용 대상 아님 — 파일/폴더명 전용).
 - **비밀번호 변경**: A1.5 — `POST /api/auth/password/change`, 현재 PW 확인 + 새 PW 정책 검증 + 모든 세션 무효화.
 
-### 2.8 사용자 등록 (ADR #21)
+### 2.8 사용자 등록 (ADR #21 → ADR #41 supersede, 2026-05-02)
 
-- **셀프 가입 금지**. `POST /api/auth/register` 엔드포인트 미존재.
-- 등록 경로:
-  1. **시드 admin**: Flyway `V*__seed_admin.sql`로 초기 admin 1명 생성 (env: `ADMIN_INIT_EMAIL`, `ADMIN_INIT_PASSWORD_HASH` — 사전 BCrypt 해시). 첫 로그인 시 PW 변경 강제.
-  2. **관리자 초대**: `POST /api/admin/users` — admin이 email/이름/role/임시 PW를 지정해 user 생성. 사용자에게 임시 PW를 별도 채널로 전달 (MVP는 admin이 수동 통지). 첫 로그인 시 PW 변경 강제 (`users.must_change_password = true` 플래그).
-  3. **이메일 초대 (A1.5)**: `POST /api/admin/users` 시 임시 토큰 발급 → 이메일 링크로 사용자가 직접 초기 PW 설정. 이메일 인프라 도입 시점에 활성화.
+> **Status**: ADR #21(관리자 초대 only)은 ADR #41 auth-pages 트랙에서 supersede. MVP는 self-signup + first-user-ADMIN 부트스트랩. 운영자 초대(`POST /api/admin/users`)는 v1.x reserve.
+
+- **MVP = 셀프 가입**. `POST /api/auth/signup` 활성화 (request: `{email, password, displayName}`, response: `LoginResponse` shape + auto-session).
+- **first-user-ADMIN 부트스트랩**: `userRepository.count() == 0`이면 새 사용자 ROLE=ADMIN, 그 외 MEMBER. 빈 DB 첫 호출만 ADMIN 부여(초기 admin 시드 의존성 제거). 동시 두 요청 race는 MVP single-instance + tx 직렬화로 사실상 차단(엄밀 보장은 advisory lock — v1.x).
+- **CSRF**: `/api/auth/signup`은 CSRF token 미요구(`csrf().ignoringRequestMatchers` + `permitAll()`). 첫 호출 token preflight 비용/UX 마찰 회피. 로그인/로그아웃은 §2.2 그대로 double-submit.
+- **자동 세션**: signup 성공 = `AuthService.establishSession`(login 공통 helper, `changeSessionId()` 호출) → `LoginResponse` 반환. 가입 후 즉시 `/files`.
+- **Validation (Bean Validation)**:
+  - `email`: `@NotBlank @Email @Size(max=254)` — trim+lowercase 후 저장 (`users.email CITEXT` UNIQUE 의존).
+  - `password`: `@NotBlank @Size(min=8, max=128)` — §2.7 ADR #19(min 12) 정정 (가입 진입 마찰 최소화, v1.x 정책 강화 트랙).
+  - `displayName`: `@NotBlank @Size(min=1, max=100)` — trim 후 저장.
+- **에러 envelope (auth flat)**:
+  - `409 CONFLICT/DUPLICATE_EMAIL` — 이미 가입된 이메일.
+  - `400 VALIDATION_ERROR` — Bean Validation 실패 (standard envelope).
+- **Audit emission**: `USER_REGISTERED("user.registered")` (§4.1 추가). `UserRegisteredEvent` record + `AuthAuditListener.onRegistered`가 `@EventListener` REQUIRES_NEW로 audit_log 기록 — 로그인 `AuthenticationSuccessEvent` 패턴 일관.
+- **운영자 user 초대 (`POST /api/admin/users`) — v1.x reserve**: 사용자에게 임시 PW를 별도 채널로 전달, `users.must_change_password = true`. 이메일 초대(`A1.5`)는 이메일 인프라 도입 시점에 활성화.
 
 `users` 테이블 인증 관련 컬럼 (docs/02 §2.1과 동기):
 - `email VARCHAR UNIQUE NOT NULL` (lowercase 정규화)
@@ -288,6 +298,7 @@
 
 | 이벤트 | trigger | reason 필드 값 |
 |---|---|---|
+| `user.registered` | 셀프 가입 성공 (ADR #41) | — |
 | `user.login.success` | 로그인 성공 | — |
 | `user.login.failed` | 로그인 실패 | `invalid_credentials` / `locked` / `csrf_mismatch` |
 | `user.logout` | 명시적 로그아웃 | — |
@@ -436,6 +447,7 @@ type AuditEventType =
   | 'share.revoked'        // A10 활성화 (`a10-shares`)
   | 'share.expired'        // 활성화 (`share-expired-cron`, 2026-05-01) — actor_id=NULL, metadata.trigger='system.expiration', docs/02 §7.9.1
   // 인증
+  | 'user.registered'      // ADR #41 활성화 (auth-pages, 2026-05-02) — 셀프 가입 성공
   | 'user.login.success'
   | 'user.login.failed'
   | 'user.logout'

@@ -1,7 +1,7 @@
 # IbizDrive — Beta Release Checklist (사내 베타)
 
 Last Updated: 2026-05-02
-Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure
+Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41)
 
 > **본 문서의 목적**: 사내 베타 GO/NO-GO 결정에 필요한 단일 페이지 체크리스트.
 > docs/03 §1.3 STRIDE matrix + docs/04 §13 cron + 인프라 게이트를 한 곳으로 모음.
@@ -16,8 +16,8 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 
 | 항목 | 상태 | 검증 |
 |---|---|---|
-| backend test GREEN | ✓ | `cd backend && ./gradlew test` — BUILD SUCCESSFUL (M-RP.4 audit filter + RP-2 정책 신규 검증 포함) |
-| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 647/647 (M-RP.1~4 누계 +84 tests) |
+| backend test GREEN | ✓ | `cd backend && ./gradlew test` — BUILD SUCCESSFUL (auth-pages signup TDD +12 tests 포함) |
+| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 647/647 (auth-pages api/hooks/pages는 thin wrappers — typecheck/lint/build로 대체 검증) |
 | frontend typecheck/lint/build | ✓ | `pnpm typecheck && pnpm lint && pnpm build` 모두 exit 0 |
 | 코드 위반 (CLAUDE.md §3 11개 원칙) | ✓ FAIL 0 | `findings/principle-conformance.md` |
 | STRIDE 매트릭스 evidence | ✓ 28/28 매핑 | `findings/stride-gap-analysis.md` |
@@ -84,6 +84,8 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | idle 30분 sliding (`spring.session.timeout=PT30M`) | ✓ ADR #20 |
 | absolute 8h 한도 (`SessionValidityFilter`) | ✓ A1.6 |
 | 로그인 lockout 5회/15분 (`LoginAttemptTracker`) | ✓ ADR #20 |
+| 셀프 가입 (`POST /api/auth/signup`) + first-user-ADMIN | ✓ ADR #41 (auth-pages) — BETA 첫 가입자 부재 차단 해제 |
+| `/login` · `/signup` 페이지 + `(explorer)` 401 가드 | ✓ ADR #41 — useMe → `/login?next=...` replace |
 | MFA | ✗ v1.x deferred (ADR #18) |
 
 ## 6. 감사 / 권한
@@ -91,7 +93,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | 항목 | 상태 |
 |---|---|
 | audit_log append-only (DB-level REVOKE) | ✓ V4 + `AuditLogAppendOnlyTest` |
-| audit emit coverage | 41 enum 중 28 emit (68%) — `VERSION_DOWNLOADED`/`VERSION_RESTORED` 신규 emit (M-RP.2) |
+| audit emit coverage | 42 enum 중 29 emit (69%) — `USER_REGISTERED` 신규 emit (auth-pages, ADR #41) |
 | `@PreAuthorize` 미보호 mutation | 0 (mvp-qa-security P2.3 검증) |
 | 권한 evaluator (`IbizDrivePermissionEvaluator`) | ✓ A4 + A11/A16 closure |
 | audit query — file 단위 활동 조회 | ✓ M-RP.4 (`?targetType=file&targetId=`) — RP-2 정책: 파일 READ 보유 시 actor 제한 우회 (ADR #40) |

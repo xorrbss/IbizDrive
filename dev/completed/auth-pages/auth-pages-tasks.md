@@ -1,14 +1,16 @@
 ## auth-pages — Tasks
 
-Last Updated: 2026-05-02
+Last Updated: 2026-05-02 (closure)
 
 ### Phase 상태
 
-- P1 (백엔드 signup): in_progress
-- P2 (SecurityConfig): pending
-- P3 (프론트 api/hooks): pending
-- P4 (페이지 + guard): pending
-- P5 (closure): pending
+- P1 (백엔드 signup): **completed** (`70662bb`)
+- P2 (SecurityConfig): **completed** (`70662bb`)
+- P3 (프론트 api/hooks): **completed** (`8ca3540`)
+- P4 (페이지 + guard): **completed** (`334cf8d`)
+- P5 (closure): **completed** (본 commit — ADR/docs/progress/archive)
+
+> 트랙 종료. 본 디렉터리는 closure 후 `dev/completed/auth-pages/`로 이동.
 
 ### P1 백엔드 signup
 
