@@ -49,6 +49,7 @@ vi.mock('@/lib/api', () => ({
   api: {
     restoreFile: vi.fn(),
     restoreFolder: vi.fn(),
+    downloadFile: vi.fn(),
   },
 }))
 
@@ -261,6 +262,92 @@ describe('BulkActionBar — 공유 버튼', () => {
     })
     render(<BulkActionBar />, { wrapper: makeWrapper() })
     const btn = screen.getByRole('button', { name: '공유' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+// ─── M-Download: 다운로드 버튼 — file-only 가드 ─────────────────────────────
+//
+// backend `GET /api/files/{id}/download` (docs/02 §7.6.1)는 파일 단건만 지원
+// (폴더 zip은 별도 트랙). BulkActionBar는 단일 파일 선택 시에만 활성, 폴더 / 다중
+// / 캐시 미스는 비활성. 클릭 시 api.downloadFile(id) 호출 — 진행률은 브라우저
+// 다운로드 매니저 책임이므로 fire-and-forget.
+
+describe('BulkActionBar — 다운로드 버튼 (M-Download)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    act(() => {
+      useSelectionStore.getState().clear()
+    })
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: ITEMS,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    vi.mocked(useCurrentFolder).mockReturnValue({
+      folderId: 'root',
+      folder: { id: 'root', name: 'root', slugPath: [] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCurrentFolder>)
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
+  })
+
+  it('단일 파일 선택 시 활성: 클릭하면 api.downloadFile(id) 호출', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '다운로드' })
+    expect((btn as HTMLButtonElement).disabled).toBe(false)
+    expect(btn.getAttribute('title')).toBeNull()
+    act(() => {
+      fireEvent.click(btn)
+    })
+    expect(api.downloadFile).toHaveBeenCalledTimes(1)
+    expect(api.downloadFile).toHaveBeenCalledWith('f1')
+  })
+
+  it('단일 폴더 선택 시 비활성 + tooltip("파일만 다운로드 가능")', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('fo1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '다운로드' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    expect(btn.getAttribute('title')).toBe('파일만 다운로드 가능')
+    act(() => {
+      fireEvent.click(btn)
+    })
+    expect(api.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it('다중 선택 시 비활성 + tooltip("단일 파일 선택 시 사용 가능")', () => {
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+      useSelectionStore.getState().toggle('f2')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '다운로드' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+    expect(btn.getAttribute('title')).toBe('단일 파일 선택 시 사용 가능')
+    act(() => {
+      fireEvent.click(btn)
+    })
+    expect(api.downloadFile).not.toHaveBeenCalled()
+  })
+
+  it('단일 선택이지만 cache miss(items=undefined)면 비활성', () => {
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '다운로드' })
     expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 })

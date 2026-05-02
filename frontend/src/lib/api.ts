@@ -339,6 +339,26 @@ export const api = {
   },
 
   /**
+   * M-Download — backend `GET /api/files/{id}/download` (docs/02 §7.6.1) 트리거.
+   *
+   * Programmatic anchor click 패턴 — fetch+Blob 대비 이점:
+   * - cookie 인증은 same-origin GET이라 브라우저가 자동 동봉 (별도 withCredentials 불요)
+   * - RFC 5987 `Content-Disposition: attachment; filename*=UTF-8''...`을 backend가
+   *   처리하므로 브라우저가 파일명/저장경로 자동 적용
+   * - 100MB까지의 파일을 메모리에 적재하지 않고 스트림 → 디스크
+   * - 진행률은 브라우저 다운로드 매니저 책임 → UI 추가 없음 (fire-and-forget)
+   *
+   * 권한은 backend `hasPermission(#id, 'file', 'READ')` (ADR #36 — DOWNLOAD enum 미도입).
+   */
+  downloadFile(id: string): void {
+    const a = document.createElement('a')
+    a.href = `/api/files/${encodeURIComponent(id)}/download`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  },
+
+  /**
    * M11 / F1.1 검색 — 백엔드 GET /api/search 직접 호출 (ADR #33, docs/02 §7.8).
    *
    * 호출자(useSearch)는 이미 normalizeForSearch + 최소 2자 게이트를 통과한 query를 넘김.

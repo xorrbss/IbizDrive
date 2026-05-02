@@ -57,12 +57,20 @@ export function BulkActionBar() {
   // 공유는 단일 항목만 (다중 공유 wire는 별도 트랙). file/folder 모두 활성 — A12(폴더 endpoint)
   // + F5.2(ShareDialog folder 분기) closure로 양쪽 진입 가능. 캐시 미스 시 disabled 폴백.
   const shareEnabled = count === 1 && !!singleItem
+  // M-Download — backend `GET /api/files/{id}/download` (docs/02 §7.6.1)는 단일 파일만
+  // 지원(폴더 zip은 별도 트랙). 단일 파일 선택 시만 활성, 폴더/다중/캐시미스는 비활성.
+  const downloadEnabled = count === 1 && singleItem?.type === 'file'
+  const downloadTitle = downloadEnabled
+    ? undefined
+    : count !== 1
+      ? '단일 파일 선택 시 사용 가능'
+      : '파일만 다운로드 가능'
 
   if (count === 0) return null
 
   const handleDownload = () => {
-    // TODO(M_download): 실제 다운로드 구현
-    console.warn('[스텁] 다운로드 대상:', ids)
+    if (!downloadEnabled || !singleItem) return
+    api.downloadFile(singleItem.id)
   }
 
   const handleMove = () => {
@@ -105,7 +113,10 @@ export function BulkActionBar() {
           <button
             type="button"
             onClick={handleDownload}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg transition-colors"
+            disabled={!downloadEnabled}
+            title={downloadTitle}
+            aria-disabled={!downloadEnabled || undefined}
+            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
           >
             다운로드
           </button>
