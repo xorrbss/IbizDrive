@@ -1,10 +1,24 @@
 ---
 Last Updated: 2026-05-02
-Status: ⏳ G1 (scope) 대기
+Status: ✅ T1~T4 구현 완료, G2 (PR) 직전
 Owner: frontend
 Branch: feature/m8.1-permission-list-frontend
 Worktree: .claude/worktrees/m8.1-permission-list-frontend
 ---
+
+## 구현 결과 요약 (2026-05-02)
+
+- T1 types + api + queryKeys + api test (api.permissions.test.ts +10) — ✅
+- T2 useResourcePermissions hook + test (+5) — ✅
+- T3 ResourcePermissionsList UI + test (+6) — ✅
+- T4 PermissionsTab 통합 + test (+2) + RightPanel.test.tsx 회귀 보강 — ✅
+- 검증: typecheck/lint clean, 테스트 80→82 files / 647→670 (+23). 회귀 0건.
+
+### 계획 대비 편차
+
+- **Preset 한국어 라벨** — 플랜 초안은 `'관리자/편집자/뷰어/공유자/업로더'` 였으나, 기존 SharesTable
+  답습으로 `'관리/편집/읽기/공유/업로드'` 사용 (UI 일관성 우선).
+- 그 외 편차 없음.
 
 # M8.1 — 권한 목록 UI (Resource permission list, frontend)
 

@@ -24,6 +24,15 @@ export const qk = {
     nodeId
       ? ([...qk.all, 'permissions', 'node', nodeId] as const)
       : qk.effectivePermissions(),
+  /**
+   * 리소스에 부여된 grant 목록 (M8.1 — `GET /api/{folders|files}/:id/permissions`).
+   *
+   * `permissions(nodeId)` 와 keyspace 분리 — `effective` (현재 사용자 9-flag) vs `resource` (리소스에
+   * 부여된 grant 행) 는 의미가 다르므로 동일 nodeId 라도 별개 캐시. resourceType 을 키에 포함해
+   * 폴더/파일 UUID 충돌 가능성도 방지 (V5 별도 시퀀스로 운용상 비충돌이지만 명시).
+   */
+  resourcePermissions: (resourceType: 'folder' | 'file', id: string) =>
+    [...qk.all, 'permissions', 'resource', resourceType, id] as const,
 
   files: () => [...qk.all, 'files'] as const,
   /** sort/dir까지 포함된 정확한 단일 키. 직접 캐시 read/write 시에만 사용. */

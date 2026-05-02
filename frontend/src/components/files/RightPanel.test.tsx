@@ -12,11 +12,13 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(mockQuery),
 }))
 
-// Mock api.getFileDetail + listFileVersions (M-RP.1) + getEffectivePermissions (M-RP.3) + listFileActivity (M-RP.4)
+// Mock api.getFileDetail + listFileVersions (M-RP.1) + getEffectivePermissions (M-RP.3)
+// + listFileActivity (M-RP.4) + listResourcePermissions (M8.1)
 const getFileDetailMock = vi.fn()
 const listFileVersionsMock = vi.fn()
 const getEffectivePermissionsMock = vi.fn()
 const listFileActivityMock = vi.fn()
+const listResourcePermissionsMock = vi.fn()
 vi.mock('@/lib/api', () => ({
   api: {
     getFileDetail: (...args: unknown[]) => getFileDetailMock(...args),
@@ -24,6 +26,8 @@ vi.mock('@/lib/api', () => ({
     getEffectivePermissions: (...args: unknown[]) =>
       getEffectivePermissionsMock(...args),
     listFileActivity: (...args: unknown[]) => listFileActivityMock(...args),
+    listResourcePermissions: (...args: unknown[]) =>
+      listResourcePermissionsMock(...args),
   },
 }))
 
@@ -51,6 +55,8 @@ describe('RightPanel', () => {
       page: 1,
       pageSize: 20,
     })
+    listResourcePermissionsMock.mockReset()
+    listResourcePermissionsMock.mockResolvedValue([])
     mockQuery = ''
   })
 
