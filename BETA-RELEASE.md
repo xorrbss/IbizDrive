@@ -84,6 +84,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | idle 30분 sliding (`spring.session.timeout=PT30M`) | ✓ ADR #20 |
 | absolute 8h 한도 (`SessionValidityFilter`) | ✓ A1.6 |
 | 로그인 lockout 5회/15분 (`LoginAttemptTracker`) | ✓ ADR #20 |
+| forgot rate-limit email + IP 분당 1회 (`ForgotPasswordRateLimiter`) | ✓ ADR #44 |
 | 셀프 가입 (`POST /api/auth/signup`) + first-user-ADMIN | ✓ ADR #41 (auth-pages) — BETA 첫 가입자 부재 차단 해제 |
 | `/login` · `/signup` 페이지 + `(explorer)` 401 가드 | ✓ ADR #41 — useMe → `/login?next=...` replace |
 | MFA | ✗ v1.x deferred (ADR #18) |

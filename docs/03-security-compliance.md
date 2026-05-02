@@ -268,7 +268,7 @@
 
 | 메서드 | 경로 | 인증 | CSRF | 동작 |
 |---|---|---|---|---|
-| `POST` | `/api/auth/password/forgot` | 비로그인 | 면제 | 가입자 → 토큰 생성 + 메일 발송 / 미가입자 → no-op. 두 경우 모두 200 동일 응답 (anti-enumeration) |
+| `POST` | `/api/auth/password/forgot` | 비로그인 | 면제 | 가입자 → 토큰 생성 + 메일 발송 / 미가입자 → no-op. 두 경우 모두 200 동일 응답 (anti-enumeration). **email + IP 분당 1회 rate-limit (ADR #44)** — 초과 시 429 + `Retry-After` |
 | `POST` | `/api/auth/password/reset` | 비로그인 (token 인증) | 면제 | 토큰 hash 매칭 + TTL/used 검사 → PW 갱신 + **모든 세션 invalidate** |
 | `POST` | `/api/auth/password/change` | 인증 필수 | 필수 | 현재 PW BCrypt 검증 → 새 PW 갱신 + **현재 세션 보존**, 다른 세션만 invalidate |
 
@@ -279,7 +279,7 @@
 - **1회 사용** = `used_at` set 후 동일 토큰은 INVALID_TOKEN.
 - **다중 토큰 허용** — 같은 사용자 forgot 여러 번 호출 시 모든 active 토큰 유효 (race/UX 부담 회피).
 - **사유 비공개** — 만료/사용됨/미존재 모두 400 INVALID_TOKEN 단일 코드 (token enumeration 방지).
-- **rate-limit 미도입** — v1.x 별도 트랙.
+- **rate-limit (ADR #44)** — forgot endpoint은 email + IP 분당 1회. 초과 시 429 + `Retry-After`. in-memory single-instance (login 트래커와 동일 패턴, ADR #23 mirror). reset/change는 이미 토큰/세션 가드로 보호되므로 미적용.
 
 세션 무효화 정책 차이:
 
