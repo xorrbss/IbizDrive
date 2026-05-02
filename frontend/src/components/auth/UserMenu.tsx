@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useMe } from '@/hooks/useMe'
 import { useLogout } from '@/hooks/useLogout'
@@ -27,23 +28,31 @@ export function UserMenu() {
   }
 
   return (
-    <div className="flex items-center justify-between gap-2 px-2 py-2 mt-1 border-t border-border">
-      <div className="min-w-0 flex flex-col">
-        <span className="text-[12px] font-medium text-fg truncate">
-          {data?.user?.name ?? '사용자'}
-        </span>
-        <span className="text-[11px] text-fg-muted truncate">
-          {data?.user?.email ?? ''}
-        </span>
+    <div className="flex flex-col gap-1 px-2 py-2 mt-1 border-t border-border">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0 flex flex-col">
+          <span className="text-[12px] font-medium text-fg truncate">
+            {data?.user?.name ?? '사용자'}
+          </span>
+          <span className="text-[11px] text-fg-muted truncate">
+            {data?.user?.email ?? ''}
+          </span>
+        </div>
+        <button
+          type="button"
+          onClick={onClick}
+          disabled={logout.isPending}
+          className="text-[11px] px-2 py-1 rounded border border-border hover:bg-surface-2 disabled:opacity-50 shrink-0"
+        >
+          로그아웃
+        </button>
       </div>
-      <button
-        type="button"
-        onClick={onClick}
-        disabled={logout.isPending}
-        className="text-[11px] px-2 py-1 rounded border border-border hover:bg-surface-2 disabled:opacity-50 shrink-0"
+      <Link
+        href="/account/password"
+        className="text-[11px] text-fg-muted underline hover:text-fg self-start"
       >
-        로그아웃
-      </button>
+        비밀번호 변경
+      </Link>
     </div>
   )
 }
