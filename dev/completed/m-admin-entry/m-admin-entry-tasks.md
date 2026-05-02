@@ -1,15 +1,17 @@
 ## m-admin-entry — Tasks
 
-Last Updated: 2026-05-02
+Last Updated: 2026-05-02 (closure)
 
 ### Phase 상태
 
-- P0 (worktree 부트스트랩): **completed** — `C:/project/IbizDrive/.claude/worktrees/m-admin-entry` (branch `wip/m-admin-entry`, base `wip/auth-pages`).
-- P1 (AdminGuard): **in-progress**
-- P2 (admin layout + 사이드 nav): **pending**
-- P3 (admin landing page): **pending**
-- P4 ((explorer) UserMenu admin 링크): **pending**
-- P5 (closure: docs/04 §1·§2, progress, archive): **pending**
+- P0 (worktree 부트스트랩): **completed** (`43b88a7`)
+- P1 (AdminGuard): **completed** (`c5aa689`)
+- P2 (admin layout + 사이드 nav): **completed** (`b7a5726`)
+- P3 (admin landing page): **completed** (`385270c`)
+- P4 ((explorer) UserMenu admin 링크): **completed** (`d5554d5`)
+- P5 (closure: docs/04 §1·§2, progress, archive): **completed** (`091b705`)
+
+> 트랙 종료. 본 디렉터리는 `dev/completed/m-admin-entry/`로 이동됨.
 
 ### P0 worktree 부트스트랩
 
