@@ -238,8 +238,12 @@ class FileVersionRepositoryTest {
         fileVersionRepository.save(v);
         fileVersionRepository.flush();
 
-        // soft delete (trash 진입)
-        jdbc.update("UPDATE files SET deleted_at = NOW() WHERE id = ?", file);
+        // soft delete (trash 진입) — V5 files_deleted_purge_check: deleted_at + purge_after 동시 set
+        jdbc.update(
+            "UPDATE files SET deleted_at = NOW(), purge_after = NOW() + INTERVAL '30 days' " +
+            "WHERE id = ?",
+            file
+        );
 
         try (Stream<UUID> s = fileVersionRepository.streamActiveStorageKeys()) {
             Set<UUID> keys = s.collect(Collectors.toSet());
