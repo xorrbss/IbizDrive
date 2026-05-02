@@ -1,18 +1,22 @@
 'use client'
 import { useFileVersions } from '@/hooks/useFileVersions'
+import { useRestoreVersion } from '@/hooks/useRestoreVersion'
+import { api } from '@/lib/api'
 import type { FileVersionDto } from '@/types/version'
 
 /**
- * RightPanel `versions` 탭 본문 (M-RP.1).
+ * RightPanel `versions` 탭 본문 (M-RP.1 + M-RP.2.3).
  *
  * - 호출자(RightPanel)가 `tab === 'versions'`로 conditional render — 비활성 탭에서는 mount되지 않아
  *   자동으로 fetch 차단. 별도 enabled 가드 불필요.
  * - 상태 4분기: 로딩 / 에러 / 빈 / 리스트 — RightPanel detail 탭의 PanelSkeleton/PanelError 톤 답습.
  * - 정렬: backend가 versionNumber DESC로 보장 (FileVersionRepository 메소드 시그니처).
- * - 다운로드/복원 액션은 M-RP.2에서 추가. 현 단계는 read-only.
+ * - 행 액션: 다운로드(모든 row, READ 권한이면 backend가 허용) + 복원(비-current에 한해 활성, EDIT 권한
+ *   필요). 복원 mid-flight는 두 버튼 모두 비활성으로 잠가 race 회피 (KISS — 단일 isPending 사용).
  */
 export function VersionsTab({ fileId }: { fileId: string }) {
   const { data, isLoading, isError } = useFileVersions(fileId)
+  const restore = useRestoreVersion()
 
   if (isLoading) return <Skeleton />
   if (isError) {
@@ -33,7 +37,13 @@ export function VersionsTab({ fileId }: { fileId: string }) {
   return (
     <ul className="space-y-2" aria-label="파일 버전 목록">
       {data.map((v) => (
-        <VersionRow key={v.id} version={v} />
+        <VersionRow
+          key={v.id}
+          version={v}
+          onDownload={() => api.downloadVersion(fileId, v.id)}
+          onRestore={() => restore.mutate({ fileId, versionId: v.id })}
+          isPending={restore.isPending}
+        />
       ))}
     </ul>
   )
@@ -49,7 +59,17 @@ function Skeleton() {
   )
 }
 
-function VersionRow({ version }: { version: FileVersionDto }) {
+function VersionRow({
+  version,
+  onDownload,
+  onRestore,
+  isPending,
+}: {
+  version: FileVersionDto
+  onDownload: () => void
+  onRestore: () => void
+  isPending: boolean
+}) {
   return (
     <li className="border border-border rounded px-2.5 py-2 bg-surface-1">
       <div className="flex items-center gap-2">
@@ -78,6 +98,26 @@ function VersionRow({ version }: { version: FileVersionDto }) {
           {version.comment}
         </div>
       )}
+      <div className="mt-2 flex items-center gap-1.5">
+        <button
+          type="button"
+          onClick={onDownload}
+          disabled={isPending}
+          className="text-[11px] px-2 py-1 rounded border border-border bg-surface-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={`v${version.versionNumber} 다운로드`}
+        >
+          다운로드
+        </button>
+        <button
+          type="button"
+          onClick={onRestore}
+          disabled={version.isCurrent || isPending}
+          className="text-[11px] px-2 py-1 rounded border border-border bg-surface-2 hover:bg-surface-3 disabled:opacity-50 disabled:cursor-not-allowed"
+          aria-label={`v${version.versionNumber} 복원`}
+        >
+          복원
+        </button>
+      </div>
     </li>
   )
 }

@@ -18,15 +18,15 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * 파일 다운로드 도메인 서비스 — A15.5 (docs/02 §6.1, §7.6).
+ * 파일 다운로드 도메인 서비스 — A15.5 / M-RP.2.1 (docs/02 §6.1, §7.6).
  *
  * <p>책임:
  * <ul>
- *   <li>활성 파일 조회 ({@link FileRepository#findByIdAndDeletedAtIsNull}) — soft-deleted 파일은 404</li>
- *   <li>{@code current_version_id} 로드 — 부재 시 데이터 corruption 신호로 404 매핑</li>
+ *   <li>{@link #download} — 활성 파일의 {@code current_version_id} 다운로드 ({@code FILE_DOWNLOADED})</li>
+ *   <li>{@link #downloadVersion} — 명시된 versionId 다운로드 (M-RP.2.1, {@code VERSION_DOWNLOADED}).
+ *       version의 {@code file_id}와 path {@code fileId} 일치를 service에서 재검증해 cross-file 우회 차단</li>
  *   <li>{@link StorageClient#read} stream open → {@link DownloadHandle}로 묶어 반환</li>
- *   <li>{@link AuditEventType#FILE_DOWNLOADED} emission — {@link AuditService#record}는
- *       REQUIRES_NEW 별도 트랜잭션이므로 본 트랜잭션 rollback과 격리</li>
+ *   <li>{@link AuditService#record} 호출 — REQUIRES_NEW 별도 트랜잭션이라 본 트랜잭션 rollback과 격리</li>
  * </ul>
  *
  * <p>{@link Transactional}({@code readOnly=true})로 read-only 힌트. storage I/O는 트랜잭션 외부 작용이지만
@@ -83,24 +83,70 @@ public class FileDownloadService {
             .orElseThrow(() -> new FileNotFoundException(
                 "current version not found: " + currentVersionId));
 
-        InputStream stream;
-        try {
-            stream = storageClient.read(version.getStorageKey().toString());
-        } catch (IOException e) {
-            throw new IllegalStateException(
-                "storage read failed: " + version.getStorageKey(), e);
-        }
+        InputStream stream = openStorage(version);
 
-        emitDownloadAudit(file.getId(), version.getId(), actorId);
+        emitDownloadAudit(AuditEventType.FILE_DOWNLOADED, file.getId(), version.getId(), actorId);
 
         return new DownloadHandle(file, version, stream);
     }
 
-    private void emitDownloadAudit(UUID fileId, UUID versionId, UUID actorId) {
+    /**
+     * 특정 version을 핀해서 다운로드한다 — M-RP.2.1 (docs/02 §7.6).
+     *
+     * <p>{@link #download}와의 차이:
+     * <ul>
+     *   <li>{@code current_version_id} 대신 caller가 명시한 {@code versionId}를 로드.</li>
+     *   <li>cross-file 참조 차단 — {@link FileVersion#getFileId()}가 path의 {@code fileId}와
+     *       일치하지 않으면 404 ({@link FileNotFoundException}). 다른 파일의 version을 본 파일 컨텍스트로
+     *       임의 다운로드하는 우회를 막는 핵심 가드 — controller의 READ 가드는 path의 fileId 기준이므로,
+     *       version의 실제 소속을 service가 재검증해야 한다.</li>
+     *   <li>audit emit 시 {@link AuditEventType#VERSION_DOWNLOADED} 사용 — current 다운로드와 구분.</li>
+     * </ul>
+     *
+     * <p>file은 {@link FileRepository#findByIdAndDeletedAtIsNull}로 활성 검증 — soft-deleted 파일의
+     * 옛 version 다운로드는 차단(휴지통 노출 차단 정책 일관). version 자체는 soft-delete 컬럼이 없으며
+     * 영구 보존(docs/02 §1.3) — file이 활성이면 모든 과거 version 다운로드 가능.
+     *
+     * @throws FileNotFoundException 파일이 active가 아니거나, version row 부재이거나, version.fileId 불일치
+     * @throws IllegalStateException storage I/O 실패
+     */
+    public DownloadHandle downloadVersion(UUID fileId, UUID versionId, UUID actorId) {
+        if (fileId == null) throw new IllegalArgumentException("fileId is required");
+        if (versionId == null) throw new IllegalArgumentException("versionId is required");
+        if (actorId == null) throw new IllegalArgumentException("actorId is required");
+
+        FileItem file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new FileNotFoundException("file not found or deleted: " + fileId));
+
+        FileVersion version = fileVersionRepository.findById(versionId)
+            .orElseThrow(() -> new FileNotFoundException("version not found: " + versionId));
+
+        if (!fileId.equals(version.getFileId())) {
+            throw new FileNotFoundException(
+                "version " + versionId + " does not belong to file " + fileId);
+        }
+
+        InputStream stream = openStorage(version);
+
+        emitDownloadAudit(AuditEventType.VERSION_DOWNLOADED, file.getId(), version.getId(), actorId);
+
+        return new DownloadHandle(file, version, stream);
+    }
+
+    private InputStream openStorage(FileVersion version) {
+        try {
+            return storageClient.read(version.getStorageKey().toString());
+        } catch (IOException e) {
+            throw new IllegalStateException(
+                "storage read failed: " + version.getStorageKey(), e);
+        }
+    }
+
+    private void emitDownloadAudit(AuditEventType eventType, UUID fileId, UUID versionId, UUID actorId) {
         Map<String, Object> after = new LinkedHashMap<>();
         after.put("versionId", versionId);
         AuditEvent event = new AuditEvent(
-            AuditEventType.FILE_DOWNLOADED,
+            eventType,
             actorId,
             WebRequestContextHolder.currentIp(),
             WebRequestContextHolder.currentUserAgent(),

@@ -1,11 +1,11 @@
 # M-RP — Tasks
 
-Last Updated: 2026-05-02
+Last Updated: 2026-05-02 (M-RP.2 완료 — 검증 GREEN)
 
 ## Phase 상태
 
 - [x] **M-RP.1** — versions 탭 read-only wiring (frontend only) ✅ 2026-05-02 (75 files / 610 tests)
-- [ ] **M-RP.2** — 버전별 다운로드/복원 endpoint + UI (G2 게이트)
+- [x] **M-RP.2** — 버전별 다운로드/복원 endpoint + UI (G2 게이트) — 완료 2026-05-02
 - [ ] **M-RP.3** — permissions 탭 wiring (frontend only)
 - [ ] **M-RP.4** — activity 탭 wiring + AuditQueryFilters 확장 (G4 closure)
 
@@ -112,8 +112,9 @@ Last Updated: 2026-05-02
 
 ### G2 게이트 항목
 
-- [ ] 사용자 sign-off: 복원 의미론 = 옵션 A (current_version_id 재지정, 새 version 생성 안 함).
-- [ ] 사용자 sign-off: closure 시 ADR #39로 기록.
+- [x] 사용자 sign-off: 복원 의미론 = 옵션 A (current_version_id 재지정, 새 version 생성 안 함).
+- [x] 사용자 sign-off: closure 시 ADR #39로 기록.
+- [x] **자체 리뷰 보강**: denormalized 메타(`files.size_bytes`/`files.mime_type`) 동기화 — `FileUploadService:214-217` invariant 보존. 누락 시 list view 표시값 stale. ADR #39 옵션 A 의미론에 sub-requirement로 포함.
 
 ### M-RP.2.1 — FileDownloadService.downloadVersion + 다운로드 endpoint
 
@@ -193,11 +194,12 @@ Last Updated: 2026-05-02
 
 ### M-RP.2 검증 게이트
 
-- [ ] backend test GREEN (신규 케이스 포함).
-- [ ] frontend test GREEN.
-- [ ] typecheck/lint/build exit 0.
-- [ ] audit log 수동 확인: 복원 1회 + 다운로드 1회 → audit_log 2 row.
-- [ ] commit: `feat(m-rp.2): version download/restore + audit emit`.
+- [x] backend test GREEN — 전체 suite BUILD SUCCESSFUL (Testcontainers 일부 silent skip — Docker 부재).
+- [x] frontend test GREEN — 78 files / 633 tests pass.
+- [x] typecheck/lint exit 0 (frontend `pnpm typecheck && pnpm lint` clean).
+- [x] 자체 리뷰: 옵션 A의 denormalized 메타 동기화 invariant 식별 + 수정.
+- [ ] audit log 수동 확인: dev 환경 설치 후. (현재는 통합테스트의 `before_state`/`after_state` JSON 검증으로 대체)
+- [ ] commit: `feat(m-rp.2): version download/restore + audit emit + denorm sync`.
 
 ---
 

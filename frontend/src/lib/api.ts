@@ -240,6 +240,53 @@ export const api = {
     return data.versions
   },
 
+  /**
+   * M-RP.2.1 — 특정 version 핀 다운로드 (docs/02 §7.6, ADR #39).
+   *
+   * `downloadFile`과 동일한 anchor click 패턴 — fetch+Blob 미사용 이유는 §M-Download 주석 참고
+   * (cookie 자동 동봉, RFC 5987 헤더 처리, 큰 파일 메모리 미적재).
+   *
+   * 권한은 backend `hasPermission(#fileId, 'file', 'READ')`. version은 backend가 cross-file 가드
+   * (`version.fileId != path fileId` → 404)를 service 레이어에서 재검증.
+   */
+  downloadVersion(fileId: string, versionId: string): void {
+    const a = document.createElement('a')
+    a.href = `/api/files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/download`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  },
+
+  /**
+   * M-RP.2.2 — 특정 version을 file의 current로 재지정 (옵션 A, ADR #39).
+   *
+   * backend `POST /api/files/{fileId}/versions/{versionId}/restore` — 200 envelope `{ file: FileDto }`.
+   * 멱등: 이미 current인 version을 다시 호출해도 200 (audit emit 없음). 호출자(useRestoreVersion)는
+   * 본 함수 resolve 후 `qk.fileDetail(fileId)` + `qk.fileVersions(fileId)` invalidate.
+   *
+   * 응답 본문(FileDto)은 mutation 결과의 신선한 상태이지만 invalidate 후 재요청으로 충분하므로
+   * 반환값을 void로 단순화 (KISS — caller에 envelope 형 변환 부담 회피).
+   *
+   * 권한은 backend `hasPermission(#fileId, 'file', 'EDIT')` — READ만 보유한 사용자는 403.
+   */
+  async restoreVersion(fileId: string, versionId: string): Promise<void> {
+    const res = await fetch(
+      `/api/files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/restore`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { Accept: 'application/json' },
+      },
+    )
+    if (!res.ok) {
+      const err = new Error(
+        `restoreVersion failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+  },
+
   // M9.1 — 단건 soft delete (휴지통 이동). 호출자(useDeleteBulk)는 selection 단위로
   // file/folder를 판별해 본 함수와 softDeleteFolder를 분기 호출한다 (backend는 bulk endpoint
   // 미제공, ADR #32 §운영 노트). 응답은 204 NO_CONTENT라 본문 무시.

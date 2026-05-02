@@ -108,6 +108,112 @@ describe('api.listFileVersions (fetch)', () => {
   })
 })
 
+describe('api.downloadVersion (M-RP.2.1, anchor click)', () => {
+  let appendSpy: ReturnType<typeof vi.spyOn>
+  let removeSpy: ReturnType<typeof vi.spyOn>
+  let clickSpy: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    clickSpy = vi.fn()
+    appendSpy = vi.spyOn(document.body, 'appendChild') as ReturnType<typeof vi.spyOn>
+    removeSpy = vi.spyOn(document.body, 'removeChild') as ReturnType<typeof vi.spyOn>
+    // HTMLAnchorElement.click을 stub — jsdom의 default click이 navigate 시도하지 않도록.
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(clickSpy)
+  })
+
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  it('GET /api/files/{fileId}/versions/{versionId}/download anchor 생성 + click + remove', () => {
+    api.downloadVersion('file_a', 'v_old')
+
+    expect(appendSpy).toHaveBeenCalledTimes(1)
+    expect(removeSpy).toHaveBeenCalledTimes(1)
+    expect(clickSpy).toHaveBeenCalledTimes(1)
+
+    const anchor = appendSpy.mock.calls[0][0] as HTMLAnchorElement
+    expect(anchor.tagName).toBe('A')
+    expect(anchor.getAttribute('href')).toBe(
+      '/api/files/file_a/versions/v_old/download',
+    )
+  })
+
+  it('fileId/versionId 비-ASCII → encodeURIComponent로 percent-encoded', () => {
+    api.downloadVersion('foo/한', 'v 1')
+    const anchor = appendSpy.mock.calls[0][0] as HTMLAnchorElement
+    expect(anchor.getAttribute('href')).toBe(
+      `/api/files/${encodeURIComponent('foo/한')}/versions/${encodeURIComponent('v 1')}/download`,
+    )
+  })
+})
+
+describe('api.restoreVersion (M-RP.2.2, fetch)', () => {
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn().mockResolvedValue(jsonResponse({ file: {} }))
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('POST /api/files/{fileId}/versions/{versionId}/restore + credentials include', async () => {
+    await api.restoreVersion('file_a', 'v_old')
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    const u = new URL(url, 'http://x')
+    expect(u.pathname).toBe('/api/files/file_a/versions/v_old/restore')
+    expect(init).toMatchObject({ method: 'POST', credentials: 'include' })
+  })
+
+  it('id 비-ASCII → encodeURIComponent', async () => {
+    await api.restoreVersion('foo/한', 'v 1')
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe(
+      `/api/files/${encodeURIComponent('foo/한')}/versions/${encodeURIComponent('v 1')}/restore`,
+    )
+  })
+
+  it('200 envelope { file: ... } → resolve void (반환값 사용 안 함)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        file: {
+          id: 'file_a',
+          folderId: 'folder_x',
+          name: 'doc.txt',
+          currentVersionId: 'v_old',
+        },
+      }),
+    )
+    const result = await api.restoreVersion('file_a', 'v_old')
+    expect(result).toBeUndefined()
+  })
+
+  it('403 (EDIT 권한 부재) → status 필드 가진 Error throw', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 403))
+    await expect(api.restoreVersion('file_a', 'v_old')).rejects.toMatchObject({
+      status: 403,
+    })
+  })
+
+  it('404 (cross-file/missing version) → status 필드 가진 Error throw', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 404))
+    await expect(api.restoreVersion('file_a', 'stray_v')).rejects.toMatchObject({
+      status: 404,
+    })
+  })
+
+  it('5xx → status 필드 가진 Error throw', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({}, 500))
+    await expect(api.restoreVersion('file_a', 'v_old')).rejects.toMatchObject({
+      status: 500,
+    })
+  })
+})
+
 describe('qk.fileVersions (M-RP.1)', () => {
   it('files() prefix + versions + id', () => {
     expect(qk.fileVersions('file_a')).toEqual([

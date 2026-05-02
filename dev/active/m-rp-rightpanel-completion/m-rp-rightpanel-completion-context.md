@@ -1,6 +1,6 @@
 # M-RP — Context
 
-Last Updated: 2026-05-02
+Last Updated: 2026-05-02 (M-RP.2 closure)
 
 ## SESSION PROGRESS
 
@@ -10,6 +10,21 @@ Last Updated: 2026-05-02
 - 코드베이스 gap 조사 → RightPanel 3탭 (`versions`/`activity`/`permissions`) 모두 `<ComingSoon />` placeholder.
 - 본 트랙 bootstrap (plan/context/tasks 3파일).
 - 구현 코드 변경 없음.
+
+### 2026-05-02 (M-RP.2 구현 완료)
+- 신규 파일: `backend/.../file/FileVersionMutationService.java` + 단위 테스트, `backend/.../file/ContentDispositionHeaders.java`(공유 helper),
+  `frontend/src/hooks/useRestoreVersion.ts` + 테스트, `frontend/src/components/files/VersionsTab.test.tsx`.
+- 수정: `FileVersionController.java`(+download +restore endpoints), `FileDownloadController.java`(helper로 위임),
+  `FileVersionControllerTest.java`(+restore 매트릭스 7케이스), `frontend/src/lib/api.ts`(+downloadVersion +restoreVersion),
+  `frontend/src/lib/api.versions.test.ts`(+download/restore describe), `VersionsTab.tsx`(다운로드/복원 버튼).
+- 검증: backend `./gradlew test` BUILD SUCCESSFUL (전체 suite, Testcontainers silent skip — Docker 부재).
+  frontend `pnpm typecheck && pnpm lint && pnpm test --run` = **78 files / 633 tests pass**.
+- **자체 리뷰 핵심 발견**: 옵션 A의 `current_version_id` 재지정만으로는 `files.size_bytes`/`mime_type`이 stale.
+  `FileUploadService:214-217`이 새 version 업로드 시 file row에 size/mime를 denormalize → restore도 같은 invariant
+  유지를 위해 target version의 값으로 동기화 필요. `restoreVersion` 메소드 + 단위 테스트 + 통합 테스트 + 무효화
+  매트릭스(`qk.files()` 보수 무효화 추가) 모두 보강. ADR #39 옵션 A 의미론에 sub-requirement로 포함.
+- 의사결정 RP-1 (옵션 A) closure-ready: "current_version_id 재지정 + denormalized 메타 동기화 + 새 version row 생성 X".
+- 다음: M-RP.3 (permissions 탭 frontend wiring) — backend usePermission/permissions endpoint는 기존, frontend-only 트랙.
 
 ### 2026-05-02 (M-RP.1 구현 완료)
 - 신규 파일: `frontend/src/types/version.ts`, `frontend/src/lib/api.versions.test.ts`,
@@ -33,9 +48,10 @@ Last Updated: 2026-05-02
 
 ## 현재 active
 
-- **active phase**: M-RP.2 (G2 게이트 대기) — 직전 phase M-RP.1 완료 (75 files / 610 tests).
-- **active task**: M-RP.2.1 (FileDownloadService.downloadVersion) — G2 sign-off 후 진입.
-- **G2 sign-off 필요**: 복원 의미론 옵션 A (current_version_id 재지정만, 새 version row 생성 X).
+- **active phase**: M-RP.3 (permissions 탭 frontend wiring) — 직전 phase M-RP.2 완료 (78 files / 633 tests).
+- **active task**: M-RP.3.1 (PermissionsTab 컴포넌트) — frontend-only.
+- **G2 sign-off 처리됨**: 복원 의미론 = 옵션 A (current_version_id 재지정 + denormalized 메타 동기화 + 새 version row 생성 X).
+  closure 시 ADR #39 본문은 옵션 A의 의미론에 denormalization 동기화를 명시 — `FileUploadService:214-217` invariant 보존.
 
 ## 다음 세션 읽기 순서
 
