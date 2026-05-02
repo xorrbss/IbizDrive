@@ -50,6 +50,35 @@
 
 ---
 
+## 2026-05-02 — 🏁 mvp-prod-profile 트랙 종료 (application-prod.yml + cron 4종 활성화 + cookie.secure)
+
+### 범위
+
+Phase 0 (WIP `wip/m-rp-rightpanel-completion` 분기 + master를 origin/df7cc97에 rebase — `docs/progress.md` additive 충돌 1건 해소: mvp-qa-security/M-Download top entry 양쪽 보존, mvp-qa-security를 새 HEAD로 위, M-Download 아래) → Phase 1 (`backend/src/main/resources/application-prod.yml` 신설: cron 4종 `enabled=true` + `server.servlet.session.cookie.secure=true` override + `ProdProfileConfigTest` 회귀 차단 2 케이스) → Phase 2 closure (`BETA-RELEASE.md` §1·§2.2·§3·§8·§9 PASS 갱신, Slack appender 항목은 외부 log shipper 운영자 책임/v1.x로 재분류).
+
+### 회고
+
+- **commits**: 본 closure commit 1개 (worktree branch `feature/mvp-prod-profile`) → squash-merge 예정. PR single, 회귀 0.
+- **production 파일**: 신설 1.
+  - `backend/src/main/resources/application-prod.yml` (32줄) — `app.{purge,share.expiration,permission.expiration,storage.orphan-cleanup}.enabled=true` + `server.servlet.session.cookie.secure=true`. dev/test/CI는 default profile 유지로 무영향.
+- **test**: 신설 1 / 수정 0. `backend/src/test/java/com/ibizdrive/config/ProdProfileConfigTest.java` 2 케이스 (prod profile 활성/default profile 유지 회귀 양방향). backend `./gradlew test` GREEN — 회귀 0 (mvp-qa-security baseline 75 classes / 723 tests / 522 PASS / 201 skip + 2 신규 = 525 PASS / 201 skip).
+- **docs sync**: `BETA-RELEASE.md` §2.2 cookie.secure ✓ / §3 cron 표 prod profile 컬럼 ✓ / §8 Slack 항목 운영자 책임 마커 / §9 GO 결정 §3 ✓ + §8 외부 shipper로 갱신.
+
+### 핵심 결정 (mvp-prod-profile 트랙)
+
+1. **`application-prod.yml` 분리** — `application.yml`은 dev safe default 유지(cron `false` + cookie `secure=false`). prod 활성화는 `SPRING_PROFILES_ACTIVE=prod` 환경 변수 1회 셋업으로 4 cron + cookie secure 자동 ON. 단일 파일에 prod-only 키만 두어 default 환경 회귀 표면적 0.
+2. **TDD via `ApplicationContextRunner`** — 4 cron + cookie property 5개 키를 prod profile context에서 평가, default profile에서 false 유지를 양방향 검증. `@SpringBootTest` 미사용 — DB/Flyway/Web 무의존, `CorsConfigContextBootstrapTest` 패턴 답습. yaml 키 오타 회귀 차단.
+3. **Slack appender 드롭 (KISS / YAGNI)** — `BETA-RELEASE.md §8`에서 "권장 (사내 베타 최소)"였던 in-process logback appender는 ① 권장 항목, ② ERROR-당-POST 모델은 incident rate-limit 위험, ③ 운영 표준은 fluent-bit/Promtail/Datadog 외부 shipper. 본 트랙은 application-prod.yml 단일 책임만 닫고 Slack은 v1.x 관측성 트랙 + 운영자 책임으로 재분류.
+4. **rebase 충돌 해소 정책** — `docs/progress.md`는 reverse-chronological. 같은 날짜 양쪽 entry는 양쪽 보존, 새 HEAD가 위, 기존 origin이 아래. 추가 entry는 그 위에 stack.
+
+### 파급 영향
+
+- **`BETA-RELEASE.md §1·§2.2·§3·§8·§9` 갱신**. 코드 측 추가 게이트 항목 0건 (이번 트랙으로 §3·§2.2 닫힘, 잔여 §2/§8은 운영자 셋업).
+- **dev/process/beta-release-prod-profile.md** session marker 사용 — m-rp-2 working_files와 0건 겹침 확인.
+- **m-rp 트랙 영향**: `wip/m-rp-rightpanel-completion` 브랜치에 보존 (커밋 1개 — 13 files, +1124). master 머지 시점은 사용자 결정. *(2026-05-02 후속: M-RP.2~4 commit 추가 후 본 트랙 closure로 master 머지 — 위 entry 참조)*
+
+---
+
 ## 2026-05-02 — 🏁 mvp-qa-security 트랙 종료 (Week 11-12 MVP QA + 보안 점검 + 베타 readiness)
 
 ### 범위
