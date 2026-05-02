@@ -5,6 +5,59 @@
 
 ---
 
+## 2026-05-03 — 🏁 admin-invite-email 트랙 종료 (POST /api/admin/users + admin invite UX, ADR #21 admin closure)
+
+### 범위
+
+`dev/active/admin-invite-email/` bootstrap → P1 backend `AdminUserService` (TDD: `invite(email, displayName, role, actorId)` + duplicate check + `TempPasswordGenerator`(16자 SecureRandom alnum+`!@#$%&`) + BCrypt 해시 + `User` 신규 생성(`mustChangePassword=true`) + `AdminUserCreatedEvent` 발행 + `AdminAuditListener` REQUIRES_NEW + `EmailService.send()` 본문에 평문 임시 PW + `AdminInviteUserResponse` (5필드, 임시 PW 비포함)) → P2 backend `AdminUserController` (TDD: `POST /api/admin/users` + `@PreAuthorize("hasRole('ADMIN')")` + `AdminInviteUserRequest` Bean Validation + `DuplicateEmailException → 409` 기존 매핑 재사용) → P3 frontend `api.adminInviteUser` + `useAdminInviteUser` (TDD: CSRF + 200/409/403 매핑 / mutation hook 위임) → P4 frontend `/admin/users` page (TDD: form email/displayName/role select + 성공/실패 UX + onSuccess reset/안내) → P5 closure (docs/00 ADR #21 closure note + docs/02 §7.4 endpoint 표 +1 + endpoint 블록 +1 + docs/03 §2.7 cross-link + §2.8 활성화 완료 + §2.10 audit 표 +1 + 본 entry + archive + PR open).
+
+### 회고
+
+- **commits**: 4개 + closure.
+  - `7ee...` P1 backend AdminUserService + temp PW + audit emission (TDD)
+  - `e5d5301` P2 backend AdminUserController + admin role guard (TDD)
+  - `41ddd08` P3 frontend api + hook (TDD)
+  - `b47d7b1` P4 /admin/users invite form (TDD)
+  - + closure commit (docs/00·02·03·progress + archive)
+- **production 신설/수정**:
+  - backend 신설: `AdminUserService` + `TempPasswordGenerator` + `AdminUserCreatedEvent` (record) + `AdminAuditListener` (`@EventListener` REQUIRES_NEW) + `AdminInviteUserResponse` (record, 5필드 — tempPassword 의도적 부재) + `AdminUserController` + `AdminInviteUserRequest` (Bean Validation) + tests 2 (`AdminUserServiceTest` 7건, `AdminUserControllerTest` 7건).
+  - backend 수정: 0 (`SecurityConfig` 변경 없음 — `anyRequest authenticated` + method-level `@PreAuthorize`로 충분, `DuplicateEmailException → 409` 기존 매핑 재사용).
+  - frontend 신설: `api.adminInviteUser.test.ts` + `useAdminInviteUser` hook + test + `/admin/users` page + test.
+  - frontend 수정: `api.ts` (`adminInviteUser` 메서드 + `AdminInviteUserParams`/`Response` 타입 export).
+- **docs sync**:
+  - `docs/00 §5` ADR #21 row: 운영자 초대 closure 메모 추가 (별도 ADR 신설 0 — ADR #21 자체의 잔여 closure이므로 본문에만 추가).
+  - `docs/02 §7.4` endpoint 표 +1 (`POST /api/admin/users`) + endpoint 블록 +1 (request/validation/response/side-effects/errors).
+  - `docs/03 §2.7` 끝에 admin closure cross-link, `§2.8` 헤더 + 본문 "활성화 완료" + 운영자 초대 상세 8개 항목(요청/임시 PW/응답 invariant/강제 변경/이메일 발송/CSRF/권한/에러/audit/v1.x reserve).
+  - `docs/03 §2.10` audit 표 +1 (`admin.user.created`).
+- **dev-docs**: `dev/active/admin-invite-email/` → closure 후 `dev/completed/`.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — 신규 `AdminUserServiceTest`(7) + `AdminUserControllerTest`(7) = 14개, 회귀 0.
+  - frontend `pnpm typecheck && pnpm lint && pnpm vitest run` — 682 tests pass (api 4 + hook 2 + page 6 = +12, 회귀 0).
+
+### 핵심 결정 (admin-invite-email)
+
+1. **ADR 신설 X**: ADR #21 자체의 잔여 closure이므로 본문에 closure 메모만 추가. 새 ADR 번호 부여 불필요.
+2. **invite 방식 = 임시 PW 직접 발급, 토큰 기반 X**: ADR #21 본문(`§2.8`)이 이미 "임시 PW + must_change_password=true" 명시. 강제 변경 UX(`auth-must-change-pw`)가 활성이므로 토큰 방식 대비 보안 차이 미미. `password_reset_tokens` 재사용은 의미 혼동.
+3. **임시 PW invariant**: 응답 DTO/로그/예외 메시지/git 히스토리/git commit body **모두 비포함**. EmailService 본문에만. `AdminUserControllerTest`가 jsonPath로 강제(`tempPassword`/`password`/`passwordHash` 키 부재).
+4. **TempPasswordGenerator alphabet = `A-Za-z0-9!@#$%&`**: 메일 transit 깨짐/사용자 입력 에러 최소화 위해 특수문자 일부만. 16자 = 약 95~96 bit entropy(첫 로그인 강제 변경 chain이 보안 보강).
+5. **listener 분리**: `AuthAuditListener`에 메서드 추가 X, `AdminAuditListener` 신설 — domain bounded context 일관(admin/ 모듈 내부).
+6. **SecurityConfig 변경 0**: `anyRequest authenticated` 401 차단 + method-level `@PreAuthorize("hasRole('ADMIN')")` 403. `/api/admin/**` 별도 matcher 추가 안 함(KISS).
+7. **CSRF**: 표준 double-submit (signup/forgot/reset과 달리 인증된 admin 호출이므로 토큰 보유 가정).
+8. **frontend 라우트 가드 미적용**: 백엔드 403만 신뢰(CLAUDE.md §3.10 — 백엔드 권한이 진실의 출처). 프론트 라우트 가드는 별도 cross-cutting 트랙.
+9. **사이드바 네비/사용자 목록 페이지 미추가**: URL `/admin/users` 직접 접근만. 본 트랙 범위 외(v1.x).
+10. **audit emit coverage 31/42 → 32/42**: `ADMIN_USER_CREATED` enum은 이미 존재(미사용)였고 본 트랙에서 emit 활성화.
+
+### 다음 세션 컨텍스트
+
+- **사용자 목록 페이지** (`/admin/users` 목록 + 검색·필터) — admin 모듈 확장.
+- **role 변경 endpoint** (`PATCH /api/admin/users/:id/role`) — admin 역할 위임/회수.
+- **사용자 비활성화/재활성화** — `users.is_active` 토글 endpoint.
+- **재초대(re-invite)** — 만료된 임시 PW 재발급 시나리오. 현재는 forgot 흐름으로 우회 가능.
+- **이메일 송신 비동기화** — `@Async` + `TaskExecutor`로 invite 응답 latency 단축(현재 동기, prod SMTP best-effort).
+- **사이드바 네비**: admin 헤더에 "사용자 초대" 링크 추가(현재 `/admin/audit/logs`만 노출).
+
+---
+
 ## 2026-05-02 — 🏁 a1.5-email-infra 트랙 종료 (Spring Mail + password reset/change + 3 endpoints + 3 pages, ADR #42·#43)
 
 ### 범위

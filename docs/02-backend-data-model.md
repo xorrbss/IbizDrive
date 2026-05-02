@@ -863,6 +863,7 @@ CSRF 정책:
 | POST | `/api/auth/password/forgot` | permitAll | REQUIRED (token+email+audit) | email→lowercase | — | 400 VALIDATION_ERROR |
 | POST | `/api/auth/password/reset` | permitAll | REQUIRED (token verify+pw update+session invalidate+audit) | — | — | 400 VALIDATION_ERROR, 400 INVALID_TOKEN |
 | POST | `/api/auth/password/change` | isAuthenticated | REQUIRED (pw verify+update+other sessions invalidate+audit) | — | — | 400 VALIDATION_ERROR, 401 INVALID_CREDENTIALS, 403 CSRF_MISMATCH |
+| POST | `/api/admin/users` | `hasRole('ADMIN')` | REQUIRED (user INSERT + event publish + email send + audit) | email→trim+lowercase | — | 400 VALIDATION_ERROR, 401 UNAUTHORIZED, 403 PERMISSION_DENIED, 409 CONFLICT/DUPLICATE_EMAIL |
 
 > **Norm 컬럼**: 이메일은 `NormalizeUtil.normalize()` (NFC + 파일명 정규화) 적용 대상 아님. `email.trim().toLowerCase()` 별도 적용 (docs/03 §2.7).
 > **TX 컬럼**: login은 audit + loginfail Redis 카운터 부수효과 있음 → REQUIRED. logout은 session.invalidate + audit.
@@ -987,9 +988,40 @@ POST /api/auth/password/change                     (A1.5, ADR #43)
     401 UNAUTHORIZED        (미인증 세션)
     401 INVALID_CREDENTIALS { } (현재 비밀번호 불일치)
     403 CSRF_MISMATCH
+
+POST /api/admin/users                              (ADR #21 admin 트랙 closure, 2026-05-03)
+  Headers:  X-CSRF-Token: <token>           (필수, double-submit)
+            Cookie: SESSION=<id>            (인증 + ADMIN 역할 필요)
+  Request:  { email: string, displayName: string, role: 'MEMBER' | 'AUDITOR' | 'ADMIN' }
+  Validation:
+    - email: @NotBlank @Email @Size(max=254). trim+lowercase 후 저장
+    - displayName: @NotBlank @Size(max=100)
+    - role: @NotNull (Role enum)
+  Response: 200 {
+              id: string (UUID),
+              email: string,
+              displayName: string,
+              role: 'MEMBER' | 'AUDITOR' | 'ADMIN',
+              mustChangePassword: true
+            }
+            // **임시 PW 절대 비포함** — temp PW는 invite 메일 본문에만 등장(ADR #21).
+  Side-effects:
+            - users INSERT (mustChangePassword=true, isActive=true, password_hash=BCrypt(생성된 16자 PW))
+            - AdminUserCreatedEvent 발행 → AdminAuditListener REQUIRES_NEW로 audit_log
+              `admin.user.created` (actorId=호출 admin, target_type='user', target_id=신규 user)
+            - EmailService.send(email, subject, body) — body에 평문 임시 PW 포함
+              (dev/test=Console stdout, prod=SMTP)
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'email' | 'displayName' | 'role' } }
+    401 UNAUTHORIZED      (미인증)
+    403 PERMISSION_DENIED (인증되었으나 비-ADMIN — Spring Security RoleVoter)
+    409 CONFLICT          { reason: 'DUPLICATE_EMAIL' } (auth flat envelope, signup 매핑 재사용)
+  Note:     사용자 첫 로그인 시 `mustChangePassword=true` 가드(`/account/password` redirect chain)가
+            임시 PW 강제 변경. 토큰 기반 invite link 미도입(KISS) — 강제 변경 UX(`auth-must-change-pw`)가
+            보안 보강.
 ```
 
-**관련 audit 이벤트** (docs/03 §2.10): `user.login.success` / `user.login.failed` / `user.logout` / `user.session.expired` / `user.locked` / `user.unlocked` / `user.password.changed` / `user.password.forgot_requested` (A1.5) / `user.password.reset` (A1.5).
+**관련 audit 이벤트** (docs/03 §2.10): `user.login.success` / `user.login.failed` / `user.logout` / `user.session.expired` / `user.locked` / `user.unlocked` / `user.password.changed` / `user.password.forgot_requested` (A1.5) / `user.password.reset` (A1.5) / `admin.user.created` (ADR #21 admin closure).
 
 ### 7.5 폴더 (Folders)
 

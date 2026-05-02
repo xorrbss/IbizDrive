@@ -293,9 +293,11 @@
 - HTML 템플릿/i18n/비동기 큐 모두 v1.x 분리.
 - **Anti-enumeration timing leak** = 알려진 한계 (가입자만 SMTP 라운드트립). v1.x rate-limit + 비동기 큐 트랙에서 재검토.
 
-### 2.8 사용자 등록 (ADR #21 → ADR #41 supersede, 2026-05-02)
+**관리자 사용자 초대 (ADR #21 admin closure, 2026-05-03)** — `POST /api/admin/users` 활성화. 본 §2.7 BCrypt(strength=12) + `DelegatingPasswordEncoder` 정책을 그대로 적용해 임시 PW를 BCrypt 해시 저장. 임시 PW 정책은 §2.8 invariant 참조.
 
-> **Status**: ADR #21(관리자 초대 only)은 ADR #41 auth-pages 트랙에서 supersede. MVP는 self-signup + first-user-ADMIN 부트스트랩. 운영자 초대(`POST /api/admin/users`)는 v1.x reserve.
+### 2.8 사용자 등록 (ADR #21 admin closure 2026-05-03 — ADR #41 supersede 2026-05-02)
+
+> **Status**: ADR #21(관리자 초대 only)은 ADR #41 auth-pages 트랙에서 supersede. MVP는 self-signup + first-user-ADMIN 부트스트랩. **운영자 초대(`POST /api/admin/users`)도 활성화 완료(2026-05-03, `admin-invite-email` 트랙)** — admin이 신규 사용자를 시스템에서 직접 초대할 수 있다.
 
 - **MVP = 셀프 가입**. `POST /api/auth/signup` 활성화 (request: `{email, password, displayName}`, response: `LoginResponse` shape + auto-session).
 - **first-user-ADMIN 부트스트랩**: `userRepository.count() == 0`이면 새 사용자 ROLE=ADMIN, 그 외 MEMBER. 빈 DB 첫 호출만 ADMIN 부여(초기 admin 시드 의존성 제거). 동시 두 요청 race는 MVP single-instance + tx 직렬화로 사실상 차단(엄밀 보장은 advisory lock — v1.x).
@@ -309,7 +311,17 @@
   - `409 CONFLICT/DUPLICATE_EMAIL` — 이미 가입된 이메일.
   - `400 VALIDATION_ERROR` — Bean Validation 실패 (standard envelope).
 - **Audit emission**: `USER_REGISTERED("user.registered")` (§4.1 추가). `UserRegisteredEvent` record + `AuthAuditListener.onRegistered`가 `@EventListener` REQUIRES_NEW로 audit_log 기록 — 로그인 `AuthenticationSuccessEvent` 패턴 일관.
-- **운영자 user 초대 (`POST /api/admin/users`) — v1.x reserve**: 사용자에게 임시 PW를 별도 채널로 전달, `users.must_change_password = true`. 이메일 초대(`A1.5`)는 이메일 인프라 도입 시점에 활성화.
+- **운영자 user 초대 (`POST /api/admin/users`) — 활성화 완료(2026-05-03, `admin-invite-email`)**:
+  - **요청**: `{email, displayName, role}`. role은 `MEMBER`/`AUDITOR`/`ADMIN` 중 하나(@NotNull). email/displayName은 §위 가입 정책과 동일한 Bean Validation.
+  - **임시 PW 생성**: 백엔드 `TempPasswordGenerator.generate()` — 16자 `SecureRandom`, alphabet `A-Za-z0-9!@#$%&` (메일 transit 깨짐/사용자 입력 에러 최소화 위해 특수문자 일부만). DB는 `BCrypt(strength=12)` 해시만 저장.
+  - **응답 invariant**: 응답 DTO는 `{id, email, displayName, role, mustChangePassword=true}` 5필드. **임시 PW(평문/해시 모두)는 응답·로그·예외 메시지·git history에 절대 비포함** — `EmailService.send()` 본문에만 등장. `AdminUserControllerTest`가 jsonPath로 `tempPassword`/`password`/`passwordHash` 키 부재 강제.
+  - **첫 로그인 강제 변경**: `mustChangePassword=true`로 생성 → `auth-must-change-pw` UX(`/account/password` redirect chain)가 임시 PW 강제 변경. 토큰 기반 invite link 미도입(KISS) — 강제 변경 chain이 보안 보강.
+  - **이메일 발송**: `EmailService.send(email, subject, body)` — body에 평문 임시 PW + 로그인 안내. dev/test = `ConsoleEmailService` stdout, prod = `SmtpEmailService` (ADR #42 인프라 재사용).
+  - **CSRF**: 표준 double-submit (signup/forgot/reset과 달리 인증된 admin 호출이므로 토큰 보유 가정).
+  - **권한**: `@PreAuthorize("hasRole('ADMIN')")` (Spring Security RoleVoter). 비-ADMIN은 403 PERMISSION_DENIED.
+  - **에러**: `409 CONFLICT/DUPLICATE_EMAIL` (auth flat envelope, signup 매핑 재사용) / `400 VALIDATION_ERROR` (standard envelope) / `401 UNAUTHORIZED` (미인증) / `403 PERMISSION_DENIED` (비-ADMIN, nested error.code envelope).
+  - **Audit emission**: `ADMIN_USER_CREATED("admin.user.created")` — `AdminUserCreatedEvent` 발행 → `AdminAuditListener` REQUIRES_NEW로 audit_log 기록 (§2.10 / §4.1). actorId=호출 admin user id, target_type=`user`, target_id=신규 user id.
+  - **본 트랙 범위 외 (v1.x)**: 사용자 목록·역할 변경·비활성화·재초대 페이지. invite endpoint + 단일 invite form만 활성화.
 
 `users` 테이블 인증 관련 컬럼 (docs/02 §2.1과 동기):
 - `email VARCHAR UNIQUE NOT NULL` (lowercase 정규화)
@@ -338,6 +350,7 @@
 | `user.password.reset` | 토큰 + 새 PW로 재설정 성공 (A1.5 P4, ADR #43) | — |
 | `user.locked` | 5회 실패 후 락 진입 | — |
 | `user.unlocked` | 관리자 수동 해제 (A4) | `admin_action` |
+| `admin.user.created` | 관리자 사용자 초대 (`POST /api/admin/users`, ADR #21 admin closure 2026-05-03) | — |
 
 > §4.1 `AuditEventType` enum에 위 이벤트 동기화 필요 (현재 `user.password.changed` / `user.mfa.enabled`만 존재). MFA는 v1.x로 연기되어 `user.mfa.enabled`는 enum 유지(미사용)하거나 v1.x 도입 시점에 추가 가능 — TBD: A1 구현 진입 시 §4.1 정리.
 

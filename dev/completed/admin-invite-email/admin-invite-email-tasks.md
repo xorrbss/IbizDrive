@@ -12,11 +12,11 @@ Last Updated: 2026-05-03
 | P2 — backend AdminUserController + Security 가드 (TDD) | ✅ 완료 (2026-05-03) |
 | P3 — frontend api + hook (TDD) | ✅ 완료 (2026-05-03) |
 | P4 — frontend `/admin/users` page (TDD) | ✅ 완료 (2026-05-03) |
-| P5 — closure (docs sync + archive + PR) | ⬜ 대기 |
+| P5 — closure (docs sync + archive + PR) | ✅ 완료 (2026-05-03) |
 
 ---
 
-## 현재 active phase: **P5**
+## 현재 active phase: **완료** (트랙 종료, dev/completed로 archive)
 
 ---
 
@@ -207,15 +207,15 @@ Last Updated: 2026-05-03
 
 ### 작업 항목
 
-- [ ] `docs/00-overview.md` ADR #21 본문에 admin 트랙 closure 메모 추가 (별도 ADR 신설 X)
-- [ ] `docs/02-backend-data-model.md` §7.4 endpoint 표 +1 (`POST /api/admin/users`) + request/response 블록 +1
-- [ ] `docs/03-security-compliance.md` §2.7 끝에 "초대 흐름 활성화 완료(2026-05-03)" cross-link
-- [ ] `docs/03-security-compliance.md` §2.8 "v1.x reserve" → "활성화 완료(2026-05-03)" + endpoint 본문(요청/응답/에러)
-- [ ] `docs/03-security-compliance.md` §2.10 audit 표 +1 (`admin.user.created`)
-- [ ] `docs/progress.md` 본 트랙 entry 최상단 추가 (audit emit coverage 31/42 → 32/42 명시)
-- [ ] `dev/active/admin-invite-email/` → `dev/completed/`로 이동
-- [ ] `dev/process/admin-invite-email.md` 정리 (있으면)
-- [ ] PR open: `feat(admin-invite-email): POST /api/admin/users (ADR #21 admin 트랙 closure)` — stacked on master 또는 PR #48 머지 후
+- [x] `docs/00-overview.md` ADR #21 본문에 admin 트랙 closure 메모 추가 (별도 ADR 신설 X)
+- [x] `docs/02-backend-data-model.md` §7.4 endpoint 표 +1 (`POST /api/admin/users`) + request/response 블록 +1
+- [x] `docs/03-security-compliance.md` §2.7 끝에 "초대 흐름 활성화 완료(2026-05-03)" cross-link
+- [x] `docs/03-security-compliance.md` §2.8 "v1.x reserve" → "활성화 완료(2026-05-03)" + endpoint 본문(요청/응답/에러/임시 PW invariant 8개 항목)
+- [x] `docs/03-security-compliance.md` §2.10 audit 표 +1 (`admin.user.created`)
+- [x] `docs/progress.md` 본 트랙 entry 최상단 추가 (audit emit coverage 31/42 → 32/42 명시)
+- [x] `dev/active/admin-invite-email/` → `dev/completed/`로 이동 (git mv)
+- [x] `dev/process/admin-invite-email.md` 삭제
+- [ ] PR open: `feat(admin-invite-email): POST /api/admin/users (ADR #21 admin 트랙 closure)` — stacked on master 또는 PR #48 머지 후 (게이트, 사용자 confirm 대기)
 - [ ] PR open 직전 사용자 confirm (게이트)
 
 ### 작업 전 필독
