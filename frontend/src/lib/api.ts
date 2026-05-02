@@ -1079,6 +1079,60 @@ export const api = {
     }
     return (await res.json()) as { message: string }
   },
+
+  /**
+   * `POST /api/admin/users` (ADR #21 admin closure, docs/02 §7.4 / docs/03 §2.8).
+   * 인증된 ADMIN만 호출 가능 — 비-ADMIN은 backend 403 PERMISSION_DENIED.
+   *
+   * <p>임시 PW invariant: 응답 DTO에는 password/tempPassword/hash 필드가 절대 없다 (backend
+   * `AdminUserControllerTest`가 jsonPath로 강제). 임시 PW는 backend 측에서 invite 메일 본문으로만 노출.
+   *
+   * <p>오류 매핑:
+   * <ul>
+   *   <li>400 VALIDATION_ERROR — Bean Validation 위반</li>
+   *   <li>403 PERMISSION_DENIED — non-admin (nested envelope `error.code`)</li>
+   *   <li>409 CONFLICT/DUPLICATE_EMAIL — auth flat envelope (signup 매핑 재사용)</li>
+   * </ul>
+   */
+  async adminInviteUser(req: AdminInviteUserParams): Promise<AdminInviteUserResponse> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminInviteUser failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminInviteUserResponse
+  },
+}
+
+/**
+ * Admin invite 요청 파라미터 — backend `AdminInviteUserRequest` 1:1 mirror.
+ * `role`은 backend `Role` enum의 wire string ('ADMIN' | 'AUDITOR' | 'MEMBER').
+ */
+export interface AdminInviteUserParams {
+  email: string
+  displayName: string
+  role: 'ADMIN' | 'AUDITOR' | 'MEMBER'
+}
+
+/**
+ * Admin invite 응답 — backend `AdminInviteUserResponse` 1:1 mirror.
+ * 임시 PW 등 자격증명 관련 필드는 의도적으로 부재 (ADR #21 invariant).
+ */
+export interface AdminInviteUserResponse {
+  id: string
+  email: string
+  displayName: string
+  role: 'ADMIN' | 'AUDITOR' | 'MEMBER'
+  mustChangePassword: boolean
 }
 
 /**

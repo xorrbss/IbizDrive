@@ -10,13 +10,13 @@ Last Updated: 2026-05-03
 |---|---|
 | P1 — backend AdminUserService + temp PW + audit emission (TDD) | ✅ 완료 (2026-05-03) |
 | P2 — backend AdminUserController + Security 가드 (TDD) | ✅ 완료 (2026-05-03) |
-| P3 — frontend api + hook (TDD) | ⬜ 대기 |
+| P3 — frontend api + hook (TDD) | ✅ 완료 (2026-05-03) |
 | P4 — frontend `/admin/users` page (TDD) | ⬜ 대기 |
 | P5 — closure (docs sync + archive + PR) | ⬜ 대기 |
 
 ---
 
-## 현재 active phase: **P3**
+## 현재 active phase: **P4**
 
 ---
 
@@ -129,10 +129,10 @@ Last Updated: 2026-05-03
 
 ### 작업 항목
 
-- [ ] `frontend/src/lib/api.adminInviteUser.test.ts` 신설
-- [ ] `frontend/src/lib/api.ts`에 `adminInviteUser({email, displayName, role})` 메서드 추가
-- [ ] `frontend/src/hooks/useAdminInviteUser.ts` + `.test.tsx` 신설
-- [ ] `pnpm typecheck && pnpm lint && pnpm vitest run` 통과
+- [x] `frontend/src/lib/api.adminInviteUser.test.ts` 신설 (4 tests: wire/200/409/403)
+- [x] `frontend/src/lib/api.ts`에 `adminInviteUser({email, displayName, role})` 메서드 추가 (CSRF + AdminInviteUserParams/Response 타입 export)
+- [x] `frontend/src/hooks/useAdminInviteUser.ts` + `.test.tsx` 신설 (2 tests: 성공/409 에러)
+- [x] `pnpm typecheck && pnpm lint && pnpm vitest run` 통과 (676 tests pass)
 - [ ] commit: `feat(admin-invite-email): P3 frontend api + hook (TDD)`
 
 ### 작업 전 필독
