@@ -16,45 +16,47 @@
 
 > 역할 분리는 감사 원칙의 핵심: "한 명이 모든 것을 할 수 있으면 감사가 의미 없음"
 
+> **MVP 단순화 (m-admin-entry, 2026-05-02)**: 위 4역할 분리는 v1.x 목표. MVP는
+> `users.role ∈ {ADMIN, MEMBER, AUDITOR}` 단일 enum 기반(docs/03 §3.1)이며,
+> `/admin/*` 진입은 `role=ADMIN`만 허용한다. 위 표는 v1.x 권한 매트릭스 진입 시
+> 정렬한다.
+
+### 1.1 가드 책임 분리 (m-admin-entry)
+
+| 가드 | 책임 | 위치 | 트랙 |
+|---|---|---|---|
+| **프론트 UX 가드** | URL 직접 입력 시 redirect, 사이드바 노출 제어 | `AdminGuard`, `AuthGuard` (frontend) | m-admin-entry (본 트랙) |
+| **백엔드 보안 가드** | 모든 admin endpoint에서 role=ADMIN 강제 (`@PreAuthorize`) | `SecurityConfig` + 컨트롤러 | M-admin-backend-guard (별도, 미배정) |
+
+- 프론트 가드는 **UX 책임만**. 비ADMIN이 `/admin/*` URL을 직접 입력하면 `/files`로 silent redirect.
+- 보안 강제는 백엔드 책임. 프론트 가드를 우회해 admin endpoint에 직접 호출해도 `@PreAuthorize`가 차단해야 한다(CLAUDE.md §3 원칙 10).
+- 본 트랙 종료 시점에 admin endpoint는 `/admin/audit/*`(이미 일반 audit endpoint 위에 frontend만 마운트)뿐이며, 신규 admin-only endpoint(예: `/api/admin/users`) 추가 시점에 백엔드 트랙이 활성화된다.
+
 ---
 
 ## 2. 관리자 페이지 구조
 
+> **본 트랙(m-admin-entry, 2026-05-02) 활성 라우트**: `/admin`(landing), `/admin/audit/logs`(M12). 그 외 모든 sub-route는 v1.x deferred — 사이드 nav에서 disabled+`v1.x` 배지로 표기.
+
 ```text
-/admin
-├─ /dashboard              운영 현황 요약
-├─ /users
-│  ├─ /list                사용자 목록
-│  ├─ /:id                 사용자 상세 + 활동
-│  └─ /import              CSV 일괄 import
-├─ /departments
-│  ├─ /tree                조직도
-│  └─ /:id
-├─ /permissions
-│  ├─ /bulk                권한 일괄 변경
-│  └─ /templates           권한 프리셋 템플릿
-├─ /storage
-│  ├─ /usage               전체 사용량
-│  ├─ /quotas              쿼터 관리
-│  └─ /cleanup             고아 객체 정리
+/admin                      landing (가용 기능 + deferred 안내) — m-admin-entry
+├─ /dashboard              운영 현황 요약 — v1.x deferred (§3)
+├─ /users                  v1.x deferred (§4)
+├─ /departments            v1.x deferred (§5)
+├─ /permissions            v1.x deferred (권한 매트릭스 백엔드 후속)
+├─ /storage                v1.x deferred (§6)
 ├─ /audit
-│  ├─ /logs                전체 감사 로그
-│  ├─ /downloads           다운로드 이력
-│  ├─ /permissions         권한 변경 이력
-│  └─ /export              로그 내보내기 (CSV/JSON)
-├─ /trash
-│  ├─ /all                 전역 휴지통
-│  └─ /policy              휴지통 정책 설정
-├─ /legal-hold             법적 보존 관리
-├─ /policies
-│  ├─ /file-size           파일 크기/확장자 정책
-│  ├─ /retention           보존 기간
-│  └─ /audit-levels        감사 레벨 폴더 지정
-└─ /system
-   ├─ /health              시스템 상태
-   ├─ /backups             백업 이력
-   └─ /jobs                배치 작업 모니터링
+│  ├─ /logs                전체 감사 로그 — M12 active
+│  ├─ /downloads           v1.x deferred
+│  ├─ /permissions         v1.x deferred
+│  └─ /export              v1.x deferred (§7.2)
+├─ /trash                  v1.x deferred (§8)
+├─ /legal-hold             v1.x deferred (§10)
+├─ /policies               v1.x deferred (§9)
+└─ /system                 v1.x deferred
 ```
+
+> 본 트랙(m-admin-entry)은 위 트리의 사이드 nav skeleton + `/admin` landing만 실 구현한다. deferred sub-route 자체는 stub 라우트로도 만들지 않는다(YAGNI). 사이드 nav의 disabled 항목이 anchor 역할.
 
 ---
 

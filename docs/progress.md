@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-05-02 — 🏁 m-admin-entry 트랙 종료 (admin frontend skeleton + AdminGuard, UX 가드만)
+
+### 범위
+
+`dev/active/m-admin-entry/` bootstrap (3파일) → P1 AdminGuard TDD (3 RED→GREEN, role=ADMIN 검사 + `/files` redirect) → P2 admin layout 사이드바 + AdminSideNav (docs/04 §2 트리, audit logs active + 9 deferred badge) → P3 `/admin` landing page (가용 카드 + v1.x 안내) → P4 (explorer) UserMenu 'ADMIN' 조건부 admin 진입 링크 → P5 closure (docs/04 §1.1 가드 책임 분리 + §2 라우트 트리 deferred 표기 + 본 entry + archive).
+
+### 회고
+
+- **commits**: 5개 (P0 bootstrap + P1~P4 + closure).
+- **frontend 변경**: 신설 3 (`AdminGuard.tsx` + test, `AdminSideNav.tsx`, `app/admin/page.tsx`) + 수정 2 (`app/admin/layout.tsx` AuthGuard+AdminGuard 중첩 + 사이드바, `UserMenu.tsx` ADMIN 진입 링크).
+- **docs sync**: `docs/04 §1.1` 신설(가드 책임 분리 표 — 프론트 UX vs 백엔드 보안), `§1` MVP 단순화 노트(role enum 단일), `§2` 라우트 트리에 active/deferred 표기 명확화.
+- **dev-docs**: `dev/active/m-admin-entry/` (3파일) — closure 후 `dev/completed/`로 이동.
+- **test**: frontend `npm test --run` **650/650** (AdminGuard 3건 추가, 회귀 0). `npm run typecheck && npm run lint` clean.
+
+### 핵심 결정 (m-admin-entry 트랙)
+
+1. **UX 가드 vs 보안 가드 분리** (docs/04 §1.1): 프론트 `AdminGuard`는 URL 직접 입력 차단/사이드바 노출 제어 등 UX만 담당. 보안 강제는 백엔드 `@PreAuthorize` 별도 트랙(M-admin-backend-guard)에서 처리. CLAUDE.md §3 원칙 10 준수.
+2. **비-ADMIN 동작 = `/files` silent redirect**: 403 페이지 만들지 않음(YAGNI). 일반 user가 admin URL 직접 입력 케이스 드물고 redirect가 단순.
+3. **deferred 라우트 = disabled `<button>` + "v1.x" 배지**: 숨김 X. navigability 보존 + 향후 활성화 anchor. `<a>` disabled는 표준 부재로 button 사용.
+4. **`/admin` = landing page**: `/admin/dashboard`(§3 deferred)는 stub 라우트도 만들지 않음. landing이 가용 기능 카드 + deferred 안내 1페이지로 통합.
+5. **role 체크 = `roles.includes('ADMIN')`**: backend `LoginResponse.from(u, key)`이 `List.of(u.getRole().name())` 단일 wrap. 다중 role은 v1.x.
+6. **AuthGuard/AdminGuard 중첩 + redirect 충돌 회피**: AdminGuard는 `data === null` 케이스에서 noop(상위 AuthGuard가 처리). `data` truthy일 때만 role 검사 → 동시에 redirect 시도 충돌 X.
+
+### 다음 세션 컨텍스트
+
+- **base branch = `wip/auth-pages`**: master에 AuthGuard/useMe 부재. auth-pages PR이 master에 머지되면 `wip/m-admin-entry` rebase 필요.
+- **후속 트랙 (사용자 backlog)**:
+  - **A1.5 이메일 인프라**: Spring Mail + token 테이블 + password reset flow + admin user invite hook.
+  - **PW 정책 강화**: ADR #19(min 12 + alpha/digit/공백금지)와 코드 정렬. SignupRequest validation 강화 + 프론트 inline 검증.
+  - **M-admin-backend-guard**: `@PreAuthorize("hasRole('ADMIN')")` + admin endpoint 신설(users list 등).
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-02 — 🏁 auth-pages 트랙 종료 (셀프 가입 + first-user-ADMIN + /login·/signup + 401 가드, ADR #41)
 
 ### 범위
