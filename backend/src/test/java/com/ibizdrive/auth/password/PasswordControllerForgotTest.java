@@ -6,6 +6,7 @@ import com.ibizdrive.common.error.AuthExceptionHandler;
 import com.ibizdrive.config.SecurityConfig;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.UserRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -15,9 +16,11 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.Map;
 
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -47,6 +50,9 @@ class PasswordControllerForgotTest {
     private PasswordResetService passwordResetService;
 
     @MockBean
+    private ForgotPasswordRateLimiter rateLimiter;  // ADR #44 — 본 슬라이스에서는 항상 통과로 stub
+
+    @MockBean
     private LoginAttemptTracker tracker;            // SecurityConfig 그래프 충족
 
     @MockBean
@@ -54,6 +60,11 @@ class PasswordControllerForgotTest {
 
     @MockBean
     private DbUserDetailsService dbUserDetailsService;
+
+    @BeforeEach
+    void allowRateLimit() {
+        when(rateLimiter.tryAcquire(anyString(), anyString())).thenReturn(true);
+    }
 
     @Test
     void forgot_validEmail_returns200AndCallsService() throws Exception {

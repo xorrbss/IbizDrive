@@ -4,6 +4,7 @@ import com.ibizdrive.auth.AccountLockedException;
 import com.ibizdrive.auth.DuplicateEmailException;
 import com.ibizdrive.auth.InvalidCredentialsException;
 import com.ibizdrive.auth.password.InvalidPasswordResetTokenException;
+import com.ibizdrive.auth.password.RateLimitExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -50,6 +51,17 @@ public class AuthExceptionHandler {
     public ResponseEntity<ErrorResponse> invalidToken(InvalidPasswordResetTokenException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse.invalidToken());
+    }
+
+    /**
+     * auth-forgot-rate-limit (ADR #44) — forgot 호출 빈도 한도 초과.
+     * 429 + {@code Retry-After} 헤더 + body {@code retryAfterSec}.
+     */
+    @ExceptionHandler(RateLimitExceededException.class)
+    public ResponseEntity<ErrorResponse> rateLimited(RateLimitExceededException ex) {
+        return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+            .header("Retry-After", String.valueOf(ex.getRetryAfterSeconds()))
+            .body(ErrorResponse.rateLimitExceeded(ex.getRetryAfterSeconds()));
     }
 
     /**
