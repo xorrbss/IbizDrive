@@ -250,17 +250,17 @@ class FileVersionControllerTest {
 
         Integer auditCount = jdbc.queryForObject(
             "SELECT COUNT(*) FROM audit_log " +
-            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            "WHERE event_type = 'version.restored' AND target_id = ?",
             Integer.class, fileId);
         assertThat(auditCount).isEqualTo(1);
 
         String beforeJson = jdbc.queryForObject(
             "SELECT before_state::text FROM audit_log " +
-            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            "WHERE event_type = 'version.restored' AND target_id = ?",
             String.class, fileId);
         String afterJson = jdbc.queryForObject(
             "SELECT after_state::text FROM audit_log " +
-            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            "WHERE event_type = 'version.restored' AND target_id = ?",
             String.class, fileId);
         assertThat(beforeJson).contains(v2Id.toString());
         assertThat(afterJson).contains(v1Id.toString());
@@ -276,7 +276,7 @@ class FileVersionControllerTest {
 
         Integer auditCount = jdbc.queryForObject(
             "SELECT COUNT(*) FROM audit_log " +
-            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            "WHERE event_type = 'version.restored' AND target_id = ?",
             Integer.class, fileId);
         assertThat(auditCount).isEqualTo(0);
     }
@@ -342,7 +342,7 @@ class FileVersionControllerTest {
 
         Integer auditCount = jdbc.queryForObject(
             "SELECT COUNT(*) FROM audit_log " +
-            "WHERE event_type = 'VERSION_RESTORED' AND target_id = ?",
+            "WHERE event_type = 'version.restored' AND target_id = ?",
             Integer.class, fileId);
         assertThat(auditCount).isEqualTo(0);
     }
