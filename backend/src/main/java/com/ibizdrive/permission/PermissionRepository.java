@@ -107,6 +107,19 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
     );
 
     /**
+     * M8.0 — resource-level grant 목록 조회. {@code GET /api/{resource}/{id}/permissions} 의 service 단
+     * 진입점({@link PermissionService#listPermissions})이 사용한다.
+     *
+     * <p>정렬은 created_at ASC, id ASC — 등시각 row 발생 시 stable 한 결과 (audit-style oldest-first).
+     * 페이지네이션 미적용 — MVP 단일 리소스의 grant 수가 적다는 가정 (docs/02 §7.10).
+     *
+     * <p>{@code expires_at <= NOW()} 만료 row 도 포함하여 반환한다 — admin UI 가 cron 제거 전 만료-pending
+     * row 를 표시할 수 있도록. 평가({@link #findEffective})와 다른 정책. cron 활성 환경이면 자연스럽게 정리됨.
+     */
+    List<PermissionRow> findByResourceTypeAndResourceIdOrderByCreatedAtAscIdAsc(
+        String resourceType, UUID resourceId);
+
+    /**
      * Pessimistic write lock on a permission row by PK — {@link PermissionService#expirePermission}이
      * cron 만료 처리 진입 시점에 행 잠금 (CLAUDE.md §3 원칙 7 동형, {@code ShareRepository.lockByIdAndRevokedAtIsNull}
      * 패턴).

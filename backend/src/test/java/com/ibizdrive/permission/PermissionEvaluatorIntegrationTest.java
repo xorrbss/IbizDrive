@@ -4,6 +4,7 @@ import com.ibizdrive.common.error.AuthExceptionHandler;
 import com.ibizdrive.common.error.GlobalExceptionHandler;
 import com.ibizdrive.config.MethodSecurityConfig;
 import com.ibizdrive.config.SecurityConfig;
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -71,6 +72,11 @@ class PermissionEvaluatorIntegrationTest {
     // (PermissionResolver 가 같은 repo 를 쓰지만 PermissionService 도 별도로 주입받음 → 빈 그래프 충족)
     @MockBean
     private PermissionRepository permissionRepository;
+
+    // M8.0 — PermissionService.listPermissions 가 DepartmentRepository 를 추가 의존. 본 슬라이스 테스트는
+    // list endpoint 를 호출하지 않으므로 동작 stub 불요.
+    @MockBean
+    private DepartmentRepository departmentRepository;
 
     private IbizDriveUserDetails admin;
     private IbizDriveUserDetails auditor;

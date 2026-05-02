@@ -1,6 +1,7 @@
 package com.ibizdrive.permission;
 
 import com.ibizdrive.common.error.ResourceNotFoundException;
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -42,7 +43,9 @@ class PermissionServiceExpireTest {
         userRepository = mock(UserRepository.class);
         permissionRepository = mock(PermissionRepository.class);
         publisher = mock(ApplicationEventPublisher.class);
-        service = new PermissionService(userRepository, permissionRepository, publisher);
+        service = new PermissionService(
+            userRepository, permissionRepository,
+            mock(DepartmentRepository.class), publisher);
     }
 
     @Test

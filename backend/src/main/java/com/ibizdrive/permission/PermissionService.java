@@ -1,6 +1,9 @@
 package com.ibizdrive.permission;
 
 import com.ibizdrive.common.error.ResourceNotFoundException;
+import com.ibizdrive.department.Department;
+import com.ibizdrive.department.DepartmentRepository;
+import com.ibizdrive.permission.dto.PermissionDto;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -11,7 +14,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.EnumSet;
+import java.util.HashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,13 +45,16 @@ public class PermissionService {
 
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
+    private final DepartmentRepository departmentRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     public PermissionService(UserRepository userRepository,
                              PermissionRepository permissionRepository,
+                             DepartmentRepository departmentRepository,
                              ApplicationEventPublisher eventPublisher) {
         this.userRepository = userRepository;
         this.permissionRepository = permissionRepository;
+        this.departmentRepository = departmentRepository;
         this.eventPublisher = eventPublisher;
     }
 
@@ -283,6 +294,71 @@ public class PermissionService {
         if (currentUser == null) return false;
         Role role = currentUser.getUser().getRole();
         return role == Role.ADMIN;
+    }
+
+    /**
+     * M8.0 — resource-level grant 목록 조회. {@code GET /api/{resource}/{id}/permissions}.
+     *
+     * <p>{@link PermissionRepository#findByResourceTypeAndResourceIdOrderByCreatedAtAscIdAsc} 로 row를
+     * 가져온 뒤 subject 표시명을 batch resolve. {@code subject_type='user'} → user batch fetch,
+     * {@code subject_type='department'} → department batch fetch, {@code subject_type='everyone'} →
+     * subjectName=null. user/department 인데 lookup 실패(soft-delete 등) 시에도 null fallback
+     * (A16/ShareQueryService 동형 정책 — frontend 가 "(삭제된 사용자)" 등 placeholder 표시 가능).
+     *
+     * <p>readOnly 트랜잭션 — DB write 없음. controller 에서 PERMISSION_ADMIN 게이트가 통과한 호출만 도달.
+     */
+    @Transactional(readOnly = true)
+    public List<PermissionDto> listPermissions(String resourceType, UUID resourceId) {
+        if (resourceType == null || !ALLOWED_RESOURCE_TYPES.contains(resourceType)) {
+            throw new IllegalArgumentException("resourceType must be 'folder' or 'file'");
+        }
+        if (resourceId == null) throw new IllegalArgumentException("resourceId must not be null");
+
+        List<PermissionRow> rows = permissionRepository
+            .findByResourceTypeAndResourceIdOrderByCreatedAtAscIdAsc(resourceType, resourceId);
+        if (rows.isEmpty()) return List.of();
+
+        Map<UUID, String> subjectNames = fetchSubjectNames(rows);
+
+        List<PermissionDto> dtos = new ArrayList<>(rows.size());
+        for (PermissionRow row : rows) {
+            String name = row.getSubjectId() != null ? subjectNames.get(row.getSubjectId()) : null;
+            dtos.add(PermissionDto.from(row, name));
+        }
+        return dtos;
+    }
+
+    /**
+     * 페이지 grants 에서 user/department subject_id 를 분리 수집 → 1회씩 batch fetch → id → name 맵.
+     * {@code everyone} 은 subject_id NULL 로 자연 제외. ROLE subject 는 frontend 도메인 부재(ADR #36)로
+     * 표시명 미해결 — 본 메서드는 매핑하지 않으며 호출자가 null fallback.
+     *
+     * <p>{@link com.ibizdrive.share.ShareQueryService#fetchSubjectNames} 와 동일 패턴 — Share 트랙에서
+     * 동작 검증된 구조. 두 곳을 합치는 helper 추출은 의존성 방향(share → permission)을 깨므로 보류.
+     */
+    private Map<UUID, String> fetchSubjectNames(List<PermissionRow> rows) {
+        Set<UUID> userIds = new LinkedHashSet<>();
+        Set<UUID> deptIds = new LinkedHashSet<>();
+        for (PermissionRow r : rows) {
+            if (r.getSubjectId() == null) continue;
+            if ("user".equals(r.getSubjectType())) {
+                userIds.add(r.getSubjectId());
+            } else if ("department".equals(r.getSubjectType())) {
+                deptIds.add(r.getSubjectId());
+            }
+        }
+        Map<UUID, String> map = new HashMap<>(userIds.size() + deptIds.size());
+        if (!userIds.isEmpty()) {
+            for (User u : userRepository.findAllById(userIds)) {
+                map.put(u.getId(), u.getDisplayName());
+            }
+        }
+        if (!deptIds.isEmpty()) {
+            for (Department d : departmentRepository.findAllById(deptIds)) {
+                map.put(d.getId(), d.getName());
+            }
+        }
+        return map;
     }
 
     private static final Set<String> ALLOWED_RESOURCE_TYPES = Set.of("folder", "file");

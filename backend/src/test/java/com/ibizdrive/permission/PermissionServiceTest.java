@@ -1,5 +1,6 @@
 package com.ibizdrive.permission;
 
+import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.Test;
@@ -24,6 +25,7 @@ class PermissionServiceTest {
     private final PermissionService service = new PermissionService(
         mock(UserRepository.class),
         mock(PermissionRepository.class),
+        mock(DepartmentRepository.class),
         mock(ApplicationEventPublisher.class)
     );
 
