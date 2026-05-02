@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-05-02 — 🏁 mvp-qa-security 트랙 종료 (Week 11-12 MVP QA + 보안 점검 + 베타 readiness)
+
+### 범위
+
+`dev/active/mvp-qa-security-week-11-12/` bootstrap (plan/context/tasks 3파일 + `findings/` 6개 보고서) → Phase 1 베이스라인 + Inventory(G1) → Phase 2 STRIDE Gap Analysis + 핵심 원칙 11개 conformance(G2 사용자 sign-off A안) → Phase 3 Triage + Remediation(MVP-fix 2건 + v1.x deferred 마커 1건, G3) → Phase 4 docs/03 §5-§10 + docs/04 §3-§14 본문화 또는 deferred 마커 + ROOT `BETA-RELEASE.md` 신설 + closure(G4).
+
+### 회고
+
+- **commits**: 본 closure commit 1개 (master 직접, worktree 미사용 — dev-docs + 작은 코드 fix만).
+- **production 파일 수정**: 2개.
+  - `backend/src/main/resources/application.yml` — `server.error.{include-stacktrace=never, include-message=on-param, include-binding-errors=on-param}` 3줄 (production stacktrace leak 차단)
+  - `backend/src/main/java/com/ibizdrive/config/SecurityConfig.java` — `.headers(h -> h.contentTypeOptions().frameOptions(deny).cacheControl())` chain 추가 (Spring Security 7+ 호환성 + 보안 정책 가시성)
+- **docs sync**: 2개.
+  - `docs/03-security-compliance.md` — §5.3/§5.4 Phase 3 결정 반영 + §5.1·§5.2·§6·§7·§8·§9·§10 빈 체크박스에 운영/v1.x/v2.x 마커
+  - `docs/04-admin-operations.md` — §3·§4·§5·§6·§8·§9·§10·§11·§12·§13·§14 빈 체크박스에 v1.x/운영/구현됨 마커 + §13 cron 표에 상태 컬럼 추가
+- **신설**: 1개. `BETA-RELEASE.md` (사내 베타 GO/NO-GO 단일 페이지 체크리스트 — 코드/인프라/cron/보안 헤더/인증/감사/모니터링).
+- **dev-docs**: `dev/active/mvp-qa-security-week-11-12/` (3파일 + findings 6개) — closure 후 `dev/completed/`로 이동.
+- **test**: 회귀 0. backend `./gradlew test` 75 classes / 723 tests / 522 PASS / 201 skip(no Docker IT) / **0 fail / 0 error** — Phase 1 baseline과 동일. frontend 변경 없음.
+- **`.gitignore`**: gradle 임시 디렉터리 5개 패턴 추가(`.gradle-user-home*/`, `.g3/`, `.g4/`, `.g5/`, `.tmp-gradle-root-get/`).
+
+### 핵심 결정 (mvp-qa-security 트랙)
+
+1. **베타 = 사내 베타** — 외부 일반 출시는 본 트랙 범위 밖. SSO/MFA/SAST/외부 모의해킹/Legal Hold/quota는 v1.x 또는 v2.x.
+2. **신규 ADR 0건** — deferred 결정은 docs inline 마커 + `findings/triage-decisions.md`로 흡수. ADR은 본문 변경 동반 시에만 사용 (#39부터 다음 트랙).
+3. **MVP-blocker 트리아지 (G2 A안 sign-off)**:
+   - 확장자 화이트리스트 = **v1.x deferred** (Content-Disposition: attachment + nosniff 1차 방어 충분)
+   - production stacktrace = **MVP-fix** (`application.yml` 1줄)
+   - Spring Security 헤더 = **MVP-fix** (Spring Security 6 default 명시화 — 동작 변화 0, 7+ 호환성 보험)
+4. **`docs/03 §1.3` STRIDE 28행** — 18 구현됨 / 3 부분 / 5 v1.x deferred / 2 운영 책임 / **0 FAIL**. 핵심 원칙 11개 — 8 PASS / 3 PARTIAL(frontend grep 한계) / 0 FAIL.
+5. **audit emit coverage** — 41 enum 중 26 emit (63%). 미사용 15는 모두 `ADMIN_*`(admin frontend v1.x) + ADR #9(audit_level) + ADR #18(MFA) 등 deferred 항목에 정합.
+6. **운영 cron 4종 (`enabled=false` default)** — `purge.expired`, `share.expire`, `permission.expire`, `storage.orphan.cleanup`. 베타 출시 시 staging/prod에서 명시 enable. 단일 인스턴스 가정.
+7. **`BETA-RELEASE.md`로 인프라 게이트 분리** — 코드 게이트(§1)는 master 시점 PASS, 인프라 게이트(§2/§3/§8)는 운영팀 sign-off 필요. 현재 = "코드 readiness 완료, 인프라 미정 = NO-GO".
+
+### 다음 트랙 후보
+
+- 운영팀 인프라 셋업 (HTTPS/HSTS/managed Postgres/시크릿/cron enable) — `BETA-RELEASE.md` 게이트 채움
+- admin frontend (사용자/부서/권한/스토리지/정책 페이지) — `ADMIN_*` audit emit 활성화
+- ADR #9 audit_level + 파티션 — audit_log 폭증 측정 후 결정
+- ADR #18 MFA / refresh rotation / SCIM — 외부 출시 트리거링 시점
+
+---
+
 ## 2026-05-02 — 🏁 M-Download 트랙 종료 (BulkActionBar 다운로드 와이어링 — A15 frontend gap closure)
 
 ### 범위

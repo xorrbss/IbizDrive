@@ -486,28 +486,35 @@ folders.audit_level:
 
 ### 5.1 전송 구간
 
-- [ ] TLS 1.2+ 전체 강제
-- [ ] HSTS 헤더
-- [ ] presigned URL 사용 시 짧은 만료 (10분 이내)
+> **MVP 결정**: 전송 구간 보안은 운영 인프라(리버스 프록시 / ALB / Cloudfront)에서 종단. Spring Boot는 HTTPS 직접 처리 안 함. 베타 출시 절차는 `BETA-RELEASE.md`.
+
+- [ ] TLS 1.2+ 전체 강제 — *운영 (인프라 책임 — `BETA-RELEASE.md` 게이트)*
+- [ ] HSTS 헤더 — *운영 (리버스 프록시 또는 CDN 설정)*
+- [ ] presigned URL 사용 시 짧은 만료 (10분 이내) — *v1.x deferred (S3 미도입, MVP는 직접 GET `/api/files/{id}/download`)*
 
 ### 5.2 저장 구간
 
-- [ ] S3 서버 사이드 암호화 (SSE-S3 또는 SSE-KMS)
-- [ ] KMS 키 로테이션 주기: 1년
-- [ ] 버킷 public access 차단
+> **MVP 결정**: LocalFsStorageClient만 구현 (`ibizdrive.storage.type=local`). S3/KMS는 v1.x.
+
+- [ ] S3 서버 사이드 암호화 (SSE-S3 또는 SSE-KMS) — *v1.x deferred (S3 미도입)*
+- [ ] KMS 키 로테이션 주기: 1년 — *v1.x deferred (KMS 미도입)*
+- [ ] 버킷 public access 차단 — *v1.x deferred (S3 미도입)*
 
 ### 5.3 악성 파일 대응
 
-- [ ] 확장자 화이트리스트 (02 문서 §5.4)
-- [ ] MIME magic number 검증
-- [ ] 바이러스 스캔 (v1.x)
-- [ ] 스캔 실패 시 다운로드 경고
+> **MVP 결정 (mvp-qa-security Phase 3)**: 사내 베타에서는 §5.4 `Content-Disposition: attachment`(구현됨, FileDownloadController:76-114) + `X-Content-Type-Options: nosniff`(SecurityConfig 명시화)로 1차 방어.
+> 직접 렌더링 차단 → XSS 페이로드는 다운로드 후 사용자 명시 실행이 필요. 확장자 화이트리스트 / MIME magic / AV 스캔은 외부 출시 시점 v1.x.
+
+- [ ] 확장자 화이트리스트 (02 문서 §5.4) — *v1.x deferred (외부 출시 시 도입)*
+- [ ] MIME magic number 검증 — *v1.x deferred (외부 출시 시 도입)*
+- [ ] 바이러스 스캔 (v1.x) — *v1.x deferred*
+- [ ] 스캔 실패 시 다운로드 경고 — *v1.x deferred (스캔 도입 후)*
 
 ### 5.4 다운로드 보안
 
-- [ ] Content-Disposition: attachment 강제
-- [ ] `X-Content-Type-Options: nosniff`
-- [ ] HTML/SVG 직접 렌더링 금지 (샌드박스 iframe 또는 별도 도메인)
+- [x] Content-Disposition: attachment 강제 — `FileDownloadController:76-114` RFC 5987 인코딩 포함 (A15 closure)
+- [x] `X-Content-Type-Options: nosniff` — `SecurityConfig.headers().contentTypeOptions()` 명시 (mvp-qa-security Phase 3)
+- [ ] HTML/SVG 직접 렌더링 금지 (샌드박스 iframe 또는 별도 도메인) — *v1.x deferred (별도 미리보기 도메인은 인프라 트랙)*
 
 ---
 
@@ -515,82 +522,96 @@ folders.audit_level:
 
 ### 6.1 개인정보 처리
 
-- [ ] 개인정보보호법 준수 (한국)
-- [ ] 처리 목적 / 보존 기간 / 제3자 제공 정책 명시
-- [ ] 사용자 탈퇴 시 처리 방침 (파일 소유권 이관 vs 삭제)
+> **MVP 결정**: 사내 베타 — 사내 정보보호 정책으로 대체. 외부 출시 시 별도 정책/약관 트랙.
+
+- [ ] 개인정보보호법 준수 (한국) — *운영 (사내 베타 → 사내 정책 / 외부 출시 시 본문화)*
+- [ ] 처리 목적 / 보존 기간 / 제3자 제공 정책 명시 — *운영 (정책/약관 책임)*
+- [ ] 사용자 탈퇴 시 처리 방침 (파일 소유권 이관 vs 삭제) — *v1.x deferred (현재 비활성화만 지원, 탈퇴 UI 미구현)*
 
 ### 6.2 백업
 
-- [ ] DB: 일일 스냅샷 + PITR (7일)
-- [ ] S3: Cross-region replication + 버전 관리
-- [ ] 감사 로그: 별도 버킷 + WORM
+> **MVP 결정**: managed Postgres / RDS 백업으로 대체. 절차는 `BETA-RELEASE.md` 운영 게이트.
+
+- [ ] DB: 일일 스냅샷 + PITR (7일) — *운영 (managed Postgres / RDS 책임)*
+- [ ] S3: Cross-region replication + 버전 관리 — *v1.x deferred (S3 미도입)*
+- [ ] 감사 로그: 별도 버킷 + WORM — *v1.x deferred (S3 미도입). MVP는 DB-level append-only(`V4__audit_log_revoke.sql`)로 1차 무결성 보장*
 
 ### 6.3 법적 보존 (Legal Hold)
 
-- [ ] 관리자가 특정 파일/폴더/사용자에 Legal Hold 지정
-- [ ] Legal Hold 상태에서는:
+> **v1.x deferred** (docs/00 §4.3 v2.x 명시). 전체 §6.3은 외부 출시 + 컴플라이언스 도메인 도입 시점에 부활.
+
+- [ ] 관리자가 특정 파일/폴더/사용자에 Legal Hold 지정 — *v2.x deferred*
+- [ ] Legal Hold 상태에서는: — *v2.x deferred*
   - 삭제 불가 (휴지통 이동도 차단)
   - 영구 삭제 불가 (휴지통 purge 크론도 스킵)
   - 버전 변경 불가
-- [ ] 해제는 관리자 2인 승인 (optional)
+- [ ] 해제는 관리자 2인 승인 (optional) — *v2.x deferred*
 
 ---
 
 ## 7. 비밀번호 / 키 관리
 
-- [ ] .env 파일로 관리, 절대 커밋 금지
-- [ ] 운영: AWS Secrets Manager / HashiCorp Vault
-- [ ] 키 로테이션 주기
+> **MVP 결정**: 사내 베타는 `.env` + 사내 시크릿 저장소(없으면 사내 위키 비공개 페이지)로 충분. 외부 운영 시 Secrets Manager 도입.
+
+- [x] `.env` 파일로 관리, 절대 커밋 금지 — `.gitignore`에 `.env*` 패턴 포함, `application.yml`은 dev-only password (`dev_password_only_change_in_real_envs` 명시)
+- [ ] 운영: AWS Secrets Manager / HashiCorp Vault — *운영 (외부 출시 시점 인프라 도입)*
+- [ ] 키 로테이션 주기 — *v1.x deferred (KMS/Secrets Manager 도입 후)*
 
 ---
 
 ## 8. 규정 준수 체크리스트 (도메인별)
 
+> **MVP 결정**: 사내 베타에서는 §8.1을 사내 정책 문서로 대체. §8.2-§8.4는 도메인 진입 결정 시점에 별도 트랙(컴플라이언스 인증).
+
 ### 8.1 공통
 
-- [ ] 개인정보처리방침 제공
-- [ ] 이용약관
-- [ ] 쿠키 정책
+- [ ] 개인정보처리방침 제공 — *운영 (사내 베타 → 사내 정책)*
+- [ ] 이용약관 — *운영 (외부 출시 시점)*
+- [ ] 쿠키 정책 — *운영 (사내 도메인은 SameSite=Lax + HttpOnly로 자동 보호)*
 
 ### 8.2 금융 (해당 시)
 
-- [ ] 전자금융감독규정
-- [ ] 데이터 국외 이전 금지
+- [ ] 전자금융감독규정 — *v1.x deferred (도메인 진입 시 별도 트랙)*
+- [ ] 데이터 국외 이전 금지 — *v1.x deferred*
 
 ### 8.3 의료 (해당 시)
 
-- [ ] 의료법 제21조 (의료정보 보호)
-- [ ] HIPAA (해외 환자)
+- [ ] 의료법 제21조 (의료정보 보호) — *v1.x deferred*
+- [ ] HIPAA (해외 환자) — *v1.x deferred*
 
 ### 8.4 공공 (해당 시)
 
-- [ ] 국가정보보호 지침
-- [ ] CSAP 클라우드 보안 인증
+- [ ] 국가정보보호 지침 — *v1.x deferred*
+- [ ] CSAP 클라우드 보안 인증 — *v1.x deferred*
 
 ---
 
 ## 9. 취약점 대응
 
-- [ ] SAST / DAST 도구 도입
-- [ ] 의존성 취약점 스캔 (Snyk, Dependabot)
-- [ ] 연 1회 외부 모의해킹
-- [ ] 취약점 리포트 채널 (security@...)
+> **MVP 결정**: GitHub Dependabot 활성화로 의존성 스캔 1차 커버. SAST/DAST/외부 모의해킹은 외부 출시 시점.
+
+- [ ] SAST / DAST 도구 도입 — *v1.x deferred (CI 도구 비용 ↑, 외부 출시 시 도입)*
+- [ ] 의존성 취약점 스캔 (Snyk, Dependabot) — *MVP — `BETA-RELEASE.md` 게이트로 GitHub Dependabot 활성화*
+- [ ] 연 1회 외부 모의해킹 — *운영 (외부 출시 시점)*
+- [ ] 취약점 리포트 채널 (security@...) — *운영 (사내 베타 → 슬랙/이메일 채널로 충분)*
 
 ---
 
 ## 10. 인시던트 대응
 
-- [ ] 인시던트 분류 기준 (Severity 1~4)
-- [ ] 에스컬레이션 경로
-- [ ] 데이터 유출 시 통지 의무 (72시간 내)
-- [ ] 사후 검토 (Post-mortem) 템플릿
+> **MVP 결정**: 사내 베타에서는 사내 인시던트 절차로 대체. 외부 출시 시 본문화 + 별도 운영 트랙.
+
+- [ ] 인시던트 분류 기준 (Severity 1~4) — *운영 (사내 베타 → 사내 절차)*
+- [ ] 에스컬레이션 경로 — *운영*
+- [ ] 데이터 유출 시 통지 의무 (72시간 내) — *운영 (외부 출시 시점 정책)*
+- [ ] 사후 검토 (Post-mortem) 템플릿 — *운영 (사내 절차)*
 
 ---
 
-## 작성 우선순위
+## 작성 우선순위 (MVP closure 시점 갱신 — 2026-05-02)
 
-1. §3 권한 매트릭스 (프론트 `usePermission`과 백엔드 미들웨어 동시 작성)
-2. §4 감사 이벤트 정의 (엔드포인트별 어떤 이벤트를 기록할지)
-3. §5 저장소 보안 세부
-4. §6 Legal Hold (컴플라이언스 요구 시)
-5. 나머지는 운영 직전 완성
+1. ~~§3 권한 매트릭스~~ — A3 closure (`dev/completed/a3-permission-matrix/`)
+2. ~~§4 감사 이벤트 정의~~ — A2 closure (`dev/completed/a2-audit-log/`)
+3. §5 저장소 보안 세부 — *5.3/5.4 (mvp-qa-security Phase 3) closure / 5.1·5.2 = 운영·v1.x*
+4. §6 Legal Hold — *v2.x deferred (docs/00 §4.3)*
+5. 나머지는 외부 출시 트리거링 시점에 본 트랙 산출(`mvp-qa-security` findings) 기반으로 부활

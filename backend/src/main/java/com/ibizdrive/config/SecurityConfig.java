@@ -102,6 +102,17 @@ public class SecurityConfig {
             .csrf(csrf -> csrf
                 .csrfTokenRepository(csrfRepo)
                 .csrfTokenRequestHandler(csrfHandler))
+            // MVP-fix (mvp-qa-security Phase 3): Spring Security 6 default 헤더를 명시화.
+            // 현재 default(미명시 시)도 동일하게 활성화되지만, Spring Security 7+ 기본값 변동
+            // 가능성 방어 + 보안 정책 가시성 확보 (docs/03 §1.3 Information Disclosure / Tampering).
+            // - contentTypeOptions: X-Content-Type-Options: nosniff (MIME sniffing 차단)
+            // - frameOptions DENY: X-Frame-Options: DENY (clickjacking 방어)
+            // - cacheControl: Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+            //   + Pragma: no-cache + Expires: 0 (인증 응답 캐시 누설 차단)
+            .headers(h -> h
+                .contentTypeOptions(c -> {})
+                .frameOptions(f -> f.deny())
+                .cacheControl(c -> {}))
             .securityContext(sc -> sc.securityContextRepository(securityContextRepository))
             .sessionManagement(s -> s.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
             // A1.6 — SecurityContext 로드 직후 absolute 만료 검사. 만료 세션의 인증 컨텍스트가

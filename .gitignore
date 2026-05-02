@@ -8,6 +8,13 @@ build/
 .env.local
 .DS_Store
 
+# Gradle 자동 생성 / 임시 (mvp-qa-security closure, 2026-05-02)
+.gradle-user-home*/
+.g3/
+.g4/
+.g5/
+.tmp-gradle-root-get/
+
 # auto-claude-loop artifacts (worktree 한정)
 .resume-marker
 .loop-complete
