@@ -11,15 +11,20 @@ import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.MapSession;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
@@ -50,6 +55,9 @@ class PasswordResetServiceTest {
     private PasswordResetTokenRepository tokenRepository;
     private EmailService emailService;
     private AuditService auditService;
+    private PasswordEncoder passwordEncoder;
+    @SuppressWarnings("rawtypes")
+    private FindByIndexNameSessionRepository sessionRepository;
     private Clock clock;
     private PasswordResetService service;
 
@@ -57,14 +65,20 @@ class PasswordResetServiceTest {
         OffsetDateTime.of(2026, 5, 2, 12, 0, 0, 0, ZoneOffset.UTC);
 
     @BeforeEach
+    @SuppressWarnings("unchecked")
     void setUp() {
         userRepository = mock(UserRepository.class);
         tokenRepository = mock(PasswordResetTokenRepository.class);
         emailService = mock(EmailService.class);
         auditService = mock(AuditService.class);
+        passwordEncoder = mock(PasswordEncoder.class);
+        sessionRepository = mock(FindByIndexNameSessionRepository.class);
+        when(passwordEncoder.encode(anyString())).thenAnswer(inv -> "{bcrypt}$2a$12$" + inv.getArgument(0));
+        when(sessionRepository.findByPrincipalName(anyString())).thenReturn(Map.of());
         clock = Clock.fixed(Instant.parse("2026-05-02T12:00:00Z"), ZoneOffset.UTC);
         service = new PasswordResetService(
             userRepository, tokenRepository, emailService, auditService,
+            passwordEncoder, sessionRepository,
             clock, "http://localhost:3000"
         );
     }
@@ -166,6 +180,87 @@ class PasswordResetServiceTest {
 
         verify(emailService, never()).send(eq("alice@example.com"), anyString(),
             contains("DUPLICATE"));
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // P4 reset() — 토큰 검증 + PW 갱신 + 세션 invalidate
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void reset_validToken_updatesPasswordAndInvalidatesSessions() {
+        User user = sampleUser("alice@example.com", "Alice");
+        String plain = "abcd1234efgh5678ijkl9012mnop3456qrst7890uvwx1234yz567890123456ab";
+        String hash = PasswordResetService.sha256Hex(plain);
+        PasswordResetToken token = new PasswordResetToken(user.getId(), hash,
+            FIXED_NOW.plusMinutes(15), FIXED_NOW.minusMinutes(15));
+
+        when(tokenRepository.findByTokenHash(hash)).thenReturn(Optional.of(token));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        // 두 개의 활성 세션 — 모두 삭제되어야 함
+        MapSession s1 = new MapSession();
+        MapSession s2 = new MapSession();
+        when(sessionRepository.findByPrincipalName("alice@example.com"))
+            .thenReturn(Map.of(s1.getId(), s1, s2.getId(), s2));
+
+        service.reset(plain, "NewSecret123!");
+
+        // PW 갱신
+        assertThat(user.getPasswordHash()).startsWith("{bcrypt}$2a$12$NewSecret123!");
+        verify(userRepository).save(user);
+        // token used_at 마킹
+        assertThat(token.isUsed()).isTrue();
+        verify(tokenRepository).save(token);
+        // 모든 세션 invalidate
+        verify(sessionRepository).deleteById(s1.getId());
+        verify(sessionRepository).deleteById(s2.getId());
+        // audit
+        ArgumentCaptor<AuditEvent> auditCap = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(auditCap.capture());
+        assertThat(auditCap.getValue().eventType()).isEqualTo(AuditEventType.USER_PASSWORD_RESET);
+    }
+
+    @Test
+    void reset_unknownToken_throwsInvalidToken() {
+        when(tokenRepository.findByTokenHash(anyString())).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> service.reset("nonexistent", "NewSecret123!"))
+            .isInstanceOf(InvalidPasswordResetTokenException.class);
+
+        verifyNoInteractions(userRepository);
+        verifyNoInteractions(auditService);
+    }
+
+    @Test
+    void reset_expiredToken_throwsInvalidToken() {
+        UUID userId = UUID.randomUUID();
+        String plain = "expiredtoken";
+        String hash = PasswordResetService.sha256Hex(plain);
+        // 31분 전 발급, 1분 전 만료
+        PasswordResetToken token = new PasswordResetToken(userId, hash,
+            FIXED_NOW.minusMinutes(1), FIXED_NOW.minusMinutes(31));
+        when(tokenRepository.findByTokenHash(hash)).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> service.reset(plain, "NewSecret123!"))
+            .isInstanceOf(InvalidPasswordResetTokenException.class);
+
+        verifyNoInteractions(userRepository);
+    }
+
+    @Test
+    void reset_alreadyUsedToken_throwsInvalidToken() {
+        UUID userId = UUID.randomUUID();
+        String plain = "usedtoken";
+        String hash = PasswordResetService.sha256Hex(plain);
+        PasswordResetToken token = new PasswordResetToken(userId, hash,
+            FIXED_NOW.plusMinutes(15), FIXED_NOW.minusMinutes(5));
+        token.markUsed(FIXED_NOW.minusMinutes(1));
+        when(tokenRepository.findByTokenHash(hash)).thenReturn(Optional.of(token));
+
+        assertThatThrownBy(() -> service.reset(plain, "NewSecret123!"))
+            .isInstanceOf(InvalidPasswordResetTokenException.class);
+
+        verifyNoInteractions(userRepository);
     }
 
     private static User sampleUser(String email, String displayName) {

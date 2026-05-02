@@ -2,6 +2,7 @@ package com.ibizdrive.auth.password;
 
 import com.ibizdrive.auth.password.dto.ForgotPasswordRequest;
 import com.ibizdrive.auth.password.dto.MessageResponse;
+import com.ibizdrive.auth.password.dto.ResetPasswordRequest;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -28,6 +29,10 @@ public class PasswordController {
         "요청을 처리했습니다. 가입된 이메일이라면 비밀번호 재설정 링크가 발송됩니다."
     );
 
+    private static final MessageResponse RESET_RESPONSE = MessageResponse.of(
+        "비밀번호가 재설정되었습니다. 새 비밀번호로 다시 로그인하세요."
+    );
+
     private final PasswordResetService passwordResetService;
 
     public PasswordController(PasswordResetService passwordResetService) {
@@ -42,5 +47,14 @@ public class PasswordController {
     public MessageResponse forgot(@Valid @RequestBody ForgotPasswordRequest req) {
         passwordResetService.requestReset(req.email());
         return FORGOT_RESPONSE;
+    }
+
+    /**
+     * 토큰 + 새 비밀번호 → 갱신 + 모든 세션 invalidate. 토큰 무효 시 400 INVALID_TOKEN.
+     */
+    @PostMapping("/reset")
+    public MessageResponse reset(@Valid @RequestBody ResetPasswordRequest req) {
+        passwordResetService.reset(req.token(), req.newPassword());
+        return RESET_RESPONSE;
     }
 }

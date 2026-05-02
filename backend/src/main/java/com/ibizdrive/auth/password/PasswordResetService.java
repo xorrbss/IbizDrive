@@ -12,6 +12,9 @@ import com.ibizdrive.user.UserRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -53,6 +56,8 @@ public class PasswordResetService {
     private final PasswordResetTokenRepository tokenRepository;
     private final EmailService emailService;
     private final AuditService auditService;
+    private final PasswordEncoder passwordEncoder;
+    private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
     private final Clock clock;
     private final String appUrl;
 
@@ -60,12 +65,16 @@ public class PasswordResetService {
                                 PasswordResetTokenRepository tokenRepository,
                                 EmailService emailService,
                                 AuditService auditService,
+                                PasswordEncoder passwordEncoder,
+                                FindByIndexNameSessionRepository<? extends Session> sessionRepository,
                                 Clock clock,
                                 @Value("${app.app-url}") String appUrl) {
         this.userRepository = userRepository;
         this.tokenRepository = tokenRepository;
         this.emailService = emailService;
         this.auditService = auditService;
+        this.passwordEncoder = passwordEncoder;
+        this.sessionRepository = sessionRepository;
         this.clock = clock;
         this.appUrl = appUrl;
     }
@@ -126,6 +135,69 @@ public class PasswordResetService {
             null,
             null
         ));
+    }
+
+    /**
+     * 토큰 검증 후 비밀번호 갱신 + 모든 세션 invalidate + 토큰 used_at 마킹.
+     *
+     * <p>토큰 검증 실패(미존재/만료/사용됨) 시 {@link InvalidPasswordResetTokenException} 발생,
+     * 호출 측 controller가 400 INVALID_TOKEN으로 매핑. 사유는 응답에 노출되지 않는다 — 토큰 enumeration 방지.
+     *
+     * <p>비밀번호 정책 검증은 DTO의 {@link jakarta.validation.constraints.Size}가 담당하므로 본 메서드는
+     * 정책 위반 분기 없음. 정책 강화 트랙에서 별도 validator 분리 검토.
+     *
+     * <p>같은 사용자의 모든 Spring Session 항목을 삭제 — 비밀번호 변경이 모든 기존 세션을 무효화하는
+     * 보안 정책. {@link #change}는 현재 세션만 유지하고 나머지를 invalidate (P5).
+     */
+    @Transactional
+    public void reset(String plainToken, String newPassword) {
+        String tokenHash = sha256Hex(plainToken);
+        PasswordResetToken token = tokenRepository.findByTokenHash(tokenHash)
+            .orElseThrow(() -> new InvalidPasswordResetTokenException("not-found"));
+
+        OffsetDateTime now = OffsetDateTime.now(clock);
+        if (token.isUsed()) {
+            throw new InvalidPasswordResetTokenException("used");
+        }
+        if (token.isExpired(now)) {
+            throw new InvalidPasswordResetTokenException("expired");
+        }
+
+        User user = userRepository.findById(token.getUserId())
+            .orElseThrow(() -> new InvalidPasswordResetTokenException("user-missing"));
+
+        user.changePasswordHash(passwordEncoder.encode(newPassword));
+        userRepository.save(user);
+
+        token.markUsed(now);
+        tokenRepository.save(token);
+
+        invalidateAllSessions(user.getEmail(), null);
+
+        auditService.record(new AuditEvent(
+            AuditEventType.USER_PASSWORD_RESET,
+            user.getId(),
+            WebRequestContextHolder.currentIp(),
+            WebRequestContextHolder.currentUserAgent(),
+            AuditTargetType.USER,
+            user.getId(),
+            null,
+            null,
+            null
+        ));
+    }
+
+    /**
+     * Spring Session JDBC의 principal name 인덱스로 사용자 세션을 일괄 invalidate.
+     * {@code keepSessionId}가 null이면 전부 삭제 (reset). non-null이면 해당 세션만 보존 (change).
+     */
+    void invalidateAllSessions(String principalName, String keepSessionId) {
+        if (principalName == null || principalName.isBlank()) return;
+        var sessions = sessionRepository.findByPrincipalName(principalName);
+        for (String sessionId : sessions.keySet()) {
+            if (keepSessionId != null && keepSessionId.equals(sessionId)) continue;
+            sessionRepository.deleteById(sessionId);
+        }
     }
 
     private static String normalize(String email) {

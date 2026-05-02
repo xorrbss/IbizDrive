@@ -3,6 +3,7 @@ package com.ibizdrive.common.error;
 import com.ibizdrive.auth.AccountLockedException;
 import com.ibizdrive.auth.DuplicateEmailException;
 import com.ibizdrive.auth.InvalidCredentialsException;
+import com.ibizdrive.auth.password.InvalidPasswordResetTokenException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -40,6 +41,15 @@ public class AuthExceptionHandler {
     public ResponseEntity<ErrorResponse> duplicateEmail(DuplicateEmailException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ErrorResponse.duplicateEmail());
+    }
+
+    /**
+     * a1.5 비밀번호 재설정 — 토큰 무효 (만료/사용됨/미존재). 사유는 비공개.
+     */
+    @ExceptionHandler(InvalidPasswordResetTokenException.class)
+    public ResponseEntity<ErrorResponse> invalidToken(InvalidPasswordResetTokenException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse.invalidToken());
     }
 
     /**

@@ -189,4 +189,15 @@ public class User implements Serializable {
         }
         this.role = newRole;
     }
+
+    /**
+     * a1.5 — 비밀번호 재설정/변경 시 hash 갱신. 호출자는 미리 BCrypt 인코딩 완료한 hash를 전달하고
+     * 동일 트랜잭션 내에서 {@link UserRepository#save}로 flush 한다.
+     */
+    public void changePasswordHash(String newHash) {
+        if (newHash == null || newHash.isBlank()) {
+            throw new IllegalArgumentException("newHash must not be blank");
+        }
+        this.passwordHash = newHash;
+    }
 }
