@@ -1,12 +1,12 @@
 # M-RP — Tasks
 
-Last Updated: 2026-05-02 (M-RP.2 완료 — 검증 GREEN)
+Last Updated: 2026-05-02 (M-RP.3 완료 — 검증 GREEN)
 
 ## Phase 상태
 
 - [x] **M-RP.1** — versions 탭 read-only wiring (frontend only) ✅ 2026-05-02 (75 files / 610 tests)
-- [x] **M-RP.2** — 버전별 다운로드/복원 endpoint + UI (G2 게이트) — 완료 2026-05-02
-- [ ] **M-RP.3** — permissions 탭 wiring (frontend only)
+- [x] **M-RP.2** — 버전별 다운로드/복원 endpoint + UI (G2 게이트) — 완료 2026-05-02 (78 files / 633 tests)
+- [x] **M-RP.3** — permissions 탭 wiring (frontend only) — 완료 2026-05-02 (79 files / 639 tests)
 - [ ] **M-RP.4** — activity 탭 wiring + AuditQueryFilters 확장 (G4 closure)
 
 ---
@@ -207,7 +207,10 @@ Last Updated: 2026-05-02 (M-RP.2 완료 — 검증 GREEN)
 
 ### M-RP.3.1 — PermissionsTab 컴포넌트
 
-- [ ] `RightPanel.tsx:112` 또는 `frontend/src/components/files/PermissionsTab.tsx`.
+- [x] `frontend/src/components/files/PermissionsTab.tsx` 신설 — 9 chip + held/unheld 시각 구분 + aria-label.
+- [x] `RightPanel.tsx` 권한 탭 placeholder → `<PermissionsTab fileId={fileId} />` (조건부 렌더로 fetch gate).
+- [x] `PermissionsTab.test.tsx` — 4 케이스 (chip 9개, held=true/false 구분, aria-label, 로딩 시 보수적 디폴트).
+- [x] `RightPanel.test.tsx` — 신규 2 케이스 (권한 탭 활성화 + 보유 강조 / 비-permissions 탭 fetch 차단).
 
 **작업 전 필독**
 - `frontend/src/hooks/usePermission.ts` (이미 구현, `useQuery({ queryKey: qk.permissions(nodeId), ... })`).
@@ -227,9 +230,10 @@ Last Updated: 2026-05-02 (M-RP.2 완료 — 검증 GREEN)
 
 ### M-RP.3 검증 게이트
 
-- [ ] frontend test GREEN.
-- [ ] typecheck/lint/build exit 0.
-- [ ] commit: `feat(m-rp.3): RightPanel permissions 탭 wiring`.
+- [x] frontend test GREEN — 79 files / 639 tests pass (M-RP.2 baseline 78/633 + 1 file/6 tests).
+- [x] typecheck exit 0.
+- [x] lint exit 0.
+- [x] commit: `feat(m-rp.3): RightPanel permissions 탭 wiring`.
 
 ---
 

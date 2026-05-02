@@ -1,6 +1,6 @@
 # M-RP — Context
 
-Last Updated: 2026-05-02 (M-RP.2 closure)
+Last Updated: 2026-05-02 (M-RP.3 closure)
 
 ## SESSION PROGRESS
 
@@ -10,6 +10,18 @@ Last Updated: 2026-05-02 (M-RP.2 closure)
 - 코드베이스 gap 조사 → RightPanel 3탭 (`versions`/`activity`/`permissions`) 모두 `<ComingSoon />` placeholder.
 - 본 트랙 bootstrap (plan/context/tasks 3파일).
 - 구현 코드 변경 없음.
+
+### 2026-05-02 (M-RP.3 구현 완료)
+- 신규 파일: `frontend/src/components/files/PermissionsTab.tsx` + `PermissionsTab.test.tsx` (4 케이스).
+- 수정: `RightPanel.tsx`(권한 탭 placeholder → PermissionsTab conditional mount + 헤더 주석 갱신),
+  `RightPanel.test.tsx`(api mock에 `getEffectivePermissions` 추가 + 권한 탭 활성화 / fetch 차단 신규 2 케이스).
+- 검증: `pnpm test --run` = **79 files / 639 tests pass** (M-RP.2 baseline 78/633 + 1 file/6 tests),
+  `pnpm typecheck` exit 0, `pnpm lint` exit 0.
+- 의사결정: 기존 `usePermission` 훅 그대로 재사용 — `Record<Permission, boolean>` 보수적 디폴트(로딩 중 모두 false)로
+  깜빡임 회피. PermissionsTab은 별도 skeleton/error UI 없이 9 chip 항상 렌더 + held/unheld 시각 구분 (KISS).
+- backend 변경 0 — frontend-only 트랙. 권한 enum/계약 변경 없음.
+- 커밋 단위: M-RP.2와 분리된 단일 커밋 (`feat(m-rp.3): RightPanel permissions 탭 wiring`).
+- 다음: M-RP.4 (activity 탭 wiring + AuditQueryFilters 확장 — G4 closure 게이트, ADR #40 RP-2 권한 정책 결정 포함).
 
 ### 2026-05-02 (M-RP.2 구현 완료)
 - 신규 파일: `backend/.../file/FileVersionMutationService.java` + 단위 테스트, `backend/.../file/ContentDispositionHeaders.java`(공유 helper),

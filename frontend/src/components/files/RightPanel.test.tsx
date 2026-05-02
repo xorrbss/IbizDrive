@@ -12,13 +12,16 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(mockQuery),
 }))
 
-// Mock api.getFileDetail + api.listFileVersions (M-RP.1: versions 탭 활성)
+// Mock api.getFileDetail + api.listFileVersions (M-RP.1) + api.getEffectivePermissions (M-RP.3)
 const getFileDetailMock = vi.fn()
 const listFileVersionsMock = vi.fn()
+const getEffectivePermissionsMock = vi.fn()
 vi.mock('@/lib/api', () => ({
   api: {
     getFileDetail: (...args: unknown[]) => getFileDetailMock(...args),
     listFileVersions: (...args: unknown[]) => listFileVersionsMock(...args),
+    getEffectivePermissions: (...args: unknown[]) =>
+      getEffectivePermissionsMock(...args),
   },
 }))
 
@@ -37,6 +40,8 @@ describe('RightPanel', () => {
     getFileDetailMock.mockReset()
     listFileVersionsMock.mockReset()
     listFileVersionsMock.mockResolvedValue([])
+    getEffectivePermissionsMock.mockReset()
+    getEffectivePermissionsMock.mockResolvedValue([])
     mockQuery = ''
   })
 
@@ -126,7 +131,7 @@ describe('RightPanel', () => {
     expect(screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected')).toBe('false')
   })
 
-  it('M15.4 / M-RP.1 — 활동/권한 탭 클릭 시 placeholder 유지 (해당 트랙 미활성)', async () => {
+  it('M15.4 / M-RP.3 — 활동 탭 클릭 시 placeholder 유지 (M-RP.4에서 활성)', async () => {
     mockQuery = 'file=file_abc'
     getFileDetailMock.mockResolvedValue({
       id: 'file_abc',
@@ -142,6 +147,60 @@ describe('RightPanel', () => {
     fireEvent.click(screen.getByRole('tab', { name: '활동' }))
     expect(screen.getByRole('tab', { name: '활동' }).getAttribute('aria-selected')).toBe('true')
     expect(screen.getByText(/활동 타임라인.*준비 중/)).toBeTruthy()
+  })
+
+  it('M-RP.3 — 권한 탭 클릭 시 권한 chip 9개 렌더 + 보유 권한 강조', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    getEffectivePermissionsMock.mockResolvedValue(['READ', 'DOWNLOAD'])
+    wrap(<RightPanel />)
+    fireEvent.click(screen.getByRole('tab', { name: '권한' }))
+    expect(
+      screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected'),
+    ).toBe('true')
+    const list = await screen.findByLabelText('파일 권한 목록')
+    expect(list.querySelectorAll('li').length).toBe(9)
+    await waitFor(() => {
+      expect(
+        document
+          .querySelector('[data-permission="READ"]')
+          ?.getAttribute('data-held'),
+      ).toBe('true')
+    })
+    expect(
+      document
+        .querySelector('[data-permission="EDIT"]')
+        ?.getAttribute('data-held'),
+    ).toBe('false')
+    expect(getEffectivePermissionsMock).toHaveBeenCalledWith('file_abc')
+  })
+
+  it('M-RP.3 — 비-permissions 탭에서는 getEffectivePermissions 호출 안 됨', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(getFileDetailMock).toHaveBeenCalled()
+    })
+    expect(getEffectivePermissionsMock).not.toHaveBeenCalled()
   })
 
   it('M-RP.1 — 버전 탭 클릭 시 빈 상태 메시지 표시 (listFileVersions=[])', async () => {
