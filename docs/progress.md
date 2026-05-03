@@ -37,6 +37,31 @@
 
 ---
 
+## 2026-05-03 — 🏁 m8.1-permission-list-frontend 트랙 closure 마무리 (PR #46 머지 후 docs/archive 정합)
+
+### 범위
+
+PR #46 (`fdb57c7` `feat(m8.1-permission-list-frontend): wire BE permission list into PermissionsTab`)는 2026-05-02에 이미 master 머지되었으나, dev-docs 측 closure(progress entry + active→completed archive + tasks G2 표시)가 누락된 채 `dev/active/m8-permission-list-frontend/`에 남아 있었음. 본 세션은 production 코드 변경 0의 closure-only 정합 작업.
+
+### 회고
+
+- **production 신설/수정**: 0 (이미 PR #46로 머지됨).
+- **docs sync**: 본 entry 1건.
+- **dev-docs**: `dev/active/m8-permission-list-frontend/` → `dev/completed/`. `tasks.md` G2 (PR 생성) 체크 표시.
+- **test**: 변경 없음. PR #46 시점 기준 frontend 670 tests / 82 files (M8.1에서 +23) 그린 유지.
+
+### 핵심 결정 (m8.1-permission-list-frontend closure)
+
+1. **별도 회고 작성 X**: PR #46 머지 시점 closure가 적시 수행되지 못한 행정 누락. M8.1 본 작업의 회고/결정사항은 `dev/completed/m8-permission-list-frontend/` 의 `plan.md`/`context.md`/`tasks.md` 본문이 진실의 출처(verbatim 보존).
+2. **PR/머지 사실만 기록**: 본 entry는 "어디로 갔는지" 정합용 minimum entry. 본문 회고는 dev-docs 참조.
+
+### 다음 세션 컨텍스트
+
+- 권한 목록 후속(검색/필터/페이지네이션, grant 행 액션 — revoke/edit/expiry 변경)은 별도 트랙. 현재는 read-only 목록만.
+- folder 권한 read-only list — 본 트랙은 PermissionsTab(file) 우선이고 folder 영역은 보류였음. 후속 트랙으로 이관 가능.
+
+---
+
 ## 2026-05-02 — 🏁 a1.5-email-infra 트랙 종료 (Spring Mail + password reset/change + 3 endpoints + 3 pages, ADR #42·#43)
 
 ### 범위

@@ -1,5 +1,6 @@
 ---
-Last Updated: 2026-05-02
+Last Updated: 2026-05-03
+Status: ✅ closure (PR #46 merged 2026-05-02, archived 2026-05-03)
 ---
 
 # M8.1 — Tasks
@@ -35,6 +36,11 @@ Last Updated: 2026-05-02
 - [x] `pnpm test` 82 files / 670 tests 그린 (+23 신규, 회귀 0)
 - [x] dev-docs 갱신 (plan/context/tasks)
 
-## G2: PR 생성 (대기 중)
-- [ ] commit + push + gh pr create
-- [ ] 사용자 자동 보고 (PR URL + 본문)
+## G2: PR 생성 ✅
+- [x] commit + push + gh pr create — PR #46 (xorrbss/IbizDrive#46), merge commit `fdb57c7` 2026-05-02
+- [x] 사용자 자동 보고 (PR URL + 본문)
+
+## G3: closure (2026-05-03) ✅
+- [x] `docs/progress.md` 최상단 closure entry 추가
+- [x] `dev/active/m8-permission-list-frontend/` → `dev/completed/` archive
+- [x] commit (`docs(m8.1-permission-list-frontend): closure — progress entry + archive`)
