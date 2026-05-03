@@ -6,12 +6,9 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.auth.InvalidCredentialsException;
-import com.ibizdrive.email.EmailDeliveryException;
 import com.ibizdrive.email.EmailService;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.session.FindByIndexNameSessionRepository;
@@ -44,13 +41,14 @@ import java.util.UUID;
  * <p>TTL은 {@link #TOKEN_TTL} (30분). 사용자별 다중 토큰 허용 — 마지막에 발급된 토큰만 유효한 것은 아니며
  * 만료 전 모든 active 토큰이 사용 가능. rate-limit은 본 트랙 범위 외 (별도 트랙에서 추가).
  *
- * <p>이메일 발송 실패는 {@link EmailDeliveryException}로 표면화되지만, 호출자(controller)는 200을
- * 유지하기 위해 swallow + audit로 기록 — anti-enumeration 일관 응답을 우선한다.
+ * <p>이메일 발송은 {@link EmailService#send}가 {@code @Async("emailExecutor")} fire-and-forget
+ * (ADR #45)이므로 본 메서드는 caller 스레드를 SMTP RTT만큼 차단하지 않는다 — 가입자/미가입자
+ * latency가 동일해져 anti-enumeration timing leak이 완화된다 (docs/03 §2.7).
+ * 발송 실패는 {@code SmtpEmailService} 내부 ERROR 로그로 흡수되며 caller에 도달하지 않는다.
  */
 @Service
 public class PasswordResetService {
 
-    private static final Logger log = LoggerFactory.getLogger(PasswordResetService.class);
     static final Duration TOKEN_TTL = Duration.ofMinutes(30);
 
     private final UserRepository userRepository;
@@ -117,13 +115,8 @@ public class PasswordResetService {
             본인이 요청하지 않으셨다면 본 메일을 무시하셔도 됩니다.
             """.formatted(user.getDisplayName(), link);
 
-        try {
-            emailService.send(user.getEmail(), subject, body);
-        } catch (EmailDeliveryException e) {
-            // 발송 실패도 응답은 200 유지 — anti-enumeration. 운영자가 ERROR 로그로 인지.
-            log.error("password reset email send failed userId={} email={}",
-                user.getId(), user.getEmail(), e);
-        }
+        // ADR #45 — fire-and-forget. 발송 실패 흡수는 SmtpEmailService 내부 책임.
+        emailService.send(user.getEmail(), subject, body);
 
         auditService.record(new AuditEvent(
             AuditEventType.USER_PASSWORD_FORGOT_REQUESTED,
