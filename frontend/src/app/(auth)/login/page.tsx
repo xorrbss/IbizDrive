@@ -10,6 +10,9 @@ import { useMe } from '@/hooks/useMe'
  *
  * <p>이미 로그인된 상태에서 /login을 직접 열면 useMe가 truthy → next 또는 /files로 redirect.
  *
+ * <p>auth-must-change-pw — me.user.mustChangePassword=true 사용자는 next 무시하고
+ * `/account/password?force=1`로 강제 redirect (admin invite/임시 PW 닫힘 보장).
+ *
  * <p>에러 분기:
  * <ul>
  *   <li>401 INVALID_CREDENTIALS — 이메일/비밀번호 불일치</li>
@@ -29,6 +32,18 @@ export default function LoginPage() {
   )
 }
 
+/**
+ * 로그인 성공/이미 로그인 상태에서 가야 할 경로를 결정한다.
+ * mustChangePassword=true → 강제 변경 페이지(force=1). 그 외 → next.
+ */
+function postLoginTarget(
+  session: { user: { mustChangePassword: boolean } } | null | undefined,
+  next: string,
+): string {
+  if (session?.user.mustChangePassword) return '/account/password?force=1'
+  return next
+}
+
 function LoginForm() {
   const router = useRouter()
   const search = useSearchParams()
@@ -40,17 +55,17 @@ function LoginForm() {
   const [password, setPassword] = useState('')
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // 이미 로그인된 사용자 자동 redirect.
+  // 이미 로그인된 사용자 자동 redirect (mustChangePassword 분기 포함).
   useEffect(() => {
-    if (me.data) router.replace(next)
+    if (me.data) router.replace(postLoginTarget(me.data, next))
   }, [me.data, next, router])
 
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMsg(null)
     try {
-      await login.mutateAsync({ email: email.trim(), password })
-      router.replace(next)
+      const session = await login.mutateAsync({ email: email.trim(), password })
+      router.replace(postLoginTarget(session, next))
     } catch (e) {
       setErrorMsg(loginErrorMessage(e))
     }

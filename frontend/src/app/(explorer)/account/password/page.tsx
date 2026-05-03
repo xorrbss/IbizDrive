@@ -1,6 +1,6 @@
 'use client'
-import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { Suspense, useState } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { usePasswordChange } from '@/hooks/usePasswordChange'
 
 /**
@@ -9,10 +9,26 @@ import { usePasswordChange } from '@/hooks/usePasswordChange'
  * <p>(explorer) 라우트 그룹 — AuthGuard가 미인증 시 /login redirect.
  * 성공 시 백엔드는 다른 모든 세션을 invalidate하고 현재 세션만 유지하므로 재로그인 불요.
  *
+ * <p>auth-must-change-pw — `?force=1`이면 강제 모드: 배너 표시 + 돌아가기 숨김 +
+ * 변경 성공 후 자동 `/files` redirect. usePasswordChange가 onSuccess에서 useMe를
+ * invalidate하므로 AuthGuard가 fresh data로 재평가 → bounce 없이 정상 진입.
+ *
+ * <p>useSearchParams는 client-only이며 Next.js 15에서 prerender 시 Suspense 경계 필수.
+ *
  * <p>현재 PW 미일치 → 401 INVALID_CREDENTIALS, 약한 새 PW → 400 VALIDATION_ERROR.
  */
 export default function ChangePasswordPage() {
+  return (
+    <Suspense fallback={null}>
+      <ChangePasswordForm />
+    </Suspense>
+  )
+}
+
+function ChangePasswordForm() {
   const router = useRouter()
+  const search = useSearchParams()
+  const force = search.get('force') === '1'
   const [currentPassword, setCurrent] = useState('')
   const [newPassword, setNew] = useState('')
   const [confirm, setConfirm] = useState('')
@@ -34,6 +50,12 @@ export default function ChangePasswordPage() {
     }
     try {
       await change.mutateAsync({ currentPassword, newPassword })
+      if (force) {
+        // 강제 모드 종료 — useMe가 hook onSuccess로 갱신되어 mustChangePassword=false 반영.
+        // AuthGuard가 더 이상 bounce하지 않으므로 /files로 안전 진입.
+        router.replace('/files')
+        return
+      }
       setSuccessMsg('비밀번호가 변경되었습니다. 다른 기기의 세션은 종료되었습니다.')
       setCurrent('')
       setNew('')
@@ -51,14 +73,26 @@ export default function ChangePasswordPage() {
       <div className="max-w-md">
         <header className="mb-6 flex items-center justify-between">
           <h1 className="text-lg font-semibold">비밀번호 변경</h1>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="text-xs underline text-fg-muted"
-          >
-            돌아가기
-          </button>
+          {!force && (
+            <button
+              type="button"
+              onClick={() => router.back()}
+              className="text-xs underline text-fg-muted"
+            >
+              돌아가기
+            </button>
+          )}
         </header>
+
+        {force && (
+          <div
+            role="alert"
+            aria-label="비밀번호 변경 강제"
+            className="mb-4 p-3 rounded-md border border-amber-300 bg-amber-50 text-sm text-amber-900"
+          >
+            관리자가 비밀번호 변경을 요청했습니다. 새 비밀번호를 설정해야 다른 화면으로 이동할 수 있습니다.
+          </div>
+        )}
 
         <form
           onSubmit={onSubmit}
