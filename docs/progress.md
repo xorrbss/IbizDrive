@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-04 — 🏁 auth-password-policy 트랙 종료 (ADR #19 본문 회복, signup/reset/change 통합)
+
+### 범위
+
+ADR #41(auth-pages)이 self-signup MVP 진입 마찰 회피 명목으로 임시 완화한 password min=8을 ADR #19 본문(min 12 + 영문+숫자 + 공백 금지)으로 회복. 백엔드 3 endpoint(signup/reset/change) DTO + 프론트 3 페이지 일괄 정렬, 공통 validator 추출, FE/BE identical logic(핵심 원칙 11) 보장.
+
+P1 backend 공통 validator (TDD: `PasswordPolicyValidator` + `@ValidPassword` + 22 unit tests + `AuthExceptionHandler.ruleOf` 분기로 ValidPassword violation을 rule code 노출) → P2 backend 3 DTO 적용 + integration param tests (5규칙 × 3 endpoint) + `TempPasswordGenerator` 알고리즘 강화(영문/숫자 강제 주입 + Fisher-Yates shuffle) + 200 sample 회귀 가드 → P3 frontend `lib/password.ts` mirror + 25 unit tests → P4 3 페이지(signup/reset-password/account/password) 사전검증 교체 + rule별 한국어 메시지 + 페이지 레벨 테스트 + useSignup jsdoc 갱신 → P5 docs sync(ADR #19/#41 closure 메모 + §2.7 closure 헤더 + progress entry) + dev-docs archive.
+
+### 회고
+
+- **production 신설/수정**:
+  - backend 신설: `auth/validation/ValidPassword` (Bean Validation annotation, validatedBy = PasswordPolicyValidator), `auth/validation/PasswordPolicyValidator` (5규칙 우선순위, ASCII letter/digit + Unicode whitespace+spaceChar로 frontend `\s` NBSP 정렬).
+  - backend 수정: `auth/dto/SignupRequest` / `auth/password/dto/ResetPasswordRequest` / `auth/password/dto/ChangePasswordRequest` — `@Size(min=8, max=128)` → `@ValidPassword`. `common/error/AuthExceptionHandler.ruleOf(FieldError)` — ValidPassword violation일 때 `defaultMessage`(rule code 주입)를 우선, 그 외 annotation은 기존 `code` 사용. `admin/TempPasswordGenerator` — 영문 1자 + 숫자 1자 강제 주입 + Fisher-Yates shuffle로 ADR #19 항상 통과 보장.
+  - backend 신규 테스트: `auth/validation/PasswordPolicyValidatorTest` (22 케이스 — 5규칙 × 경계값 + 우선순위), `common/error/AuthExceptionHandlerTest` (4 케이스 — ruleOf 분기), `admin/TempPasswordGeneratorTest` (200 sample × 4 회귀 가드 + 길이 RepeatedTest). `AuthControllerSignupTest` / `PasswordControllerResetTest` / `PasswordControllerChangeTest` — `@ParameterizedTest @CsvSource`로 5규칙 거부 매트릭스 + `details.rule` jsonPath 검증.
+  - frontend 신설: `lib/password.ts` (`PasswordRule` type + `validatePassword` + `getPasswordRuleMessage` 한국어), `lib/password.test.ts` (25 케이스 — backend 매트릭스 미러).
+  - frontend 수정: `app/(auth)/signup/page.tsx` / `app/(auth)/reset-password/page.tsx` / `app/(explorer)/account/password/page.tsx` — `password.length < 8` 분기를 `validatePassword` + rule 메시지로 교체, label/minLength `8` → `12자 이상, 영문·숫자 포함`. `hooks/useSignup.ts` jsdoc — `<8자` → ADR #19 5규칙. `app/(auth)/signup/page.test.tsx` 신설 (6 케이스), `app/(auth)/reset-password/page.test.tsx` 신설 (6 케이스), `app/(explorer)/account/password/page.test.tsx` 추가 4 케이스 + 라벨 정규식 정정.
+- **docs sync**:
+  - `docs/00 §5` ADR #19: closure 메모 추가 (backend validator + frontend mirror + 3 endpoint/페이지 적용 + TempPasswordGenerator 회귀 가드 + 핵심 원칙 11 정렬).
+  - `docs/00 §5` ADR #41: password Validation을 `@NotBlank @ValidPassword`로 정정 + 인라인 closure 메모.
+  - `docs/03 §2.7`: closure 블록 헤더 추가 (단일 진실의 출처 명시 + 구현 매핑).
+  - `docs/03 §2.8 self-signup`: password Validation을 `@NotBlank @ValidPassword`로 정정 + 5규칙 cross-link.
+- **dev-docs**: `dev/active/auth-password-policy/` (3파일) → closure 후 `dev/completed/auth-password-policy/`로 이동.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — 전체 sweep GREEN, 회귀 0.
+  - frontend `npx tsc --noEmit && npx next lint && npx vitest run` — 738 tests pass, 93 files, lint/typecheck clean.
+
+### 핵심 결정 (auth-password-policy 트랙)
+
+1. **별도 ADR 신설 거부 — ADR #19 본문 closure + ADR #41 정정**: 본 트랙은 ADR #19로의 회귀이므로 새로운 결정이 아님. ADR #41이 임시 완화한 정책을 본문으로 되돌리는 reconciliation. KISS 원칙으로 신규 ADR 발번 회피, 양 ADR row에 closure 메모만 추가.
+2. **단일 violation 우선순위 보고**: 5규칙을 우선순위(whitespace > max_length > min_length > missing_alpha > missing_digit)로 정렬해 첫 위반만 노출. 다중 violation 동시 표시는 UX 노이즈로 판단 — backend `PasswordPolicyValidator`는 일찍 return + frontend `validatePassword`도 동일 short-circuit. backend는 `disableDefaultConstraintViolation()` + `buildConstraintViolationWithTemplate(rule).addConstraintViolation()`로 rule code를 `defaultMessage`에 주입, `AuthExceptionHandler.ruleOf`가 `ValidPassword` annotation 분기에서 이 message를 rule로 surfacing(다른 annotation 회귀 보호 위해 `code.equals("ValidPassword")` 가드).
+3. **FE/BE 동일 ASCII letter/digit 채택**: backend `Character.isLetter`(Unicode 한글/한자 포함)와 frontend `[A-Za-z]`(ASCII) drift 발견 → ADR #19 "영문자" 정의를 ASCII로 통일하고 backend를 frontend에 정렬(핵심 원칙 11). Whitespace는 반대로 frontend `\s`가 NBSP 등 Unicode를 포함하므로 backend에 `Character.isSpaceChar` 추가하여 정렬.
+4. **`TempPasswordGenerator` 알고리즘 강화**: 기존 random alphabet 기반 16자는 통계적으로 ~10% 확률로 missing_alpha/missing_digit 위반 가능. 영문 1자 + 숫자 1자 강제 주입 후 Fisher-Yates shuffle로 위치 노출 회피 + 항상 통과 보장. 200 sample 단위 테스트로 회귀 가드.
+
+### 다음 세션 컨텍스트
+
+- ADR #19/#41 reconciliation 종료. 잔여 password 정책 항목(zxcvbn/HIBP 사전 공격 방지)은 ADR #19 본문대로 v1.x reserve.
+- 다음 트랙 후보: A1.5 잔여(EmailService prod SMTP 통합) 또는 마일스톤 1 frontend 핵심 (folderId 라우팅 + FolderTree).
+
+---
+
 ## 2026-05-03 — 🏁 m-admin-entry-rewrite 트랙 종료 (admin shell + invite endpoint, ADR #21 closure)
 
 ### 범위

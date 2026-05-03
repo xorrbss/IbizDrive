@@ -244,6 +244,8 @@
 
 ### 2.7 비밀번호 정책·해싱 (ADR #19)
 
+> **Closure (auth-password-policy, 2026-05-04)** — ADR #41 §2.8(self-signup MVP) 임시 완화 min=8 → ADR #19 본문 회복. 본 §2.7 5규칙이 단일 진실의 출처. 구현: backend `auth.validation.PasswordPolicyValidator` + `@ValidPassword` (3 DTO 적용), `AuthExceptionHandler.ruleOf`가 ValidPassword violation을 rule code로 변환. Frontend `lib/password.ts` 미러 (`validatePassword` + `getPasswordRuleMessage`) — 핵심 원칙 11(FE/BE 동일 로직). 3 페이지(`/signup`·`/reset-password`·`/account/password`)가 사전검증 후 한국어 rule 메시지 노출. `TempPasswordGenerator`는 영문/숫자 강제 주입 + Fisher-Yates shuffle로 정책 회귀 가드(200회 sample 테스트).
+
 **해싱:**
 - `BCryptPasswordEncoder(strength=12)` — Spring Security 기본.
 - DB 저장 컬럼: `users.password_hash VARCHAR(100)` — `DelegatingPasswordEncoder` 프리픽스(`{bcrypt}` ~9자 + 60자) 및 향후 `{argon2id}` 마이그레이션 여유.
@@ -316,7 +318,7 @@
 - **자동 세션**: signup 성공 = `AuthService.establishSession`(login 공통 helper, `changeSessionId()` 호출) → `LoginResponse` 반환. 가입 후 즉시 `/files`.
 - **Validation (Bean Validation)**:
   - `email`: `@NotBlank @Email @Size(max=254)` — trim+lowercase 후 저장 (`users.email CITEXT` UNIQUE 의존).
-  - `password`: `@NotBlank @Size(min=8, max=128)` — §2.7 ADR #19(min 12) 정정 (가입 진입 마찰 최소화, v1.x 정책 강화 트랙).
+  - `password`: `@NotBlank @ValidPassword` — §2.7 ADR #19 본문 회복 (auth-password-policy 트랙, 2026-05-04 closure). 5규칙(`whitespace`/`max_length`/`min_length`/`missing_alpha`/`missing_digit`) 우선순위로 거부, rule code는 fieldErrors[].rule로 노출.
   - `displayName`: `@NotBlank @Size(min=1, max=100)` — trim 후 저장.
 - **에러 envelope (auth flat)**:
   - `409 CONFLICT/DUPLICATE_EMAIL` — 이미 가입된 이메일.

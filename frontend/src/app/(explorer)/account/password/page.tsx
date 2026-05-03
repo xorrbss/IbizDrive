@@ -2,6 +2,7 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { usePasswordChange } from '@/hooks/usePasswordChange'
+import { getPasswordRuleMessage, validatePassword } from '@/lib/password'
 
 /**
  * /account/password — 인증 사용자 비밀번호 변경 (a1.5).
@@ -44,8 +45,10 @@ function ChangePasswordForm() {
       setErrorMsg('새 비밀번호와 확인이 일치하지 않습니다.')
       return
     }
-    if (newPassword.length < 8) {
-      setErrorMsg('비밀번호는 8자 이상이어야 합니다.')
+    // ADR #19 5규칙 — 백엔드가 진실의 출처지만 UX상 즉시 피드백.
+    const pwCheck = validatePassword(newPassword)
+    if (!pwCheck.ok) {
+      setErrorMsg(getPasswordRuleMessage(pwCheck.rule))
       return
     }
     try {
@@ -114,12 +117,12 @@ function ChangePasswordForm() {
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
-            <span>새 비밀번호 (8자 이상)</span>
+            <span>새 비밀번호 (12자 이상, 영문·숫자 포함)</span>
             <input
               type="password"
               autoComplete="new-password"
               required
-              minLength={8}
+              minLength={12}
               value={newPassword}
               onChange={(e) => setNew(e.target.value)}
               className="px-3 py-2 rounded border border-border bg-bg"
@@ -132,7 +135,7 @@ function ChangePasswordForm() {
               type="password"
               autoComplete="new-password"
               required
-              minLength={8}
+              minLength={12}
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               className="px-3 py-2 rounded border border-border bg-bg"

@@ -10,6 +10,8 @@ import com.ibizdrive.permission.PermissionCacheKeyService;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -106,14 +108,27 @@ class AuthControllerSignupTest {
             .andExpect(jsonPath("$.reason").value("DUPLICATE_EMAIL"));
     }
 
-    @Test
-    void signup_weakPassword_returns400Validation() throws Exception {
+    /**
+     * ADR #19 비밀번호 정책 5규칙 위반 → 400 VALIDATION_ERROR + details.rule.
+     * (auth-password-policy 트랙, 2026-05-04)
+     */
+    @ParameterizedTest(name = "signup rejects {1}-violating password")
+    @CsvSource({
+        // password, expected rule
+        "'short7',        min_length",       // 6자 < 12
+        "'1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890abc', max_length", // 129자
+        "'123456789012',  missing_alpha",    // 숫자만
+        "'abcdefghijkl',  missing_digit",    // 영문만
+        "'abcdef 12345',  whitespace"        // 공백 포함
+    })
+    void signup_passwordPolicyViolation_returns400WithRule(String password, String expectedRule) throws Exception {
         mvc.perform(post("/api/auth/signup")
                 .contentType("application/json")
-                .content(body("alice@example.com", "short7c", "Alice")))   // 7자
+                .content(body("alice@example.com", password, "Alice")))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-            .andExpect(jsonPath("$.details.field").value("password"));
+            .andExpect(jsonPath("$.details.field").value("password"))
+            .andExpect(jsonPath("$.details.rule").value(expectedRule));
 
         verifyNoInteractions(signupService);
     }
