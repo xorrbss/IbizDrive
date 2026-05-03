@@ -16,44 +16,60 @@
 
 > 역할 분리는 감사 원칙의 핵심: "한 명이 모든 것을 할 수 있으면 감사가 의미 없음"
 
+### 1.1 가드 분리 — UX 게이트 vs 보안 게이트 (m-admin-entry-rewrite, 2026-05-03)
+
+ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
+
+- **프론트 `AdminGuard` = UX 가드만**. `useMe`로 현재 역할을 확인해 비-ADMIN을 `/files`로 redirect. 사용자에게 "권한 없는 화면을 잠깐이라도 보지 않게" 하는 표면 보호. 보안 강제 없음.
+- **백엔드 `@PreAuthorize("hasRole('ADMIN')")` = 보안의 진실**. 모든 `/api/admin/**` endpoint는 컨트롤러 메서드 단위에서 강제. 프론트 가드를 우회한 직접 호출은 401(미인증) 또는 403(역할 부족)으로 차단된다.
+- **AuthGuard와 중첩 순서**: `<AuthGuard><AdminGuard>...</AdminGuard></AuthGuard>` — AuthGuard가 비로그인을 `/login?next=/admin`으로 먼저 처리한 뒤 AdminGuard가 role 검사. 두 가드의 책임은 분리(인증 보유 vs 역할).
+- **중요 회귀 가드**: 프론트 게이트 강도를 보안 강도와 혼동하지 말 것. `/api/admin/**`는 `SecurityConfig` `permitAll` 목록에 포함되지 않아야 하며, 신규 admin 컨트롤러에는 항상 메서드 레벨 `@PreAuthorize` 또는 클래스 레벨 강제가 붙어야 한다.
+
 ---
 
 ## 2. 관리자 페이지 구조
 
+> **MVP closure 시점 활성 라우트** (m-admin-entry-rewrite, 2026-05-03):
+> - `/admin` — landing (가용 카드 2 + deferred 안내)
+> - `/admin/audit/logs` — 감사 로그 (M12 closure)
+> - `/admin/users` — 사용자 초대 폼 (m-admin-entry-rewrite closure, 사용자 목록은 v1.x)
+>
+> 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
+
 ```text
-/admin
-├─ /dashboard              운영 현황 요약
-├─ /users
-│  ├─ /list                사용자 목록
-│  ├─ /:id                 사용자 상세 + 활동
-│  └─ /import              CSV 일괄 import
+/admin                       (활성 — landing)
+├─ /dashboard              운영 현황 요약                                 (v1.x deferred)
+├─ /users                  사용자 초대 폼                                 (활성, 2026-05-03)
+│  ├─ /list                사용자 목록                                    (v1.x deferred)
+│  ├─ /:id                 사용자 상세 + 활동                              (v1.x deferred)
+│  └─ /import              CSV 일괄 import                                (v1.x deferred)
 ├─ /departments
-│  ├─ /tree                조직도
-│  └─ /:id
+│  ├─ /tree                조직도                                          (v1.x deferred)
+│  └─ /:id                                                                (v1.x deferred)
 ├─ /permissions
-│  ├─ /bulk                권한 일괄 변경
-│  └─ /templates           권한 프리셋 템플릿
+│  ├─ /bulk                권한 일괄 변경                                  (v1.x deferred)
+│  └─ /templates           권한 프리셋 템플릿                              (v1.x deferred)
 ├─ /storage
-│  ├─ /usage               전체 사용량
-│  ├─ /quotas              쿼터 관리
-│  └─ /cleanup             고아 객체 정리
+│  ├─ /usage               전체 사용량                                    (v1.x deferred)
+│  ├─ /quotas              쿼터 관리                                       (v1.x deferred)
+│  └─ /cleanup             고아 객체 정리                                  (v1.x deferred)
 ├─ /audit
-│  ├─ /logs                전체 감사 로그
-│  ├─ /downloads           다운로드 이력
-│  ├─ /permissions         권한 변경 이력
-│  └─ /export              로그 내보내기 (CSV/JSON)
+│  ├─ /logs                전체 감사 로그                                  (활성, M12)
+│  ├─ /downloads           다운로드 이력                                   (v1.x deferred)
+│  ├─ /permissions         권한 변경 이력                                  (v1.x deferred)
+│  └─ /export              로그 내보내기 (CSV/JSON)                        (v1.x deferred)
 ├─ /trash
-│  ├─ /all                 전역 휴지통
-│  └─ /policy              휴지통 정책 설정
-├─ /legal-hold             법적 보존 관리
+│  ├─ /all                 전역 휴지통                                     (v1.x deferred)
+│  └─ /policy              휴지통 정책 설정                                (v1.x deferred)
+├─ /legal-hold             법적 보존 관리                                  (v1.x deferred)
 ├─ /policies
-│  ├─ /file-size           파일 크기/확장자 정책
-│  ├─ /retention           보존 기간
-│  └─ /audit-levels        감사 레벨 폴더 지정
+│  ├─ /file-size           파일 크기/확장자 정책                            (v1.x deferred)
+│  ├─ /retention           보존 기간                                       (v1.x deferred)
+│  └─ /audit-levels        감사 레벨 폴더 지정                             (v1.x deferred)
 └─ /system
-   ├─ /health              시스템 상태
-   ├─ /backups             백업 이력
-   └─ /jobs                배치 작업 모니터링
+   ├─ /health              시스템 상태                                     (v1.x deferred)
+   ├─ /backups             백업 이력                                       (v1.x deferred)
+   └─ /jobs                배치 작업 모니터링                               (v1.x deferred)
 ```
 
 ---

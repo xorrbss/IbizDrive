@@ -47,6 +47,14 @@ export function UserMenu() {
           로그아웃
         </button>
       </div>
+      {data?.roles?.includes('ADMIN') && (
+        <Link
+          href="/admin"
+          className="text-[11px] text-fg-muted underline hover:text-fg self-start"
+        >
+          관리자 페이지
+        </Link>
+      )}
       <Link
         href="/account/password"
         className="text-[11px] text-fg-muted underline hover:text-fg self-start"
