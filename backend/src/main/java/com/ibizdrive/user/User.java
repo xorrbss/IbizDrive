@@ -200,4 +200,13 @@ public class User implements Serializable {
         }
         this.passwordHash = newHash;
     }
+
+    /**
+     * auth-must-change-pw — 비밀번호 강제 변경 플래그 클리어 (ADR #21).
+     * change/reset 흐름에서 PW 갱신 직후 호출하여 강제 redirect 루프를 종결시킨다.
+     * 이미 false인 경우(자발적 변경)에는 무해 — idempotent.
+     */
+    public void clearMustChangePassword() {
+        this.mustChangePassword = false;
+    }
 }

@@ -293,6 +293,19 @@
 - HTML 템플릿/i18n/비동기 큐 모두 v1.x 분리.
 - **Anti-enumeration timing leak** = 알려진 한계 (가입자만 SMTP 라운드트립). v1.x rate-limit + 비동기 큐 트랙에서 재검토.
 
+**강제 비밀번호 변경 UX (auth-must-change-pw 트랙, ADR #21 잔여 closure, 2026-05-03)**
+
+`User.must_change_password=true` 사용자가 explorer를 사용하기 전에 반드시 `/account/password`를 거치도록 프론트/백엔드 양쪽에서 enforce.
+
+- **백엔드 — 플래그 클리어**: `PasswordResetService.change()`와 `reset()`이 PW hash 갱신 직후 `User.clearMustChangePassword()`를 호출해 단일 트랜잭션 내에서 `must_change_password=false`로 영속화. 이 클리어가 없으면 프론트 enforce가 무한 redirect 루프를 유발.
+- **프론트 — LoginPage redirect**: `me.user.mustChangePassword=true`인 사용자가 로그인하거나 로그인된 상태로 `/login`을 열면 `next` query를 무시하고 `/account/password?force=1`로 `router.replace`.
+- **프론트 — AuthGuard guard**: `(explorer)` 라우트 그룹의 `AuthGuard`가 매 navigation마다 `usePathname()`으로 위치를 확인. 로그인 사용자라도 `mustChangePassword=true && pathname !== '/account/password'`이면 `/account/password?force=1`로 bounce. URL 직접 입력 우회 차단. `/account/password` 자체에서는 통과 (무한 루프 회피).
+- **프론트 — `/account/password` force UI**: `?force=1`이면 amber 배너 (`role=alert`, "관리자가 비밀번호 변경을 요청했습니다 …") 표시 + "돌아가기" 버튼 hide + 변경 성공 시 `router.replace('/files')`.
+- **프론트 — `usePasswordChange` invalidation**: `onSuccess`에서 `qk.authMe()` invalidate → AuthGuard가 fresh state(false)로 재평가 → bounce 없이 `/files` 통과.
+- **audit 변동 없음**: `USER_PASSWORD_CHANGED`/`USER_PASSWORD_RESET`이 이미 emit. 플래그 변화에 별도 이벤트 추가 안 함.
+
+운영자 초대(`POST /api/admin/users` invite-by-email)는 ADR #21 잔여 항목 중 admin 트랙(v1.x)으로 분리.
+
 ### 2.8 사용자 등록 (ADR #21 → ADR #41 supersede, 2026-05-02)
 
 > **Status**: ADR #21(관리자 초대 only)은 ADR #41 auth-pages 트랙에서 supersede. MVP는 self-signup + first-user-ADMIN 부트스트랩. 운영자 초대(`POST /api/admin/users`)는 v1.x reserve.
@@ -309,7 +322,7 @@
   - `409 CONFLICT/DUPLICATE_EMAIL` — 이미 가입된 이메일.
   - `400 VALIDATION_ERROR` — Bean Validation 실패 (standard envelope).
 - **Audit emission**: `USER_REGISTERED("user.registered")` (§4.1 추가). `UserRegisteredEvent` record + `AuthAuditListener.onRegistered`가 `@EventListener` REQUIRES_NEW로 audit_log 기록 — 로그인 `AuthenticationSuccessEvent` 패턴 일관.
-- **운영자 user 초대 (`POST /api/admin/users`) — v1.x reserve**: 사용자에게 임시 PW를 별도 채널로 전달, `users.must_change_password = true`. 이메일 초대(`A1.5`)는 이메일 인프라 도입 시점에 활성화.
+- **운영자 user 초대 (`POST /api/admin/users`) — v1.x reserve**: 사용자에게 임시 PW를 별도 채널로 전달, `users.must_change_password = true`. 이메일 초대(`A1.5`)는 이메일 인프라 도입 시점에 활성화. 강제 변경 UX 자체는 §2.7 "강제 비밀번호 변경 UX" 절(auth-must-change-pw, 2026-05-03)에서 활성화 완료 — admin invite endpoint만 도입하면 즉시 동작.
 
 `users` 테이블 인증 관련 컬럼 (docs/02 §2.1과 동기):
 - `email VARCHAR UNIQUE NOT NULL` (lowercase 정규화)

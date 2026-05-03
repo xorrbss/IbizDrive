@@ -333,6 +333,50 @@ class PasswordResetServiceTest {
         verify(sessionRepository).deleteById(s2.getId());
     }
 
+    // ─────────────────────────────────────────────────────────────────────
+    // auth-must-change-pw — change()/reset()이 mustChangePassword 플래그를 클리어 (ADR #21)
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void change_clearsMustChangePasswordFlag() {
+        // Admin invite 또는 첫 사용자 강제 변경 시나리오 — flag=true로 시작.
+        // 변경 성공 후 false로 클리어되어야 무한 redirect 회피 + ADR #21 닫힘.
+        User user = sampleUserWithMustChange("alice@example.com", "Alice");
+        assertThat(user.isMustChangePassword()).isTrue();
+        when(passwordEncoder.matches(eq("TempSecret123!"), eq(user.getPasswordHash())))
+            .thenReturn(true);
+        when(sessionRepository.findByPrincipalName("alice@example.com"))
+            .thenReturn(Map.of());
+
+        service.change(user, "TempSecret123!", "NewSecret456!", "session-id");
+
+        assertThat(user.isMustChangePassword()).isFalse();
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void reset_clearsMustChangePasswordFlag() {
+        // Admin이 임시 PW 발급(mustChangePassword=true) + reset link 동시 제공한 케이스.
+        // reset 흐름으로 PW 설정 시에도 플래그 클리어되어야 ADR #21 §2.8과 일치.
+        User user = sampleUserWithMustChange("alice@example.com", "Alice");
+        assertThat(user.isMustChangePassword()).isTrue();
+        String plain = "abcd1234efgh5678ijkl9012mnop3456qrst7890uvwx1234yz567890123456ab";
+        String hash = PasswordResetService.sha256Hex(plain);
+        PasswordResetToken token = new PasswordResetToken(user.getId(), hash,
+            FIXED_NOW.plusMinutes(15), FIXED_NOW.minusMinutes(15));
+        when(tokenRepository.findByTokenHash(hash)).thenReturn(Optional.of(token));
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(sessionRepository.findByPrincipalName("alice@example.com"))
+            .thenReturn(Map.of());
+
+        service.reset(plain, "NewSecret123!");
+
+        assertThat(user.isMustChangePassword()).isFalse();
+        verify(userRepository).save(user);
+    }
+
     private static User sampleUser(String email, String displayName) {
         return new User(
             UUID.randomUUID(),
@@ -342,6 +386,19 @@ class PasswordResetServiceTest {
             Role.MEMBER,
             true,
             false,
+            FIXED_NOW
+        );
+    }
+
+    private static User sampleUserWithMustChange(String email, String displayName) {
+        return new User(
+            UUID.randomUUID(),
+            email,
+            displayName,
+            "{bcrypt}$2a$12$dummy",
+            Role.MEMBER,
+            true,
+            true,
             FIXED_NOW
         );
     }
