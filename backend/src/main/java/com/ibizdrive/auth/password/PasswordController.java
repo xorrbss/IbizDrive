@@ -8,11 +8,15 @@ import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpSession;
 import jakarta.validation.Valid;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.Locale;
 
 /**
  * 비밀번호 분실/재설정/변경 endpoint (a1.5).
@@ -42,20 +46,58 @@ public class PasswordController {
         "비밀번호가 변경되었습니다. 다른 기기의 세션은 모두 종료되었습니다."
     );
 
-    private final PasswordResetService passwordResetService;
+    private static final Logger log = LoggerFactory.getLogger(PasswordController.class);
 
-    public PasswordController(PasswordResetService passwordResetService) {
+    private final PasswordResetService passwordResetService;
+    private final ForgotPasswordRateLimiter rateLimiter;
+
+    public PasswordController(PasswordResetService passwordResetService,
+                              ForgotPasswordRateLimiter rateLimiter) {
         this.passwordResetService = passwordResetService;
+        this.rateLimiter = rateLimiter;
     }
 
     /**
      * 가입/미가입 동일 200 (anti-enumeration). 호출 측은 응답 차이로 enumeration 불가.
      * 메일 발송 실패도 200 유지 — 서비스가 swallow + ERROR 로그.
+     *
+     * <p>호출 빈도 제한 (ADR #44, auth-forgot-rate-limit): email + IP 키 분당 1회.
+     * 한도 초과 시 {@link RateLimitExceededException} → 429 + Retry-After.
+     * 차단 응답은 가입자/미가입자 무관 — 가입 여부 노출 없음.
      */
     @PostMapping("/forgot")
-    public MessageResponse forgot(@Valid @RequestBody ForgotPasswordRequest req) {
+    public MessageResponse forgot(@Valid @RequestBody ForgotPasswordRequest req,
+                                  HttpServletRequest httpReq) {
+        String emailKey = req.email().trim().toLowerCase(Locale.ROOT);
+        String ipKey = resolveClientIp(httpReq);
+        if (!rateLimiter.tryAcquire(emailKey, ipKey)) {
+            long retryAfter = rateLimiter.getRetryAfterSeconds(emailKey, ipKey);
+            log.warn("forgot rate-limited email={} ip={} retryAfter={}s",
+                maskEmail(emailKey), ipKey, retryAfter);
+            throw new RateLimitExceededException(retryAfter);
+        }
         passwordResetService.requestReset(req.email());
         return FORGOT_RESPONSE;
+    }
+
+    /**
+     * {@code X-Forwarded-For} 헤더 첫 값 우선 (사내 베타: reverse proxy 경유 가정).
+     * 없으면 {@link HttpServletRequest#getRemoteAddr()}. spoof 가능 — trusted proxy 정책은 별도 트랙(ADR #44 한계).
+     */
+    private static String resolveClientIp(HttpServletRequest httpReq) {
+        String fwd = httpReq.getHeader("X-Forwarded-For");
+        if (fwd != null && !fwd.isBlank()) {
+            int comma = fwd.indexOf(',');
+            return (comma < 0 ? fwd : fwd.substring(0, comma)).trim();
+        }
+        return httpReq.getRemoteAddr();
+    }
+
+    /** 로그 노출용 부분 마스킹 — {@code alice@example.com} → {@code a***@example.com}. */
+    private static String maskEmail(String email) {
+        int at = email.indexOf('@');
+        if (at <= 1) return "***" + (at < 0 ? "" : email.substring(at));
+        return email.charAt(0) + "***" + email.substring(at);
     }
 
     /**

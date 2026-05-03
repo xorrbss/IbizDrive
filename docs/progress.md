@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-03 — 🏁 auth-forgot-rate-limit 트랙 종료 (forgot 분당 1회 rate-limit, ADR #44)
+
+### 범위
+
+`dev/active/auth-forgot-rate-limit/` bootstrap (plan/context/tasks 3파일) → P1 RED (limiter 단위 테스트 8건 + controller MockMvc 6건 컴파일 RED) → P2 GREEN (`ForgotPasswordRateLimiter` Component, `RateLimitExceededException`, `ErrorResponse.rateLimitExceeded` 팩토리, `AuthExceptionHandler` 429 + `Retry-After` 매핑, `PasswordController.forgot` IP 추출 + lower email + tryAcquire 게이트 + WARN 로그 with email mask) → P3 sibling 테스트 회귀 봉합 (`PasswordControllerForgotTest` 기본 통과 stub 추가, Reset/Change 테스트는 `@MockBean ForgotPasswordRateLimiter`만 추가) → P4 docs sync (ADR #44 + 02 §7.4 + 03 §2.7 + BETA §5) → P5 closure (progress + dev/active→completed 이동 + PR).
+
+### 회고
+
+- **commits**: 3개 + closure.
+  - `2a06246` dev-docs bootstrap
+  - `a17f951` feat — limiter + 429 매핑 + controller wire (10 files / 492 insertions / TDD GREEN)
+  - `bb4e3b1` docs sync — ADR #44 + endpoint contract
+  - + closure commit (progress + dev-docs archive)
+- **production 신설/수정**:
+  - backend 신설: `ForgotPasswordRateLimiter` (Clock 주입 가능, 두 키 OR-block, lazy 만료) + `RateLimitExceededException` + 단위 테스트 8건 + 컨트롤러 MockMvc 테스트 6건.
+  - backend 수정: `ErrorResponse` (rateLimitExceeded 팩토리 — `RATE_LIMIT_EXCEEDED` 코드 + `retryAfterSec` 필드, 신규 에러 코드 0), `AuthExceptionHandler` (429 + `Retry-After` 헤더 매핑), `PasswordController` (limiter 의존 주입 + `HttpServletRequest` 인자 + IP 추출 + email lower + 마스킹 WARN), 기존 `PasswordControllerForgotTest`/`ResetTest`/`ChangeTest` (`@MockBean` 추가).
+- **docs sync**:
+  - `docs/00 §5`: ADR #44 (in-memory single-instance, OR-block, X-Forwarded-For 첫값, anti-enumeration 정합, audit 미발행, login surface 비범위, 한계 3종).
+  - `docs/02 §7.4`: forgot endpoint rate-limit 절 + 429 + `Retry-After` (기존 `RATE_LIMIT_EXCEEDED` §8 재사용 — 신규 에러 코드 0).
+  - `docs/03 §2.7`: forgot row 정정(rate-limit 명시) + rate-limit 정책 1줄 (reset/change 미적용 사유).
+  - `BETA-RELEASE.md §5`: forgot rate-limit 행 추가 (✓ ADR #44).
+- **테스트**: 815 / 0 fail / 0 err / 214 skip. 신규 14건 GREEN.
+- **a1.5 closure 잔여 항목**: `PasswordResetService.java:45` deferred 코멘트가 가리키던 forgot rate-limit 트랙 close.
+
+### 다음 세션 컨텍스트
+
+- single-instance 한계는 ADR #44 명시. 다중 인스턴스 도입 시점에 인터페이스 추출 + Redis 백엔드 트랙 (v1.x).
+- `X-Forwarded-For` spoof — trusted proxy whitelist 트랙(별도, v1.x 인프라 셋업 시점).
+- reset/change rate-limit는 토큰/세션 가드로 보호되므로 v1.x 별도 결정 — 현 트랙 범위 외.
+
+---
+
 ## 2026-05-03 — 🏁 auth-must-change-pw 트랙 종료 (ADR #21 mustChangePassword UX 강제 closure)
 
 ### 범위

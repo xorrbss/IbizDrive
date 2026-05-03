@@ -50,4 +50,12 @@ public record ErrorResponse(
     public static ErrorResponse invalidToken() {
         return new ErrorResponse("INVALID_TOKEN", null, null, null);
     }
+
+    /**
+     * auth-forgot-rate-limit (ADR #44) — forgot 호출 빈도 한도 초과.
+     * envelope: {@code { code: "RATE_LIMIT_EXCEEDED", retryAfterSec: <ttl> }} + HTTP {@code Retry-After} 헤더.
+     */
+    public static ErrorResponse rateLimitExceeded(long retryAfterSec) {
+        return new ErrorResponse("RATE_LIMIT_EXCEEDED", null, retryAfterSec, null);
+    }
 }

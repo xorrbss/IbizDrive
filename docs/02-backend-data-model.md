@@ -860,7 +860,7 @@ CSRF 정책:
 | POST | `/api/auth/logout` | isAuthenticated | REQUIRED (audit) | — | — | 403 CSRF_MISMATCH |
 | GET  | `/api/auth/me` | isAuthenticated | — | — | — | 401 UNAUTHORIZED |
 | GET  | `/api/auth/csrf` | permitAll | — | — | — | — |
-| POST | `/api/auth/password/forgot` | permitAll | REQUIRED (token+email+audit) | email→lowercase | — | 400 VALIDATION_ERROR |
+| POST | `/api/auth/password/forgot` | permitAll + rate-limit (ADR #44) | REQUIRED (token+email+audit) | email→lowercase | — | 400 VALIDATION_ERROR, 429 RATE_LIMIT_EXCEEDED |
 | POST | `/api/auth/password/reset` | permitAll | REQUIRED (token verify+pw update+session invalidate+audit) | — | — | 400 VALIDATION_ERROR, 400 INVALID_TOKEN |
 | POST | `/api/auth/password/change` | isAuthenticated | REQUIRED (pw verify+update+other sessions invalidate+audit) | — | — | 400 VALIDATION_ERROR, 401 INVALID_CREDENTIALS, 403 CSRF_MISMATCH |
 
@@ -939,11 +939,16 @@ GET /api/auth/csrf
             mutation 요청 전 클라가 1회 호출 → XSRF-TOKEN 쿠키 → JS가 읽어
             X-CSRF-Token 헤더로 전송 (double-submit).
 
-POST /api/auth/password/forgot                     (A1.5, ADR #42·#43)
+POST /api/auth/password/forgot                     (A1.5, ADR #42·#43, #44)
   Headers:  (CSRF 불필요 — SecurityConfig ignoringRequestMatchers)
   Request:  { email: string }
   Validation:
     - email: @Email + @NotBlank, 최대 254자
+  Rate limit (ADR #44):
+    - email(lower-cased) + IP 두 키 독립 버킷, OR 차단, 60s 1회.
+    - X-Forwarded-For 첫 값 우선 → fallback RemoteAddr.
+    - 한도 초과 시 RateLimitExceededException → 429.
+    - in-memory ConcurrentHashMap, single-instance MVP (Redis는 v1.x).
   Response: 200 { message: '입력하신 이메일로 재설정 링크를 보냈습니다.' }
             (anti-enumeration — 이메일 미존재여도 동일 응답·동일 latency 목표)
   Side-effects:
@@ -951,7 +956,9 @@ POST /api/auth/password/forgot                     (A1.5, ADR #42·#43)
             - EmailService.sendPasswordReset(email, rawToken) — dev=콘솔, prod=SMTP
             - audit: user.password.forgot_requested (이메일 존재여부 무관, found 플래그)
   Errors:
-    400 VALIDATION_ERROR  { details: { field: 'email', rule: 'format' | 'length' } }
+    400 VALIDATION_ERROR    { details: { field: 'email', rule: 'format' | 'length' } }
+    429 RATE_LIMIT_EXCEEDED { code: 'RATE_LIMIT_EXCEEDED', retryAfterSec: <int> }
+                            Header: Retry-After: <seconds>   (헤더와 body 동일 값)
 
 POST /api/auth/password/reset                      (A1.5, ADR #42·#43)
   Headers:  (CSRF 불필요 — SecurityConfig ignoringRequestMatchers)

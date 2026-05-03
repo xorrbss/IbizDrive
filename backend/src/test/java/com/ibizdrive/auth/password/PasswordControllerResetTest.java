@@ -51,6 +51,9 @@ class PasswordControllerResetTest {
     private PasswordResetService passwordResetService;
 
     @MockBean
+    private ForgotPasswordRateLimiter rateLimiter;  // controller 그래프 충족 — /reset 미호출
+
+    @MockBean
     private LoginAttemptTracker tracker;
 
     @MockBean
