@@ -1,28 +1,18 @@
 ---
 task: email-async
+status: closed
 last_updated: 2026-05-03
-working_files:
-  - backend/src/main/java/com/ibizdrive/email/EmailAsyncConfig.java (new)
-  - backend/src/main/java/com/ibizdrive/email/EmailService.java
-  - backend/src/main/java/com/ibizdrive/email/ConsoleEmailService.java
-  - backend/src/main/java/com/ibizdrive/email/SmtpEmailService.java
-  - backend/src/main/java/com/ibizdrive/auth/password/PasswordResetService.java
-  - backend/src/test/java/com/ibizdrive/email/EmailAsyncIntegrationTest.java (new)
-  - dev/active/email-async/email-async-plan.md (new)
-  - dev/active/email-async/email-async-context.md (new)
-  - dev/active/email-async/email-async-tasks.md (new)
-  - docs/00-overview.md (ADR #45)
-  - docs/03-security-compliance.md (§2.7)
-  - docs/progress.md
+closed_at: 2026-05-03
+working_files: []
 ---
 
-# Session ownership — email-async
+# Session ownership — email-async (CLOSED)
 
-## working_files
-- (P1) backend/src/main/java/com/ibizdrive/email/EmailAsyncConfig.java
-- (P2) backend/src/main/java/com/ibizdrive/email/EmailService.java (`@Async` on send)
-- (P2) backend/src/main/java/com/ibizdrive/email/ConsoleEmailService.java (exception handling internal)
-- (P2) backend/src/main/java/com/ibizdrive/email/SmtpEmailService.java (exception handling internal)
-- (P3) backend/src/main/java/com/ibizdrive/auth/password/PasswordResetService.java (try/catch removal)
-- (P4) backend/src/test/java/com/ibizdrive/email/EmailAsyncIntegrationTest.java
-- (P5) docs/00-overview.md ADR #45 + docs/03 §2.7 + docs/progress.md
+## Closure summary
+- Tracks: `EmailService.send()` `@Async("emailExecutor")` fire-and-forget — anti-enumeration timing leak 완화.
+- ADR #45 신규 (ADR #42 한계 → 완화).
+- production: `EmailAsyncConfig` 신설 + `EmailService`/`SmtpEmailService` 갱신 + `PasswordResetService` try/catch 제거.
+- Tests: `EmailAsyncIntegrationTest` 2 케이스 신규(caller latency < 50ms vs stub 200ms sleep, thread name `email-async-`). `PasswordResetServiceTest` dead 케이스 1건 삭제. backend 전체 GREEN.
+- Docs synced: 00 §5 ADR #45, 03 §2.7, progress.md.
+- Dev-docs moved → `dev/completed/email-async/`.
+- ADR #42 `EmailDeliveryException` 클래스 자체 cleanup은 backlog(사용처 0).
