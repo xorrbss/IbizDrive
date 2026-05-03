@@ -5,6 +5,63 @@
 
 ---
 
+## 2026-05-03 — 🏁 m-admin-entry-rewrite 트랙 종료 (admin shell + invite endpoint, ADR #21 closure)
+
+### 범위
+
+폐기 PR #45(`m-admin-entry`, admin frontend skeleton + AdminGuard) + PR #51(`admin-invite-email`, `POST /api/admin/users`)을 현 master 기준으로 통합 재작성. ADR #21 잔여 closure(self-signup + first-user-ADMIN + 강제 변경 UX는 ADR #41/auth-must-change-pw로 이미 활성, 운영자 초대 endpoint + admin shell만 잔여).
+
+P0 부트스트랩 → P1 AdminGuard FE TDD (3 케이스) → P2 admin layout + AdminSideNav (deferred 8 항목 disabled 배지) → P3 `/admin` landing (가용 카드 2 + deferred 섹션) → P4 (explorer) UserMenu admin 링크 (ADMIN/MEMBER 분기) → P5 AdminUserService BE TDD (TempPasswordGenerator 16자 + AdminUserCreatedEvent + AdminAuditListener AFTER_COMMIT/REQUIRES_NEW + EmailService.send 호출) → P6 AdminUserController BE TDD (200/400/401/403/409 매트릭스 + 임시 PW 응답 부재 회귀 가드 jsonPath) → P7 frontend api/hook (`api.adminInviteUser` + `useAdminInviteUser`) → P8 `/admin/users` invite form (email/displayName/role select + 성공 안내 + 폼 리셋 + 409 인라인 에러 + PW 단어 부재 회귀 가드) → P9 closure (docs sync 7 파일 + progress + dev-docs archive + housekeeping + PR).
+
+### 회고
+
+- **commits**: 9개 + closure.
+  - `7535499 wip(m-admin-entry-rewrite): dev-docs bootstrap (plan/context/tasks)`
+  - `a747564 feat(m-admin-entry-rewrite): P1 AdminGuard (TDD)`
+  - `075d8fc feat(m-admin-entry-rewrite): P2 admin layout + AdminSideNav`
+  - `2e411af feat(m-admin-entry-rewrite): P3 /admin landing`
+  - `a1f65c0 feat(m-admin-entry-rewrite): P4 UserMenu admin 링크 (TDD)`
+  - `0e7b170 feat(m-admin-entry-rewrite): P5 AdminUserService + temp PW (TDD)`
+  - `540e98f feat(m-admin-entry-rewrite): P6 AdminUserController + 200/400/401/403/409 (TDD)`
+  - `ad0a37b feat(m-admin-entry-rewrite): P7 api/hook adminInviteUser (TDD)`
+  - `72eb1dc feat(m-admin-entry-rewrite): P8 /admin/users invite form (TDD)`
+  - + closure commit (docs sync 7 + progress + dev-docs archive)
+- **production 신설/수정**:
+  - backend 신설: `admin/AdminInviteUserRequest` (record + Bean Validation), `admin/AdminInviteUserResponse` (record — **tempPassword 필드 부재**, 회귀 가드 javadoc), `admin/AdminUserController` (`@PreAuthorize("hasRole('ADMIN')")` + `@AuthenticationPrincipal IbizDriveUserDetails`), `admin/AdminUserService` (`@Transactional` invite — email lower/trim + duplicate → `DuplicateEmailException` + BCrypt hash + User save + event publish + EmailService.send), `admin/TempPasswordGenerator` (16자 SecureRandom alnum+소량특수), `admin/AdminUserCreatedEvent` (record), `admin/AdminAuditListener` (`@TransactionalEventListener AFTER_COMMIT` + AuditService.record).
+  - backend 신규 테스트: `AdminUserServiceTest` (6+ 케이스), `AdminUserControllerTest` (7 케이스 — 200 with 회귀 jsonPath tempPassword.doesNotExist + 400 invalid email + 400 blank displayName + 400 null role + 401 unauth + 403 MEMBER + 409 duplicate).
+  - frontend 신설: `components/auth/AdminGuard` + 테스트 3 / `components/admin/AdminSideNav` / `app/admin/layout.tsx` (UPDATE — AuthGuard+AdminGuard 중첩 + 사이드 nav) / `app/admin/page.tsx` (landing) / `components/auth/UserMenu.tsx` (UPDATE — admin 링크 + 테스트) / `lib/api.ts` (UPDATE — adminInviteUser 메서드 + AdminInviteUserParams/AdminInvitedUser 타입) / `lib/api.adminInviteUser.test.ts` (4 케이스) / `hooks/useAdminInviteUser.ts` + `.test.tsx` (2 케이스) / `app/admin/users/page.tsx` + `.test.tsx` (4 케이스).
+- **docs sync**:
+  - `docs/00 §5`: ADR #21 본문 closure 메모 추가 (별도 ADR 신설 X — admin invite 활성화 + admin shell + audit emit + 임시 PW 비노출 4채널 + Prod SMTP는 v1.x).
+  - `docs/02 §7.12`: `POST /api/admin/users` 행 + request/response 블록(검증 + side-effects + 에러 envelope + audit emission cross-link).
+  - `docs/03 §2.7`: 운영자 초대 cross-link (활성화 완료 + 첫 로그인 force UX 진입 명시).
+  - `docs/03 §2.8`: 상태 헤더 flip ("v1.x reserve" → "활성화 완료") + 본문 endpoint 추가 + 임시 PW 비노출 4채널(응답/로그/audit/예외) 정책 명시 + 첫 로그인 흐름 + 에러 envelope + 프론트 진입점 명시.
+  - `docs/03 §2.10`: audit 표 +1 (`admin.user.created`).
+  - `docs/04 §1`: §1.1 "가드 분리 — UX 게이트 vs 보안 게이트" 절 신설 (AdminGuard 책임 + `@PreAuthorize` 진실 + AuthGuard 중첩 순서 + SecurityConfig permitAll 회귀 가드).
+  - `docs/04 §2`: 라우트 트리에 활성/v1.x deferred 명시 (활성: `/admin`, `/admin/audit/logs`, `/admin/users`).
+- **dev-docs**: `dev/active/m-admin-entry-rewrite/` (3파일) → closure 후 `dev/completed/`로 이동. `dev/active/auth-must-change-pw/` 잔존도 같은 시점에 `dev/completed/`로 housekeeping 이동(PR #48 closure 시 누락분).
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — 신규 14+ 케이스(Service 6 + Controller 7) GREEN, 회귀 0.
+  - frontend `pnpm typecheck && pnpm lint && pnpm vitest run` 풀세트 GREEN — 신규 케이스(P1 AdminGuard 3 + P4 UserMenu 분기 + P7 6 + P8 4) 합산.
+
+### 핵심 결정 (m-admin-entry-rewrite 트랙)
+
+1. **별도 ADR 신설 거부 — ADR #21 본문에 closure 기록**: 본 트랙은 ADR #21의 잔여 closure이므로 새로운 결정이 아님. ADR #41이 self-signup으로 supersede하면서 운영자 초대를 v1.x reserve로 보류했던 것을 m-admin-entry-rewrite로 활성화. 결정의 의미적 출처는 ADR #21 그대로 유지하고 본문에 closure 메모만 추가(별도 #46+ 발번 회피, KISS).
+2. **임시 PW 비노출 4채널 회귀 가드**: 응답 DTO record에 `tempPassword` 필드 자체 부재 (컴파일 강제) + 컨트롤러 테스트 `jsonPath("$.tempPassword").doesNotExist()` + audit_log payload null + 서비스 어디에도 PW 평문 INFO/DEBUG 로그 없음. AdminInviteUserResponse javadoc에 정책을 명시해 향후 변경 시 가드 활성화.
+3. **AdminAuditListener `AFTER_COMMIT` + `REQUIRES_NEW`**: user save가 rollback되었는데 audit만 남는 상황 회피. AuthAuditListener와 동일 패턴(ADR #24 §2 cross-cutting layer 분리). ApplicationEventPublisher.publish는 트랜잭션 동기화로 commit 후에만 listener 호출.
+4. **AdminGuard = UX 가드만, 보안은 백엔드 `@PreAuthorize`**: 프론트 가드 강도와 보안 강도를 혼동하지 않도록 docs/04 §1.1에 명시 + 회귀 가드(SecurityConfig permitAll 목록에 `/api/admin/**` 포함 금지). 두 가드 중첩 순서는 `<AuthGuard><AdminGuard>` (인증 → 역할).
+5. **사용자 목록 미구현, 초대 폼만**: ADR #21 closure 범위는 "초대 endpoint + 진입 shell"까지. 사용자 목록/검색/role 변경은 v1.x admin 트랙. mutation 후 cache invalidate 없음(invalidate 대상 query 자체 부재).
+6. **Prod SMTP 도입은 v1.x**: 본 트랙은 ConsoleEmailService(`@Profile("!prod")`) stdout으로 dev/test 검증만 활성. SmtpEmailService(`@Profile("prod")`)는 a1.5 트랙에서 인터페이스만 도입된 상태 — 이메일 템플릿/암호화 채널/비동기 큐는 v1.x 인프라 트랙에서 별도 결정.
+7. **audit emit coverage 31 → 32**: `ADMIN_USER_CREATED("admin.user.created")` enum이 a1.5 closure 시점에 정의되어 있었으나 사용처 0이었음. 본 트랙으로 emit 활성. 42 enum 중 32 emit (76%).
+
+### 다음 세션 컨텍스트
+
+- **사용자 목록/검색/role 변경** — `/admin/users` 페이지에 list view 추가 (v1.x admin 트랙).
+- **이메일 비동기 큐** — `EmailService.send`를 `@Async` + `TaskExecutor`로 fire-and-forget화 (ADR #45 적용 인프라 도입 시점).
+- **Prod SMTP 활성화** — SmtpEmailService 본문 구현 + 이메일 템플릿(HTML/i18n) + 비동기 큐(v1.x 인프라 트랙).
+- **role 변경 시 useMe 즉시 invalidate** — 백엔드에서 role이 바뀐 직후 frontend stale 회피. v1.x admin user mgmt에서 invalidate 추가.
+
+---
+
 ## 2026-05-03 — 🏁 auth-forgot-rate-limit 트랙 종료 (forgot 분당 1회 rate-limit, ADR #44)
 
 ### 범위
