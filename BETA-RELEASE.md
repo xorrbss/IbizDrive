@@ -1,7 +1,7 @@
 # IbizDrive — Beta Release Checklist (사내 베타)
 
-Last Updated: 2026-05-02
-Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41)
+Last Updated: 2026-05-05
+Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41) + `auth-must-change-pw` 트랙 closure (ADR #21 §2.7) + `auth-forgot-rate-limit` 트랙 closure (ADR #44) + `m-admin-entry-rewrite` 트랙 closure (admin shell + `POST /api/admin/users`, ADR #21) + `auth-password-policy` 트랙 closure (ADR #19 본문 회복) + `email-async` 트랙 closure (`@Async EmailService`, ADR #45)
 
 > **본 문서의 목적**: 사내 베타 GO/NO-GO 결정에 필요한 단일 페이지 체크리스트.
 > docs/03 §1.3 STRIDE matrix + docs/04 §13 cron + 인프라 게이트를 한 곳으로 모음.
@@ -16,8 +16,8 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 
 | 항목 | 상태 | 검증 |
 |---|---|---|
-| backend test GREEN | ✓ | `cd backend && ./gradlew test` — BUILD SUCCESSFUL (auth-pages signup TDD +12 tests 포함) |
-| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 647/647 (auth-pages api/hooks/pages는 thin wrappers — typecheck/lint/build로 대체 검증) |
+| backend test GREEN | ✓ | `cd backend && ./gradlew test` — BUILD SUCCESSFUL (auth-pages/forgot-rate-limit/must-change-pw/admin-invite/password-policy/email-async 누적 TDD 케이스 포함) |
+| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 738/738 (auth-password-policy closure 시점 풀세트, 93 files) |
 | frontend typecheck/lint/build | ✓ | `pnpm typecheck && pnpm lint && pnpm build` 모두 exit 0 |
 | 코드 위반 (CLAUDE.md §3 11개 원칙) | ✓ FAIL 0 | `findings/principle-conformance.md` |
 | STRIDE 매트릭스 evidence | ✓ 28/28 매핑 | `findings/stride-gap-analysis.md` |
@@ -87,6 +87,10 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | forgot rate-limit email + IP 분당 1회 (`ForgotPasswordRateLimiter`) | ✓ ADR #44 |
 | 셀프 가입 (`POST /api/auth/signup`) + first-user-ADMIN | ✓ ADR #41 (auth-pages) — BETA 첫 가입자 부재 차단 해제 |
 | `/login` · `/signup` 페이지 + `(explorer)` 401 가드 | ✓ ADR #41 — useMe → `/login?next=...` replace |
+| 비밀번호 정책 (12자 + 영·숫 + 공백 금지, max 128) | ✓ ADR #19 본문 회복 (auth-password-policy) — `@ValidPassword` + frontend `lib/password.ts` mirror, signup/reset/change 3 endpoint 통합 |
+| 강제 비밀번호 변경 UX (`mustChangePassword` flag) | ✓ ADR #21 §2.7 (auth-must-change-pw) — backend `clearMustChangePassword()` + frontend `AuthGuard`/`/account/password?force=1` redirect |
+| 운영자 초대 endpoint (`POST /api/admin/users`) | ✓ ADR #21 closure (m-admin-entry-rewrite) — `@PreAuthorize("hasRole('ADMIN')")` + `TempPasswordGenerator` + `ADMIN_USER_CREATED` audit |
+| 이메일 비동기 발송 (`@Async("emailExecutor")`) | ✓ ADR #45 (email-async) — anti-enumeration timing leak 완화 (caller latency < 50ms 통합 테스트 가드) |
 | MFA | ✗ v1.x deferred (ADR #18) |
 
 ## 6. 감사 / 권한
@@ -94,7 +98,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | 항목 | 상태 |
 |---|---|
 | audit_log append-only (DB-level REVOKE) | ✓ V4 + `AuditLogAppendOnlyTest` |
-| audit emit coverage | 42 enum 중 29 emit (69%) — `USER_REGISTERED` 신규 emit (auth-pages, ADR #41) |
+| audit emit coverage | 42 enum 중 32 emit (76%) — `USER_REGISTERED` (auth-pages) + `USER_PASSWORD_FORGOT_REQUESTED` / `USER_PASSWORD_RESET` (a1.5-email-infra) + `ADMIN_USER_CREATED` (m-admin-entry-rewrite) 신규 emit |
 | `@PreAuthorize` 미보호 mutation | 0 (mvp-qa-security P2.3 검증) |
 | 권한 evaluator (`IbizDrivePermissionEvaluator`) | ✓ A4 + A11/A16 closure |
 | audit query — file 단위 활동 조회 | ✓ M-RP.4 (`?targetType=file&targetId=`) — RP-2 정책: 파일 READ 보유 시 actor 제한 우회 (ADR #40) |
@@ -106,7 +110,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - MFA / refresh rotation / SCIM — ADR #18
 - audit_level / 파티션 / `FILE_VIEWED` emit — ADR #9
 - Legal Hold (전체 §6.3 / §10) — docs/00 §4.3 v2.x
-- admin frontend (사용자/부서/권한/스토리지/정책/시스템 페이지) — audit logs UI(M12)만 활성, 나머지 v1.x
+- admin frontend (사용자/부서/권한/스토리지/정책/시스템 페이지) — admin shell + `/admin/users` 초대 폼 + audit logs UI(M12) 활성 (m-admin-entry-rewrite). 사용자 목록/검색/role 변경은 v1.x admin user mgmt 트랙
 
 ## 8. 모니터링 (사내 베타 최소)
 
