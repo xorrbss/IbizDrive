@@ -39,6 +39,103 @@
 
 ---
 
+## 2026-05-04 — 🏁 auth-password-policy 트랙 종료 (ADR #19 본문 회복, signup/reset/change 통합)
+
+### 범위
+
+ADR #41(auth-pages)이 self-signup MVP 진입 마찰 회피 명목으로 임시 완화한 password min=8을 ADR #19 본문(min 12 + 영문+숫자 + 공백 금지)으로 회복. 백엔드 3 endpoint(signup/reset/change) DTO + 프론트 3 페이지 일괄 정렬, 공통 validator 추출, FE/BE identical logic(핵심 원칙 11) 보장.
+
+P1 backend 공통 validator (TDD: `PasswordPolicyValidator` + `@ValidPassword` + 22 unit tests + `AuthExceptionHandler.ruleOf` 분기로 ValidPassword violation을 rule code 노출) → P2 backend 3 DTO 적용 + integration param tests (5규칙 × 3 endpoint) + `TempPasswordGenerator` 알고리즘 강화(영문/숫자 강제 주입 + Fisher-Yates shuffle) + 200 sample 회귀 가드 → P3 frontend `lib/password.ts` mirror + 25 unit tests → P4 3 페이지(signup/reset-password/account/password) 사전검증 교체 + rule별 한국어 메시지 + 페이지 레벨 테스트 + useSignup jsdoc 갱신 → P5 docs sync(ADR #19/#41 closure 메모 + §2.7 closure 헤더 + progress entry) + dev-docs archive.
+
+### 회고
+
+- **production 신설/수정**:
+  - backend 신설: `auth/validation/ValidPassword` (Bean Validation annotation, validatedBy = PasswordPolicyValidator), `auth/validation/PasswordPolicyValidator` (5규칙 우선순위, ASCII letter/digit + Unicode whitespace+spaceChar로 frontend `\s` NBSP 정렬).
+  - backend 수정: `auth/dto/SignupRequest` / `auth/password/dto/ResetPasswordRequest` / `auth/password/dto/ChangePasswordRequest` — `@Size(min=8, max=128)` → `@ValidPassword`. `common/error/AuthExceptionHandler.ruleOf(FieldError)` — ValidPassword violation일 때 `defaultMessage`(rule code 주입)를 우선, 그 외 annotation은 기존 `code` 사용. `admin/TempPasswordGenerator` — 영문 1자 + 숫자 1자 강제 주입 + Fisher-Yates shuffle로 ADR #19 항상 통과 보장.
+  - backend 신규 테스트: `auth/validation/PasswordPolicyValidatorTest` (22 케이스 — 5규칙 × 경계값 + 우선순위), `common/error/AuthExceptionHandlerTest` (4 케이스 — ruleOf 분기), `admin/TempPasswordGeneratorTest` (200 sample × 4 회귀 가드 + 길이 RepeatedTest). `AuthControllerSignupTest` / `PasswordControllerResetTest` / `PasswordControllerChangeTest` — `@ParameterizedTest @CsvSource`로 5규칙 거부 매트릭스 + `details.rule` jsonPath 검증.
+  - frontend 신설: `lib/password.ts` (`PasswordRule` type + `validatePassword` + `getPasswordRuleMessage` 한국어), `lib/password.test.ts` (25 케이스 — backend 매트릭스 미러).
+  - frontend 수정: `app/(auth)/signup/page.tsx` / `app/(auth)/reset-password/page.tsx` / `app/(explorer)/account/password/page.tsx` — `password.length < 8` 분기를 `validatePassword` + rule 메시지로 교체, label/minLength `8` → `12자 이상, 영문·숫자 포함`. `hooks/useSignup.ts` jsdoc — `<8자` → ADR #19 5규칙. `app/(auth)/signup/page.test.tsx` 신설 (6 케이스), `app/(auth)/reset-password/page.test.tsx` 신설 (6 케이스), `app/(explorer)/account/password/page.test.tsx` 추가 4 케이스 + 라벨 정규식 정정.
+- **docs sync**:
+  - `docs/00 §5` ADR #19: closure 메모 추가 (backend validator + frontend mirror + 3 endpoint/페이지 적용 + TempPasswordGenerator 회귀 가드 + 핵심 원칙 11 정렬).
+  - `docs/00 §5` ADR #41: password Validation을 `@NotBlank @ValidPassword`로 정정 + 인라인 closure 메모.
+  - `docs/03 §2.7`: closure 블록 헤더 추가 (단일 진실의 출처 명시 + 구현 매핑).
+  - `docs/03 §2.8 self-signup`: password Validation을 `@NotBlank @ValidPassword`로 정정 + 5규칙 cross-link.
+- **dev-docs**: `dev/active/auth-password-policy/` (3파일) → closure 후 `dev/completed/auth-password-policy/`로 이동.
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — 전체 sweep GREEN, 회귀 0.
+  - frontend `npx tsc --noEmit && npx next lint && npx vitest run` — 738 tests pass, 93 files, lint/typecheck clean.
+
+### 핵심 결정 (auth-password-policy 트랙)
+
+1. **별도 ADR 신설 거부 — ADR #19 본문 closure + ADR #41 정정**: 본 트랙은 ADR #19로의 회귀이므로 새로운 결정이 아님. ADR #41이 임시 완화한 정책을 본문으로 되돌리는 reconciliation. KISS 원칙으로 신규 ADR 발번 회피, 양 ADR row에 closure 메모만 추가.
+2. **단일 violation 우선순위 보고**: 5규칙을 우선순위(whitespace > max_length > min_length > missing_alpha > missing_digit)로 정렬해 첫 위반만 노출. 다중 violation 동시 표시는 UX 노이즈로 판단 — backend `PasswordPolicyValidator`는 일찍 return + frontend `validatePassword`도 동일 short-circuit. backend는 `disableDefaultConstraintViolation()` + `buildConstraintViolationWithTemplate(rule).addConstraintViolation()`로 rule code를 `defaultMessage`에 주입, `AuthExceptionHandler.ruleOf`가 `ValidPassword` annotation 분기에서 이 message를 rule로 surfacing(다른 annotation 회귀 보호 위해 `code.equals("ValidPassword")` 가드).
+3. **FE/BE 동일 ASCII letter/digit 채택**: backend `Character.isLetter`(Unicode 한글/한자 포함)와 frontend `[A-Za-z]`(ASCII) drift 발견 → ADR #19 "영문자" 정의를 ASCII로 통일하고 backend를 frontend에 정렬(핵심 원칙 11). Whitespace는 반대로 frontend `\s`가 NBSP 등 Unicode를 포함하므로 backend에 `Character.isSpaceChar` 추가하여 정렬.
+4. **`TempPasswordGenerator` 알고리즘 강화**: 기존 random alphabet 기반 16자는 통계적으로 ~10% 확률로 missing_alpha/missing_digit 위반 가능. 영문 1자 + 숫자 1자 강제 주입 후 Fisher-Yates shuffle로 위치 노출 회피 + 항상 통과 보장. 200 sample 단위 테스트로 회귀 가드.
+
+### 다음 세션 컨텍스트
+
+- ADR #19/#41 reconciliation 종료. 잔여 password 정책 항목(zxcvbn/HIBP 사전 공격 방지)은 ADR #19 본문대로 v1.x reserve.
+- 다음 트랙 후보: A1.5 잔여(EmailService prod SMTP 통합) 또는 마일스톤 1 frontend 핵심 (folderId 라우팅 + FolderTree).
+
+---
+
+## 2026-05-03 — 🏁 m-admin-entry-rewrite 트랙 종료 (admin shell + invite endpoint, ADR #21 closure)
+
+### 범위
+
+폐기 PR #45(`m-admin-entry`, admin frontend skeleton + AdminGuard) + PR #51(`admin-invite-email`, `POST /api/admin/users`)을 현 master 기준으로 통합 재작성. ADR #21 잔여 closure(self-signup + first-user-ADMIN + 강제 변경 UX는 ADR #41/auth-must-change-pw로 이미 활성, 운영자 초대 endpoint + admin shell만 잔여).
+
+P0 부트스트랩 → P1 AdminGuard FE TDD (3 케이스) → P2 admin layout + AdminSideNav (deferred 8 항목 disabled 배지) → P3 `/admin` landing (가용 카드 2 + deferred 섹션) → P4 (explorer) UserMenu admin 링크 (ADMIN/MEMBER 분기) → P5 AdminUserService BE TDD (TempPasswordGenerator 16자 + AdminUserCreatedEvent + AdminAuditListener AFTER_COMMIT/REQUIRES_NEW + EmailService.send 호출) → P6 AdminUserController BE TDD (200/400/401/403/409 매트릭스 + 임시 PW 응답 부재 회귀 가드 jsonPath) → P7 frontend api/hook (`api.adminInviteUser` + `useAdminInviteUser`) → P8 `/admin/users` invite form (email/displayName/role select + 성공 안내 + 폼 리셋 + 409 인라인 에러 + PW 단어 부재 회귀 가드) → P9 closure (docs sync 7 파일 + progress + dev-docs archive + housekeeping + PR).
+
+### 회고
+
+- **commits**: 9개 + closure.
+  - `7535499 wip(m-admin-entry-rewrite): dev-docs bootstrap (plan/context/tasks)`
+  - `a747564 feat(m-admin-entry-rewrite): P1 AdminGuard (TDD)`
+  - `075d8fc feat(m-admin-entry-rewrite): P2 admin layout + AdminSideNav`
+  - `2e411af feat(m-admin-entry-rewrite): P3 /admin landing`
+  - `a1f65c0 feat(m-admin-entry-rewrite): P4 UserMenu admin 링크 (TDD)`
+  - `0e7b170 feat(m-admin-entry-rewrite): P5 AdminUserService + temp PW (TDD)`
+  - `540e98f feat(m-admin-entry-rewrite): P6 AdminUserController + 200/400/401/403/409 (TDD)`
+  - `ad0a37b feat(m-admin-entry-rewrite): P7 api/hook adminInviteUser (TDD)`
+  - `72eb1dc feat(m-admin-entry-rewrite): P8 /admin/users invite form (TDD)`
+  - + closure commit (docs sync 7 + progress + dev-docs archive)
+- **production 신설/수정**:
+  - backend 신설: `admin/AdminInviteUserRequest` (record + Bean Validation), `admin/AdminInviteUserResponse` (record — **tempPassword 필드 부재**, 회귀 가드 javadoc), `admin/AdminUserController` (`@PreAuthorize("hasRole('ADMIN')")` + `@AuthenticationPrincipal IbizDriveUserDetails`), `admin/AdminUserService` (`@Transactional` invite — email lower/trim + duplicate → `DuplicateEmailException` + BCrypt hash + User save + event publish + EmailService.send), `admin/TempPasswordGenerator` (16자 SecureRandom alnum+소량특수), `admin/AdminUserCreatedEvent` (record), `admin/AdminAuditListener` (`@TransactionalEventListener AFTER_COMMIT` + AuditService.record).
+  - backend 신규 테스트: `AdminUserServiceTest` (6+ 케이스), `AdminUserControllerTest` (7 케이스 — 200 with 회귀 jsonPath tempPassword.doesNotExist + 400 invalid email + 400 blank displayName + 400 null role + 401 unauth + 403 MEMBER + 409 duplicate).
+  - frontend 신설: `components/auth/AdminGuard` + 테스트 3 / `components/admin/AdminSideNav` / `app/admin/layout.tsx` (UPDATE — AuthGuard+AdminGuard 중첩 + 사이드 nav) / `app/admin/page.tsx` (landing) / `components/auth/UserMenu.tsx` (UPDATE — admin 링크 + 테스트) / `lib/api.ts` (UPDATE — adminInviteUser 메서드 + AdminInviteUserParams/AdminInvitedUser 타입) / `lib/api.adminInviteUser.test.ts` (4 케이스) / `hooks/useAdminInviteUser.ts` + `.test.tsx` (2 케이스) / `app/admin/users/page.tsx` + `.test.tsx` (4 케이스).
+- **docs sync**:
+  - `docs/00 §5`: ADR #21 본문 closure 메모 추가 (별도 ADR 신설 X — admin invite 활성화 + admin shell + audit emit + 임시 PW 비노출 4채널 + Prod SMTP는 v1.x).
+  - `docs/02 §7.12`: `POST /api/admin/users` 행 + request/response 블록(검증 + side-effects + 에러 envelope + audit emission cross-link).
+  - `docs/03 §2.7`: 운영자 초대 cross-link (활성화 완료 + 첫 로그인 force UX 진입 명시).
+  - `docs/03 §2.8`: 상태 헤더 flip ("v1.x reserve" → "활성화 완료") + 본문 endpoint 추가 + 임시 PW 비노출 4채널(응답/로그/audit/예외) 정책 명시 + 첫 로그인 흐름 + 에러 envelope + 프론트 진입점 명시.
+  - `docs/03 §2.10`: audit 표 +1 (`admin.user.created`).
+  - `docs/04 §1`: §1.1 "가드 분리 — UX 게이트 vs 보안 게이트" 절 신설 (AdminGuard 책임 + `@PreAuthorize` 진실 + AuthGuard 중첩 순서 + SecurityConfig permitAll 회귀 가드).
+  - `docs/04 §2`: 라우트 트리에 활성/v1.x deferred 명시 (활성: `/admin`, `/admin/audit/logs`, `/admin/users`).
+- **dev-docs**: `dev/active/m-admin-entry-rewrite/` (3파일) → closure 후 `dev/completed/`로 이동. `dev/active/auth-must-change-pw/` 잔존도 같은 시점에 `dev/completed/`로 housekeeping 이동(PR #48 closure 시 누락분).
+- **test**:
+  - backend `./gradlew test` BUILD SUCCESSFUL — 신규 14+ 케이스(Service 6 + Controller 7) GREEN, 회귀 0.
+  - frontend `pnpm typecheck && pnpm lint && pnpm vitest run` 풀세트 GREEN — 신규 케이스(P1 AdminGuard 3 + P4 UserMenu 분기 + P7 6 + P8 4) 합산.
+
+### 핵심 결정 (m-admin-entry-rewrite 트랙)
+
+1. **별도 ADR 신설 거부 — ADR #21 본문에 closure 기록**: 본 트랙은 ADR #21의 잔여 closure이므로 새로운 결정이 아님. ADR #41이 self-signup으로 supersede하면서 운영자 초대를 v1.x reserve로 보류했던 것을 m-admin-entry-rewrite로 활성화. 결정의 의미적 출처는 ADR #21 그대로 유지하고 본문에 closure 메모만 추가(별도 #46+ 발번 회피, KISS).
+2. **임시 PW 비노출 4채널 회귀 가드**: 응답 DTO record에 `tempPassword` 필드 자체 부재 (컴파일 강제) + 컨트롤러 테스트 `jsonPath("$.tempPassword").doesNotExist()` + audit_log payload null + 서비스 어디에도 PW 평문 INFO/DEBUG 로그 없음. AdminInviteUserResponse javadoc에 정책을 명시해 향후 변경 시 가드 활성화.
+3. **AdminAuditListener `AFTER_COMMIT` + `REQUIRES_NEW`**: user save가 rollback되었는데 audit만 남는 상황 회피. AuthAuditListener와 동일 패턴(ADR #24 §2 cross-cutting layer 분리). ApplicationEventPublisher.publish는 트랜잭션 동기화로 commit 후에만 listener 호출.
+4. **AdminGuard = UX 가드만, 보안은 백엔드 `@PreAuthorize`**: 프론트 가드 강도와 보안 강도를 혼동하지 않도록 docs/04 §1.1에 명시 + 회귀 가드(SecurityConfig permitAll 목록에 `/api/admin/**` 포함 금지). 두 가드 중첩 순서는 `<AuthGuard><AdminGuard>` (인증 → 역할).
+5. **사용자 목록 미구현, 초대 폼만**: ADR #21 closure 범위는 "초대 endpoint + 진입 shell"까지. 사용자 목록/검색/role 변경은 v1.x admin 트랙. mutation 후 cache invalidate 없음(invalidate 대상 query 자체 부재).
+6. **Prod SMTP 도입은 v1.x**: 본 트랙은 ConsoleEmailService(`@Profile("!prod")`) stdout으로 dev/test 검증만 활성. SmtpEmailService(`@Profile("prod")`)는 a1.5 트랙에서 인터페이스만 도입된 상태 — 이메일 템플릿/암호화 채널/비동기 큐는 v1.x 인프라 트랙에서 별도 결정.
+7. **audit emit coverage 31 → 32**: `ADMIN_USER_CREATED("admin.user.created")` enum이 a1.5 closure 시점에 정의되어 있었으나 사용처 0이었음. 본 트랙으로 emit 활성. 42 enum 중 32 emit (76%).
+
+### 다음 세션 컨텍스트
+
+- **사용자 목록/검색/role 변경** — `/admin/users` 페이지에 list view 추가 (v1.x admin 트랙).
+- **이메일 비동기 큐** — `EmailService.send`를 `@Async` + `TaskExecutor`로 fire-and-forget화 (ADR #45 적용 인프라 도입 시점).
+- **Prod SMTP 활성화** — SmtpEmailService 본문 구현 + 이메일 템플릿(HTML/i18n) + 비동기 큐(v1.x 인프라 트랙).
+- **role 변경 시 useMe 즉시 invalidate** — 백엔드에서 role이 바뀐 직후 frontend stale 회피. v1.x admin user mgmt에서 invalidate 추가.
+
+---
+
 ## 2026-05-03 — 🏁 auth-forgot-rate-limit 트랙 종료 (forgot 분당 1회 rate-limit, ADR #44)
 
 ### 범위

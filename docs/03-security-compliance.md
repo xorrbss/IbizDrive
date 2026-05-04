@@ -244,6 +244,8 @@
 
 ### 2.7 비밀번호 정책·해싱 (ADR #19)
 
+> **Closure (auth-password-policy, 2026-05-04)** — ADR #41 §2.8(self-signup MVP) 임시 완화 min=8 → ADR #19 본문 회복. 본 §2.7 5규칙이 단일 진실의 출처. 구현: backend `auth.validation.PasswordPolicyValidator` + `@ValidPassword` (3 DTO 적용), `AuthExceptionHandler.ruleOf`가 ValidPassword violation을 rule code로 변환. Frontend `lib/password.ts` 미러 (`validatePassword` + `getPasswordRuleMessage`) — 핵심 원칙 11(FE/BE 동일 로직). 3 페이지(`/signup`·`/reset-password`·`/account/password`)가 사전검증 후 한국어 rule 메시지 노출. `TempPasswordGenerator`는 영문/숫자 강제 주입 + Fisher-Yates shuffle로 정책 회귀 가드(200회 sample 테스트).
+
 **해싱:**
 - `BCryptPasswordEncoder(strength=12)` — Spring Security 기본.
 - DB 저장 컬럼: `users.password_hash VARCHAR(100)` — `DelegatingPasswordEncoder` 프리픽스(`{bcrypt}` ~9자 + 60자) 및 향후 `{argon2id}` 마이그레이션 여유.
@@ -304,11 +306,11 @@
 - **프론트 — `usePasswordChange` invalidation**: `onSuccess`에서 `qk.authMe()` invalidate → AuthGuard가 fresh state(false)로 재평가 → bounce 없이 `/files` 통과.
 - **audit 변동 없음**: `USER_PASSWORD_CHANGED`/`USER_PASSWORD_RESET`이 이미 emit. 플래그 변화에 별도 이벤트 추가 안 함.
 
-운영자 초대(`POST /api/admin/users` invite-by-email)는 ADR #21 잔여 항목 중 admin 트랙(v1.x)으로 분리.
+운영자 초대(`POST /api/admin/users` invite-by-email)는 m-admin-entry-rewrite 트랙(2026-05-03)에서 활성화 완료 — §2.8 참조. 초대 사용자는 `must_change_password=true`로 생성되며 첫 로그인 시 본 절의 force UI로 진입한다.
 
-### 2.8 사용자 등록 (ADR #21 → ADR #41 supersede, 2026-05-02)
+### 2.8 사용자 등록 (ADR #21 → ADR #41 supersede, 2026-05-02 / m-admin-entry-rewrite closure 2026-05-03)
 
-> **Status**: ADR #21(관리자 초대 only)은 ADR #41 auth-pages 트랙에서 supersede. MVP는 self-signup + first-user-ADMIN 부트스트랩. 운영자 초대(`POST /api/admin/users`)는 v1.x reserve.
+> **Status**: ADR #21(관리자 초대 only)은 ADR #41 auth-pages 트랙에서 supersede. MVP는 self-signup + first-user-ADMIN 부트스트랩 + **운영자 초대(`POST /api/admin/users`) 활성화 완료(2026-05-03, m-admin-entry-rewrite 트랙, ADR #21 잔여 closure)**. 두 경로(self-signup / admin invite) 모두 운영 가능.
 
 - **MVP = 셀프 가입**. `POST /api/auth/signup` 활성화 (request: `{email, password, displayName}`, response: `LoginResponse` shape + auto-session).
 - **first-user-ADMIN 부트스트랩**: `userRepository.count() == 0`이면 새 사용자 ROLE=ADMIN, 그 외 MEMBER. 빈 DB 첫 호출만 ADMIN 부여(초기 admin 시드 의존성 제거). 동시 두 요청 race는 MVP single-instance + tx 직렬화로 사실상 차단(엄밀 보장은 advisory lock — v1.x).
@@ -316,13 +318,29 @@
 - **자동 세션**: signup 성공 = `AuthService.establishSession`(login 공통 helper, `changeSessionId()` 호출) → `LoginResponse` 반환. 가입 후 즉시 `/files`.
 - **Validation (Bean Validation)**:
   - `email`: `@NotBlank @Email @Size(max=254)` — trim+lowercase 후 저장 (`users.email CITEXT` UNIQUE 의존).
-  - `password`: `@NotBlank @Size(min=8, max=128)` — §2.7 ADR #19(min 12) 정정 (가입 진입 마찰 최소화, v1.x 정책 강화 트랙).
+  - `password`: `@NotBlank @ValidPassword` — §2.7 ADR #19 본문 회복 (auth-password-policy 트랙, 2026-05-04 closure). 5규칙(`whitespace`/`max_length`/`min_length`/`missing_alpha`/`missing_digit`) 우선순위로 거부, rule code는 fieldErrors[].rule로 노출.
   - `displayName`: `@NotBlank @Size(min=1, max=100)` — trim 후 저장.
 - **에러 envelope (auth flat)**:
   - `409 CONFLICT/DUPLICATE_EMAIL` — 이미 가입된 이메일.
   - `400 VALIDATION_ERROR` — Bean Validation 실패 (standard envelope).
 - **Audit emission**: `USER_REGISTERED("user.registered")` (§4.1 추가). `UserRegisteredEvent` record + `AuthAuditListener.onRegistered`가 `@EventListener` REQUIRES_NEW로 audit_log 기록 — 로그인 `AuthenticationSuccessEvent` 패턴 일관.
-- **운영자 user 초대 (`POST /api/admin/users`) — v1.x reserve**: 사용자에게 임시 PW를 별도 채널로 전달, `users.must_change_password = true`. 이메일 초대(`A1.5`)는 이메일 인프라 도입 시점에 활성화. 강제 변경 UX 자체는 §2.7 "강제 비밀번호 변경 UX" 절(auth-must-change-pw, 2026-05-03)에서 활성화 완료 — admin invite endpoint만 도입하면 즉시 동작.
+- **운영자 user 초대 (`POST /api/admin/users`) — 활성화 완료 (m-admin-entry-rewrite, 2026-05-03)**:
+  - **Endpoint**: `POST /api/admin/users` — `@PreAuthorize("hasRole('ADMIN')")`. Request `{email, displayName, role}` (Bean Validation: `@Email @NotBlank` email, `@NotBlank @Size(max=100)` displayName, `@NotNull` role). 자세한 wire 계약은 docs/02 §7.12.
+  - **임시 PW 생성**: `TempPasswordGenerator` (16자, `SecureRandom`, alphabet `[A-Za-z0-9]` + 소량 특수문자) → `BCryptPasswordEncoder(strength=12)` hash로 `users.password_hash` 저장 + `must_change_password=true`. raw 임시 PW는 메모리에만 일시 보유 후 EmailService로 전달.
+  - **임시 PW 비노출 정책 (4채널 전수 차단)**:
+    1. **응답 DTO**: `AdminInviteUserResponse`는 `{id, email, displayName, role, mustChangePassword}`만. tempPassword/password/passwordHash 필드 부재 (회귀 가드 — 컨트롤러 테스트 `jsonPath("$.tempPassword").doesNotExist()`).
+    2. **로그**: 서비스/컨트롤러/이벤트 리스너에서 raw 임시 PW를 INFO/DEBUG 로그에 기록하지 않는다 (메일 본문 전달 시점에만 노출).
+    3. **Audit**: `audit_log.payload`에 임시 PW 평문/해시 모두 기록하지 않는다 (`admin.user.created` 이벤트는 actor/target/email만).
+    4. **Exception 메시지**: `DuplicateEmailException` 등 어떤 예외에도 임시 PW를 포함하지 않는다.
+  - **이메일 발송**: `EmailService.sendInviteEmail(email, rawTempPassword)` — `ConsoleEmailService(@Profile("!prod"))` stdout, `SmtpEmailService(@Profile("prod"))` SMTP 위임. Prod SMTP 도입은 v1.x 인프라 트랙.
+  - **Audit emission**: `ADMIN_USER_CREATED("admin.user.created")` (§2.10 + §4.1). `AdminUserCreatedEvent` record + `AdminAuditListener.onCreated`가 `@TransactionalEventListener(phase = AFTER_COMMIT)` + `Propagation.REQUIRES_NEW`로 audit_log 기록 — 같은 트랜잭션 commit 보장 후 별도 tx에서 emit (login `AuthAuditListener` 패턴 일관).
+  - **첫 로그인 흐름**: 초대된 사용자가 임시 PW로 로그인 → `me.user.mustChangePassword=true` → §2.7 force UX가 `/account/password?force=1`로 redirect → PW 변경 성공 시 `clearMustChangePassword()` + 모든 다른 세션 invalidate → `/files` 진입.
+  - **에러 envelope (auth flat)**:
+    - `409 CONFLICT/DUPLICATE_EMAIL` — 이미 가입된 이메일.
+    - `400 VALIDATION_ERROR` — Bean Validation 실패 (standard envelope).
+    - `401` — 미인증 (Spring Security entry point).
+    - `403` — ADMIN role 아님 (`@PreAuthorize` 차단, 본문 없음).
+  - **프론트 진입점 (m-admin-entry-rewrite)**: `/admin/users` 페이지 (`AuthGuard` + `AdminGuard` 중첩) — 폼 제출 시 `useAdminInviteUser` mutation 호출. 성공 시 "초대 메일을 발송했습니다" 안내 (PW 자체는 어떤 형태로도 노출하지 않음). 409 → 인라인 "이미 등록된 이메일입니다." 메시지.
 
 `users` 테이블 인증 관련 컬럼 (docs/02 §2.1과 동기):
 - `email VARCHAR UNIQUE NOT NULL` (lowercase 정규화)
@@ -351,6 +369,7 @@
 | `user.password.reset` | 토큰 + 새 PW로 재설정 성공 (A1.5 P4, ADR #43) | — |
 | `user.locked` | 5회 실패 후 락 진입 | — |
 | `user.unlocked` | 관리자 수동 해제 (A4) | `admin_action` |
+| `admin.user.created` | 운영자 초대로 신규 user 생성 (m-admin-entry-rewrite, 2026-05-03) — actor=ADMIN, target=신규 user, AFTER_COMMIT REQUIRES_NEW emit | — |
 
 > §4.1 `AuditEventType` enum에 위 이벤트 동기화 필요 (현재 `user.password.changed` / `user.mfa.enabled`만 존재). MFA는 v1.x로 연기되어 `user.mfa.enabled`는 enum 유지(미사용)하거나 v1.x 도입 시점에 추가 가능 — TBD: A1 구현 진입 시 §4.1 정리.
 

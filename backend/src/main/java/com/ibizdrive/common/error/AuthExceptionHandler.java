@@ -7,6 +7,7 @@ import com.ibizdrive.auth.password.InvalidPasswordResetTokenException;
 import com.ibizdrive.auth.password.RateLimitExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -72,9 +73,27 @@ public class AuthExceptionHandler {
     public ResponseEntity<ErrorResponse> validation(MethodArgumentNotValidException ex) {
         var first = ex.getBindingResult().getFieldErrors().stream().findFirst();
         Map<String, String> details = first
-            .map(fe -> Map.of("field", fe.getField(), "rule", String.valueOf(fe.getCode())))
+            .map(fe -> Map.of("field", fe.getField(), "rule", ruleOf(fe)))
             .orElse(Map.of());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ErrorResponse.validationError(details));
+    }
+
+    /**
+     * FieldError → rule code 매핑.
+     *
+     * <p>{@link com.ibizdrive.auth.validation.ValidPassword}는 {@code buildConstraintViolationWithTemplate(rule)} 패턴으로
+     * defaultMessage에 ADR #19 rule code(예: {@code "min_length"})를 담는다. 그 외 표준 어노테이션
+     * ({@code @Size}, {@code @NotBlank}, {@code @Email} 등)은 defaultMessage가 사람이 읽는 문구이므로
+     * 어노테이션 simple name({@code fe.getCode()})을 rule로 노출한다.
+     */
+    static String ruleOf(FieldError fe) {
+        if ("ValidPassword".equals(fe.getCode())) {
+            String defaultMessage = fe.getDefaultMessage();
+            if (defaultMessage != null) {
+                return defaultMessage;
+            }
+        }
+        return String.valueOf(fe.getCode());
     }
 }

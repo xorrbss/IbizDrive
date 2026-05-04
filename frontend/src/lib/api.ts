@@ -1079,6 +1079,64 @@ export const api = {
     }
     return (await res.json()) as { message: string }
   },
+
+  // ── Admin invite (m-admin-entry-rewrite, ADR #21) ──────────────────────
+
+  /**
+   * `POST /api/admin/users` (m-admin-entry-rewrite P6/P7, docs/02 §7.4).
+   *
+   * <p>관리자가 신규 user를 초대. backend는 임시 PW 16자 자동 생성 + email 발송 + audit emit
+   * (admin.user.created). 응답에는 임시 PW가 포함되지 않는다 (docs/03 §2.8).
+   *
+   * <p>에러:
+   * <ul>
+   *   <li>400 VALIDATION_ERROR — email 형식/displayName blank/role null</li>
+   *   <li>401 — 미인증</li>
+   *   <li>403 — 인증되었으나 ROLE_ADMIN 부재 ({@code @PreAuthorize})</li>
+   *   <li>409 CONFLICT/DUPLICATE_EMAIL — 동일 email 활성 사용자 존재</li>
+   * </ul>
+   * 호출부({@code useAdminInviteUser})가 status/code로 분기.
+   */
+  async adminInviteUser(params: AdminInviteUserParams): Promise<AdminInvitedUser> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch('/api/admin/users', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(params),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminInviteUser failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminInvitedUser
+  },
+}
+
+/**
+ * Admin invite 입력. backend `AdminInviteUserRequest` (docs/02 §7.4) 1:1 mirror.
+ *
+ * <p>role은 'MEMBER' | 'AUDITOR' | 'ADMIN' — backend Role enum 동형. 임시 PW는 backend가 생성.
+ */
+export interface AdminInviteUserParams {
+  email: string
+  displayName: string
+  role: 'MEMBER' | 'AUDITOR' | 'ADMIN'
+}
+
+/**
+ * Admin invite 응답. backend `AdminInviteUserResponse` (docs/02 §7.4) 1:1 mirror.
+ * <b>tempPassword 필드 부재</b> — 임시 PW는 invite 이메일 본문으로만 전달 (docs/03 §2.8).
+ */
+export interface AdminInvitedUser {
+  id: string
+  email: string
+  displayName: string
+  role: 'MEMBER' | 'AUDITOR' | 'ADMIN'
+  mustChangePassword: boolean
 }
 
 /**

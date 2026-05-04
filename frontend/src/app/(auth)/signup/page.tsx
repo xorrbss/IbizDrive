@@ -4,9 +4,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useSignup } from '@/hooks/useSignup'
 import { useMe } from '@/hooks/useMe'
+import { getPasswordRuleMessage, validatePassword } from '@/lib/password'
 
 /**
- * /signup (auth-pages, ADR #41 — supersedes ADR #18).
+ * /signup (auth-pages, ADR #41 — supersedes ADR #18; password policy reverted to ADR #19 by auth-password-policy track 2026-05-04).
  *
  * <p>backend가 응답에 자동 세션을 발급 → 성공 시 즉시 /files. 첫 사용자는 backend에서
  * ADMIN으로 결정되며 UI에는 별도 안내 없음 (운영 단계 결정은 사용자에게 노출하지 않음).
@@ -14,7 +15,7 @@ import { useMe } from '@/hooks/useMe'
  * <p>에러 분기:
  * <ul>
  *   <li>409 DUPLICATE_EMAIL — 이미 가입된 이메일</li>
- *   <li>400 VALIDATION_ERROR — password &lt;8자, 이메일 형식, blank displayName</li>
+ *   <li>400 VALIDATION_ERROR — password ADR #19 규칙(12자 이상, 영문+숫자 1자 이상, 공백 금지) 위반, 이메일 형식, blank displayName</li>
  *   <li>기타 — 일반 메시지</li>
  * </ul>
  */
@@ -35,9 +36,10 @@ export default function SignupPage() {
   const onSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setErrorMsg(null)
-    // 클라 사전검증 — 백엔드가 진실의 출처지만 UX상 즉시 피드백.
-    if (password.length < 8) {
-      setErrorMsg('비밀번호는 최소 8자 이상이어야 합니다.')
+    // 클라 사전검증 — 백엔드가 진실의 출처지만 UX상 즉시 피드백 (ADR #19 5규칙).
+    const pwCheck = validatePassword(password)
+    if (!pwCheck.ok) {
+      setErrorMsg(getPasswordRuleMessage(pwCheck.rule))
       return
     }
     try {
@@ -91,12 +93,12 @@ export default function SignupPage() {
       </label>
 
       <label className="flex flex-col gap-1 text-sm">
-        <span>비밀번호 (8자 이상)</span>
+        <span>비밀번호 (12자 이상, 영문·숫자 포함)</span>
         <input
           type="password"
           autoComplete="new-password"
           required
-          minLength={8}
+          minLength={12}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           className="px-3 py-2 rounded border border-border bg-bg"
@@ -128,6 +130,6 @@ export default function SignupPage() {
 function signupErrorMessage(e: unknown): string {
   const err = e as { status?: number; reason?: string; code?: string }
   if (err.status === 409) return '이미 가입된 이메일입니다.'
-  if (err.status === 400) return '입력값을 확인해주세요. (이메일 형식, 비밀번호 8자 이상)'
+  if (err.status === 400) return '입력값을 확인해주세요. (이메일 형식, 비밀번호 12자 이상·영문+숫자 포함·공백 금지)'
   return '회원가입에 실패했습니다. 잠시 후 다시 시도해주세요.'
 }

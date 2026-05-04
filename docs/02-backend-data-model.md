@@ -1521,9 +1521,43 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/users` | `hasRole('ADMIN')` | — | — | `WHERE disabled_at IS NULL` (옵션) | 403 |
+| POST | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (user 생성 + 임시 PW BCrypt + AFTER_COMMIT audit·email) | email→lowercase trim | — | 400 VALIDATION_ERROR, 401, 403, 409 CONFLICT/DUPLICATE_EMAIL |
 | PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` | REQUIRED | — | — | 403, 404, 400 |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
+
+```text
+POST /api/admin/users                                (m-admin-entry-rewrite, ADR #21 closure, 2026-05-03)
+  Headers:  X-CSRF-Token: <token>            (필수)
+            Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Request:  { email: string, displayName: string, role: 'MEMBER' | 'AUDITOR' | 'ADMIN' }
+  Validation:
+    - email: @NotBlank @Email (lowercase trim 후 저장)
+    - displayName: @NotBlank @Size(max=100)
+    - role: @NotNull (Role enum)
+  Response: 200 {
+              id: string (UUID),
+              email: string,
+              displayName: string,
+              role: 'MEMBER' | 'AUDITOR' | 'ADMIN',
+              mustChangePassword: true
+            }
+            Note: **tempPassword/password/passwordHash 필드는 응답에 포함되지 않는다** (docs/03 §2.8).
+                  임시 PW는 EmailService를 통해 사용자 메일함으로만 전달.
+  Side-effects:
+            - users INSERT (mustChangePassword=true, password_hash=bcrypt(생성된 임시 PW))
+            - AFTER_COMMIT 이벤트: AdminUserCreatedEvent → AdminAuditListener (REQUIRES_NEW)로
+              audit_log 기록 (`admin.user.created`, actor_id=인증된 ADMIN.id, target=새 user.id)
+            - EmailService.sendInviteEmail(email, rawTempPassword) — dev=stdout, prod=SMTP
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'email'|'displayName'|'role', rule: '...' } }
+    401 UNAUTHORIZED      (미인증)
+    403                   (ADMIN role 아님 — `@PreAuthorize` 차단, 본문 없음)
+    409 CONFLICT          { code: 'CONFLICT', reason: 'DUPLICATE_EMAIL' }
+                          (동일 email 활성 사용자 존재 — auth flat envelope, AuthExceptionHandler 매핑)
+```
+
+**관련 audit 이벤트** (docs/03 §2.10): `admin.user.created`.
 
 ### 7.13 SSE 실시간 동기화 (ADR #14)
 
