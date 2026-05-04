@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-05 — 🏁 beta-release-sync 트랙 종료 (BETA-RELEASE.md drift 정렬, docs-only)
+
+### 범위
+
+`master` 5f143c6 기준으로 `BETA-RELEASE.md` last-updated(`2026-05-02` → `2026-05-05`) + Source 인용(5건 신규 closure) + §1 frontend 카운트(647 → 738) + §5 4행 추가(password policy / mustChangePassword / admin invite / email async) + §6 audit emit coverage(29/42 → 32/42) + §7 admin frontend 표현 정렬. 누락된 dev/process 스테일 파일 3건 housekeeping 삭제. 코드 0 변경.
+
+### 회고
+
+- **commits**: 2개(bootstrap + sync) + closure.
+  - `wip` dev-docs bootstrap (plan/context/tasks)
+  - `docs` BETA-RELEASE.md sync + dev/process housekeeping
+  - + closure commit (progress entry + dev-docs archive)
+- **production 신설/수정**: 0 (docs-only).
+- **docs sync**:
+  - `BETA-RELEASE.md`:
+    - header `Last Updated: 2026-05-05` + Source에 `auth-must-change-pw`/`auth-forgot-rate-limit`/`m-admin-entry-rewrite`/`auth-password-policy`/`email-async` 5건 인용.
+    - §1 frontend `647/647` → `738/738` (auth-password-policy closure 풀세트, 93 files).
+    - §5 신규 4행: 비밀번호 정책(ADR #19 본문 회복) / mustChangePassword UX(ADR #21 §2.7) / 운영자 초대 endpoint(ADR #21 closure) / 이메일 비동기(`@Async`, ADR #45).
+    - §6 audit emit `29 emit (69%)` → `32 emit (76%)` 정정 + 신규 emit 3종(`USER_PASSWORD_FORGOT_REQUESTED` / `USER_PASSWORD_RESET` / `ADMIN_USER_CREATED`) cross-link.
+    - §7 admin frontend 표현 정정 — admin shell + `/admin/users` 초대 폼 활성화 반영, 사용자 목록/role 변경만 v1.x.
+  - `docs/progress.md`: 본 entry.
+- **housekeeping**:
+  - `dev/process/{a1.5-email-infra,auth-forgot-rate-limit,email-async}.md` 3개 삭제 — 모두 `status: closed` + `working_files: []`로 dev 스킬 ⓪ 규칙대로 closure 시 삭제됐어야 하나 누락.
+  - `.claude/worktrees/{auth-password-policy,email-async,m-admin-entry}` 워크트리 정리 (PR 머지 후).
+- **dev-docs**: `dev/active/beta-release-sync/` (3파일) → closure 후 `dev/completed/beta-release-sync/`.
+- **test**: 코드 0 변경 → 로컬 회귀 검증 불필요. CI(frontend vitest + backend junit) GREEN을 PR 게이트로.
+
+### 핵심 결정 (beta-release-sync 트랙)
+
+1. **신규 ADR 발번 거부**: 본 트랙은 결정 0의 docs alignment. ADR #45(email-async)는 PR #53로 이미 master 진입.
+2. **last-updated = 본 트랙 closure 일자(2026-05-05)** — sync 행위 자체의 날짜로 기록. 인용된 closure 일자(2026-05-03/05-04)는 Source 라인에 보존.
+3. **stale dev/process housekeeping을 본 트랙에서 일괄 처리** — 별도 housekeeping 트랙 신설은 YAGNI. 향후 트랙은 closure 시 `dev/process/[task].md` 삭제 의무 재확인.
+
+### 다음 세션 컨텍스트
+
+- BETA-RELEASE.md §2 인프라 게이트(HTTPS / 시크릿 / managed Postgres / 백업 정책) + §8 모니터링 — 운영자 책임. 코드 측 변경 없이 staging/prod 인프라 셋업 시점에 채워짐.
+- 잔여 코드 트랙 후보: `audit-emit-coverage-closure` (32/42 → 더 높은 비율, 미사용 enum emit 활성). v1.x scope.
+- BETA GO/NO-GO 코드 게이트는 PASS 유지 — 인프라 sign-off 대기 상태.
+
+---
+
 ## 2026-05-03 — 🏁 email-async 트랙 종료 (`@Async` EmailService — anti-enumeration timing leak 완화, ADR #45)
 
 ### 범위
