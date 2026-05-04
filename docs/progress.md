@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-05 — 🏁 admin-user-mgmt 트랙 종료 (목록/role 변경/비활성 + audit emit +2)
+
+### 범위
+
+`/api/admin/users` GET (paginated list) + PATCH (role/active 변경) endpoint 신설. self-protection 강제 (actor==target self-demote/self-deactivate 차단). Frontend `/admin/users` 페이지 확장 — 초대 폼 보존 + 목록 테이블 + role select + 비활성 버튼 + 페이지네이션. audit emit +2 (`ADMIN_USER_DEACTIVATED`, `ADMIN_ROLE_CHANGED`).
+
+### 변경
+
+- **backend**:
+  - `User.deactivate()` / `.reactivate()` 추가.
+  - `UserRepository.findAllActivePageable(Pageable)` — `deletedAt IS NULL` + `createdAt DESC, id ASC` 정렬.
+  - `AdminUserService.list/changeRole/deactivate(...)` — self-protection은 service 단에 강제, 멱등 보장.
+  - `AdminUserController.@GetMapping/@PatchMapping("/{id}")` + `@PreAuthorize("hasRole('ADMIN')")`.
+  - 신규: `AdminUserSummaryResponse`, `AdminUserPatchRequest`, `AdminUserDeactivatedEvent`, `AdminRoleChangedEvent`, `AdminUserNotFoundException`, `AdminSelfProtectionException`, `AdminBadPatchException`.
+  - `AdminAuditListener.onAdminUserDeactivated/.onAdminRoleChanged` 추가 (AFTER_COMMIT, swallow on failure).
+  - `AdminExceptionHandler` 신설 — 404/403/400 envelope.
+- **frontend**:
+  - `api.adminListUsers/adminUpdateUser` + `AdminUserSummary/AdminUserPage/AdminUserPatchBody` 타입.
+  - `qk.adminUsers/adminUsersList` + `invalidations.afterAdminUserChanged`.
+  - `useAdminUsers/useAdminUpdateUser` 훅.
+  - `/admin/users` page — 초대 폼 + 목록 테이블 + 페이지네이션 분리(InviteSection/ListSection).
+- **docs**:
+  - `docs/02 §7.12` — GET/PATCH 표 행 정정 + concrete 스펙 블록 2개 추가 (요청/응답/Side-effects/Self-protection/Errors).
+  - `BETA-RELEASE.md §6` audit emit `32/42` → `35/42`(83%), `USER_PASSWORD_CHANGED` 누락 cross-link 보정 + 신규 2종 추가.
+  - `BETA-RELEASE.md §7` admin frontend 표현 — `/admin/users` 목록/role 변경/비활성 활성, 검색/재활성/displayName 편집/quota만 v1.x로 좁힘.
+
+### 검증
+
+- backend: `gradlew test --tests "com.ibizdrive.admin.*"` BUILD SUCCESSFUL (controller 17 + service 12 + listener 3 + supporting).
+- frontend: `pnpm exec vitest run src/lib/api.adminUsers.test.ts src/hooks/useAdminUsers.test.tsx src/hooks/useAdminUpdateUser.test.tsx` 12/12 GREEN, page 12/12 GREEN.
+- frontend 전체: `pnpm test` 96 files / 758 tests GREEN. typecheck, lint clean.
+
+### 회고
+
+- 가장 비싼 결정은 `ADMIN_ROLE_CHANGED` vs 기존 `PERMISSION_CHANGED`(file/folder grant 변경) 분리. 둘 다 `Role` 단어를 쓰지만 의미가 달라 enum도 doc도 분리 유지. 신규 service 경로(`AdminUserService.changeRole`)와 기존 dead-path(`PermissionService.changeRole` — controller 미노출)는 무관.
+- self-protection은 service 단에 두고 controller는 actorId 추출/전달만. 본인 마지막 ADMIN인지 여부와 무관하게 일관 차단(검증 단순화).
+- `isActive=true`(재활성)는 본 트랙 미지원이라 명시적 400으로 거부 — v1.x 반복 사용 endpoint와 의미를 분리.
+- 신규 ADR 발번 0 (ADR #21 admin shell + ADR #41 auth-pages 자연 확장).
+
+---
+
 ## 2026-05-05 — 🏁 beta-release-sync 트랙 종료 (BETA-RELEASE.md drift 정렬, docs-only)
 
 ### 범위

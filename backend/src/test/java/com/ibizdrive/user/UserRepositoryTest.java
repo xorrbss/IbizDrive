@@ -4,6 +4,8 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -203,6 +205,66 @@ class UserRepositoryTest {
         assertThat(result).extracting(User::getId).containsExactly(idPercent);
     }
 
+    // ── admin-user-mgmt: findAllActivePageable ───────────────────────
+
+    @Test
+    void findAllActivePageable_excludesSoftDeleted() {
+        UUID activeId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        userRepository.save(activeUser(activeId, "active@example.com", "Active U", true));
+        userRepository.save(activeUser(deletedId, "deleted@example.com", "Deleted U", true));
+        userRepository.flush();
+        markSoftDeleted(deletedId);
+
+        Page<User> page = userRepository.findAllActivePageable(PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId).containsExactly(activeId);
+        assertThat(page.getTotalElements()).isEqualTo(1);
+    }
+
+    @Test
+    void findAllActivePageable_includesInactiveUsers() {
+        UUID activeId = UUID.randomUUID();
+        UUID inactiveId = UUID.randomUUID();
+        userRepository.save(activeUser(activeId, "alpha@example.com", "Alpha User", true));
+        userRepository.save(activeUser(inactiveId, "beta@example.com", "Beta User", false));
+
+        Page<User> page = userRepository.findAllActivePageable(PageRequest.of(0, 10));
+
+        // admin 화면은 비활성 사용자도 표시 (재활성/role 변경 대상)
+        assertThat(page.getContent()).extracting(User::getId)
+            .containsExactlyInAnyOrder(activeId, inactiveId);
+    }
+
+    @Test
+    void findAllActivePageable_orderedByCreatedAtDesc() {
+        OffsetDateTime base = OffsetDateTime.parse("2026-01-01T00:00:00Z");
+        UUID oldId = UUID.randomUUID();
+        UUID newId = UUID.randomUUID();
+        userRepository.save(activeUserAt(oldId, "old@example.com", "Old User", true, base));
+        userRepository.save(activeUserAt(newId, "new@example.com", "New User", true, base.plusDays(7)));
+
+        Page<User> page = userRepository.findAllActivePageable(PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId).containsExactly(newId, oldId);
+    }
+
+    @Test
+    void findAllActivePageable_respectsPagination() {
+        for (int i = 0; i < 5; i++) {
+            userRepository.save(activeUser(
+                UUID.randomUUID(), "page" + i + "@example.com", "Page User " + i, true));
+        }
+
+        Page<User> firstPage = userRepository.findAllActivePageable(PageRequest.of(0, 2));
+        Page<User> secondPage = userRepository.findAllActivePageable(PageRequest.of(1, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(secondPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(5);
+        assertThat(secondPage.getTotalElements()).isEqualTo(5);
+    }
+
     private static User activeUser(UUID id, String email, String displayName, boolean isActive) {
         return new User(
             id,
@@ -213,6 +275,20 @@ class UserRepositoryTest {
             isActive,
             false,
             OffsetDateTime.now()
+        );
+    }
+
+    private static User activeUserAt(UUID id, String email, String displayName,
+                                     boolean isActive, OffsetDateTime createdAt) {
+        return new User(
+            id,
+            email,
+            displayName,
+            "{bcrypt}$2a$12$dummyhashfortestonlydummyhashfortestonlydummyhashfortest",
+            Role.MEMBER,
+            isActive,
+            false,
+            createdAt
         );
     }
 

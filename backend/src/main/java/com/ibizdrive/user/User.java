@@ -209,4 +209,22 @@ public class User implements Serializable {
     public void clearMustChangePassword() {
         this.mustChangePassword = false;
     }
+
+    /**
+     * admin-user-mgmt — 관리자에 의한 계정 비활성화 (`is_active=false`).
+     * 호출자(서비스)는 self-deactivate 차단 + audit emit + save flush 책임을 진다.
+     * 이미 inactive인 경우 idempotent (서비스 단에서 no-op 분기).
+     */
+    public void deactivate() {
+        this.isActive = false;
+    }
+
+    /**
+     * admin-user-mgmt — 비활성화된 계정 재활성화 (`is_active=true`).
+     * 본 트랙은 PATCH endpoint에서 호출 경로 미노출 — v1.x reactivate UX 트랙에서 사용.
+     * 이미 active인 경우 idempotent.
+     */
+    public void reactivate() {
+        this.isActive = true;
+    }
 }

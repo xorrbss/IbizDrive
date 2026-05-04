@@ -6,6 +6,8 @@ import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -93,6 +95,87 @@ public class AdminUserService {
                 + "처음 로그인하면 비밀번호를 새로 설정해야 합니다.\n"
         );
 
+        return user;
+    }
+
+    /**
+     * admin-user-mgmt — `/admin/users` 목록 조회. read-only이므로 트랜잭션 미선언
+     * (JPA가 OSIV 비활성 시 read-only TX 자동 생성, 활성 시 connection 보존).
+     *
+     * <p>soft-delete 제외 + 비활성 사용자 포함 (재활성/role 변경 대상). 정렬은
+     * {@code createdAt DESC, id ASC} — repository {@code @Query} 단계에서 강제.
+     */
+    @Transactional(readOnly = true)
+    public Page<User> list(Pageable pageable) {
+        return userRepository.findAllActivePageable(pageable);
+    }
+
+    /**
+     * admin-user-mgmt — 사용자 ROLE 변경. self-demote(ADMIN→non-ADMIN) 차단.
+     *
+     * <p>{@code com.ibizdrive.permission.PermissionService#changeRole}와 분리 — 후자는 controller
+     * 미노출 dead code이며 audit type({@code permission.changed})도 다르다. 본 메서드는
+     * {@link AdminRoleChangedEvent} → {@code admin.role.changed} 매핑.
+     *
+     * <p>변경이 없으면(같은 role) no-op + event 미발행 (멱등). 본인이 본인을 같은 role로
+     * 재지정하는 경우는 self-demote 검증 전에 통과 — `actorId == targetId && newRole == ADMIN`은
+     * 항상 안전.
+     *
+     * @throws AdminUserNotFoundException     target 미존재 → 404
+     * @throws AdminSelfProtectionException   actor==target && newRole != ADMIN → 403
+     */
+    @Transactional
+    public User changeRole(UUID targetUserId, Role newRole, UUID actorId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+        if (newRole == null) throw new IllegalArgumentException("newRole must not be null");
+
+        User user = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+
+        Role oldRole = user.getRole();
+        if (oldRole == newRole) {
+            return user;
+        }
+        if (targetUserId.equals(actorId) && newRole != Role.ADMIN) {
+            // 본인이 본인을 ADMIN→non-ADMIN — 마지막 ADMIN 0 사태 방지 (단순 self-protection).
+            throw new AdminSelfProtectionException("self-demote forbidden");
+        }
+
+        user.changeRoleTo(newRole);
+        userRepository.save(user);
+
+        eventPublisher.publishEvent(new AdminRoleChangedEvent(targetUserId, actorId, oldRole, newRole));
+        return user;
+    }
+
+    /**
+     * admin-user-mgmt — 사용자 비활성화 (`is_active=false`). self-deactivate 차단.
+     *
+     * <p>이미 inactive면 멱등 (no-op + event 미발행). 본 트랙은 deactivate만 노출 —
+     * reactivate UX는 v1.x.
+     *
+     * @throws AdminUserNotFoundException     target 미존재 → 404
+     * @throws AdminSelfProtectionException   actor==target → 403
+     */
+    @Transactional
+    public User deactivate(UUID targetUserId, UUID actorId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+
+        User user = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+
+        if (targetUserId.equals(actorId)) {
+            // 본인이 본인 비활성화 — 즉시 로그인 차단 + 재로그인 불가 → 잠금 회피.
+            throw new AdminSelfProtectionException("self-deactivate forbidden");
+        }
+        if (!user.isActive()) {
+            return user; // 이미 비활성 — 멱등.
+        }
+
+        user.deactivate();
+        userRepository.save(user);
+
+        eventPublisher.publishEvent(new AdminUserDeactivatedEvent(targetUserId, actorId));
         return user;
     }
 }

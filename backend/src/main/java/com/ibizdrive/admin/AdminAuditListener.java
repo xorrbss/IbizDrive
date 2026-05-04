@@ -53,4 +53,55 @@ public class AdminAuditListener {
             log.error("audit emission failed for event=ADMIN_USER_CREATED userId={}", event.userId(), ex);
         }
     }
+
+    /**
+     * admin-user-mgmt — `admin.user.deactivated` 매핑.
+     * before/after state는 단일 boolean 변경이므로 별도 JSON 필요 없음. metadata에 actor의
+     * 운영 의도를 표시할 수 있지만 본 트랙은 추가 컨텍스트 미수집 (UI에 reason 입력 없음).
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onAdminUserDeactivated(AdminUserDeactivatedEvent event) {
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.ADMIN_USER_DEACTIVATED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.USER,
+                event.userId(),
+                null,
+                null,
+                null
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event=ADMIN_USER_DEACTIVATED userId={}", event.userId(), ex);
+        }
+    }
+
+    /**
+     * admin-user-mgmt — `admin.role.changed` 매핑.
+     *
+     * <p>before/after state는 role 변화의 핵심 정보이므로 JSON으로 직렬화 (compact, no Jackson 의존).
+     * Role enum은 simple identifier만 담으므로 수동 직렬화로 충분 — Jackson 호출 없이 안전.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onAdminRoleChanged(AdminRoleChangedEvent event) {
+        try {
+            String before = "{\"role\":\"" + event.oldRole().name() + "\"}";
+            String after = "{\"role\":\"" + event.newRole().name() + "\"}";
+            auditService.record(new AuditEvent(
+                AuditEventType.ADMIN_ROLE_CHANGED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.USER,
+                event.userId(),
+                before,
+                after,
+                null
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event=ADMIN_ROLE_CHANGED userId={}", event.userId(), ex);
+        }
+    }
 }
