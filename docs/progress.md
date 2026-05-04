@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-03 — 🏁 email-async 트랙 종료 (`@Async` EmailService — anti-enumeration timing leak 완화, ADR #45)
+
+### 범위
+
+`dev/active/email-async/` bootstrap (plan/context/tasks 3파일) → P1 `EmailAsyncConfig` 신설 (`@EnableAsync` + `emailExecutor` `ThreadPoolTaskExecutor` corePool=2/maxPool=4/queue=100/prefix `email-async-`) → P2 `EmailService.send()`에 `@Async("emailExecutor")` 부착 + `SmtpEmailService` `MailException` → ERROR 로그 흡수(throw 제거) → P3 `PasswordResetService.requestReset()` try/catch 제거 + 미사용 import/Logger 정리 + dead 테스트 1건 삭제 → P4 `EmailAsyncIntegrationTest` 신설 (caller < 50ms vs stub 200ms sleep + thread name `email-async-` 검증) → P5 docs sync (ADR #45 + 03 §2.7 갱신) + closure.
+
+### 회고
+
+- **commits**: 5개 + closure.
+  - `80ffd18` dev-docs bootstrap
+  - `64cc370` feat — P1 EmailAsyncConfig
+  - `d68c2c5` feat — P2 @Async + SmtpEmailService 예외 내부화
+  - `3e3f590` feat — P3 PasswordResetService try/catch 제거 + dead test 정리
+  - `af71e1e` feat — P4 EmailAsyncIntegrationTest (2건 GREEN)
+  - + closure commit (docs sync + progress + dev-docs archive)
+- **production 신설/수정**:
+  - backend 신설: `EmailAsyncConfig` (configuration, 41 lines), `EmailAsyncIntegrationTest` (Spring proxy 활성, 105 lines, 2 케이스).
+  - backend 수정: `EmailService` (`@Async("emailExecutor")` 부착 + javadoc 갱신), `SmtpEmailService` (`MailException` ERROR 로그 흡수, throw 제거), `PasswordResetService` (try/catch + EmailDeliveryException import + Logger 제거, javadoc 갱신).
+  - backend 테스트: `PasswordResetServiceTest` dead 케이스 1건 삭제(`requestReset_emailFailure_swallowedAndStillProceeds`).
+- **docs sync**:
+  - `docs/00 §5`: ADR #45 (`@Async` on interface method, executor 풀 크기, 예외 정책, 거부 옵션 2종, 한계).
+  - `docs/03 §2.7`: 이메일 인프라 절을 ADR #42 + #45 공동 참조로 갱신, anti-enumeration timing leak 한계가 ADR #45로 완화됨을 명시.
+- **테스트**: backend 전체 GREEN (BUILD SUCCESSFUL 2m 7s). 신규 2건 + 회귀 0.
+- **보안 효과**: 가입자/미가입자 forgot caller latency 동일 — SMTP RTT 변동(±수백ms)이 더 이상 timing side channel 노출하지 않음. 통합 테스트가 caller < 50ms 임계로 회귀 차단.
+- **잔여**: `EmailDeliveryException` 클래스 자체는 본 트랙에서 보존(사용처 0). 별도 cleanup 트랙에서 삭제 검토.
+
+### 다음 세션 컨텍스트
+
+- queue=100 포화 시 default `CallerRunsPolicy`로 caller block(latency 회귀) — BETA 도달 불가 가정. v1.x 트래픽 증가 시 `RejectedExecutionHandler` 재검토.
+- 다중 인스턴스 시 thread pool은 노드별 독립(stateless send) — 영향 0.
+- ADR #42 `EmailDeliveryException` deprecated 표시 + cleanup 트랙은 backlog.
+
+---
+
 ## 2026-05-04 — 🏁 auth-password-policy 트랙 종료 (ADR #19 본문 회복, signup/reset/change 통합)
 
 ### 범위

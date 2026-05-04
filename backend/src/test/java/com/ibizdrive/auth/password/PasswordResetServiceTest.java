@@ -4,7 +4,6 @@ import com.ibizdrive.audit.AuditEvent;
 import com.ibizdrive.audit.AuditEventType;
 import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.auth.InvalidCredentialsException;
-import com.ibizdrive.email.EmailDeliveryException;
 import com.ibizdrive.email.EmailService;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -30,7 +29,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -130,21 +128,6 @@ class PasswordResetServiceTest {
 
         verify(userRepository).findActiveByEmail("alice@example.com");
         verify(tokenRepository, times(1)).save(any(PasswordResetToken.class));
-    }
-
-    @Test
-    void requestReset_emailFailure_swallowedAndStillProceeds() {
-        User user = sampleUser("alice@example.com", "Alice");
-        when(userRepository.findActiveByEmail("alice@example.com")).thenReturn(Optional.of(user));
-        doThrow(new EmailDeliveryException("smtp down", new RuntimeException()))
-            .when(emailService).send(anyString(), anyString(), anyString());
-
-        service.requestReset("alice@example.com");
-
-        verify(tokenRepository, times(1)).save(any(PasswordResetToken.class));
-        verify(emailService, times(1)).send(anyString(), anyString(), anyString());
-        // anti-enumeration: 발송 실패도 audit는 기록 (요청 자체는 발생).
-        verify(auditService, times(1)).record(any(AuditEvent.class));
     }
 
     @Test

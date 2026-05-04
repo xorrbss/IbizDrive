@@ -288,12 +288,12 @@
 - **reset**: PW 변경이 기존 모든 세션을 무효화 — `FindByIndexNameSessionRepository.findByPrincipalName(email)` → `deleteById` loop, `keepSessionId=null`.
 - **change**: 현재 세션은 보존하여 사용자가 강제 로그아웃되지 않음. 다른 기기/세션은 모두 invalidate, `keepSessionId=session.getId()`.
 
-이메일 인프라 (ADR #42):
+이메일 인프라 (ADR #42, ADR #45):
 
 - `EmailService` 인터페이스 + profile 분기 — `ConsoleEmailService(@Profile("!prod"))`는 stdout 로깅 (dev/test SMTP 의존성 제거), `SmtpEmailService(@Profile("prod"))`는 `JavaMailSender` 위임.
-- 발송 실패는 `EmailDeliveryException`으로 표면화하되 forgot은 swallow + ERROR 로그 (anti-enumeration 200 유지).
-- HTML 템플릿/i18n/비동기 큐 모두 v1.x 분리.
-- **Anti-enumeration timing leak** = 알려진 한계 (가입자만 SMTP 라운드트립). v1.x rate-limit + 비동기 큐 트랙에서 재검토.
+- **`@Async("emailExecutor")` fire-and-forget (ADR #45)** — `EmailService.send()` 호출 시점에 caller 스레드는 즉시 반환되며 실제 SMTP 발송은 `emailExecutor`(corePool=2 / queue=100, prefix `email-async-`) 풀에서 백그라운드 수행. 발송 실패는 `SmtpEmailService` 내부 ERROR 로그로 흡수 — caller(`PasswordResetService.requestReset`)에 어떤 형태로도 도달하지 않음. `EmailDeliveryException` throw 제거(클래스 자체는 보존).
+- HTML 템플릿/i18n은 v1.x 분리. 외부 큐(SQS/Kafka)는 in-process executor로 충분(MVP 트래픽 가정).
+- **Anti-enumeration timing leak (ADR #42 한계 → ADR #45에서 완화)** — 동기 발송 시 가입자만 SMTP 라운드트립이 발생해 caller latency가 다르던 timing side channel을 ADR #45 비동기화로 제거. 가입자/미가입자 caller latency가 동일(DB lookup + token hash + audit emit 한도). 통합 테스트(`EmailAsyncIntegrationTest`)가 stub의 200ms sleep과 무관하게 caller < 50ms 임계를 강제해 회귀 차단.
 
 **강제 비밀번호 변경 UX (auth-must-change-pw 트랙, ADR #21 잔여 closure, 2026-05-03)**
 
