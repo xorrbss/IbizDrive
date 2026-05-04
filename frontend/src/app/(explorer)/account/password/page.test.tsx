@@ -34,6 +34,62 @@ const wrap = (node: React.ReactNode) => {
   return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>)
 }
 
+describe('ChangePasswordPage — ADR #19 client validation (auth-password-policy P4)', () => {
+  beforeEach(() => {
+    replaceMock.mockReset()
+    backMock.mockReset()
+    mutateAsyncMock.mockReset()
+    isPendingRef.current = false
+    searchParams = new URLSearchParams()
+  })
+
+  const fillNew = (pw: string, confirmPw: string = pw) => {
+    fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'oldOldOld!' } })
+    fireEvent.change(screen.getByLabelText(/^새 비밀번호 \(/), { target: { value: pw } })
+    fireEvent.change(screen.getByLabelText('새 비밀번호 확인'), { target: { value: confirmPw } })
+  }
+
+  it('11자 — min_length 메시지', async () => {
+    wrap(<ChangePasswordPage />)
+    fillNew('abcdefghij1')
+    fireEvent.click(screen.getByRole('button', { name: /^변경$/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/12자 이상/)
+    })
+    expect(mutateAsyncMock).not.toHaveBeenCalled()
+  })
+
+  it('숫자만 — missing_alpha 메시지', async () => {
+    wrap(<ChangePasswordPage />)
+    fillNew('123456789012')
+    fireEvent.click(screen.getByRole('button', { name: /^변경$/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/영문자/)
+    })
+    expect(mutateAsyncMock).not.toHaveBeenCalled()
+  })
+
+  it('영문만 — missing_digit 메시지', async () => {
+    wrap(<ChangePasswordPage />)
+    fillNew('abcdefghijkl')
+    fireEvent.click(screen.getByRole('button', { name: /^변경$/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/숫자/)
+    })
+    expect(mutateAsyncMock).not.toHaveBeenCalled()
+  })
+
+  it('공백 — whitespace 메시지', async () => {
+    wrap(<ChangePasswordPage />)
+    fillNew('abcdef 12345')
+    fireEvent.click(screen.getByRole('button', { name: /^변경$/ }))
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/공백/)
+    })
+    expect(mutateAsyncMock).not.toHaveBeenCalled()
+  })
+})
+
 describe('ChangePasswordPage — force mode (auth-must-change-pw P4)', () => {
   beforeEach(() => {
     replaceMock.mockReset()
@@ -67,7 +123,7 @@ describe('ChangePasswordPage — force mode (auth-must-change-pw P4)', () => {
     wrap(<ChangePasswordPage />)
 
     fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'oldOldOld!' } })
-    fireEvent.change(screen.getByLabelText('새 비밀번호 (8자 이상)'), { target: { value: 'NewSecret456!' } })
+    fireEvent.change(screen.getByLabelText(/^새 비밀번호 \(/), { target: { value: 'NewSecret456!' } })
     fireEvent.change(screen.getByLabelText('새 비밀번호 확인'), { target: { value: 'NewSecret456!' } })
     fireEvent.click(screen.getByRole('button', { name: /^변경$/ }))
 
@@ -81,7 +137,7 @@ describe('ChangePasswordPage — force mode (auth-must-change-pw P4)', () => {
     wrap(<ChangePasswordPage />)
 
     fireEvent.change(screen.getByLabelText('현재 비밀번호'), { target: { value: 'oldOldOld!' } })
-    fireEvent.change(screen.getByLabelText('새 비밀번호 (8자 이상)'), { target: { value: 'NewSecret456!' } })
+    fireEvent.change(screen.getByLabelText(/^새 비밀번호 \(/), { target: { value: 'NewSecret456!' } })
     fireEvent.change(screen.getByLabelText('새 비밀번호 확인'), { target: { value: 'NewSecret456!' } })
     fireEvent.click(screen.getByRole('button', { name: /^변경$/ }))
 

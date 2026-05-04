@@ -7,6 +7,8 @@ import com.ibizdrive.config.SecurityConfig;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.UserRepository;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
@@ -97,14 +99,26 @@ class PasswordControllerResetTest {
         verifyNoInteractions(passwordResetService);
     }
 
-    @Test
-    void reset_weakPassword_returns400Validation() throws Exception {
+    /**
+     * ADR #19 비밀번호 정책 5규칙 위반 → 400 VALIDATION_ERROR + details.rule.
+     * (auth-password-policy 트랙, 2026-05-04)
+     */
+    @ParameterizedTest(name = "reset rejects {1}-violating newPassword")
+    @CsvSource({
+        "'short7',        min_length",
+        "'1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890ab1234567890abc', max_length",
+        "'123456789012',  missing_alpha",
+        "'abcdefghijkl',  missing_digit",
+        "'abcdef 12345',  whitespace"
+    })
+    void reset_passwordPolicyViolation_returns400WithRule(String newPassword, String expectedRule) throws Exception {
         mvc.perform(post("/api/auth/password/reset")
                 .contentType("application/json")
-                .content(body("token-abc-1234567890", "short7c")))
+                .content(body("token-abc-1234567890", newPassword)))
             .andExpect(status().isBadRequest())
             .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
-            .andExpect(jsonPath("$.details.field").value("newPassword"));
+            .andExpect(jsonPath("$.details.field").value("newPassword"))
+            .andExpect(jsonPath("$.details.rule").value(expectedRule));
 
         verifyNoInteractions(passwordResetService);
     }

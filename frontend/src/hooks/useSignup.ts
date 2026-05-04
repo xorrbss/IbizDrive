@@ -13,7 +13,7 @@ import type { AuthSession, SignupParams } from '@/types/auth'
  * <p>에러:
  * <ul>
  *   <li>409 CONFLICT/DUPLICATE_EMAIL — 이미 가입된 이메일</li>
- *   <li>400 VALIDATION_ERROR — password &lt;8자, 잘못된 email, blank displayName</li>
+ *   <li>400 VALIDATION_ERROR — password ADR #19 규칙 위반(12자 이상·영문+숫자·공백 금지), 잘못된 email, blank displayName</li>
  * </ul>
  * 호출부(SignupPage)가 status/code/details로 분기.
  */
