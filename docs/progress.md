@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-05-05 — 🏁 audit-emit-gap-mapping 트랙 종료 (BETA §6 메트릭 정정 + 미emit 9 deferred 매핑)
+
+### 범위
+
+`AuditEventType` enum 실제 카운트와 BETA-RELEASE.md §6 메트릭 사이의 drift 식별 + 정정 + 미emit 항목 deferred 분류. docs-only.
+
+### 발견
+
+- enum 헤더 javadoc "총 42개"와 BETA §6 "42 enum 중 35 emit (83%)" 모두 stale. 실제 enum 카운트 = **44개** (인증 카테고리 주석 `(6)`이 password 3종 추가 후 미갱신).
+- emit grep = 35건 (정확).
+- 미emit = **44 − 35 = 9개** (BETA가 적시한 7이 아님).
+
+### 미emit 9개 분류 (모두 deferred — 누락 0건)
+
+| Enum | 분류 | 근거 |
+|---|---|---|
+| `FILE_VIEWED` | v1.x | ADR #9 + `FileVersionController:60` javadoc |
+| `FOLDER_AUDIT_LEVEL_CHANGED` | v1.x | docs/04 §6 line 269 |
+| `USER_MFA_ENABLED` | v1.x | ADR #18 |
+| `ADMIN_USER_UPDATED` | v1.x | BETA §7 (displayName 편집) |
+| `ADMIN_QUOTA_CHANGED` | v1.x | BETA §7 (quota) |
+| `ADMIN_LEGAL_HOLD_PLACED` | v2.x | BETA §7 (Legal Hold) |
+| `ADMIN_LEGAL_HOLD_RELEASED` | v2.x | BETA §7 |
+| `SYSTEM_BACKUP_COMPLETED` | v1.x | docs/04 §13 (managed Postgres 자동 백업) |
+| `AUDIT_EXPORTED` | v1.x | docs/04 §7.2 line 203 |
+
+### 변경
+
+- `BETA-RELEASE.md §6` audit emit coverage 행: `42 enum 중 35 emit (83%)` → `44 enum 중 35 emit (~80%) — 미emit 9개는 §7 deferred 매핑`.
+- `BETA-RELEASE.md §7` 6개 항목에 미emit enum 이름 cross-link 추가 + `SYSTEM_BACKUP_COMPLETED` / `AUDIT_EXPORTED` 신규 deferred 항목 2개 추가.
+- `backend/src/main/java/com/ibizdrive/audit/AuditEventType.java` 헤더 javadoc `총 42개 값` → `총 44개 값`, 인증 카테고리 주석 `// 인증 (6)` → `// 인증 (8)`.
+
+### 검증
+
+- 코드 동작 변경 0 (주석/문서만). 컴파일 영향 없음 — 주석 변경만이므로 별도 빌드 게이트 면제.
+- `BETA-RELEASE.md` 다른 위치의 "42" / "35/42" 인용 잔존 0건 (grep 확인).
+- `frontend/src/types/audit.ts` mirror 카운트 = 44 (정합 확인).
+- `progress.md` 과거 세션의 "32/42 / 29/42" 등 historical 메트릭은 시점 진실로 보존.
+
+### 회고
+
+- BETA-RELEASE.md §6 audit emit 행은 매 트랙 종료마다 분자만 갱신되며 분모(enum 카운트)는 카테고리 추가 시점에 동기 갱신되지 않아 drift 누적. 향후 enum 추가 시 헤더 주석 + 카테고리 주석 + BETA §6 동시 갱신을 PR 체크리스트에 명시 권장.
+- 미emit 분류는 모두 v1.x/v2.x deferred로 깔끔히 매핑됨 — 누락(버그) 0건. 코드 emit 추가 트랙 발생 가능성은 admin frontend v1.x 도입 시점.
+
+### 다음 세션 컨텍스트
+
+- 잔여 후속 트랙 후보(자동 발생 시): admin frontend v1.x → `ADMIN_USER_UPDATED` / `ADMIN_QUOTA_CHANGED` emit 활성, audit export endpoint v1.x → `AUDIT_EXPORTED` emit 활성, audit_level v1.x(ADR #9) → `FILE_VIEWED` / `FOLDER_AUDIT_LEVEL_CHANGED` emit 활성.
+
+---
+
 ## 2026-05-05 — 🏁 admin-user-mgmt 트랙 종료 (목록/role 변경/비활성 + audit emit +2)
 
 ### 범위
