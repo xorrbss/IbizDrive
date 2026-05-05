@@ -1114,6 +1114,50 @@ export const api = {
     }
     return (await res.json()) as AdminInvitedUser
   },
+
+  /**
+   * `GET /api/admin/users` (admin-user-mgmt, docs/02 §7.4) — 사용자 목록.
+   *
+   * <p>backend는 Spring `Page<T>` 직렬화를 그대로 노출 — `{content[], totalElements, totalPages,
+   * number, size}`. 프론트는 본 형태의 부분집합만 type-narrow ({@link AdminUserPage}).
+   */
+  async adminListUsers(page = 0, size = 50): Promise<AdminUserPage> {
+    const url = `/api/admin/users?page=${page}&size=${size}`
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminListUsers failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminUserPage
+  },
+
+  /**
+   * `PATCH /api/admin/users/:id` (admin-user-mgmt, docs/02 §7.4) — role/active 변경.
+   *
+   * <p>{@code role}, {@code isActive} 둘 다 옵션이지만 호출자는 둘 중 하나는 채워서 보내야 한다
+   * (둘 다 비면 backend가 400 VALIDATION_ERROR). 본 트랙은 `isActive=false`만 의미 — `true`는
+   * backend가 거부한다. 응답은 적용 후 사용자 스냅샷.
+   */
+  async adminUpdateUser(id: string, body: AdminUserPatchBody): Promise<AdminUserSummary> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminUpdateUser failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminUserSummary
+  },
 }
 
 /**
@@ -1137,6 +1181,48 @@ export interface AdminInvitedUser {
   displayName: string
   role: 'MEMBER' | 'AUDITOR' | 'ADMIN'
   mustChangePassword: boolean
+}
+
+/**
+ * Admin user list 항목. backend `AdminUserSummaryResponse` 1:1 mirror — admin-user-mgmt.
+ *
+ * <p>{@code AdminInvitedUser}와 분리: 후자는 invite 응답 의미(`mustChangePassword` 강조)이고
+ * 본 type은 list 항목 의미(`isActive`/`createdAt`/`lastLoginAt` 스냅샷). 합치지 않는 이유는
+ * 두 용도가 시간이 지나며 다른 방향으로 진화할 수 있기 때문.
+ */
+export interface AdminUserSummary {
+  id: string
+  email: string
+  displayName: string
+  role: 'MEMBER' | 'AUDITOR' | 'ADMIN'
+  isActive: boolean
+  createdAt: string
+  lastLoginAt: string | null
+}
+
+/**
+ * Spring `Page<AdminUserSummaryResponse>` 직렬화 모양 — admin-user-mgmt.
+ *
+ * <p>전체 필드는 사용 안 함. UI에 필요한 부분만 type narrow. {@code totalElements}와
+ * {@code number}/{@code size}로 페이지네이션 컨트롤 구성.
+ */
+export interface AdminUserPage {
+  content: AdminUserSummary[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+}
+
+/**
+ * Admin user PATCH body — admin-user-mgmt. backend `AdminUserPatchRequest` 1:1 mirror.
+ *
+ * <p>둘 다 optional이지만 호출자는 최소 하나는 채워야 한다. 본 트랙은 {@code isActive=false}만
+ * 지원 — UI에서 deactivate 버튼만 노출.
+ */
+export interface AdminUserPatchBody {
+  role?: 'MEMBER' | 'AUDITOR' | 'ADMIN'
+  isActive?: boolean
 }
 
 /**

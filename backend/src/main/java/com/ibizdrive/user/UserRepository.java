@@ -1,5 +1,6 @@
 package com.ibizdrive.user;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -55,4 +56,22 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     default List<User> searchActive(String pattern, int limit) {
         return searchActive(pattern, Pageable.ofSize(limit));
     }
+
+    /**
+     * admin-user-mgmt — `/admin/users` 목록 조회용 페이징 쿼리.
+     *
+     * <p>soft-delete 제외 (`deleted_at IS NULL`). `is_active=false` (수동 비활성)는 포함 —
+     * admin 화면에서 비활성 사용자도 목록에 표시되어 재활성/role 변경 대상이 되어야 한다.
+     * 정렬은 `createdAt DESC, id ASC` — deterministic + 신규 가입자가 상단.
+     *
+     * <p><b>인덱스 부재 인정</b>: V1 인덱스는 `lower(email) WHERE deleted_at IS NULL` partial unique만
+     * 존재. `created_at` 인덱스는 부재. MVP user count {@literal <} 1k 가정으로 row scan 허용.
+     * 스케일 시 별도 마이그레이션 (`CREATE INDEX users_created_at_desc ON users(created_at DESC) WHERE deleted_at IS NULL`).
+     */
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.deletedAt IS NULL
+        ORDER BY u.createdAt DESC, u.id ASC
+        """)
+    Page<User> findAllActivePageable(Pageable pageable);
 }

@@ -109,6 +109,15 @@ export const qk = {
   auditLogs: (filters: AuditLogFilters, page: number, pageSize: number) =>
     [...qk.audit(), 'logs', filters, page, pageSize] as const,
 
+  // ── 관리자 사용자 목록 (admin-user-mgmt, docs/02 §7.4) ──
+  adminUsers: () => [...qk.all, 'admin', 'users'] as const,
+  /**
+   * paginated admin user list — page/size까지 포함 정확한 단일 키. PATCH 후 prefix 매칭으로
+   * 모든 페이지 변종 무효화 ({@link invalidations.afterAdminUserChanged}).
+   */
+  adminUsersList: (page: number, size: number) =>
+    [...qk.adminUsers(), 'list', page, size] as const,
+
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,
   /**
@@ -235,5 +244,14 @@ export const invalidations = {
    */
   afterShareRevoke(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.shares() })
+  },
+
+  /**
+   * 관리자 사용자 PATCH 후 무효화 (admin-user-mgmt).
+   * - adminUsers() prefix 단일 — 모든 page/size 변종 일괄 갱신.
+   * - 단일 사용자 상세 keyspace는 본 트랙 미도입 (목록만 사용).
+   */
+  afterAdminUserChanged(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.adminUsers() })
   },
 } as const

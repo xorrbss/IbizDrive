@@ -98,7 +98,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | 항목 | 상태 |
 |---|---|
 | audit_log append-only (DB-level REVOKE) | ✓ V4 + `AuditLogAppendOnlyTest` |
-| audit emit coverage | 42 enum 중 32 emit (76%) — `USER_REGISTERED` (auth-pages) + `USER_PASSWORD_FORGOT_REQUESTED` / `USER_PASSWORD_RESET` (a1.5-email-infra) + `ADMIN_USER_CREATED` (m-admin-entry-rewrite) 신규 emit |
+| audit emit coverage | 42 enum 중 35 emit (83%) — `USER_REGISTERED` (auth-pages) + `USER_PASSWORD_FORGOT_REQUESTED` / `USER_PASSWORD_RESET` / `USER_PASSWORD_CHANGED` (a1.5-email-infra) + `ADMIN_USER_CREATED` (m-admin-entry-rewrite) + `ADMIN_USER_DEACTIVATED` / `ADMIN_ROLE_CHANGED` (admin-user-mgmt) 신규 emit |
 | `@PreAuthorize` 미보호 mutation | 0 (mvp-qa-security P2.3 검증) |
 | 권한 evaluator (`IbizDrivePermissionEvaluator`) | ✓ A4 + A11/A16 closure |
 | audit query — file 단위 활동 조회 | ✓ M-RP.4 (`?targetType=file&targetId=`) — RP-2 정책: 파일 READ 보유 시 actor 제한 우회 (ADR #40) |
@@ -110,7 +110,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - MFA / refresh rotation / SCIM — ADR #18
 - audit_level / 파티션 / `FILE_VIEWED` emit — ADR #9
 - Legal Hold (전체 §6.3 / §10) — docs/00 §4.3 v2.x
-- admin frontend (사용자/부서/권한/스토리지/정책/시스템 페이지) — admin shell + `/admin/users` 초대 폼 + audit logs UI(M12) 활성 (m-admin-entry-rewrite). 사용자 목록/검색/role 변경은 v1.x admin user mgmt 트랙
+- admin frontend (사용자/부서/권한/스토리지/정책/시스템 페이지) — admin shell + `/admin/users` 초대 폼/목록/role 변경/비활성 (admin-user-mgmt) + audit logs UI(M12) 활성. 사용자 검색/재활성/displayName 편집/quota는 v1.x
 
 ## 8. 모니터링 (사내 베타 최소)
 

@@ -1520,9 +1520,9 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | GET | `/api/admin/download-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |
-| GET | `/api/admin/users` | `hasRole('ADMIN')` | — | — | `WHERE disabled_at IS NULL` (옵션) | 403 |
+| GET | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | — | `WHERE deleted_at IS NULL` (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (user 생성 + 임시 PW BCrypt + AFTER_COMMIT audit·email) | email→lowercase trim | — | 400 VALIDATION_ERROR, 401, 403, 409 CONFLICT/DUPLICATE_EMAIL |
-| PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` | REQUIRED | — | — | 403, 404, 400 |
+| PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (role/active 변경 + AFTER_COMMIT audit) | — | — | 400 VALIDATION_ERROR, 401, 403 SELF_PROTECTION, 404 USER_NOT_FOUND |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 
@@ -1558,6 +1558,69 @@ POST /api/admin/users                                (m-admin-entry-rewrite, ADR
 ```
 
 **관련 audit 이벤트** (docs/03 §2.10): `admin.user.created`.
+
+```text
+GET /api/admin/users?page=0&size=50                  (admin-user-mgmt, 2026-05-05)
+  Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Query:    page    (default 0, min 0)
+            size    (default 50, min 1, max 200 — controller가 clamp)
+  Response: 200 Spring Page<AdminUserSummary> 직렬화
+            {
+              content: [{
+                id: string,
+                email: string,
+                displayName: string,
+                role: 'MEMBER' | 'AUDITOR' | 'ADMIN',
+                isActive: boolean,
+                createdAt: string (ISO-8601),
+                lastLoginAt: string | null
+              }, ...],
+              totalElements: number,
+              totalPages: number,
+              number: number (0-based 현재 페이지),
+              size: number
+            }
+            정렬: createdAt DESC, id ASC (repository @Query 강제).
+            soft-delete된 user 제외, 비활성(`isActive=false`) user 포함 (재활성/role 변경 대상).
+            Note: passwordHash/password 필드는 응답에 포함되지 않는다 (docs/03 §2.8).
+  Errors:
+    401 (미인증), 403 (ADMIN role 아님 — `@PreAuthorize` 차단)
+```
+
+```text
+PATCH /api/admin/users/:id                           (admin-user-mgmt, 2026-05-05)
+  Headers:  X-CSRF-Token: <token>            (필수)
+            Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Path:     id (UUID — 대상 사용자)
+  Request:  { role?: 'MEMBER' | 'AUDITOR' | 'ADMIN', isActive?: false }
+            - 둘 다 optional이지만 최소 하나는 채워야 함 (둘 다 null이면 400)
+            - 둘 다 보내면 role 먼저 적용 후 deactivate (audit row 2개 분리 emit)
+            - isActive=true(재활성)는 본 트랙 미지원 — 400으로 거부 (v1.x 별도)
+  Response: 200 AdminUserSummary (위 GET content[] 항목과 동일 shape — 적용 후 스냅샷)
+  Side-effects:
+            - users UPDATE (role 또는 is_active)
+            - role 변경 시 AFTER_COMMIT: AdminRoleChangedEvent
+              → audit_log `admin.role.changed` (before/after JSON `{"role":"..."}`)
+            - 비활성 시 AFTER_COMMIT: AdminUserDeactivatedEvent
+              → audit_log `admin.user.deactivated`
+            - 같은 role 재지정은 no-op (멱등) + audit 미발행
+            - 이미 비활성 user에 deactivate는 no-op + audit 미발행
+  Self-protection:
+            - actor==target && newRole != ADMIN → 403 SELF_PROTECTION (self-demote 차단)
+            - actor==target && deactivate → 403 SELF_PROTECTION (self-deactivate 차단)
+            - 본인이 마지막 ADMIN인지 여부와 무관하게 일관 차단 (검증 단순화)
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'body', rule: '...' } }
+                          (빈 body 또는 isActive=true)
+    401                   (미인증)
+    403                   (ADMIN role 아님 — `@PreAuthorize`, 본문 없음)
+    403 FORBIDDEN/SELF_PROTECTION
+                          (actor==target self-demote/self-deactivate)
+    404 NOT_FOUND/USER_NOT_FOUND
+                          (target user 미존재)
+```
+
+**관련 audit 이벤트** (docs/03 §2.10): `admin.role.changed`, `admin.user.deactivated`.
 
 ### 7.13 SSE 실시간 동기화 (ADR #14)
 
