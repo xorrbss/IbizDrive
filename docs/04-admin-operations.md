@@ -29,18 +29,17 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 2. 관리자 페이지 구조
 
-> **MVP closure 시점 활성 라우트** (m-admin-entry-rewrite, 2026-05-03):
+> **MVP closure 시점 활성 라우트** (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update, 2026-05-06):
 > - `/admin` — landing (가용 카드 2 + deferred 안내)
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
-> - `/admin/users` — 사용자 초대 폼 (m-admin-entry-rewrite closure, 사용자 목록은 v1.x)
+> - `/admin/users` — 사용자 초대 폼 + 사용자 목록(검색·역할 변경·재활성/비활성·표시 이름 편집)
 >
 > 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
 
 ```text
 /admin                       (활성 — landing)
 ├─ /dashboard              운영 현황 요약                                 (v1.x deferred)
-├─ /users                  사용자 초대 폼                                 (활성, 2026-05-03)
-│  ├─ /list                사용자 목록                                    (v1.x deferred)
+├─ /users                  사용자 초대 + 목록 (검색/편집/활성 토글)         (활성, 2026-05-06)
 │  ├─ /:id                 사용자 상세 + 활동                              (v1.x deferred)
 │  └─ /import              CSV 일괄 import                                (v1.x deferred)
 ├─ /departments
@@ -98,10 +97,13 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 4. 사용자 관리
 
-> **v1.x deferred (전체)**. backend `User`/`Department` 도메인은 활성(A14/A16 closure), admin frontend `/admin/users` 페이지 미구현. MVP는 DB 직접 INSERT 또는 seed로 사용자 프로비저닝.
+> **MVP closure (admin-user-mgmt + admin-user-search-update, 2026-05-06)**. backend `User` 도메인은 v0 (A14/A16 closure)이고, admin frontend `/admin/users` 페이지는 초대 + 목록(검색·역할·활성/비활성·표시 이름) 운영 가능. 부서/쿼터/일괄작업은 v1.x.
 
 ### 4.1 사용자 목록
 
+- [x] **검색** — 이메일/표시 이름 부분 매칭(case-insensitive, LIKE escape) — admin-user-search-update.
+- [x] **페이지네이션** — page/size 50 기본, max 200.
+- [x] **활성/비활성 모두 표시** — soft-delete 사용자만 제외.
 - [ ] 필터: 부서, 역할, 활성 상태, 쿼터 사용률 — *v1.x deferred*
 - [ ] 정렬: 이름, 마지막 로그인, 저장 사용량 — *v1.x deferred*
 - [ ] 일괄 작업: 비활성화, 부서 변경, 쿼터 변경 — *v1.x deferred*
@@ -114,16 +116,21 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 - [ ] 소유 파일 수 / 공유 현황 — *v1.x deferred*
 - [ ] 로그인 이력 — *v1.x deferred*
 
-### 4.3 사용자 비활성화
+### 4.3 사용자 비활성화 / 재활성화 / 표시 이름 편집
 
 ```text
-UX: "삭제"가 아니라 "비활성화"
-  → 소유 파일은 유지
-  → 로그인만 차단
-  → 필요 시 파일 소유권 다른 사용자에게 이관 UI
+UX 의미 분리:
+  - 비활성화(deactivate, 제재)  → admin.user.deactivated
+    → 로그인만 차단, 소유 파일 유지, self-deactivate 차단(403 SELF_PROTECTION)
+  - 재활성화(reactivate)         → admin.user.updated (isActive false→true)
+  - 표시 이름 편집               → admin.user.updated (displayName 변경)
+  - 역할 변경                    → admin.role.changed (self-demote 차단)
+
+audit 분리 이유: deactivated는 제재 의미를 가지므로 별도 enum으로 시각적 구분.
+나머지 일반 속성 변경은 admin.user.updated로 흡수(reactivate 포함).
 ```
 
-> **MVP 상태**: `User.active=false` 시 인증 차단 (A1.6 `SessionValidityFilter`). 비활성화 토글 UI는 v1.x. 파일 소유권 이관 UI는 v1.x.
+> **MVP 상태**: 모두 `/admin/users`에서 운영 가능 (admin-user-mgmt + admin-user-search-update, 2026-05-06). 파일 소유권 이관 UI는 v1.x.
 
 ### 4.4 사용자 Import
 

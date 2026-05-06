@@ -78,5 +78,55 @@ class AdminAuditListenerTest {
             listener.onAdminRoleChanged(new AdminRoleChangedEvent(
                 UUID.randomUUID(), UUID.randomUUID(), Role.MEMBER, Role.ADMIN))
         );
+        assertThatNoException().isThrownBy(() ->
+            listener.onAdminUserUpdated(new AdminUserUpdatedEvent(
+                UUID.randomUUID(), UUID.randomUUID(),
+                "{\"displayName\":\"a\"}", "{\"displayName\":\"b\"}"))
+        );
+    }
+
+    // admin-user-search-update — ADMIN_USER_UPDATED emit (Wave 1 — T1)
+
+    @Test
+    void onAdminUserUpdated_recordsAuditEventWithBeforeAfterJson() {
+        UUID userId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+
+        listener.onAdminUserUpdated(new AdminUserUpdatedEvent(
+            userId, actorId,
+            "{\"displayName\":\"Old\"}",
+            "{\"displayName\":\"New\"}"
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+
+        AuditEvent ev = captor.getValue();
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.ADMIN_USER_UPDATED);
+        assertThat(ev.actorId()).isEqualTo(actorId);
+        assertThat(ev.targetType()).isEqualTo(AuditTargetType.USER);
+        assertThat(ev.targetId()).isEqualTo(userId);
+        assertThat(ev.beforeState()).isEqualTo("{\"displayName\":\"Old\"}");
+        assertThat(ev.afterState()).isEqualTo("{\"displayName\":\"New\"}");
+    }
+
+    @Test
+    void onAdminUserUpdated_recordsReactivationMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+
+        listener.onAdminUserUpdated(new AdminUserUpdatedEvent(
+            userId, actorId,
+            "{\"isActive\":false}",
+            "{\"isActive\":true}"
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+
+        AuditEvent ev = captor.getValue();
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.ADMIN_USER_UPDATED);
+        assertThat(ev.beforeState()).isEqualTo("{\"isActive\":false}");
+        assertThat(ev.afterState()).isEqualTo("{\"isActive\":true}");
     }
 }

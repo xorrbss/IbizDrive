@@ -74,4 +74,24 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         ORDER BY u.createdAt DESC, u.id ASC
         """)
     Page<User> findAllActivePageable(Pageable pageable);
+
+    /**
+     * admin-user-search-update — `/admin/users?q=` 검색 (Wave 1 — T1).
+     *
+     * <p>{@link #findAllActivePageable}와 짝이지만 검색 패턴 추가. 패턴은 호출자가 사전
+     * lowercase + LIKE escape + wildcard wrap 완료 (예: {@code "%ali\\_ce%"}). ESCAPE 문자는 backslash.
+     * 빈 패턴(검색어 없음)은 호출자가 {@link #findAllActivePageable}로 분기 — 본 메서드는 항상
+     * 패턴 매칭 수행. soft-delete 제외 + 비활성 포함 동일.
+     *
+     * <p>{@link #searchActive} (share picker 용)와 분리: 후자는 {@code is_active=TRUE} 필터로
+     * "공유 대상 가능 사용자"만 노출하지만, admin 검색은 비활성도 포함해야 재활성 대상이 된다.
+     */
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.deletedAt IS NULL
+          AND (LOWER(u.displayName) LIKE :pattern ESCAPE '\\'
+               OR LOWER(u.email) LIKE :pattern ESCAPE '\\')
+        ORDER BY u.createdAt DESC, u.id ASC
+        """)
+    Page<User> findForAdminPageable(@Param("pattern") String pattern, Pageable pageable);
 }

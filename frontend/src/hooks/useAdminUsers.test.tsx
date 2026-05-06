@@ -46,8 +46,17 @@ describe('useAdminUsers', () => {
     const { result } = renderHook(() => useAdminUsers(0, 50), { wrapper: wrap(qc) })
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
-    expect(api.adminListUsers).toHaveBeenCalledWith(0, 50)
+    expect(api.adminListUsers).toHaveBeenCalledWith(0, 50, '')
     expect(result.current.data).toEqual(PAGE)
+  })
+
+  it('q 파라미터를 api.adminListUsers에 전달 (admin-user-search-update)', async () => {
+    ;(api.adminListUsers as ReturnType<typeof vi.fn>).mockResolvedValue(PAGE)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(() => useAdminUsers(0, 50, 'alice'), { wrapper: wrap(qc) })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(api.adminListUsers).toHaveBeenCalledWith(0, 50, 'alice')
   })
 
   it('403 → isError + retry 비활성', async () => {

@@ -1520,9 +1520,9 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | GET | `/api/admin/download-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |
-| GET | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | — | `WHERE deleted_at IS NULL` (활성/비활성 모두 포함) | 401, 403 |
+| GET | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape (admin-user-search-update) | `WHERE deleted_at IS NULL` (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (user 생성 + 임시 PW BCrypt + AFTER_COMMIT audit·email) | email→lowercase trim | — | 400 VALIDATION_ERROR, 401, 403, 409 CONFLICT/DUPLICATE_EMAIL |
-| PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (role/active 변경 + AFTER_COMMIT audit) | — | — | 400 VALIDATION_ERROR, 401, 403 SELF_PROTECTION, 404 USER_NOT_FOUND |
+| PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (role/active/displayName 변경 + AFTER_COMMIT audit) | displayName trim (admin-user-search-update) | — | 400 VALIDATION_ERROR, 401, 403 SELF_PROTECTION, 404 USER_NOT_FOUND |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 
@@ -1560,10 +1560,13 @@ POST /api/admin/users                                (m-admin-entry-rewrite, ADR
 **관련 audit 이벤트** (docs/03 §2.10): `admin.user.created`.
 
 ```text
-GET /api/admin/users?page=0&size=50                  (admin-user-mgmt, 2026-05-05)
+GET /api/admin/users?page=0&size=50&q=<keyword>      (admin-user-mgmt + admin-user-search-update, 2026-05-06)
   Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
   Query:    page    (default 0, min 0)
             size    (default 50, min 1, max 200 — controller가 clamp)
+            q       (선택; blank/null이면 전체 목록. 값이 있으면 email/displayName
+                     case-insensitive 부분 매칭. service 단계에서 LIKE wildcard
+                     `\` `%` `_` 이스케이프 후 `LOWER(...) LIKE LOWER(?) ESCAPE '\\'`)
   Response: 200 Spring Page<AdminUserSummary> 직렬화
             {
               content: [{
@@ -1588,30 +1591,39 @@ GET /api/admin/users?page=0&size=50                  (admin-user-mgmt, 2026-05-0
 ```
 
 ```text
-PATCH /api/admin/users/:id                           (admin-user-mgmt, 2026-05-05)
+PATCH /api/admin/users/:id                           (admin-user-mgmt + admin-user-search-update, 2026-05-06)
   Headers:  X-CSRF-Token: <token>            (필수)
             Cookie: SESSION=<id>             (ADMIN 인증 필요)
   Path:     id (UUID — 대상 사용자)
-  Request:  { role?: 'MEMBER' | 'AUDITOR' | 'ADMIN', isActive?: false }
-            - 둘 다 optional이지만 최소 하나는 채워야 함 (둘 다 null이면 400)
-            - 둘 다 보내면 role 먼저 적용 후 deactivate (audit row 2개 분리 emit)
-            - isActive=true(재활성)는 본 트랙 미지원 — 400으로 거부 (v1.x 별도)
+  Request:  { role?: 'MEMBER' | 'AUDITOR' | 'ADMIN',
+              isActive?: boolean,
+              displayName?: string }
+            - 모두 optional이지만 최소 하나는 채워야 함 (모두 null이면 400)
+            - 여러 필드 동시에 보내면 controller가 role → isActive → displayName 순서로
+              각각 별도 service 호출 → audit row가 분리 emit (의도)
+            - displayName: trim 후 1-100자 (User.changeDisplayName 도메인 검증)
   Response: 200 AdminUserSummary (위 GET content[] 항목과 동일 shape — 적용 후 스냅샷)
-  Side-effects:
-            - users UPDATE (role 또는 is_active)
-            - role 변경 시 AFTER_COMMIT: AdminRoleChangedEvent
+  Side-effects (각 분기별):
+            - role 변경: users.role UPDATE + AFTER_COMMIT AdminRoleChangedEvent
               → audit_log `admin.role.changed` (before/after JSON `{"role":"..."}`)
-            - 비활성 시 AFTER_COMMIT: AdminUserDeactivatedEvent
-              → audit_log `admin.user.deactivated`
-            - 같은 role 재지정은 no-op (멱등) + audit 미발행
-            - 이미 비활성 user에 deactivate는 no-op + audit 미발행
+            - isActive=false(deactivate): users.is_active UPDATE + AFTER_COMMIT
+              AdminUserDeactivatedEvent → audit_log `admin.user.deactivated`
+            - isActive=true(reactivate): users.is_active UPDATE + AFTER_COMMIT
+              AdminUserUpdatedEvent → audit_log `admin.user.updated`
+              (before/after JSON `{"isActive":false|true}`)
+            - displayName 변경: users.display_name UPDATE + AFTER_COMMIT
+              AdminUserUpdatedEvent → audit_log `admin.user.updated`
+              (before/after JSON `{"displayName":"..."}`)
+            - 멱등 no-op: 같은 role 재지정 / 이미 비활성에 deactivate / 이미 활성에
+              reactivate / 동일 displayName 재설정은 모두 audit 미발행
   Self-protection:
             - actor==target && newRole != ADMIN → 403 SELF_PROTECTION (self-demote 차단)
             - actor==target && deactivate → 403 SELF_PROTECTION (self-deactivate 차단)
+            - reactivate / displayName 변경은 self 허용 (제재 아님)
             - 본인이 마지막 ADMIN인지 여부와 무관하게 일관 차단 (검증 단순화)
   Errors:
     400 VALIDATION_ERROR  { details: { field: 'body', rule: '...' } }
-                          (빈 body 또는 isActive=true)
+                          (모든 필드 null 또는 displayName blank/길이 초과)
     401                   (미인증)
     403                   (ADMIN role 아님 — `@PreAuthorize`, 본문 없음)
     403 FORBIDDEN/SELF_PROTECTION
@@ -1620,7 +1632,8 @@ PATCH /api/admin/users/:id                           (admin-user-mgmt, 2026-05-0
                           (target user 미존재)
 ```
 
-**관련 audit 이벤트** (docs/03 §2.10): `admin.role.changed`, `admin.user.deactivated`.
+**관련 audit 이벤트** (docs/03 §2.10): `admin.role.changed`, `admin.user.deactivated`,
+`admin.user.updated` (admin-user-search-update — reactivate + displayName 편집 공용).
 
 ### 7.13 SSE 실시간 동기화 (ADR #14)
 

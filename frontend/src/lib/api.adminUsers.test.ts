@@ -75,6 +75,30 @@ describe('api.adminListUsers', () => {
     expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/users?page=2&size=25')
   })
 
+  it('appends q when non-empty (admin-user-search-update)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await api.adminListUsers(0, 50, 'alice')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/users?page=0&size=50&q=alice')
+  })
+
+  it('trims q before appending', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await api.adminListUsers(0, 50, '  bob  ')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/users?page=0&size=50&q=bob')
+  })
+
+  it('omits q when blank/whitespace', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await api.adminListUsers(0, 50, '   ')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/users?page=0&size=50')
+  })
+
+  it('encodes special characters in q', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await api.adminListUsers(0, 50, 'a&b c')
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/admin/users?page=0&size=50&q=a%26b+c')
+  })
+
   it('403 → ApiError status=403', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }))
     await expect(api.adminListUsers()).rejects.toMatchObject({ status: 403 })
@@ -122,6 +146,22 @@ describe('api.adminUpdateUser', () => {
     await api.adminUpdateUser(SUMMARY_FIXTURE.id, { isActive: false })
     expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
       isActive: false,
+    })
+  })
+
+  it('200 OK — reactivate body { isActive: true } (admin-user-search-update)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(SUMMARY_FIXTURE, 200))
+    await api.adminUpdateUser(SUMMARY_FIXTURE.id, { isActive: true })
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      isActive: true,
+    })
+  })
+
+  it('200 OK — displayName body (admin-user-search-update)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(SUMMARY_FIXTURE, 200))
+    await api.adminUpdateUser(SUMMARY_FIXTURE.id, { displayName: 'New Name' })
+    expect(JSON.parse((fetchMock.mock.calls[0][1] as RequestInit).body as string)).toEqual({
+      displayName: 'New Name',
     })
   })
 

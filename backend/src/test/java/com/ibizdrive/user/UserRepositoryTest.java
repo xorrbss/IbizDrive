@@ -265,6 +265,86 @@ class UserRepositoryTest {
         assertThat(secondPage.getTotalElements()).isEqualTo(5);
     }
 
+    // ── admin-user-search-update: findForAdminPageable (Wave 1 — T1) ─────────
+
+    @Test
+    void findForAdminPageable_matchesDisplayNameCaseInsensitive() {
+        UUID aliceId = UUID.randomUUID();
+        userRepository.save(activeUser(aliceId, "alice@example.com", "Alice Kim", true));
+        userRepository.save(activeUser(UUID.randomUUID(), "bob@example.com", "Bob Lee", true));
+
+        Page<User> page = userRepository.findForAdminPageable("%alice%", PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId).containsExactly(aliceId);
+    }
+
+    @Test
+    void findForAdminPageable_matchesEmail() {
+        UUID id = UUID.randomUUID();
+        userRepository.save(activeUser(id, "Charlie@example.com", "Charles", true));
+        userRepository.save(activeUser(UUID.randomUUID(), "other@example.com", "Other", true));
+
+        Page<User> page = userRepository.findForAdminPageable("%charlie%", PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId).containsExactly(id);
+    }
+
+    @Test
+    void findForAdminPageable_excludesSoftDeleted() {
+        UUID activeId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        userRepository.save(activeUser(activeId, "find1@example.com", "Find Me", true));
+        userRepository.save(activeUser(deletedId, "find2@example.com", "Find Deleted", true));
+        userRepository.flush();
+        markSoftDeleted(deletedId);
+
+        Page<User> page = userRepository.findForAdminPageable("%find%", PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId).containsExactly(activeId);
+    }
+
+    @Test
+    void findForAdminPageable_includesInactiveUsers() {
+        // admin 검색은 비활성 사용자도 노출 — 재활성 대상이기 때문
+        UUID activeId = UUID.randomUUID();
+        UUID inactiveId = UUID.randomUUID();
+        userRepository.save(activeUser(activeId, "kw1@example.com", "Keyword Active", true));
+        userRepository.save(activeUser(inactiveId, "kw2@example.com", "Keyword Inactive", false));
+
+        Page<User> page = userRepository.findForAdminPageable("%keyword%", PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId)
+            .containsExactlyInAnyOrder(activeId, inactiveId);
+    }
+
+    @Test
+    void findForAdminPageable_orderedByCreatedAtDesc() {
+        OffsetDateTime base = OffsetDateTime.parse("2026-01-01T00:00:00Z");
+        UUID oldId = UUID.randomUUID();
+        UUID newId = UUID.randomUUID();
+        userRepository.save(activeUserAt(oldId, "old@example.com", "Match Old", true, base));
+        userRepository.save(activeUserAt(newId, "new@example.com", "Match New", true, base.plusDays(7)));
+
+        Page<User> page = userRepository.findForAdminPageable("%match%", PageRequest.of(0, 10));
+
+        assertThat(page.getContent()).extracting(User::getId).containsExactly(newId, oldId);
+    }
+
+    @Test
+    void findForAdminPageable_respectsPagination() {
+        for (int i = 0; i < 5; i++) {
+            userRepository.save(activeUser(
+                UUID.randomUUID(), "search" + i + "@example.com", "Search Hit " + i, true));
+        }
+
+        Page<User> firstPage = userRepository.findForAdminPageable("%search hit%", PageRequest.of(0, 2));
+        Page<User> secondPage = userRepository.findForAdminPageable("%search hit%", PageRequest.of(1, 2));
+
+        assertThat(firstPage.getContent()).hasSize(2);
+        assertThat(secondPage.getContent()).hasSize(2);
+        assertThat(firstPage.getTotalElements()).isEqualTo(5);
+    }
+
     private static User activeUser(UUID id, String email, String displayName, boolean isActive) {
         return new User(
             id,

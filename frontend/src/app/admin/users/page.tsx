@@ -1,8 +1,9 @@
 'use client'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useAdminInviteUser } from '@/hooks/useAdminInviteUser'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { useAdminUpdateUser } from '@/hooks/useAdminUpdateUser'
+import { useDebounce } from '@/hooks/useDebounce'
 import type { AdminUserSummary } from '@/lib/api'
 
 type Role = 'MEMBER' | 'AUDITOR' | 'ADMIN'
@@ -149,13 +150,21 @@ function inviteErrorMessage(e: unknown): string {
   return '초대에 실패했습니다. 잠시 후 다시 시도해주세요.'
 }
 
-// ── 사용자 목록 (admin-user-mgmt) ─────────────────────────────────────────
+// ── 사용자 목록 (admin-user-mgmt + admin-user-search-update) ───────────────
 
 const PAGE_SIZE = 50
+const SEARCH_DEBOUNCE_MS = 300
 
 function ListSection() {
   const [page, setPage] = useState(0)
-  const query = useAdminUsers(page, PAGE_SIZE)
+  const [searchInput, setSearchInput] = useState('')
+  const debouncedQuery = useDebounce(searchInput, SEARCH_DEBOUNCE_MS)
+  // 검색어 변경 시 첫 페이지로 — 안 그러면 결과가 적은 상태에서 page=N에 머물러 빈 목록 노출.
+  useEffect(() => {
+    setPage(0)
+  }, [debouncedQuery])
+
+  const query = useAdminUsers(page, PAGE_SIZE, debouncedQuery)
 
   return (
     <section aria-labelledby="users-list-title">
@@ -164,9 +173,23 @@ function ListSection() {
           사용자 목록
         </h2>
         <p className="text-[12px] text-fg-2 mt-1">
-          역할 변경과 비활성화는 즉시 반영되며 감사 로그에 기록됩니다.
+          역할 변경, 표시 이름 편집, 활성/비활성 전환은 즉시 반영되며 감사 로그에 기록됩니다.
         </p>
       </header>
+
+      <div className="mb-3">
+        <label className="flex flex-col gap-1 text-sm max-w-sm">
+          <span className="sr-only">사용자 검색</span>
+          <input
+            type="search"
+            placeholder="이메일/표시 이름으로 검색"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            aria-label="사용자 검색"
+            className="px-3 py-2 rounded border border-border bg-bg"
+          />
+        </label>
+      </div>
 
       {query.isLoading && (
         <p className="text-sm text-fg-2">불러오는 중…</p>
@@ -219,6 +242,11 @@ function ListSection() {
 function UserRow({ user }: { user: AdminUserSummary }) {
   const update = useAdminUpdateUser()
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
+  // displayName inline edit 상태 — 편집 모드 진입 시 user.displayName으로 초기화.
+  // 서버 fetch 결과가 다시 들어오면 user prop이 바뀌므로 unmount/remount되거나 useEffect로
+  // 재동기화가 필요하지만, 본 page는 update mutate 후 invalidate → 새 row mount이므로 안전.
+  const [editingName, setEditingName] = useState(false)
+  const [draftName, setDraftName] = useState(user.displayName)
 
   const onChangeRole = async (next: Role) => {
     if (next === user.role) return
@@ -239,10 +267,88 @@ function UserRow({ user }: { user: AdminUserSummary }) {
     }
   }
 
+  const onReactivate = async () => {
+    setErrorMsg(null)
+    try {
+      await update.mutateAsync({ id: user.id, body: { isActive: true } })
+    } catch (e) {
+      setErrorMsg(updateErrorMessage(e))
+    }
+  }
+
+  const onSaveDisplayName = async () => {
+    const trimmed = draftName.trim()
+    if (trimmed.length === 0 || trimmed.length > 100) {
+      setErrorMsg('표시 이름은 1-100자여야 합니다.')
+      return
+    }
+    if (trimmed === user.displayName) {
+      setEditingName(false)
+      return
+    }
+    setErrorMsg(null)
+    try {
+      await update.mutateAsync({ id: user.id, body: { displayName: trimmed } })
+      setEditingName(false)
+    } catch (e) {
+      setErrorMsg(updateErrorMessage(e))
+    }
+  }
+
+  const onCancelEdit = () => {
+    setDraftName(user.displayName)
+    setEditingName(false)
+    setErrorMsg(null)
+  }
+
   return (
     <tr className="border-t border-border">
       <td className="px-3 py-2">{user.email}</td>
-      <td className="px-3 py-2">{user.displayName}</td>
+      <td className="px-3 py-2">
+        {editingName ? (
+          <span className="flex items-center gap-2">
+            <input
+              type="text"
+              maxLength={100}
+              value={draftName}
+              onChange={(e) => setDraftName(e.target.value)}
+              aria-label={`${user.email} 표시 이름 편집`}
+              className="px-2 py-1 rounded border border-border bg-bg text-sm"
+            />
+            <button
+              type="button"
+              onClick={onSaveDisplayName}
+              disabled={update.isPending}
+              className="px-2 py-1 rounded bg-accent text-accent-fg text-xs disabled:opacity-50"
+            >
+              저장
+            </button>
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              disabled={update.isPending}
+              className="px-2 py-1 rounded border border-border text-xs disabled:opacity-50"
+            >
+              취소
+            </button>
+          </span>
+        ) : (
+          <span className="flex items-center gap-2">
+            <span>{user.displayName}</span>
+            <button
+              type="button"
+              aria-label={`${user.email} 표시 이름 편집`}
+              onClick={() => {
+                setDraftName(user.displayName)
+                setEditingName(true)
+              }}
+              className="px-2 py-0.5 rounded border border-border text-xs"
+            >
+              편집
+            </button>
+          </span>
+        )}
+      </td>
       <td className="px-3 py-2">
         <select
           aria-label={`${user.email} 역할`}
@@ -264,15 +370,27 @@ function UserRow({ user }: { user: AdminUserSummary }) {
         )}
       </td>
       <td className="px-3 py-2">
-        <button
-          type="button"
-          aria-label={`${user.email} 비활성화`}
-          disabled={!user.isActive || update.isPending}
-          onClick={onDeactivate}
-          className="px-2 py-1 rounded border border-border text-sm disabled:opacity-50"
-        >
-          비활성화
-        </button>
+        {user.isActive ? (
+          <button
+            type="button"
+            aria-label={`${user.email} 비활성화`}
+            disabled={update.isPending}
+            onClick={onDeactivate}
+            className="px-2 py-1 rounded border border-border text-sm disabled:opacity-50"
+          >
+            비활성화
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label={`${user.email} 재활성화`}
+            disabled={update.isPending}
+            onClick={onReactivate}
+            className="px-2 py-1 rounded border border-border text-sm disabled:opacity-50"
+          >
+            재활성화
+          </button>
+        )}
         {errorMsg && (
           <span role="alert" className="ml-2 text-xs text-red-600">
             {errorMsg}

@@ -235,7 +235,7 @@ class AdminUserControllerTest {
         User u2 = new User(UUID.fromString("22222222-2222-2222-2222-222222222222"),
             "bob@example.com", "Bob", "{bcrypt}h", Role.MEMBER, true, false, now);
         Pageable pageable = PageRequest.of(0, 50);
-        when(adminUserService.list(eq(pageable))).thenReturn(new PageImpl<>(List.of(u1, u2), pageable, 2));
+        when(adminUserService.list(eq(pageable), eq(null))).thenReturn(new PageImpl<>(List.of(u1, u2), pageable, 2));
 
         mvc.perform(get("/api/admin/users").with(user(adminPrincipal)))
             .andExpect(status().isOk())
@@ -253,14 +253,26 @@ class AdminUserControllerTest {
     @Test
     void list_pageSizeRespected() throws Exception {
         Pageable pageable = PageRequest.of(1, 10);
-        when(adminUserService.list(eq(pageable))).thenReturn(new PageImpl<>(List.of(), pageable, 0));
+        when(adminUserService.list(eq(pageable), eq(null))).thenReturn(new PageImpl<>(List.of(), pageable, 0));
 
         mvc.perform(get("/api/admin/users")
                 .param("page", "1").param("size", "10")
                 .with(user(adminPrincipal)))
             .andExpect(status().isOk());
 
-        verify(adminUserService).list(eq(pageable));
+        verify(adminUserService).list(eq(pageable), eq(null));
+    }
+
+    @Test
+    void list_searchQueryPropagated() throws Exception {
+        // admin-user-search-update — ?q= 파라미터가 service.list 두번째 인자로 전파
+        Pageable pageable = PageRequest.of(0, 50);
+        when(adminUserService.list(eq(pageable), eq("alice"))).thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        mvc.perform(get("/api/admin/users").param("q", "alice").with(user(adminPrincipal)))
+            .andExpect(status().isOk());
+
+        verify(adminUserService).list(eq(pageable), eq("alice"));
     }
 
     @Test
@@ -327,16 +339,53 @@ class AdminUserControllerTest {
         verifyNoInteractions(adminUserService);
     }
 
+    // admin-user-search-update — isActive=true 이제 reactivate로 처리 (Wave 1 — T1)
     @Test
-    void patch_isActiveTrue_returns400Validation() throws Exception {
-        UUID targetId = UUID.randomUUID();
+    void patch_reactivate_returns200() throws Exception {
+        UUID targetId = UUID.fromString("55555555-5555-5555-5555-555555555555");
+        User updated = new User(targetId, "react@example.com", "React", "{bcrypt}h",
+            Role.MEMBER, true, false, OffsetDateTime.now());
+        when(adminUserService.reactivate(eq(targetId), eq(ACTOR_ID))).thenReturn(updated);
+
         mvc.perform(patch("/api/admin/users/{id}", targetId)
                 .with(user(adminPrincipal)).with(csrf())
                 .contentType("application/json")
                 .content(json.writeValueAsString(Map.of("isActive", true))))
-            .andExpect(status().isBadRequest())
-            .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-        verifyNoInteractions(adminUserService);
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.isActive").value(true));
+
+        verify(adminUserService).reactivate(targetId, ACTOR_ID);
+    }
+
+    @Test
+    void patch_changeDisplayName_returns200() throws Exception {
+        UUID targetId = UUID.fromString("66666666-6666-6666-6666-666666666666");
+        User updated = new User(targetId, "rn@example.com", "Renamed", "{bcrypt}h",
+            Role.MEMBER, true, false, OffsetDateTime.now());
+        when(adminUserService.changeDisplayName(eq(targetId), eq("Renamed"), eq(ACTOR_ID))).thenReturn(updated);
+
+        mvc.perform(patch("/api/admin/users/{id}", targetId)
+                .with(user(adminPrincipal)).with(csrf())
+                .contentType("application/json")
+                .content(json.writeValueAsString(Map.of("displayName", "Renamed"))))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.displayName").value("Renamed"));
+
+        verify(adminUserService).changeDisplayName(targetId, "Renamed", ACTOR_ID);
+    }
+
+    @Test
+    void patch_blankDisplayName_returns400() throws Exception {
+        // service의 IllegalArgumentException → GlobalExceptionHandler 400 매핑
+        UUID targetId = UUID.fromString("77777777-7777-7777-7777-777777777777");
+        doThrow(new IllegalArgumentException("displayName must not be blank"))
+            .when(adminUserService).changeDisplayName(eq(targetId), anyString(), eq(ACTOR_ID));
+
+        mvc.perform(patch("/api/admin/users/{id}", targetId)
+                .with(user(adminPrincipal)).with(csrf())
+                .contentType("application/json")
+                .content(json.writeValueAsString(Map.of("displayName", "   "))))
+            .andExpect(status().isBadRequest());
     }
 
     @Test
