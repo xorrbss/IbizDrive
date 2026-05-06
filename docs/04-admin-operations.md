@@ -29,10 +29,11 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 2. 관리자 페이지 구조
 
-> **MVP closure 시점 활성 라우트** (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update, 2026-05-06):
+> **활성 라우트** (Wave 2 T4 closure, 2026-05-06):
 > - `/admin` — landing (가용 카드 2 + deferred 안내)
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
-> - `/admin/users` — 사용자 초대 폼 + 사용자 목록(검색·역할 변경·재활성/비활성·표시 이름 편집)
+> - `/admin/users` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 (Wave 1 T1 closure)
+> - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
 >
 > 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
 
@@ -42,9 +43,9 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 ├─ /users                  사용자 초대 + 목록 (검색/편집/활성 토글)         (활성, 2026-05-06)
 │  ├─ /:id                 사용자 상세 + 활동                              (v1.x deferred)
 │  └─ /import              CSV 일괄 import                                (v1.x deferred)
-├─ /departments
-│  ├─ /tree                조직도                                          (v1.x deferred)
-│  └─ /:id                                                                (v1.x deferred)
+├─ /departments              부서 CRUD (생성/검색/rename/(de)activate)     (활성, Wave 2 T4)
+│  ├─ /tree                조직도 트리 편집                                 (v1.x deferred)
+│  └─ /:id                 부서 상세                                       (v1.x deferred)
 ├─ /permissions
 │  ├─ /bulk                권한 일괄 변경                                  (v1.x deferred)
 │  └─ /templates           권한 프리셋 템플릿                              (v1.x deferred)
@@ -141,12 +142,29 @@ audit 분리 이유: deactivated는 제재 의미를 가지므로 별도 enum으
 
 ## 5. 부서 관리
 
-> **v1.x deferred (전체)**. backend `Department` 도메인 LTREE 활성 (V7, A16 closure), admin UI는 v1.x. MVP는 부서 변경/합병/분리 모두 DB 직접 조작 또는 별도 트랙.
+> **MVP CRUD wired (Wave 2 T4 admin-department-crud, 2026-05-06)** — flat list 기반 생성·이름변경·비활성/재활성. 조직도 트리(LTREE 기반 이동/합병/분리)는 v1.x deferred.
 
-- [ ] 조직도 트리 편집 (드래그로 부서 이동) — *v1.x deferred*
+### 5.1 활성 — `/admin/departments` (Wave 2 T4)
+
+- 라우트: `/admin/departments` (AdminSideNav '부서' 활성).
+- 가드: `@PreAuthorize("hasRole('ADMIN')")` (backend 진실, frontend는 UX용).
+- 화면 구성:
+  - **상단 생성 폼** — 이름 입력(1~100자, trim) + "추가" 버튼. 409 인라인 에러("같은 이름의 활성 부서가 이미 존재합니다").
+  - **검색 input** — 300ms debounce, `LOWER(name) LIKE` 부분 일치(`q.trim().toLowerCase()`). 검색어 변경 시 page=0 리셋.
+  - **목록 표 + pagination** — 활성/비활성 모두 표시(reactivate UX), createdAt DESC 정렬, page=50.
+  - **rename inline form** — 행 단위 "이름 변경" → input + 저장/취소. 동일 이름 저장은 no-op.
+  - **(de)activate toggle** — 활성 → "비활성화", 비활성 → "재활성화". soft-delete 의미 등가(`deletedAt = NOW()` / `null`).
+- API: `GET/POST/PATCH /api/admin/departments` (docs/02 §7.12).
+- Audit: `admin.department.created/updated/deactivated` 3종(AFTER_COMMIT, docs/03 §4.1).
+- DB 제약: V9 `idx_departments_name_active` partial unique(`WHERE deleted_at IS NULL`) — 활성 이름 충돌 차단(CLAUDE.md §3 원칙 6).
+- 에러 매핑: 409 DEPARTMENT_CONFLICT(create/rename/reactivate) / 404 NOT_FOUND(target dept) / 400 VALIDATION_ERROR(empty body, length) / 403(ADMIN 아님).
+
+### 5.2 v1.x deferred
+
+- [ ] 조직도 트리 편집 (드래그로 부서 이동, LTREE path 활용) — *v1.x deferred (V7 schema 도입만)*
 - [ ] 부서 합병 / 분리 — *v1.x deferred*
 - [ ] 부서 기반 권한 일괄 부여 — *v1.x deferred (현재 권한 부여는 subject_type=department + 단건 API 가능, A11/A16 closure)*
-- [ ] 부서 해산 시 구성원 이관 flow — *v1.x deferred*
+- [ ] 부서 해산 시 구성원 이관 flow — *v1.x deferred (현재 deactivate 시 `users.department_id` 정리 미수행 — 비활성 dept 참조 row는 권한 평가 미스매치로 자연 제외)*
 
 ---
 

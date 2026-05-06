@@ -73,35 +73,40 @@ CREATE UNIQUE INDEX users_email_unique
 CREATE INDEX idx_users_department ON users(department_id) WHERE is_active = TRUE;
 ```
 
-### 2.2 departments (V7 마이그레이션 — A16, ADR #37)
+### 2.2 departments (V7 — A16 ADR #37, V9 — admin-department-crud Wave 2 T4)
 
 ```sql
 -- V7__departments_users_dept.sql (A16, ADR #37)
 CREATE EXTENSION IF NOT EXISTS ltree;
 
 CREATE TABLE departments (
-  id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-  name        CITEXT NOT NULL,
-  parent_id   UUID REFERENCES departments(id),
-  path        LTREE,                 -- v1.x 조직도 트리용 schema 도입만, MVP는 flat
-  active      BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    name        VARCHAR(100) NOT NULL,
+    parent_id   UUID REFERENCES departments(id),
+    path        LTREE,                 -- v1.x 조직도 트리용 schema 도입만, MVP는 flat
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    deleted_at  TIMESTAMPTZ            -- soft-delete = 비활성 (admin "deactivate")
 );
 
 CREATE INDEX idx_departments_path ON departments USING GIST (path);
-CREATE INDEX idx_departments_active_name ON departments (lower(name)) WHERE active;
+CREATE INDEX idx_departments_name ON departments(name) WHERE deleted_at IS NULL;
 
--- users.department_id FK 활성화 (V2의 deferred 컬럼)
+-- users.department_id FK (V2 deferred 컬럼 활성화)
 ALTER TABLE users
-  ADD CONSTRAINT fk_users_department
-  FOREIGN KEY (department_id) REFERENCES departments(id);
+  ADD COLUMN department_id UUID REFERENCES departments(id);
+CREATE INDEX idx_users_department
+  ON users(department_id) WHERE is_active = TRUE AND department_id IS NOT NULL;
+
+-- V9__admin_departments.sql (Wave 2 T4) — 활성 부서 이름 partial unique
+CREATE UNIQUE INDEX idx_departments_name_active
+    ON departments(name) WHERE deleted_at IS NULL;
 ```
 
-**A16 정책**:
-- `name`은 CITEXT(케이스 무관 unique 검색용). LIKE 검색은 `LOWER(name) LIKE :p ESCAPE '\\'`로 A14 user search와 동형.
+**정책**:
+- `name`은 VARCHAR(100), case-sensitive(Postgres default). Admin CRUD는 동일 활성 이름 충돌을 V9 partial unique로 차단(CLAUDE.md §3 원칙 6: DB 제약이 진실의 출처). 검색은 `LOWER(name) LIKE :p ESCAPE '\\'`로 A14 user search와 동형.
+- `deleted_at`이 활성/비활성 상태를 도출(별도 `active` 컬럼 없음). `Department.isActive() := deletedAt == null`. Admin "비활성화"는 soft-delete 의미 동등.
 - `path` LTREE 컬럼은 **schema 도입만** — application은 flat 사용(parent_id 무시). 조직도 트리 v1.x deferred (KISS, ADR #37).
-- `active=FALSE`인 부서는 검색·share subject 모두에서 제외 (`WHERE active = TRUE`).
+- 비활성(`deleted_at IS NOT NULL`) 부서는 일반 사용자 검색·share subject 후보에서 제외. **Admin 페이지는 비활성 포함**(reactivate 가능하도록).
 - `users.department_id` NULL 허용 — 미배정 사용자 가능. NULL인 사용자는 dept 권한 매칭에서 unmatched(false).
 
 ### 2.3 folders
@@ -266,13 +271,14 @@ CREATE TABLE audit_log (
   actor_ip       INET,
   user_agent     TEXT,
   event_type     VARCHAR(50) NOT NULL,
-  target_type    VARCHAR(20) NOT NULL,              -- file|folder|user|permission|share|system|audit
+  target_type    VARCHAR(20) NOT NULL,              -- file|folder|user|permission|share|system|audit|department
   target_id      UUID,
   before_state   JSONB,
   after_state    JSONB,
   metadata       JSONB,                             -- 추가 컨텍스트
 
-  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit'))
+  -- V3 baseline: 7개. V9(Wave 2 T4)에서 'department' 추가 → 8개.
+  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit', 'department'))
 );
 
 -- 🔑 append-only 강제: DB 사용자 권한으로 UPDATE/DELETE 차단
@@ -1523,6 +1529,9 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | GET | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape (admin-user-search-update) | `WHERE deleted_at IS NULL` (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (user 생성 + 임시 PW BCrypt + AFTER_COMMIT audit·email) | email→lowercase trim | — | 400 VALIDATION_ERROR, 401, 403, 409 CONFLICT/DUPLICATE_EMAIL |
 | PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (role/active/displayName 변경 + AFTER_COMMIT audit) | displayName trim (admin-user-search-update) | — | 400 VALIDATION_ERROR, 401, 403 SELF_PROTECTION, 404 USER_NOT_FOUND |
+| GET | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (활성/비활성 모두 포함) | 401, 403 |
+| POST | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (생성 + AFTER_COMMIT audit) | name→trim | partial unique `WHERE deleted_at IS NULL` | 400 VALIDATION_ERROR, 401, 403, 409 DEPARTMENT_CONFLICT |
+| PATCH | `/api/admin/departments/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (rename/(de)activate + AFTER_COMMIT audit) | name→trim | partial unique 보조 | 400 VALIDATION_ERROR, 401, 403, 404 NOT_FOUND, 409 DEPARTMENT_CONFLICT |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 
@@ -1634,6 +1643,82 @@ PATCH /api/admin/users/:id                           (admin-user-mgmt + admin-us
 
 **관련 audit 이벤트** (docs/03 §2.10): `admin.role.changed`, `admin.user.deactivated`,
 `admin.user.updated` (admin-user-search-update — reactivate + displayName 편집 공용).
+
+```text
+GET /api/admin/departments?page=0&size=50&q=영업       (admin-department-crud, Wave 2 T4, 2026-05-06)
+  Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Query:    page    (default 0, min 0)
+            size    (default 50, min 1, max 200 — controller가 clamp)
+            q       (선택, trim 후 비어있으면 전체 조회)
+  Response: 200 Spring Page<AdminDepartmentSummary>
+            {
+              content: [{
+                id: string (UUID),
+                name: string,
+                isActive: boolean,            // deletedAt == null 도출
+                createdAt: string (ISO-8601)
+              }, ...],
+              totalElements, totalPages, number, size
+            }
+            정렬: createdAt DESC, id ASC.
+            soft-delete된 dept 제외 안 함 (admin은 비활성 포함 — reactivate 가능하도록).
+            검색: LOWER(name) LIKE :q ESCAPE '\\' (와일드카드 \, %, _ escape).
+  Errors:
+    401 (미인증), 403 (ADMIN role 아님 — `@PreAuthorize` 차단)
+```
+
+```text
+POST /api/admin/departments                            (admin-department-crud, Wave 2 T4)
+  Headers:  X-CSRF-Token: <token>
+            Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Request:  { name: string }
+  Validation:
+    - name: @NotBlank @Size(max=100), trim 후 1~100자
+  Response: 200 AdminDepartmentSummary (위 GET content[] 항목과 동일 shape)
+            Note: Spring default 200 — @ResponseStatus(CREATED) 미사용
+                  (AdminUserController invite 패턴 답습).
+  Side-effects:
+            - departments INSERT (deleted_at=null → isActive=true)
+            - AFTER_COMMIT: AdminDepartmentCreatedEvent → AdminDepartmentAuditListener
+              → audit_log `admin.department.created`
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'name', rule: '...' } }
+    401 (미인증)
+    403 (ADMIN role 아님)
+    409 DEPARTMENT_CONFLICT { code: 'DEPARTMENT_CONFLICT' }
+                            (동일 이름 활성 dept 존재 — V9 partial unique
+                             또는 service 사전 검사로 차단)
+```
+
+```text
+PATCH /api/admin/departments/:id                       (admin-department-crud, Wave 2 T4)
+  Headers:  X-CSRF-Token: <token>
+            Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Path:     id (UUID — 대상 부서)
+  Request:  { name?: string, isActive?: boolean }
+            - 둘 다 optional이지만 최소 하나는 채워야 함 (`isEmpty()` → 400)
+            - 둘 다 보내면 rename 먼저 적용 후 (de)activate
+            - 동일 이름 rename / 같은 isActive 토글은 멱등 no-op (audit 미발행)
+  Response: 200 AdminDepartmentSummary (적용 후 스냅샷)
+  Side-effects:
+            - rename: departments.name UPDATE
+              → AFTER_COMMIT: AdminDepartmentUpdatedEvent (before/after `{name}`)
+              → audit_log `admin.department.updated`
+            - isActive=false: departments.deleted_at=NOW()
+              → AFTER_COMMIT: AdminDepartmentDeactivatedEvent
+              → audit_log `admin.department.deactivated`
+            - isActive=true: departments.deleted_at=null
+              → AFTER_COMMIT: AdminDepartmentUpdatedEvent (before/after `{isActive}`)
+              → audit_log `admin.department.updated` (제재 분기 아님)
+  Errors:
+    400 VALIDATION_ERROR  (빈 body / name 길이 / blank)
+    401 (미인증)
+    403 (ADMIN role 아님)
+    404 NOT_FOUND          (target dept 미존재)
+    409 DEPARTMENT_CONFLICT (rename 또는 reactivate 시 동일 이름 활성 dept 존재)
+```
+
+**관련 audit 이벤트** (docs/03 §4.1): `admin.department.created`, `admin.department.updated`, `admin.department.deactivated`.
 
 ### 7.13 SSE 실시간 동기화 (ADR #14)
 
@@ -1793,6 +1878,7 @@ GET /api/departments/search?q=eng&limit=20
 | 409 | RENAME_CONFLICT | 이름 변경 충돌 | RenameDialog 재표시 |
 | 409 | RESTORE_CONFLICT | 복원 시 원위치 충돌 | 이름 변경 후 복원 제안 |
 | 409 | VERSION_CONFLICT | 버전 업로드 시 최신 버전 불일치 | "최신 버전 확인" 다이얼로그 |
+| 409 | DEPARTMENT_CONFLICT | 동일 이름의 활성 부서 존재 (admin create/rename/reactivate) | 인라인 에러 — "같은 이름의 활성 부서가 이미 존재합니다" |
 | 400 | MOVE_INTO_SELF | 자기 자신으로 이동 시도 | UI 차단, 도달 시 토스트 |
 | 400 | MOVE_INTO_DESCENDANT | 후손 폴더로 이동 시도 | UI 차단, 도달 시 토스트 |
 | 404 | TARGET_NOT_FOUND | 이동 타겟 폴더가 없음 | 토스트 + 폴더 트리 재조회 |

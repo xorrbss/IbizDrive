@@ -20,11 +20,11 @@ import { usePathname } from 'next/navigation'
 const ACTIVE_ITEMS = [
   { label: '감사 로그', href: '/admin/audit/logs', match: 'exact' as const },
   { label: '사용자 초대', href: '/admin/users', match: 'prefix' as const },
+  { label: '부서', href: '/admin/departments', match: 'prefix' as const },
 ]
 
 const DEFERRED_ITEMS = [
   '대시보드',
-  '부서',
   '권한',
   '스토리지',
   '휴지통',

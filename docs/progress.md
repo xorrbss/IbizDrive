@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-05-06 — 🏁 admin-department-crud 트랙 종료 (Wave 2 T4 — 관리자 부서 CRUD + audit emit 3종)
+
+### 범위
+
+`/admin/departments` 페이지 활성화 — 관리자가 부서를 생성/검색/이름변경/비활성/재활성할 수 있다. backend `Department` 도메인 lifecycle 메서드 + V9 partial unique + audit_log target_type 'department' 허용 + service/controller/listener 풀 스택 구현.
+
+### 변경 핵심
+
+**Backend (P1~P3, V9):**
+- V9 마이그레이션: `idx_departments_name_active` partial unique (`WHERE deleted_at IS NULL`) — 활성 부서 이름 충돌 DB 차단(CLAUDE.md §3 원칙 6). audit_log target_type CHECK 'department' 추가.
+- `Department.rename/deactivate/reactivate/isActive` — soft-delete 의미 등가, 멱등.
+- `DepartmentRepository.findAllForAdminPageable(q, Pageable)` — 비활성 포함, LIKE escape.
+- `AdminDepartmentService` 5종 동작 + 3 events. update는 rename + reactivate 흡수(T1 ADMIN_USER_UPDATED 정책 동형).
+- `AdminDepartmentController` GET/POST/PATCH `/api/admin/departments` + `@PreAuthorize("hasRole('ADMIN')")`.
+- `AdminDepartmentAuditListener` AFTER_COMMIT 3 emit.
+- `AuditTargetType.DEPARTMENT` + `AuditEventType.ADMIN_DEPARTMENT_CREATED/_UPDATED/_DEACTIVATED` (44 → 47 enum).
+- `DepartmentConflictException` → `GlobalExceptionHandler` 409 매핑(envelope `{error:{code:"DEPARTMENT_CONFLICT"}}`).
+
+**Frontend (P4~P5):**
+- `types/department.ts` Admin* 타입 4종 + `types/audit.ts` 'department' resource + 3 event mirror.
+- `lib/api.ts` adminListDepartments/Create/Update + `lib/queryKeys.ts` `adminDepartmentsList` + `invalidations.afterAdminDepartmentChanged`.
+- `hooks/useAdminDepartments.ts` 단일 파일 통합 (KISS — admin-user-mgmt의 4파일 분리와 다른 정책: 본 트랙 4 동작이 의미적 한 묶음).
+- `app/admin/departments/page.tsx` — 생성 폼 + 검색(300ms debounce) + 목록 + rename inline + (de)activate toggle + pagination.
+- `components/admin/AdminSideNav.tsx` — '부서' DEFERRED → ACTIVE_ITEMS.
+
+**Docs:**
+- docs/02 §2.2 V7 schema 정정 + V9 partial unique 명시 / §2.8 audit_log target_type CHECK 'department' / §7.12 Departments 3 endpoint 풀 스펙 / §8 DEPARTMENT_CONFLICT 행.
+- docs/03 §4.1 `admin.department.created/updated/deactivated` 3종 추가.
+- docs/04 §2 활성 라우트 + 트리 / §5 `/admin/departments` 활성 명세.
+- BETA-RELEASE.md §6 (35→39 emit / 44→47 enum, ~83%) + §7 admin frontend wording 갱신.
+
+### 검증
+
+- backend: `./gradlew test` GREEN.
+- frontend: `pnpm test --run` 789/789 GREEN(99 files), `pnpm typecheck` clean, `pnpm lint` clean, `pnpm build` clean — `/admin/departments` 5.09 kB / First Load 119 kB.
+
+### Audit emit 의미 분리 유지
+
+- `_DEACTIVATED` (제재 분기) ↔ `_UPDATED` (rename + reactivate 등 일반 속성). admin-user-mgmt `ADMIN_USER_DEACTIVATED` ↔ `ADMIN_USER_UPDATED`와 동형.
+
+### 다음 세션 컨텍스트
+
+- 본 트랙 PR 제출 → master rebase 시 BETA §6 / docs/04 §2 / docs/04 §5 줄에서 Wave 1 T1과 사소 conflict 가능 — 양 트랙 wording 머지(둘 다 활성).
+- v1.x deferred: 조직도 트리 편집(LTREE), 부서 합병/분리, 부서 해산 시 구성원 이관 flow. 본 트랙은 flat list CRUD까지.
+
+---
+
 ## 2026-05-06 — 🏁 admin-user-search-update 트랙 종료 (Wave 1 — T1: 검색 + 재활성 + displayName 편집 + `ADMIN_USER_UPDATED` emit)
 
 ### 범위

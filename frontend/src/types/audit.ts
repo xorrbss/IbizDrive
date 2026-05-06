@@ -52,6 +52,9 @@ export type AuditEventType =
   | 'admin.quota.changed'
   | 'admin.legal_hold.placed'
   | 'admin.legal_hold.released'
+  | 'admin.department.created'
+  | 'admin.department.updated'
+  | 'admin.department.deactivated'
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'
@@ -59,7 +62,7 @@ export type AuditEventType =
   // 감사 로그 자체
   | 'audit.exported'
 
-export type AuditResourceType = 'file' | 'folder' | 'user' | 'permission' | 'share' | 'system' | 'audit'
+export type AuditResourceType = 'file' | 'folder' | 'user' | 'permission' | 'share' | 'system' | 'audit' | 'department'
 
 export interface AuditLogEntry {
   /** UUID. 백엔드는 audit_log.id (BIGINT) → 노출 시 hashId로 변환 권장이나 v1.0 mock은 string. */

@@ -527,6 +527,9 @@ type AuditEventType =
   | 'admin.quota.changed'
   | 'admin.legal_hold.placed'
   | 'admin.legal_hold.released'
+  | 'admin.department.created'      // Wave 2 T4 활성화 (admin-department-crud, 2026-05-06) — POST /api/admin/departments
+  | 'admin.department.updated'      // Wave 2 T4 활성화 — PATCH (rename + reactivate 흡수, before/after JSON)
+  | 'admin.department.deactivated'  // Wave 2 T4 활성화 — PATCH isActive=false (제재 분기)
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'
