@@ -1,24 +1,24 @@
 'use client'
 import { useState } from 'react'
-import { toast } from 'sonner'
 import { useAuditLogs } from '@/hooks/useAuditLogs'
 import { AuditFilters } from '@/components/audit/AuditFilters'
 import { AuditTable } from '@/components/audit/AuditTable'
 import { AuditPagination } from '@/components/audit/AuditPagination'
-import { toAuditCsvBlob } from '@/lib/auditCsv'
+import { api } from '@/lib/api'
 import type { AuditLogFilters } from '@/types/audit'
 
 const PAGE_SIZE = 20
 const EMPTY_FILTERS: AuditLogFilters = {}
 
 /**
- * /admin/audit/logs — 감사 로그 페이지 (M12, A2.6 wired, docs/04 §7).
+ * /admin/audit/logs — 감사 로그 페이지 (M12, A2.6 wired, Wave 1 — T2 server-side export).
  *
- * - 필터 (행위자/이벤트/날짜) + 페이지네이션 + CSV export
+ * - 필터(행위자/이벤트/날짜) + 페이지네이션 + CSV export (server-side full-result)
  * - 백엔드 연결: `api.getAuditLogs`는 `GET /api/admin/audit`(A2.6) 직접 호출.
  *   audit_log emission은 A2/A10/A12 누적 활성(file/folder/permission/share).
- * - CSV export는 client-side current-page만(`toAuditCsvBlob`). 서버 전체 결과
- *   스트리밍 + `audit.exported` runtime emission은 v1.x deferred.
+ * - CSV export는 `GET /api/admin/audit/export` (T2 신설). 현재 필터를 그대로 query string으로 전달,
+ *   브라우저 anchor download로 트리거. 권한 가드는 backend `@PreAuthorize(AUDITOR or ADMIN)`이
+ *   단독 책임 — MEMBER는 403을 받게 되며 UX는 추후 강화.
  */
 export default function AuditLogsPage() {
   const [filters, setFilters] = useState<AuditLogFilters>(EMPTY_FILTERS)
@@ -35,36 +35,22 @@ export default function AuditLogsPage() {
     setPage(1)
   }
 
-  const handleExport = () => {
-    if (!data || data.entries.length === 0) {
-      toast.info('내보낼 감사 로그가 없습니다.')
-      return
-    }
-    // mock: 현재 페이지만 export. 백엔드 연결 시 전체 필터 결과를 서버에서 스트리밍.
-    const blob = toAuditCsvBlob(data.entries)
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `audit_logs_${new Date().toISOString().slice(0, 10)}.csv`
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
-    URL.revokeObjectURL(url)
-    toast.success(`${data.entries.length}건을 CSV로 내보냈습니다`)
-  }
+  const exportUrl = api.getAuditLogsExportUrl(filters)
 
   return (
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-border">
         <h1 className="text-[14px] font-semibold text-fg">감사 로그</h1>
-        <button
-          type="button"
-          onClick={handleExport}
-          disabled={isLoading || !data || data.entries.length === 0}
-          className="h-8 px-3 rounded bg-accent text-accent-fg text-[12.5px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+        <a
+          href={exportUrl}
+          // download 속성은 same-origin이면 Content-Disposition filename을 우선시한다.
+          // 빈 값으로 두어 backend가 지정한 audit_logs_<date>.csv가 그대로 사용되도록.
+          download=""
+          className="h-8 px-3 inline-flex items-center rounded bg-accent text-accent-fg text-[12.5px] font-medium hover:opacity-90"
+          data-testid="audit-export-link"
         >
           CSV 내보내기
-        </button>
+        </a>
       </div>
       <AuditFilters value={filters} onChange={handleFiltersChange} onReset={handleReset} />
       <div className="flex-1 min-h-0">

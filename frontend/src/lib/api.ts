@@ -804,6 +804,28 @@ export const api = {
     return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   },
 
+  /**
+   * 감사 로그 server-side CSV export URL 빌더 (Wave 1 — T2).
+   *
+   * <p>실제 다운로드는 anchor element의 `href`/`download`로 트리거 — fetch가 아닌 브라우저
+   * navigation을 사용해야 Content-Disposition을 그대로 인식한다. 호출 측은 본 URL을
+   * `<a href>`에 그대로 넣고 click한다.
+   *
+   * <p>backend `GET /api/admin/audit/export` 가드: `@PreAuthorize(AUDITOR or ADMIN)` — MEMBER는 403.
+   * 본 함수는 URL만 빌드하므로 권한 가드는 backend가 단독 책임 (UX는 호출 측 페이지가 분기).
+   */
+  getAuditLogsExportUrl(filters: AuditLogFilters = {}): string {
+    const params = new URLSearchParams()
+    if (filters.fromDate) params.set('fromDate', filters.fromDate)
+    if (filters.toDate) params.set('toDate', filters.toDate)
+    if (filters.actorQuery && filters.actorQuery.trim()) {
+      params.set('actorQuery', filters.actorQuery.trim())
+    }
+    if (filters.eventType) params.set('eventType', filters.eventType)
+    const qs = params.toString()
+    return qs ? `/api/admin/audit/export?${qs}` : '/api/admin/audit/export'
+  },
+
   // ──────────────────────────────────────────────────────────────────
   // M9.1 — 휴지통 (docs/02 §7.11, ADR #32)
   // backend: com.ibizdrive.trash.TrashController + Per-resource restore.

@@ -83,12 +83,88 @@ public class AuditQueryService {
         int safeSize = Math.min(Math.max(pageSize, 1), 200);
         int offset = (safePage - 1) * safeSize;
 
-        // WHERE 절 동적 빌드 — 각 필터 존재 시에만 추가하여 인덱스 활용도 최대화.
         List<Object> args = new ArrayList<>();
         StringBuilder where = new StringBuilder("WHERE 1=1");
+        appendFilterClauses(where, args, filters, viewerId, viewerRole);
 
+        // total: 별도 COUNT — pagination 메타와 entries 분리.
+        Long totalBoxed = jdbc.queryForObject(
+            "SELECT COUNT(*) " + FROM_JOIN + " " + where,
+            Long.class,
+            args.toArray()
+        );
+        long total = totalBoxed == null ? 0L : totalBoxed;
+
+        // entries: occurred_at DESC, id DESC tiebreaker (동일 ts 내 결정적 정렬).
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(safeSize);
+        pageArgs.add(offset);
+        List<AuditLogEntryDto> entries = jdbc.query(
+            "SELECT " + SELECT_COLUMNS + " " + FROM_JOIN + " " + where +
+            " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ? OFFSET ?",
+            this::mapRow,
+            pageArgs.toArray()
+        );
+
+        return new AuditLogPageDto(entries, total, safePage, safeSize);
+    }
+
+    /**
+     * 전체 결과 export — {@code GET /api/admin/audit/export} 전용.
+     *
+     * <p>{@link #search}와 동일한 필터·권한 정책을 재사용하지만 페이징 없이 전체 결과를 반환한다.
+     * 메모리·DoS 방어로 hard cap {@value #EXPORT_ROW_CAP}를 적용 — {@code LIMIT cap+1}로 페치하여
+     * cap 초과 여부를 판별하고, 초과 시 처음 cap개만 반환 + {@link AuditExportResult#truncated()} = true.
+     *
+     * <p>호출 측({@link AuditQueryController#exportCsv})은 {@code @PreAuthorize}로 ADMIN/AUDITOR만
+     * 진입을 허용하지만, 본 메서드는 권한 가드를 service 진입점에서도 한 번 더 방어한다 — 우회 호출
+     * (예: 내부 콜러)에서 MEMBER가 들어와도 export 자체는 허용하지 않는다.
+     */
+    @org.springframework.transaction.annotation.Transactional(readOnly = true)
+    public AuditExportResult exportAll(AuditQueryFilters filters, UUID viewerId, Role viewerRole) {
+        if (viewerRole != Role.ADMIN && viewerRole != Role.AUDITOR) {
+            // 방어적 가드 — controller `@PreAuthorize`가 1차 방어이므로 정상 흐름에선 도달하지 않는다.
+            throw new IllegalStateException("audit export requires ADMIN or AUDITOR role");
+        }
+
+        List<Object> args = new ArrayList<>();
+        StringBuilder where = new StringBuilder("WHERE 1=1");
+        appendFilterClauses(where, args, filters, viewerId, viewerRole);
+
+        List<Object> pageArgs = new ArrayList<>(args);
+        pageArgs.add(EXPORT_ROW_CAP + 1);   // cap 초과 감지를 위해 1건 더 페치
+        List<AuditLogEntryDto> rows = jdbc.query(
+            "SELECT " + SELECT_COLUMNS + " " + FROM_JOIN + " " + where +
+            " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?",
+            this::mapRow,
+            pageArgs.toArray()
+        );
+
+        boolean truncated = rows.size() > EXPORT_ROW_CAP;
+        List<AuditLogEntryDto> capped = truncated ? rows.subList(0, EXPORT_ROW_CAP) : rows;
+        return new AuditExportResult(List.copyOf(capped), truncated);
+    }
+
+    /** export 결과 — 행 목록 + cap 초과 여부. {@link AuditQueryController}가 헤더/audit metadata에 사용. */
+    public record AuditExportResult(List<AuditLogEntryDto> entries, boolean truncated) {}
+
+    /** export 행 hard cap (DoS·OOM 방어). 초과 export는 v1.x 배치 작업으로 분리 (docs/04 §13). */
+    public static final int EXPORT_ROW_CAP = 10_000;
+
+    /**
+     * WHERE 절 + bind args 빌더 — {@link #search}와 {@link #exportAll}이 공유.
+     *
+     * <p>분리된 이유: 두 진입점이 동일한 필터·권한 의미를 가져야 하므로 한 곳에서 관리. 한쪽만
+     * 수정해 양 결과가 어긋나는 회귀를 차단.
+     */
+    private void appendFilterClauses(StringBuilder where,
+                                      List<Object> args,
+                                      AuditQueryFilters filters,
+                                      UUID viewerId,
+                                      Role viewerRole) {
         // MEMBER scope 강제 — ADR #1 트랙결정 #4. 권한 분기는 service 단일 진입점에서.
         // RP-2 (ADR #40): targetType=file + targetId + 호출자 READ 보유 시 actor 제한을 건너뛴다.
+        // export 경로는 ADMIN/AUDITOR만 도달하므로 이 분기는 사실상 search 경로용.
         if (viewerRole == Role.MEMBER && !rp2BypassesActorScope(filters, viewerId)) {
             where.append(" AND a.actor_id = ?");
             args.add(viewerId);
@@ -119,27 +195,6 @@ public class AuditQueryService {
             where.append(" AND a.target_id = ?");
             args.add(filters.targetId());
         }
-
-        // total: 별도 COUNT — pagination 메타와 entries 분리.
-        Long totalBoxed = jdbc.queryForObject(
-            "SELECT COUNT(*) " + FROM_JOIN + " " + where,
-            Long.class,
-            args.toArray()
-        );
-        long total = totalBoxed == null ? 0L : totalBoxed;
-
-        // entries: occurred_at DESC, id DESC tiebreaker (동일 ts 내 결정적 정렬).
-        List<Object> pageArgs = new ArrayList<>(args);
-        pageArgs.add(safeSize);
-        pageArgs.add(offset);
-        List<AuditLogEntryDto> entries = jdbc.query(
-            "SELECT " + SELECT_COLUMNS + " " + FROM_JOIN + " " + where +
-            " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ? OFFSET ?",
-            this::mapRow,
-            pageArgs.toArray()
-        );
-
-        return new AuditLogPageDto(entries, total, safePage, safeSize);
     }
 
     /**
