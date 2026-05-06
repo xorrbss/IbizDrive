@@ -1,7 +1,12 @@
 import type { FolderNode, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
-import type { Permission, PermissionListItem } from '@/types/permission'
+import type {
+  AdminPermissionFilters,
+  AdminPermissionPage,
+  Permission,
+  PermissionListItem,
+} from '@/types/permission'
 import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
@@ -1295,7 +1300,7 @@ export const api = {
   },
 
   /**
-   * `GET /api/admin/system/cron` (Wave 1 — T3, docs/02 §7.13).
+   * `GET /api/admin/system/cron` (Wave 1 — T3, docs/02 §7.12).
    *
    * <p>4개 운영 cron 잡(`purge.expired`, `share.expire`, `permission.expire`,
    * `storage.orphan.cleanup`)의 현재 설정 스냅샷을 read-only로 조회. 변경(toggle/edit)은
@@ -1314,6 +1319,36 @@ export const api = {
       throw await buildApiError(res, `adminGetCronStatus failed: ${res.status}`)
     }
     return (await res.json()) as CronJobsResponse
+  },
+
+  /**
+   * `GET /api/admin/permissions` — admin 권한 매트릭스 (Wave 2 T5).
+   *
+   * <p>read-only — CSRF 헤더 불필요. 빈 값(undefined / 빈 문자열) filter는 query에서 제외.
+   * 에러는 {@link buildApiError}가 status/code 매핑 후 throw — 401(미인증), 403(MEMBER), 400(filter 검증).
+   */
+  async adminListPermissions(
+    filters: AdminPermissionFilters = {},
+  ): Promise<AdminPermissionPage> {
+    const params = new URLSearchParams()
+    params.set('page', String(filters.page ?? 0))
+    params.set('size', String(filters.size ?? 20))
+    if (filters.subjectType) params.set('subjectType', filters.subjectType)
+    if (filters.subjectId && filters.subjectId.trim().length > 0) {
+      params.set('subjectId', filters.subjectId.trim())
+    }
+    if (filters.resourceType) params.set('resourceType', filters.resourceType)
+    if (filters.preset) params.set('preset', filters.preset)
+    if (filters.q && filters.q.trim().length > 0) params.set('q', filters.q.trim())
+    const res = await fetch(`/api/admin/permissions?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminListPermissions failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminPermissionPage
   },
 }
 
