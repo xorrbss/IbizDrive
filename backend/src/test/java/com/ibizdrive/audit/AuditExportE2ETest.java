@@ -229,17 +229,21 @@ class AuditExportE2ETest {
             "SELECT COUNT(*) FROM audit_log WHERE event_type = 'audit.exported'", Long.class);
         assertThat(exported).isEqualTo(1L);
 
+        // metadata는 jsonb — Postgres가 ::text 변환 시 키를 재정렬하고 콜론 뒤 공백을
+        // 추가하므로 텍스트 매칭 대신 ->/->>로 키 단위 추출 (AuthAuditE2ETest 패턴).
         Map<String, Object> row = jdbc.queryForMap(
-            "SELECT actor_id, target_type, metadata::text AS meta " +
+            "SELECT actor_id, target_type, " +
+            "       metadata->>'format' AS format, " +
+            "       (metadata->>'rowCount')::int AS row_count, " +
+            "       (metadata->>'truncated')::boolean AS truncated, " +
+            "       metadata->'filters'->>'eventType' AS event_type " +
             "FROM audit_log WHERE event_type = 'audit.exported' LIMIT 1");
         assertThat(row.get("actor_id")).isEqualTo(auditorId);
         assertThat(row.get("target_type")).isEqualTo("audit");
-        String meta = (String) row.get("meta");
-        // metadata는 결정적 키 순서 — filters/rowCount/truncated/format 포함
-        assertThat(meta).contains("\"format\":\"csv\"");
-        assertThat(meta).contains("\"rowCount\":1");        // login.success 1건
-        assertThat(meta).contains("\"truncated\":false");
-        assertThat(meta).contains("\"eventType\":\"user.login.success\"");
+        assertThat(row.get("format")).isEqualTo("csv");
+        assertThat(row.get("row_count")).isEqualTo(1);              // login.success 1건
+        assertThat(row.get("truncated")).isEqualTo(false);
+        assertThat(row.get("event_type")).isEqualTo("user.login.success");
     }
 
     // ─────────────────────────── helpers ───────────────────────────
