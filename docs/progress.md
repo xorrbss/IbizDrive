@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-07 — 🏁 wave1-t3-system-cron-readonly 트랙 종료 (Wave 1 T3 — 시스템 정책 페이지 / 운영 cron 4종 read-only 노출)
+
+### 범위
+
+`/admin/system` 페이지 활성화 — 관리자가 운영 cron 4종(`purge.expired`, `share.expire`, `permission.expire`, `storage.orphan.cleanup`)의 현재 설정(`enabled/cron/zone/batchSize/maxPerRun/graceHours`)을 한 화면에서 확인. 변경 UI는 v1.x deferred — application.yml 수정 + 재기동이 운영 통제 경로(SCM diff 자동 audit). audit emit 0(SELECT-only).
+
+### 변경 핵심
+
+**Backend:**
+- `CronJobStatusResponse` (record + `@JsonInclude(NON_NULL)`) — 단일 DTO + optional batchSize/maxPerRun/graceHours로 4 잡 통합 (KISS: 프론트 union discriminator 회피).
+- `AdminSystemController` `GET /api/admin/system/cron` — `@PreAuthorize("hasRole('ADMIN')")` (T2 audit-export와 달리 AUDITOR 제외 — 운영 설정은 admin 책임). `List.of(...)` 고정 순서 — purge → share → permission → storage. 4 `@ConfigurationProperties` bean(`HardPurgeProperties` / `ShareExpirationProperties` / `PermissionExpirationProperties` / `StorageOrphanCleanupProperties`)를 생성자 주입.
+- `AdminSystemControllerTest` (`@WebMvcTest` + 내부 `PropertiesConfig` `@Configuration`) — 8 테스트: 200 fixed-order, payload per job, 401, MEMBER 403, AUDITOR 403.
+
+**Frontend:**
+- `types/system.ts` — `CronJobKey` literal union + `CronJobStatus` (optional 3 필드) + `CronJobsResponse`.
+- `lib/api.ts` `adminGetCronStatus()` + `lib/queryKeys.ts` `adminSystem/adminSystemCron` factory.
+- `hooks/useAdminSystem.ts` `useAdminSystemCron` (staleTime=30s — 정적 설정, retry=false — 401/403 즉시 표면화).
+- `app/admin/system/page.tsx` — 4 카드 grid + ON/OFF 배지(색+텍스트 양쪽, docs/01 §12 a11y) + cron/zone/optional 필드. Header 헬퍼: "변경은 application.yml + 재기동".
+- `components/admin/AdminSideNav.tsx` — '시스템' DEFERRED → ACTIVE_ITEMS.
+- `app/admin/page.tsx` landing — '시스템 정책' 카드 추가, deferred 리스트에서 제거.
+
+**Docs:**
+- docs/02 §7.12 Admin 표 행 추가 + `GET /api/admin/system/cron` 풀 스펙(고정 순서 + audit emit 0 명기).
+- docs/04 §2 활성 라우트 4 → 5(`/admin/system` 추가) + 트리에서 `/system` 활성 표기.
+- docs/04 §13 — `/admin/system`에서 4 cron 설정 노출 안내(application.yml 변경 경로 강조).
+- BETA-RELEASE.md §7 — admin frontend wording 갱신("권한/스토리지/정책 페이지" 잔여 — `/admin/system` Wave 1 T3 활성).
+
+### 검증
+
+- backend `./gradlew test` ✅ BUILD SUCCESSFUL (전체).
+- frontend `pnpm test --run` ✅ 101 files / 806 tests pass (신규 6 tests: api.adminSystem 3 + page 3).
+- frontend `pnpm typecheck` ✅, `pnpm lint` ✅, `pnpm build` ✅ (`/admin/system` 2.02 kB / 118 kB First Load).
+
+### 다음 세션 컨텍스트
+
+- 본 endpoint는 read-only — mutation은 v1.x. 운영자 cron 변경 절차는 docs/04 §13 + application.yml 직접 편집 + 재기동.
+- AUDITOR가 cron 설정 확인을 요청할 가능성 — 현재는 403. 필요 시 별도 deferred 트랙(read-only 권한 확장)으로 처리.
+- Wave 1 잔여 트랙은 docs/progress.md 상위 wave 인덱스 참조.
+
+---
+
 ## 2026-05-06 — 🏁 admin-department-crud 트랙 종료 (Wave 2 T4 — 관리자 부서 CRUD + audit emit 3종)
 
 ### 범위

@@ -17,11 +17,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="ko" className="h-full">
+    // suppressHydrationWarning: themeInitScript가 hydration 전 <html data-theme>을 설정하므로
+    // 서버 HTML과의 속성 mismatch는 의도된 것 — React가 경고/리하이드레이트하지 않도록 명시.
+    <html lang="ko" className="h-full" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
-      <body className="h-full">
+      <body className="h-full" suppressHydrationWarning>
         <Providers>{children}</Providers>
       </body>
     </html>

@@ -14,6 +14,7 @@ import type {
   DepartmentSummary,
 } from '@/types/department'
 import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
+import type { CronJobsResponse } from '@/types/system'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
 
@@ -1291,6 +1292,28 @@ export const api = {
       throw await buildApiError(res, `adminUpdateDepartment failed: ${res.status}`)
     }
     return (await res.json()) as AdminDepartmentSummary
+  },
+
+  /**
+   * `GET /api/admin/system/cron` (Wave 1 — T3, docs/02 §7.13).
+   *
+   * <p>4개 운영 cron 잡(`purge.expired`, `share.expire`, `permission.expire`,
+   * `storage.orphan.cleanup`)의 현재 설정 스냅샷을 read-only로 조회. 변경(toggle/edit)은
+   * v1.x deferred — application.yml 수정 + 재기동이 유일한 변경 경로.
+   *
+   * <p>backend `@PreAuthorize("hasRole('ADMIN')")` — AUDITOR 미허용. 401/403는
+   * {@code buildApiError}로 status 매핑된 ApiError throw.
+   */
+  async adminGetCronStatus(): Promise<CronJobsResponse> {
+    const res = await fetch('/api/admin/system/cron', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminGetCronStatus failed: ${res.status}`)
+    }
+    return (await res.json()) as CronJobsResponse
   },
 }
 

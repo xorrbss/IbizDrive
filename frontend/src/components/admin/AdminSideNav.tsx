@@ -5,10 +5,12 @@ import { usePathname } from 'next/navigation'
 /**
  * Admin 영역 사이드 네비게이션 (m-admin-entry-rewrite, docs/04 §2 라우트 트리).
  *
- * <p>활성 항목은 본 트랙(또는 그 이전)에서 라우트가 실제로 존재하는 두 곳뿐:
- * `/admin/audit/logs` (m-audit), `/admin/users` (본 트랙 invite). 나머지 §2
- * 트리 노드는 v1.x deferred — `<span>` + "v1.x" 배지로 노출하되 navigable한
- * `<Link>`는 만들지 않는다(404 회피 + 미구현 명확화).
+ * <p>활성 항목(누적): `/admin/audit/logs` (m-audit), `/admin/users`
+ * (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1),
+ * `/admin/departments` (admin-department-crud Wave 2 T4), `/admin/system`
+ * (Wave 1 T3 read-only cron 노출). 나머지 §2 트리 노드는 v1.x deferred —
+ * `<span>` + "v1.x" 배지로 노출하되 navigable한 `<Link>`는 만들지 않는다
+ * (404 회피 + 미구현 명확화).
  *
  * <p>활성 표기는 `usePathname()` 접두사 매칭. `/admin/audit/logs`는 정확 일치,
  * `/admin/users`는 `/admin/users**` 모두 활성으로 간주(유저 트리 확장 대비).
@@ -21,6 +23,7 @@ const ACTIVE_ITEMS = [
   { label: '감사 로그', href: '/admin/audit/logs', match: 'exact' as const },
   { label: '사용자 초대', href: '/admin/users', match: 'prefix' as const },
   { label: '부서', href: '/admin/departments', match: 'prefix' as const },
+  { label: '시스템', href: '/admin/system', match: 'prefix' as const },
 ]
 
 const DEFERRED_ITEMS = [
@@ -30,7 +33,6 @@ const DEFERRED_ITEMS = [
   '휴지통',
   'Legal Hold',
   '정책',
-  '시스템',
 ]
 
 export function AdminSideNav() {

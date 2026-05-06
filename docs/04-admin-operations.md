@@ -29,11 +29,12 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 2. 관리자 페이지 구조
 
-> **활성 라우트** (Wave 2 T4 closure, 2026-05-06):
-> - `/admin` — landing (가용 카드 2 + deferred 안내)
+> **활성 라우트** (Wave 1 T3 closure, 2026-05-07):
+> - `/admin` — landing (가용 카드 4 + deferred 안내)
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
 > - `/admin/users` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 (Wave 1 T1 closure)
 > - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
+> - `/admin/system` — 운영 cron 4종 read-only 노출 (Wave 1 T3, 변경은 application.yml + 재기동)
 >
 > 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
 
@@ -66,10 +67,10 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 │  ├─ /file-size           파일 크기/확장자 정책                            (v1.x deferred)
 │  ├─ /retention           보존 기간                                       (v1.x deferred)
 │  └─ /audit-levels        감사 레벨 폴더 지정                             (v1.x deferred)
-└─ /system
+└─ /system                  운영 cron 4종 read-only 노출 (Wave 1 T3, 2026-05-07)  (활성)
    ├─ /health              시스템 상태                                     (v1.x deferred)
    ├─ /backups             백업 이력                                       (v1.x deferred)
-   └─ /jobs                배치 작업 모니터링                               (v1.x deferred)
+   └─ /jobs                배치 작업 모니터링                               (v1.x deferred — `/system` 본문에서 4 cron 설정만 노출)
 ```
 
 ---
@@ -382,6 +383,8 @@ storage 객체 (LocalFs):
 ## 13. 배치 작업 (Jobs)
 
 > **MVP 상태 (mvp-qa-security closure, 2026-05-02)**: 4개 cron 활성 (`purge.expired`, `share.expire`, `permission.expire`, `storage.orphan.cleanup`). 모두 default `enabled=false` — 운영자가 staging/prod에서 명시 enable. 5개는 v1.x.
+>
+> **현재 설정 노출** (Wave 1 T3, 2026-05-07): admin 페이지 `/admin/system`에서 4개 잡의 `enabled/cron/zone/batchSize/maxPerRun/graceHours`를 read-only 카드로 노출 (docs/02 §7.12 `GET /api/admin/system/cron`). 변경은 application.yml + 재기동 — mutation endpoint는 v1.x deferred.
 
 | 작업 | 주기 | 상태 | 설명 |
 |---|---|---|---|
