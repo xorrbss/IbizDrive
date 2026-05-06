@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-05-06 — 🏁 admin-user-search-update 트랙 종료 (Wave 1 — T1: 검색 + 재활성 + displayName 편집 + `ADMIN_USER_UPDATED` emit)
+
+### 범위
+
+Wave 1 — Quick Wins T1. `/api/admin/users` GET에 `?q=` 부분매칭(LIKE escape) 추가, PATCH에 `isActive=true`(reactivate) + `displayName` 변경 분기 추가. Frontend `/admin/users`에 검색 입력(300ms debounce) + 재활성화 버튼(비활성 row) + displayName inline 편집 UI 추가. audit emit +1 (`ADMIN_USER_UPDATED` — reactivate + displayName 공용).
+
+### 변경
+
+- **backend**:
+  - `User.changeDisplayName(String)` — trim 후 1-100자 도메인 검증.
+  - `UserRepository.findForAdminPageable(String pattern, Pageable)` — JPQL `email/displayName LOWER LIKE ESCAPE '\\'`. soft-delete 제외, 비활성 포함.
+  - `AdminUserService.list(Pageable, String q)` — q lowercase + `%`/`_`/`\` 이스케이프 후 wrap. `changeDisplayName(...)` / `reactivate(...)` — 멱등(no-op + audit 미발행), self 허용(제재 아님).
+  - 신규: `AdminUserUpdatedEvent(userId, actorId, beforeJson, afterJson)`.
+  - `AdminAuditListener.onAdminUserUpdated(...)` — AFTER_COMMIT, swallow.
+  - `AdminUserPatchRequest.displayName` 추가.
+  - `AdminUserController.list(...q?)` + `patch(...)` reactivate/displayName 분기 추가, reactivate 가드 제거.
+- **frontend**:
+  - `api.adminListUsers(page, size, q?)` — URLSearchParams로 q 인코딩, blank/whitespace 시 omit.
+  - `AdminUserPatchBody.displayName?` 필드 추가.
+  - `qk.adminUsersList(page, size, q='')` — q normalize(trim).
+  - `useAdminUsers(page, size, q='')` — q를 hook signature에 노출.
+  - `/admin/users` page — 검색 input(useDebounce 300ms) + 재활성화 버튼 분기 + displayName 편집/저장/취소 UI.
+- **docs**:
+  - `docs/02 §7.4` — GET q query 파라미터 명세, PATCH displayName/reactivate 분기 명세, audit emit 표 갱신(`admin.user.updated` 추가).
+  - `docs/04 §2 / §4` — admin frontend 활성 라우트 표 + 사용자 관리 4.1/4.3 검색·편집·재활성 명시.
+  - `BETA-RELEASE.md §6 / §7` — emit coverage 35→36 / 미emit 9→8, deferred 항목에서 사용자 검색·재활성·displayName 항목 제거.
+  - `docs/progress.md` audit-emit-gap-mapping 미emit 표 — `ADMIN_USER_UPDATED` 행을 ✓ emit 으로 갱신.
+
+### 검증
+
+- 백엔드 gradle test (`UserTest`/`UserRepositoryTest`/`AdminUserServiceTest`/`AdminUserControllerTest`/`AdminAuditListenerTest`) — GREEN. 신규 케이스: changeDisplayName×5, findForAdminPageable×6, list q 분기 + escape, changeDisplayName 서비스/컨트롤러 분기, reactivate 멱등/self 허용, AdminUserUpdatedEvent emit 가드.
+- 프론트 vitest — GREEN. 신규 케이스: api q 인코딩×4, PATCH displayName/reactivate body, useAdminUsers q 전달, page debounce/재활성/displayName 편집 매트릭스.
+- TypeScript `tsc --noEmit` + ESLint — clean.
+
+### 회고
+
+- audit 의미 분리(`ADMIN_USER_UPDATED` = 일반 속성 변경, `ADMIN_USER_DEACTIVATED` = 제재)는 reactivate를 어디로 보낼지가 핵심 결정. 제재 해제는 의미상 "복원"에 가까워 일반 변경(`UPDATED`)으로 흡수, deactivate enum 의미를 "제재 행위"로 좁게 유지. 대시보드/리포팅에서 제재 행위만 필터링이 가능해진다.
+- 검색 q escape는 service 단계 단일 진입점에서 처리해 SQL 주입/wildcard 누설 회피. 사용자가 `%`/`_` 입력해도 의도한 부분매칭 검색만 수행.
+
+### 다음 세션 컨텍스트
+
+- Wave 1 — T2 (audit export endpoint, `AUDIT_EXPORTED` emit) 트랙 진입 가능. 별도 worktree 권장 (T1 PR과 독립).
+- Wave 1 — T3 (시스템 정책 페이지 — cron 토글 read-only 노출). T2 머지 후 진입.
+
+---
+
 ## 2026-05-05 — 🏁 audit-emit-gap-mapping 트랙 종료 (BETA §6 메트릭 정정 + 미emit 9 deferred 매핑)
 
 ### 범위
@@ -24,7 +70,7 @@
 | `FILE_VIEWED` | v1.x | ADR #9 + `FileVersionController:60` javadoc |
 | `FOLDER_AUDIT_LEVEL_CHANGED` | v1.x | docs/04 §6 line 269 |
 | `USER_MFA_ENABLED` | v1.x | ADR #18 |
-| `ADMIN_USER_UPDATED` | v1.x | BETA §7 (displayName 편집) |
+| `ADMIN_USER_UPDATED` | ✓ emit | admin-user-search-update closure (Wave 1 — T1, 2026-05-06) |
 | `ADMIN_QUOTA_CHANGED` | v1.x | BETA §7 (quota) |
 | `ADMIN_LEGAL_HOLD_PLACED` | v2.x | BETA §7 (Legal Hold) |
 | `ADMIN_LEGAL_HOLD_RELEASED` | v2.x | BETA §7 |

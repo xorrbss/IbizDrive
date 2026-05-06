@@ -109,14 +109,16 @@ export const qk = {
   auditLogs: (filters: AuditLogFilters, page: number, pageSize: number) =>
     [...qk.audit(), 'logs', filters, page, pageSize] as const,
 
-  // ── 관리자 사용자 목록 (admin-user-mgmt, docs/02 §7.4) ──
+  // ── 관리자 사용자 목록 (admin-user-mgmt + admin-user-search-update, docs/02 §7.4) ──
   adminUsers: () => [...qk.all, 'admin', 'users'] as const,
   /**
-   * paginated admin user list — page/size까지 포함 정확한 단일 키. PATCH 후 prefix 매칭으로
-   * 모든 페이지 변종 무효화 ({@link invalidations.afterAdminUserChanged}).
+   * paginated admin user list — page/size/q까지 포함 정확한 단일 키. PATCH 후 prefix 매칭으로
+   * 모든 변종 무효화 ({@link invalidations.afterAdminUserChanged}).
+   *
+   * <p>{@code q}는 trim 후 사용 — 빈 문자열은 정규화로 ''(전체) 키와 동일 취급.
    */
-  adminUsersList: (page: number, size: number) =>
-    [...qk.adminUsers(), 'list', page, size] as const,
+  adminUsersList: (page: number, size: number, q = '') =>
+    [...qk.adminUsers(), 'list', page, size, q.trim()] as const,
 
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,

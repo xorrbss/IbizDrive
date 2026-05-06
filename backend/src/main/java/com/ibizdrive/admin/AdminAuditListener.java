@@ -79,6 +79,35 @@ public class AdminAuditListener {
     }
 
     /**
+     * admin-user-search-update — `admin.user.updated` 매핑 (Wave 1 — T1).
+     *
+     * <p>비제재 일반 속성 변경 (displayName 편집, reactivate). before/after JSON은 호출자
+     * (서비스)가 변경 필드만 담아 사전 직렬화 — listener는 그대로 audit_log에 INSERT.
+     *
+     * <p>의도된 분리: deactivate는 별도 enum({@link AuditEventType#ADMIN_USER_DEACTIVATED}),
+     * role 변경도 별도 enum({@link AuditEventType#ADMIN_ROLE_CHANGED}). 본 listener는 그 외
+     * 모든 일반 변경을 흡수.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onAdminUserUpdated(AdminUserUpdatedEvent event) {
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.ADMIN_USER_UPDATED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.USER,
+                event.userId(),
+                event.beforeJson(),
+                event.afterJson(),
+                null
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event=ADMIN_USER_UPDATED userId={}", event.userId(), ex);
+        }
+    }
+
+    /**
      * admin-user-mgmt — `admin.role.changed` 매핑.
      *
      * <p>before/after state는 role 변화의 핵심 정보이므로 JSON으로 직렬화 (compact, no Jackson 의존).

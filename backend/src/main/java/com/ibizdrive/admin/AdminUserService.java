@@ -99,15 +99,43 @@ public class AdminUserService {
     }
 
     /**
-     * admin-user-mgmt — `/admin/users` 목록 조회. read-only이므로 트랜잭션 미선언
-     * (JPA가 OSIV 비활성 시 read-only TX 자동 생성, 활성 시 connection 보존).
+     * admin-user-mgmt + admin-user-search-update — `/admin/users` 목록 조회 (검색 옵션).
      *
-     * <p>soft-delete 제외 + 비활성 사용자 포함 (재활성/role 변경 대상). 정렬은
-     * {@code createdAt DESC, id ASC} — repository {@code @Query} 단계에서 강제.
+     * <p>{@code q}가 null/blank이면 {@link UserRepository#findAllActivePageable}로 전체 조회.
+     * q가 있으면 lowercase + LIKE escape (`%`, `_`, `\`) + wildcard wrap 후
+     * {@link UserRepository#findForAdminPageable}로 검색. 두 분기 모두 soft-delete 제외 +
+     * 비활성 포함 (재활성 대상).
+     *
+     * <p>검색 패턴 사양 (Wave 1 — T1, docs/02 §7.4):
+     * <ul>
+     *   <li>case-insensitive (LOWER 양쪽 적용)</li>
+     *   <li>부분 매칭 (앞뒤 wildcard `%` 자동 wrap)</li>
+     *   <li>literal `%`, `_`, `\`는 backslash escape — wildcard 폭주 방지</li>
+     * </ul>
      */
     @Transactional(readOnly = true)
-    public Page<User> list(Pageable pageable) {
-        return userRepository.findAllActivePageable(pageable);
+    public Page<User> list(Pageable pageable, String q) {
+        if (q == null || q.isBlank()) {
+            return userRepository.findAllActivePageable(pageable);
+        }
+        String pattern = "%" + escapeLikeWildcards(q.trim().toLowerCase(Locale.ROOT)) + "%";
+        return userRepository.findForAdminPageable(pattern, pageable);
+    }
+
+    /**
+     * LIKE 패턴의 메타문자(`\`, `%`, `_`)를 backslash escape — JPQL `ESCAPE '\\'`와 짝.
+     * 호출자가 미리 lowercase 처리된 입력을 받는다고 가정 (대소문자 변환 책임 분리).
+     */
+    private static String escapeLikeWildcards(String input) {
+        StringBuilder sb = new StringBuilder(input.length());
+        for (int i = 0; i < input.length(); i++) {
+            char c = input.charAt(i);
+            if (c == '\\' || c == '%' || c == '_') {
+                sb.append('\\');
+            }
+            sb.append(c);
+        }
+        return sb.toString();
     }
 
     /**
@@ -177,5 +205,108 @@ public class AdminUserService {
 
         eventPublisher.publishEvent(new AdminUserDeactivatedEvent(targetUserId, actorId));
         return user;
+    }
+
+    /**
+     * admin-user-search-update — 비활성화된 계정 재활성화 (`is_active=true`). Wave 1 — T1.
+     *
+     * <p>이미 active면 멱등 (no-op + event 미발행). self-reactivate는 허용 — 의미상 잠금 회피
+     * 위험 없음(active한 사용자가 본인 active 상태를 토글해도 즉시 잠금 없음).
+     *
+     * <p>audit type은 {@link AuditEventType#ADMIN_USER_UPDATED} ({@link AdminUserUpdatedEvent}) —
+     * deactivate ({@code admin.user.deactivated})와 의미 분리 (제재 vs 일반 변경).
+     *
+     * @throws AdminUserNotFoundException     target 미존재 → 404
+     */
+    @Transactional
+    public User reactivate(UUID targetUserId, UUID actorId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+
+        User user = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+
+        if (user.isActive()) {
+            return user; // 이미 활성 — 멱등.
+        }
+
+        user.reactivate();
+        userRepository.save(user);
+
+        eventPublisher.publishEvent(new AdminUserUpdatedEvent(
+            targetUserId,
+            actorId,
+            "{\"isActive\":false}",
+            "{\"isActive\":true}"
+        ));
+        return user;
+    }
+
+    /**
+     * admin-user-search-update — displayName 편집. Wave 1 — T1.
+     *
+     * <p>호출자가 trim 적용 (controller 단계 또는 본 메서드에서 한 번 더). 같은 값이면 멱등
+     * (no-op + event 미발행). 자기 자신 displayName 편집은 허용 — self-protection 불필요
+     * (제재 의미 없는 단순 표시 이름 변경).
+     *
+     * <p>도메인 단계 검증은 {@link User#changeDisplayName}이 수행 (blank/length≤100). 본 메서드는
+     * 멱등 분기 + audit metadata 생성만 담당.
+     *
+     * @throws AdminUserNotFoundException     target 미존재 → 404
+     * @throws IllegalArgumentException       displayName blank 또는 100자 초과 → 400
+     */
+    @Transactional
+    public User changeDisplayName(UUID targetUserId, String newDisplayName, UUID actorId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+        // null은 도메인이 거부하지만 일관성 위해 service 입구에서도 한 번 차단.
+        String trimmed = newDisplayName == null ? null : newDisplayName.trim();
+
+        User user = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+
+        String oldDisplayName = user.getDisplayName();
+        if (trimmed != null && trimmed.equals(oldDisplayName)) {
+            return user; // 같은 값 — 멱등.
+        }
+
+        user.changeDisplayName(trimmed); // null/blank/over-100은 여기서 IllegalArgumentException.
+        userRepository.save(user);
+
+        eventPublisher.publishEvent(new AdminUserUpdatedEvent(
+            targetUserId,
+            actorId,
+            "{\"displayName\":" + jsonString(oldDisplayName) + "}",
+            "{\"displayName\":" + jsonString(trimmed) + "}"
+        ));
+        return user;
+    }
+
+    /**
+     * 작은 manual JSON string encoder — Jackson 의존 없이 displayName 같은 임의 문자열 안전 직렬화.
+     * 본 service의 audit metadata는 단순 key-value(예: {@code {"displayName":"...."}}) 구조이므로
+     * 정밀한 escaping(`"`, `\`, control chars)만 처리하면 충분.
+     */
+    private static String jsonString(String s) {
+        if (s == null) return "null";
+        StringBuilder sb = new StringBuilder(s.length() + 2);
+        sb.append('"');
+        for (int i = 0; i < s.length(); i++) {
+            char c = s.charAt(i);
+            switch (c) {
+                case '"' -> sb.append("\\\"");
+                case '\\' -> sb.append("\\\\");
+                case '\n' -> sb.append("\\n");
+                case '\r' -> sb.append("\\r");
+                case '\t' -> sb.append("\\t");
+                default -> {
+                    if (c < 0x20) {
+                        sb.append(String.format("\\u%04x", (int) c));
+                    } else {
+                        sb.append(c);
+                    }
+                }
+            }
+        }
+        sb.append('"');
+        return sb.toString();
     }
 }

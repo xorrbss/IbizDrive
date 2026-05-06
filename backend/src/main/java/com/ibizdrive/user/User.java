@@ -220,6 +220,25 @@ public class User implements Serializable {
     }
 
     /**
+     * admin-user-search-update — 관리자에 의한 displayName 편집 (Wave 1 — T1).
+     *
+     * <p>호출자(서비스)는 trim 적용 + 멱등 분기(같은 값이면 no event) + audit emit + save flush 책임을 진다.
+     * 본 메서드는 도메인 단계 invariant만 보호: blank 금지, max 100자(DB column length 일치).
+     * 정규화(NFC 등)는 displayName에 대해 적용하지 않는다 — 본 필드는 화면 표시용이며 lookup 키 아님.
+     *
+     * @throws IllegalArgumentException blank이거나 100자 초과
+     */
+    public void changeDisplayName(String newDisplayName) {
+        if (newDisplayName == null || newDisplayName.isBlank()) {
+            throw new IllegalArgumentException("displayName must not be blank");
+        }
+        if (newDisplayName.length() > 100) {
+            throw new IllegalArgumentException("displayName must not exceed 100 characters");
+        }
+        this.displayName = newDisplayName;
+    }
+
+    /**
      * admin-user-mgmt — 비활성화된 계정 재활성화 (`is_active=true`).
      * 본 트랙은 PATCH endpoint에서 호출 경로 미노출 — v1.x reactivate UX 트랙에서 사용.
      * 이미 active인 경우 idempotent.

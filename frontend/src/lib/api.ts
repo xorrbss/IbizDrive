@@ -1116,13 +1116,20 @@ export const api = {
   },
 
   /**
-   * `GET /api/admin/users` (admin-user-mgmt, docs/02 §7.4) — 사용자 목록.
+   * `GET /api/admin/users` (admin-user-mgmt + admin-user-search-update, docs/02 §7.4) — 사용자 목록.
    *
    * <p>backend는 Spring `Page<T>` 직렬화를 그대로 노출 — `{content[], totalElements, totalPages,
    * number, size}`. 프론트는 본 형태의 부분집합만 type-narrow ({@link AdminUserPage}).
+   *
+   * <p>{@code q}는 옵션 — email/displayName 부분 매칭(case-insensitive, LIKE escape는 backend).
+   * 빈 문자열/undefined면 query string에서 생략 — backend가 전체 목록 분기.
    */
-  async adminListUsers(page = 0, size = 50): Promise<AdminUserPage> {
-    const url = `/api/admin/users?page=${page}&size=${size}`
+  async adminListUsers(page = 0, size = 50, q?: string): Promise<AdminUserPage> {
+    const params = new URLSearchParams({ page: String(page), size: String(size) })
+    if (q && q.trim().length > 0) {
+      params.set('q', q.trim())
+    }
+    const url = `/api/admin/users?${params.toString()}`
     const res = await fetch(url, {
       method: 'GET',
       credentials: 'include',
@@ -1135,11 +1142,12 @@ export const api = {
   },
 
   /**
-   * `PATCH /api/admin/users/:id` (admin-user-mgmt, docs/02 §7.4) — role/active 변경.
+   * `PATCH /api/admin/users/:id` (admin-user-mgmt + admin-user-search-update, docs/02 §7.4)
+   * — role/active/displayName 변경.
    *
-   * <p>{@code role}, {@code isActive} 둘 다 옵션이지만 호출자는 둘 중 하나는 채워서 보내야 한다
-   * (둘 다 비면 backend가 400 VALIDATION_ERROR). 본 트랙은 `isActive=false`만 의미 — `true`는
-   * backend가 거부한다. 응답은 적용 후 사용자 스냅샷.
+   * <p>{@code role}, {@code isActive}, {@code displayName} 모두 옵션이지만 최소 하나는 채워야 한다
+   * (모두 비면 backend가 400 VALIDATION_ERROR). {@code isActive=true}는 reactivate, {@code false}는
+   * deactivate(제재). 응답은 적용 후 사용자 스냅샷.
    */
   async adminUpdateUser(id: string, body: AdminUserPatchBody): Promise<AdminUserSummary> {
     const csrf = await ensureCsrfToken()
@@ -1215,14 +1223,16 @@ export interface AdminUserPage {
 }
 
 /**
- * Admin user PATCH body — admin-user-mgmt. backend `AdminUserPatchRequest` 1:1 mirror.
+ * Admin user PATCH body — admin-user-mgmt + admin-user-search-update.
+ * backend `AdminUserPatchRequest` 1:1 mirror.
  *
- * <p>둘 다 optional이지만 호출자는 최소 하나는 채워야 한다. 본 트랙은 {@code isActive=false}만
- * 지원 — UI에서 deactivate 버튼만 노출.
+ * <p>모두 optional이지만 호출자는 최소 하나는 채워야 한다. {@code isActive=true} reactivate,
+ * {@code false} deactivate. {@code displayName}은 trim 후 1-100자.
  */
 export interface AdminUserPatchBody {
   role?: 'MEMBER' | 'AUDITOR' | 'ADMIN'
   isActive?: boolean
+  displayName?: string
 }
 
 /**

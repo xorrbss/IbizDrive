@@ -164,17 +164,189 @@ class AdminUserServiceTest {
     // ── admin-user-mgmt: list / changeRole / deactivate ─────────────────
 
     @Test
-    void list_delegatesToRepository_withPageable() {
+    void list_delegatesToRepository_withPageable_whenQIsNull() {
         Pageable pageable = PageRequest.of(0, 20);
         User user1 = activeUser(UUID.randomUUID(), "u1@example.com", Role.MEMBER, true);
         User user2 = activeUser(UUID.randomUUID(), "u2@example.com", Role.AUDITOR, true);
         Page<User> page = new PageImpl<>(List.of(user1, user2), pageable, 2);
         when(userRepository.findAllActivePageable(pageable)).thenReturn(page);
 
-        Page<User> result = adminUserService.list(pageable);
+        Page<User> result = adminUserService.list(pageable, null);
 
         assertThat(result.getContent()).containsExactly(user1, user2);
         verify(userRepository).findAllActivePageable(pageable);
+        verify(userRepository, never()).findForAdminPageable(anyString(), any(Pageable.class));
+    }
+
+    @Test
+    void list_delegatesToRepository_withPageable_whenQIsBlank() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(userRepository.findAllActivePageable(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        adminUserService.list(pageable, "   ");
+
+        verify(userRepository).findAllActivePageable(pageable);
+        verify(userRepository, never()).findForAdminPageable(anyString(), any(Pageable.class));
+    }
+
+    @Test
+    void list_delegatesToSearch_whenQProvided_lowercasesAndWraps() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(userRepository.findForAdminPageable(eq("%alice%"), eq(pageable)))
+            .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        adminUserService.list(pageable, "  Alice  ");
+
+        verify(userRepository).findForAdminPageable("%alice%", pageable);
+        verify(userRepository, never()).findAllActivePageable(any(Pageable.class));
+    }
+
+    @Test
+    void list_escapesLikeWildcards_inSearchPattern() {
+        // q="50%off" → lowercase + escape → "%50\%off%" — literal '%' 매칭만 가능
+        Pageable pageable = PageRequest.of(0, 20);
+        when(userRepository.findForAdminPageable(anyString(), eq(pageable)))
+            .thenReturn(new PageImpl<>(List.of(), pageable, 0));
+
+        adminUserService.list(pageable, "50%off_");
+
+        verify(userRepository).findForAdminPageable("%50\\%off\\_%", pageable);
+    }
+
+    // ── admin-user-search-update: changeDisplayName + reactivate (Wave 1 — T1) ─
+
+    @Test
+    void changeDisplayName_otherUser_publishesUpdateEvent_andSaves() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "rename@example.com", Role.MEMBER, true, "Old Name");
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.changeDisplayName(targetId, "New Name", ACTOR_ID);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertThat(saved.getValue().getDisplayName()).isEqualTo("New Name");
+
+        ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, atLeastOnce()).publishEvent(event.capture());
+        AdminUserUpdatedEvent published = event.getAllValues().stream()
+            .filter(e -> e instanceof AdminUserUpdatedEvent)
+            .map(e -> (AdminUserUpdatedEvent) e)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("AdminUserUpdatedEvent not published"));
+        assertThat(published.userId()).isEqualTo(targetId);
+        assertThat(published.actorId()).isEqualTo(ACTOR_ID);
+        assertThat(published.beforeJson()).contains("\"displayName\":\"Old Name\"");
+        assertThat(published.afterJson()).contains("\"displayName\":\"New Name\"");
+    }
+
+    @Test
+    void changeDisplayName_self_isAllowed_noSelfProtection() {
+        // self-protection은 role/active만. displayName 편집은 본인도 가능 (제재 의미 없음).
+        User self = activeUser(ACTOR_ID, "me@example.com", Role.ADMIN, true, "Old Me");
+        when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(self));
+
+        adminUserService.changeDisplayName(ACTOR_ID, "New Me", ACTOR_ID);
+
+        verify(userRepository).save(any());
+        verify(eventPublisher).publishEvent(any(AdminUserUpdatedEvent.class));
+    }
+
+    @Test
+    void changeDisplayName_sameValue_isNoOp() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "same@example.com", Role.MEMBER, true, "Same Name");
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.changeDisplayName(targetId, "Same Name", ACTOR_ID);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserUpdatedEvent.class));
+    }
+
+    @Test
+    void changeDisplayName_trimsValue_andDetectsNoChangeAfterTrim() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "tt@example.com", Role.MEMBER, true, "Trimmed");
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.changeDisplayName(targetId, "  Trimmed  ", ACTOR_ID);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void changeDisplayName_blank_throwsIllegalArgument() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "x@example.com", Role.MEMBER, true, "Old");
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        assertThatThrownBy(() -> adminUserService.changeDisplayName(targetId, "   ", ACTOR_ID))
+            .isInstanceOf(IllegalArgumentException.class);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void changeDisplayName_targetNotFound_throwsAdminUserNotFound() {
+        UUID ghost = UUID.randomUUID();
+        when(userRepository.findById(ghost)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminUserService.changeDisplayName(ghost, "Name", ACTOR_ID))
+            .isInstanceOf(AdminUserNotFoundException.class);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    void reactivate_inactiveUser_publishesUpdateEvent_andSaves() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "react@example.com", Role.MEMBER, false, "React Me");
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.reactivate(targetId, ACTOR_ID);
+
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertThat(saved.getValue().isActive()).isTrue();
+
+        ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, atLeastOnce()).publishEvent(event.capture());
+        AdminUserUpdatedEvent published = event.getAllValues().stream()
+            .filter(e -> e instanceof AdminUserUpdatedEvent)
+            .map(e -> (AdminUserUpdatedEvent) e)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("AdminUserUpdatedEvent not published"));
+        assertThat(published.userId()).isEqualTo(targetId);
+        assertThat(published.actorId()).isEqualTo(ACTOR_ID);
+        assertThat(published.beforeJson()).isEqualTo("{\"isActive\":false}");
+        assertThat(published.afterJson()).isEqualTo("{\"isActive\":true}");
+    }
+
+    @Test
+    void reactivate_alreadyActive_isNoOp() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "alr@example.com", Role.MEMBER, true, "Already Active");
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.reactivate(targetId, ACTOR_ID);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserUpdatedEvent.class));
+    }
+
+    @Test
+    void reactivate_targetNotFound_throwsAdminUserNotFound() {
+        UUID ghost = UUID.randomUUID();
+        when(userRepository.findById(ghost)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminUserService.reactivate(ghost, ACTOR_ID))
+            .isInstanceOf(AdminUserNotFoundException.class);
+
+        verify(userRepository, never()).save(any());
     }
 
     @Test
@@ -314,10 +486,14 @@ class AdminUserServiceTest {
     }
 
     private static User activeUser(UUID id, String email, Role role, boolean isActive) {
+        return activeUser(id, email, role, isActive, "Display " + email);
+    }
+
+    private static User activeUser(UUID id, String email, Role role, boolean isActive, String displayName) {
         return new User(
             id,
             email,
-            "Display " + email,
+            displayName,
             "{bcrypt}$2a$12$dummyhashfortestonlydummyhashfortestonlydummyhashfortest",
             role,
             isActive,

@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { AdminUserPage } from '@/lib/api'
@@ -30,8 +30,10 @@ let usersQueryState: {
   isLoading: boolean
   isError: boolean
 } = { isLoading: false, isError: false }
+const useAdminUsersMock: ReturnType<typeof vi.fn> = vi.fn(() => usersQueryState)
 vi.mock('@/hooks/useAdminUsers', () => ({
-  useAdminUsers: () => usersQueryState,
+  useAdminUsers: (page?: number, size?: number, q?: string) =>
+    useAdminUsersMock(page, size, q),
 }))
 
 const updateMutateAsyncMock = vi.fn()
@@ -251,7 +253,7 @@ describe('AdminUsersPage — list section (admin-user-mgmt)', () => {
     })
   })
 
-  it('비활성 사용자 — 비활성화 버튼 disabled', () => {
+  it('비활성 사용자 — 비활성화 버튼 대신 재활성화 버튼 노출 (admin-user-search-update)', () => {
     usersQueryState = {
       isLoading: false,
       isError: false,
@@ -261,8 +263,8 @@ describe('AdminUsersPage — list section (admin-user-mgmt)', () => {
       },
     }
     wrap(<AdminUsersPage />)
-    const btn = screen.getByLabelText('alice@example.com 비활성화') as HTMLButtonElement
-    expect(btn.disabled).toBe(true)
+    expect(screen.queryByLabelText('alice@example.com 비활성화')).toBeNull()
+    expect(screen.getByLabelText('alice@example.com 재활성화')).toBeTruthy()
   })
 
   it('빈 목록 — 안내 메시지 표시', () => {
@@ -286,5 +288,107 @@ describe('AdminUsersPage — list section (admin-user-mgmt)', () => {
     wrap(<AdminUsersPage />)
     const alerts = screen.getAllByRole('alert')
     expect(alerts.some((a) => /목록을 불러오지 못했습니다/.test(a.textContent ?? ''))).toBe(true)
+  })
+})
+
+describe('AdminUsersPage — admin-user-search-update (Wave 1 — T1)', () => {
+  beforeEach(() => {
+    inviteMutateAsyncMock.mockReset()
+    inviteIsPendingRef.current = false
+    updateMutateAsyncMock.mockReset()
+    updateIsPendingRef.current = false
+    useAdminUsersMock.mockClear()
+    usersQueryState = { isLoading: false, isError: false, data: PAGE_DATA }
+  })
+
+  it('초기 렌더 — useAdminUsers(0, 50, "") 호출', () => {
+    wrap(<AdminUsersPage />)
+    expect(useAdminUsersMock).toHaveBeenCalledWith(0, 50, '')
+  })
+
+  it('검색 입력 — debounce 후 useAdminUsers에 q 전달', async () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.change(screen.getByLabelText('사용자 검색'), {
+      target: { value: 'alice' },
+    })
+    // debounce 300ms — useDebounce는 real setTimeout이므로 실제 대기 후 act로 플러시.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 350))
+    })
+    await waitFor(() => {
+      const calls = useAdminUsersMock.mock.calls
+      expect(calls[calls.length - 1]).toEqual([0, 50, 'alice'])
+    })
+  })
+
+  it('재활성화 — useAdminUpdateUser({ id, body: { isActive: true } }) 호출', async () => {
+    usersQueryState = {
+      isLoading: false,
+      isError: false,
+      data: {
+        ...PAGE_DATA,
+        content: [{ ...PAGE_DATA.content[0], isActive: false }],
+      },
+    }
+    updateMutateAsyncMock.mockResolvedValue({})
+    wrap(<AdminUsersPage />)
+
+    fireEvent.click(screen.getByLabelText('alice@example.com 재활성화'))
+
+    await waitFor(() => {
+      expect(updateMutateAsyncMock).toHaveBeenCalledWith({
+        id: '11111111-1111-1111-1111-111111111111',
+        body: { isActive: true },
+      })
+    })
+  })
+
+  it('표시 이름 편집 — 편집 진입 + 저장 → mutate({ displayName })', async () => {
+    updateMutateAsyncMock.mockResolvedValue({})
+    wrap(<AdminUsersPage />)
+
+    fireEvent.click(screen.getByLabelText('alice@example.com 표시 이름 편집'))
+    const input = screen.getByLabelText('alice@example.com 표시 이름 편집') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '  Alice Updated  ' } })
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(updateMutateAsyncMock).toHaveBeenCalledWith({
+        id: '11111111-1111-1111-1111-111111111111',
+        body: { displayName: 'Alice Updated' },
+      })
+    })
+  })
+
+  it('표시 이름 편집 — blank 입력 시 mutate 호출 없이 인라인 에러', async () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 표시 이름 편집'))
+    const input = screen.getByLabelText('alice@example.com 표시 이름 편집') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '   ' } })
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    expect(updateMutateAsyncMock).not.toHaveBeenCalled()
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts.some((a) => /1-100자/.test(a.textContent ?? ''))).toBe(true)
+  })
+
+  it('표시 이름 편집 — 같은 값 입력 시 mutate 호출 없이 편집 모드 종료', async () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 표시 이름 편집'))
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    expect(updateMutateAsyncMock).not.toHaveBeenCalled()
+    // 편집 종료 → 편집 input은 사라지고 편집 버튼이 다시 노출
+    expect(screen.getByLabelText('alice@example.com 표시 이름 편집').tagName).toBe('BUTTON')
+  })
+
+  it('표시 이름 편집 — 취소 시 mutate 호출 없음', () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 표시 이름 편집'))
+    const input = screen.getByLabelText('alice@example.com 표시 이름 편집') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'Different' } })
+    fireEvent.click(screen.getByRole('button', { name: '취소' }))
+
+    expect(updateMutateAsyncMock).not.toHaveBeenCalled()
   })
 })
