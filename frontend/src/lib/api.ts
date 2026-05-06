@@ -1,4 +1,4 @@
-import type { FolderNode, FolderDetail } from '@/types/folder'
+import type { BreadcrumbItem, FolderDetail, FolderNode } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type {
@@ -126,20 +126,6 @@ const MOCK_FILES: FileItem[] = [
   },
 ]
 
-function findNodeAndPath(
-  node: FolderNode,
-  id: string,
-  path: FolderNode[] = []
-): FolderNode[] | null {
-  const next = [...path, node]
-  if (node.id === id) return next
-  for (const c of node.children ?? []) {
-    const r = findNodeAndPath(c, id, next)
-    if (r) return r
-  }
-  return null
-}
-
 function detachFromTree(tree: FolderNode, nodeId: string): FolderNode | null {
   if (!tree.children) return null
   const idx = tree.children.findIndex((c) => c.id === nodeId)
@@ -171,27 +157,85 @@ function relocateInTree(
 }
 
 export const api = {
+  /**
+   * Phase A — backend `GET /api/folders/tree` 호출 후 가상 root 노드로 래핑.
+   *
+   * Frontend는 URL의 첫 segment 부재 시 `id='root'`인 가상 노드를 사용한다 (folderPath.ts 정책).
+   * Backend는 실제 top-level 폴더들의 평면 트리만 반환하므로 여기서 한 번만 합성한다.
+   */
   async getFolderTree(): Promise<FolderNode> {
-    await new Promise((r) => setTimeout(r, 100))
-    return MOCK_TREE
+    const res = await fetch('/api/folders/tree', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getFolderTree fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const body = (await res.json()) as { tree: FolderNode[] }
+    return {
+      id: 'root',
+      parentId: null,
+      name: '내 드라이브',
+      slug: '',
+      children: body.tree,
+    }
   },
 
+  /**
+   * Phase A — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
+   * 누적 slugPath 형태로 prefix-scan하여 frontend `BreadcrumbItem` 계약 (slugPath: string[])에
+   * 맞춘다. 가상 root({@code id='root'})는 backend 호출 없이 합성 응답으로 처리.
+   */
   async getFolder(id: string): Promise<FolderDetail> {
-    await new Promise((r) => setTimeout(r, 100))
-    const chain = findNodeAndPath(MOCK_TREE, id)
-    if (!chain) throw { status: 404, code: 'NOT_FOUND' }
-    const self = chain[chain.length - 1]
-    const slugPath = chain.slice(1).map((n) => n.slug) // root 제외
-    return {
-      id: self.id,
-      name: self.name,
-      slugPath,
-      breadcrumb: chain.map((n, i) => ({
-        id: n.id,
-        name: n.name,
-        slugPath: chain.slice(1, i + 1).map((x) => x.slug),
+    if (id === 'root') {
+      return {
+        id: 'root',
+        name: '내 드라이브',
+        slugPath: [],
+        breadcrumb: [{ id: 'root', name: '내 드라이브', slugPath: [] }],
+        parentId: null,
+      }
+    }
+    const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getFolder fetch failed: ${res.status}`,
+      ) as Error & { status: number; code?: string }
+      err.status = res.status
+      if (res.status === 404) err.code = 'NOT_FOUND'
+      throw err
+    }
+    const body = (await res.json()) as {
+      folder: { id: string; name: string }
+      breadcrumb: { id: string; name: string; slug: string }[]
+    }
+    // 누적 slug — backend는 단일 segment만 보내므로 prefix scan으로 조립.
+    const slugPath = body.breadcrumb.map((c) => c.slug)
+    // 가상 root를 breadcrumb 앞에 합성 — frontend 라우팅이 root crumb을 기대.
+    const breadcrumb: BreadcrumbItem[] = [
+      { id: 'root', name: '내 드라이브', slugPath: [] },
+      ...body.breadcrumb.map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        slugPath: slugPath.slice(0, i + 1),
       })),
-      parentId: self.parentId,
+    ]
+    const parentBcrumb = body.breadcrumb[body.breadcrumb.length - 2]
+    return {
+      id: body.folder.id,
+      name: body.folder.name,
+      slugPath,
+      breadcrumb,
+      parentId: parentBcrumb ? parentBcrumb.id : 'root',
     }
   },
 
@@ -426,6 +470,10 @@ export const api = {
 
     xhr.open('POST', '/api/files')
     xhr.withCredentials = true
+    // CSRF 토큰: 로그인 후 XSRF-TOKEN 쿠키가 항상 존재. 타 mutation들과 동일 정책 (login/logout 참고).
+    // 누락 시 Spring CSRF 필터가 403 반환 → uploadErrors가 "권한 없음"으로 오해 매핑되는 회귀 방지.
+    const csrf = readCookie('XSRF-TOKEN')
+    if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
     xhr.send(form)
     return xhr
   },

@@ -15,6 +15,10 @@ build/
 .g5/
 .tmp-gradle-root-get/
 
+# LocalFsStorageClient dev 저장소 — application.yml의 storage.localfs.root 기본값.
+# 운영은 S3/MinIO를 사용하므로 이 디렉토리는 dev/curl/test 잔여물만 누적된다.
+backend/uploads/
+
 # auto-claude-loop artifacts (worktree 한정)
 .resume-marker
 .loop-complete

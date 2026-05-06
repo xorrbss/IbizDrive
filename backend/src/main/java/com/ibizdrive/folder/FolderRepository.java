@@ -36,6 +36,12 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     List<Folder> findByParentIdAndDeletedAtIsNull(UUID parentId);
 
     /**
+     * Phase A read API — 활성 폴더 전체 (soft-delete 제외). Tree 조립을 위해 service가 in-memory로
+     * 부모-자식 매핑. MVP 규모(수백 단위) 가정. 10k+ 시 lazy 로딩으로 분할 (docs/02 §9.2).
+     */
+    List<Folder> findAllByDeletedAtIsNull();
+
+    /**
      * Pessimistic write lock — mutation 진입 시점에 행 잠금 (CLAUDE.md §3 원칙 7).
      *
      * <p>soft-deleted 행은 매치되지 않으므로 lock도 잡히지 않는다 → 호출자는 결과 부재를

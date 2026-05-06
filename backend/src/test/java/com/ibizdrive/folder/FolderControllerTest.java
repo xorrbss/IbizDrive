@@ -46,13 +46,15 @@ class FolderControllerTest {
     private static final UUID FOLDER_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     private FolderMutationService service;
+    private FolderQueryService queryService;
     private FolderController controller;
     private IbizDriveUserDetails principal;
 
     @BeforeEach
     void setUp() {
         service = mock(FolderMutationService.class);
-        controller = new FolderController(service);
+        queryService = mock(FolderQueryService.class);
+        controller = new FolderController(service, queryService);
 
         User u = new User(
             ACTOR, "admin@example.com", "Admin", "{bcrypt}$2a$12$dummy",
