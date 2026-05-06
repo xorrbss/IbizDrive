@@ -27,6 +27,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -174,6 +175,41 @@ class AuthAuditE2ETest {
         assertThat(lockedReason).as("lockout publish 1건은 reason=locked").isEqualTo(1L);
     }
 
+    /**
+     * 회귀 가드 — {@link com.ibizdrive.auth.SignupService#signup} 안에서 user INSERT (UUID 수동 할당, JPA 1차 캐시 보류) 직후
+     * 동기 publish된 {@link com.ibizdrive.auth.UserRegisteredEvent}가 {@link AuthAuditListener#onRegistered}로 전파되며
+     * {@link AuditService#record} (raw JdbcTemplate)가 Hibernate auto-flush를 트리거하지 않아
+     * audit_log INSERT 시 actor_id FK 위반(`audit_log_actor_id_fkey`)으로 트랜잭션이 rollback되던 회귀를 차단한다.
+     *
+     * <p>기대: 신규 가입 후 user 영속화 + audit_log {@code user.registered} 1행 + actor_id가 신규 user.id.
+     */
+    @Test
+    void signup_persists_user_and_writes_user_registered_with_actor_id() {
+        // 빈 상태에서 시작 — first user는 ADMIN(ADR #41)이지만 본 테스트의 관심사는 audit row + actor_id FK 정합성.
+        jdbc.update("DELETE FROM audit_log");
+        userRepository.deleteAll();
+
+        HttpHeaders csrf = csrfHandshake();
+        String newEmail = "signup-" + UUID.randomUUID().toString().substring(0, 8) + "@example.com";
+
+        ResponseEntity<Map> signupRes = postJson("/api/auth/signup",
+            Map.of("email", newEmail, "password", PW, "displayName", "Signup E2E"), csrf);
+        assertThat(signupRes.getStatusCode())
+            .as("signup response (body=%s) — TX rollback 시 5xx", signupRes.getBody())
+            .isEqualTo(HttpStatus.OK);
+
+        Optional<User> created = userRepository.findActiveByEmail(newEmail);
+        assertThat(created).as("user TX는 commit되어야 한다 — audit FK 위반으로 rollback되면 부재").isPresent();
+        UUID createdId = created.get().getId();
+
+        List<Map<String, Object>> rows = jdbc.queryForList(
+            "SELECT actor_id, target_type, target_id FROM audit_log WHERE event_type = 'user.registered'");
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).get("actor_id")).isEqualTo(createdId);
+        assertThat(rows.get(0).get("target_type")).isEqualTo("user");
+        assertThat(rows.get(0).get("target_id")).isEqualTo(createdId);
+    }
+
     @Test
     void logout_writes_user_logout_with_actor_id() {
         HttpHeaders csrf = csrfHandshake();
@@ -205,14 +241,14 @@ class AuthAuditE2ETest {
         String csrfToken = (String) csrfRes.getBody().get("csrfToken");
         String xsrfCookie = extractCookie(csrfRes, "XSRF-TOKEN");
         HttpHeaders h = new HttpHeaders();
-        h.add("X-XSRF-TOKEN", csrfToken);
+        h.add("X-CSRF-Token", csrfToken);
         h.add(HttpHeaders.COOKIE, "XSRF-TOKEN=" + xsrfCookie);
         return h;
     }
 
     private HttpHeaders csrfWithSession(HttpHeaders csrf, String sessionCookie) {
         HttpHeaders h = new HttpHeaders();
-        h.add("X-XSRF-TOKEN", csrf.getFirst("X-XSRF-TOKEN"));
+        h.add("X-CSRF-Token", csrf.getFirst("X-CSRF-Token"));
         h.add(HttpHeaders.COOKIE, csrf.getFirst(HttpHeaders.COOKIE) + "; SESSION=" + sessionCookie);
         return h;
     }

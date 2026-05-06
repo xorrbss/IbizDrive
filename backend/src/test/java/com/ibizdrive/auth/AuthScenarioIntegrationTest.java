@@ -236,7 +236,7 @@ class AuthScenarioIntegrationTest {
     private HttpHeaders headers(String csrfToken, String... cookieKvs) {
         HttpHeaders h = new HttpHeaders();
         if (csrfToken != null) {
-            h.add("X-XSRF-TOKEN", csrfToken);
+            h.add("X-CSRF-Token", csrfToken);
         }
         if (cookieKvs.length > 0) {
             h.add(HttpHeaders.COOKIE, String.join("; ", cookieKvs));
