@@ -1,6 +1,7 @@
 package com.ibizdrive.permission;
 
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -149,5 +150,105 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
     List<UUID> findExpiredActiveIds(
         @Param("now") Instant now,
         Pageable limit
+    );
+
+    /**
+     * Wave 2 T5 — admin global permission matrix viewer.
+     *
+     * <p>{@code GET /api/admin/permissions} 의 service 단({@code AdminPermissionService}) 진입점.
+     * 모든 grant 행을 admin 시점에서 filter+pagination 가능하게 노출.
+     *
+     * <p>filter 파라미터(모두 nullable, NULL 시 무시):
+     * <ul>
+     *   <li>{@code subjectType} — {@code user|department|role|everyone} 중 하나.</li>
+     *   <li>{@code subjectId} — UUID. {@code subjectType} 와 함께 사용. {@code role}/{@code everyone}
+     *       경우 호출자가 의미적 정합성 책임(controller layer 검증).</li>
+     *   <li>{@code resourceType} — {@code folder|file}.</li>
+     *   <li>{@code preset} — {@code read|upload|edit|admin}.</li>
+     *   <li>{@code qLike} — 이미 {@code lower(...) + LIKE escape + '%' wrap} 처리된 패턴
+     *       (예: {@code "%foo%"}). NULL 이면 q 검색 미적용. user.display_name / departments.name /
+     *       folders.name / files.name 4개 컬럼 OR 매칭. JOIN 은 LEFT JOIN 이므로 매칭되지 않는 type 의 grant 도
+     *       후보로 통과 — q 가 있으면 한 번이라도 매칭되어야 결과에 포함된다.</li>
+     * </ul>
+     *
+     * <p>JOIN 정책:
+     * <ul>
+     *   <li>{@code LEFT JOIN users}: subject_type='user' 일 때만 매칭. 다른 type 은 NULL — q 매칭 비참여.</li>
+     *   <li>{@code LEFT JOIN departments}: subject_type='department' 일 때만 매칭.</li>
+     *   <li>{@code LEFT JOIN folders}: resource_type='folder' 일 때만 매칭. soft-delete row 도 표시 위해
+     *       {@code deleted_at IS NULL} 필터 미적용 — admin 매트릭스는 dangling grant 도 가시화 (cron 정리 전).</li>
+     *   <li>{@code LEFT JOIN files}: resource_type='file' 동형.</li>
+     * </ul>
+     *
+     * <p>정렬: {@code ORDER BY p.created_at DESC, p.id DESC} — pagination tie-break 안정성.
+     * 만료 row 도 포함 (isExpired 는 service 에서 derive).
+     *
+     * <p>본 메서드는 {@link PermissionRow} 엔티티만 반환 — name resolution 은 service 가 batch 처리 (N+1
+     * 회피, {@link PermissionService#listPermissions} 의 user/dept name map 패턴 답습).
+     *
+     * @param subjectType  nullable filter.
+     * @param subjectId    nullable filter (subjectType 과 짝).
+     * @param resourceType nullable filter.
+     * @param preset       nullable filter.
+     * @param qLike        nullable LIKE 패턴 (호출자가 lower + escape + wrap).
+     * @param pageable     page/size + (호출자가 정렬을 override 하지 않는 한) 본 SQL 의 ORDER BY 가 사용됨.
+     */
+    @Query(
+        value = """
+            SELECT p.id, p.resource_type, p.resource_id, p.subject_type, p.subject_id,
+                   p.preset, p.granted_by, p.expires_at, p.created_at
+            FROM permissions p
+            LEFT JOIN users u
+              ON p.subject_type = 'user' AND p.subject_id = u.id
+            LEFT JOIN departments d
+              ON p.subject_type = 'department' AND p.subject_id = d.id
+            LEFT JOIN folders f
+              ON p.resource_type = 'folder' AND p.resource_id = f.id
+            LEFT JOIN files fi
+              ON p.resource_type = 'file' AND p.resource_id = fi.id
+            WHERE (CAST(:subjectType AS varchar) IS NULL OR p.subject_type = CAST(:subjectType AS varchar))
+              AND (CAST(:subjectId AS uuid) IS NULL OR p.subject_id = CAST(:subjectId AS uuid))
+              AND (CAST(:resourceType AS varchar) IS NULL OR p.resource_type = CAST(:resourceType AS varchar))
+              AND (CAST(:preset AS varchar) IS NULL OR p.preset = CAST(:preset AS varchar))
+              AND (
+                CAST(:qLike AS varchar) IS NULL
+                OR LOWER(u.display_name) LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+                OR LOWER(d.name)         LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+                OR LOWER(f.name)         LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+                OR LOWER(fi.name)        LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+              )
+            ORDER BY p.created_at DESC, p.id DESC
+            """,
+        countQuery = """
+            SELECT COUNT(*)
+            FROM permissions p
+            LEFT JOIN users u
+              ON p.subject_type = 'user' AND p.subject_id = u.id
+            LEFT JOIN departments d
+              ON p.subject_type = 'department' AND p.subject_id = d.id
+            LEFT JOIN folders f
+              ON p.resource_type = 'folder' AND p.resource_id = f.id
+            LEFT JOIN files fi
+              ON p.resource_type = 'file' AND p.resource_id = fi.id
+            WHERE (CAST(:subjectType AS varchar) IS NULL OR p.subject_type = CAST(:subjectType AS varchar))
+              AND (CAST(:subjectId AS uuid) IS NULL OR p.subject_id = CAST(:subjectId AS uuid))
+              AND (CAST(:resourceType AS varchar) IS NULL OR p.resource_type = CAST(:resourceType AS varchar))
+              AND (CAST(:preset AS varchar) IS NULL OR p.preset = CAST(:preset AS varchar))
+              AND (
+                CAST(:qLike AS varchar) IS NULL
+                OR LOWER(u.display_name) LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+                OR LOWER(d.name)         LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+                OR LOWER(f.name)         LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+                OR LOWER(fi.name)        LIKE CAST(:qLike AS varchar) ESCAPE '\\'
+              )
+            """,
+        nativeQuery = true)
+    Page<PermissionRow> findAllForAdminPageable(
+        @Param("subjectType") String subjectType,
+        @Param("subjectId") UUID subjectId,
+        @Param("resourceType") String resourceType,
+        @Param("preset") String preset,
+        @Param("qLike") String qLike,
+        Pageable pageable
     );
 }

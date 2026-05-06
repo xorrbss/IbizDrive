@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-05-07 — 🏁 admin-permission-matrix 트랙 종료 (Wave 2 T5 — 권한 매트릭스 read-only viewer)
+
+### 범위
+
+`/admin/permissions` 페이지 활성화 — 관리자가 grant 전체 목록을 subjectType / subjectId / resourceType / preset / q 5축으로 검색·조회할 수 있다. 만료된 grant 도 포함되어 빨간 "만료됨" 배지로 가시화 (cron 정리 전 상태 인지). mutation(grant/revoke direct CRUD)은 **v1.x deferred** — Option A read-only ship 결정.
+
+### 변경 핵심
+
+**Backend (P1~P3):**
+- `PermissionRepository.findAllForAdminPageable(filters, Pageable)` — native @Query, LEFT JOIN users/departments/folders/files + INNER JOIN granter, 동적 WHERE `(:param IS NULL OR p.col = :param)` 패턴, `LOWER(name) LIKE :q ESCAPE '\\'` 5필드 OR.
+- `AdminPermissionService.list(filters, Pageable)` — q `trim+lowercase+LIKE escape '\' '%' '_' + '%' wrap`, subjectId-only(without subjectType) → 400, subjectType=everyone → subjectId 강제 null화, isExpired = `expiresAt < now`.
+- `AdminPermissionController` `GET /api/admin/permissions` + `@PreAuthorize("hasRole('ADMIN')")`, page default 0 / size default 20 cap 100.
+- `AdminPermissionRowResponse` record (id, subject*, resource*, preset, grantedBy*, grantedAt, expiresAt, isExpired).
+
+**Frontend (P4~P5):**
+- `types/permission.ts` — `AdminPermissionRow`, `AdminPermissionFilters`, `AdminPermissionPage`, `ADMIN_SUBJECT_TYPES`/`ADMIN_RESOURCE_TYPES`/`ADMIN_PRESETS` 상수.
+- `lib/api.ts` — `adminListPermissions(filters)` GET, no CSRF, 빈 값 query 제외, 401/403/400 envelope `buildApiError` 매핑.
+- `lib/queryKeys.ts` — `adminPermissionsList(filters)` 단일 키 (invalidations entry 미추가 — read-only).
+- `hooks/useAdminPermissions.ts` — q `trim+lowercase`, subjectId trim, `placeholderData: keepPreviousData`로 page 전환 깜빡임 완화.
+- `app/admin/permissions/page.tsx` — FilterBar(5 필터, q 300ms debounce) + 6 컬럼 테이블 + "만료됨" 빨간 배지 + Pagination(prev/next + page X/Y).
+- `components/admin/AdminSideNav.tsx` — '권한' DEFERRED → ACTIVE_ITEMS.
+
+**Docs:**
+- docs/02 §7.12 admin matrix table에 `GET /api/admin/permissions` 행 + 풀 스펙 블록 추가 (manual filter matrix + 응답 shape + 만료 grant 포함 정책 명시).
+- docs/04 §2 활성 라우트 목록 + 트리에서 `/permissions` 활성 swap (서브트리 `/bulk` `/templates`는 v1.x 유지).
+- BETA-RELEASE.md header Source 트랙 closure 추가 + §7 admin frontend wording 갱신 (`/admin/permissions` 활성, "권한 mutation" 문구만 v1.x).
+
+### 검증
+
+- frontend: `pnpm test --run` 820/820 GREEN(102 files), `pnpm typecheck`/`pnpm lint`/`pnpm build` 모두 exit 0 — `/admin/permissions` 3.38 kB / First Load 118 kB.
+- backend: `./gradlew test --no-daemon` GREEN (Windows에서 Testcontainers `disabledWithoutDocker=true`로 스킵; CI Linux runner에서 E2E 13 실행).
+
+### read-only 정책 정당성
+
+- mutation(grant/revoke) endpoint를 함께 ship하면 P1~P6 6 phase 풀 스펙(권한 evaluator 회귀 + audit emit 2종 + UI confirm dialog) 부담. Option A read-only로 분리 시 본 트랙은 viewer 1 endpoint + 1 page로 작아짐 — 만료 가시화/grant 조사라는 운영 1차 효용은 즉시 확보.
+- `placeholderData: keepPreviousData`로 페이지 전환 ghost 행 방지 (T4 동형). q 정규화는 호출자(hook) 책임 — 서비스에서 한 번 더 정규화하지 않음(중복 방지).
+
+### 다음 세션 컨텍스트
+
+- v1.x grant/revoke direct CRUD 트랙 시 본 트랙의 `useAdminPermissions` 캐시 invalidation entry 추가 필요 (`afterAdminPermissionChanged`). 현재는 read-only이므로 entry 미추가.
+- 만료 cron(만료 grant 정리)은 `audit-emit-gap-mapping` deferred 매핑과 별도 트랙 — 본 viewer가 만료 grant 노출하므로 cron이 도입되어도 데이터 표시 정책 변경 불필요.
+- T5 PR 머지 후 master rebase 시 BETA §7 admin frontend wording / docs/04 §2 트리 줄에서 master의 다른 admin 트랙과 사소 conflict 가능 — wording 머지(둘 다 활성).
+
+---
+
 ## 2026-05-07 — 🏁 wave1-t3-system-cron-readonly 트랙 종료 (Wave 1 T3 — 시스템 정책 페이지 / 운영 cron 4종 read-only 노출)
 
 ### 범위

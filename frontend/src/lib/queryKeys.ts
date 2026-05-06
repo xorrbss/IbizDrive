@@ -134,13 +134,29 @@ export const qk = {
   adminDepartmentsList: (page: number, size: number, q: string) =>
     [...qk.adminDepartments(), 'list', page, size, q] as const,
 
-  // ── 관리자 시스템 (Wave 1 — T3, docs/02 §7.13) ──
+  // ── 관리자 시스템 (Wave 1 — T3, docs/02 §7.12) ──
   adminSystem: () => [...qk.all, 'admin', 'system'] as const,
   /**
    * 4 cron 잡 설정 스냅샷 (read-only). 본 트랙은 mutation 없음 — staleTime + refetch on focus로
    * 충분. 별도 invalidations 헬퍼 미정의.
    */
   adminSystemCron: () => [...qk.adminSystem(), 'cron'] as const,
+
+  // ── admin 권한 매트릭스 (admin-permission-matrix, Wave 2 T5) ──
+  adminPermissions: () => [...qk.all, 'admin', 'permissions'] as const,
+  /**
+   * paginated admin 권한 매트릭스 — read-only이므로 invalidations entry 없음.
+   * filters 객체 자체를 키 일부로 사용 (직렬화 비용 < 캐시 분리 정확성).
+   */
+  adminPermissionsList: (filters: {
+    subjectType?: string
+    subjectId?: string
+    resourceType?: string
+    preset?: string
+    q?: string
+    page?: number
+    size?: number
+  }) => [...qk.adminPermissions(), 'list', filters] as const,
 
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,

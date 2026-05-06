@@ -71,6 +71,66 @@ export type PermissionListItem = {
   subjectName: string | null
 }
 
+/**
+ * Admin 권한 매트릭스 (Wave 2 T5) — `GET /api/admin/permissions` row.
+ *
+ * <p>{@link PermissionListItem}와 분리된 타입 — 백엔드 {@code AdminPermissionRowResponse} 미러.
+ * 차이점:
+ * <ul>
+ *   <li>subjectType: `role` 포함 (V5 schema artifact, MVP 평가 미사용 — docs/03 §3.4)</li>
+ *   <li>resourceName / grantedByName / isExpired 추가 — 백엔드가 batch resolve + derive</li>
+ *   <li>preset: 4값 (V5 CHECK — `share`는 별도 `shares` 테이블)</li>
+ * </ul>
+ */
+export type AdminSubjectType = 'user' | 'department' | 'role' | 'everyone'
+
+export type AdminResourceType = 'folder' | 'file'
+
+export type AdminPreset = 'read' | 'upload' | 'edit' | 'admin'
+
+export const ADMIN_SUBJECT_TYPES: readonly AdminSubjectType[] = ['user', 'department', 'role', 'everyone'] as const
+export const ADMIN_RESOURCE_TYPES: readonly AdminResourceType[] = ['folder', 'file'] as const
+export const ADMIN_PRESETS: readonly AdminPreset[] = ['read', 'upload', 'edit', 'admin'] as const
+
+export type AdminPermissionRow = {
+  id: string
+  subjectType: AdminSubjectType
+  subjectId: string | null
+  subjectName: string | null
+  resourceType: AdminResourceType
+  resourceId: string
+  resourceName: string | null
+  preset: AdminPreset
+  grantedByActorId: string
+  grantedByName: string | null
+  grantedAt: string
+  expiresAt: string | null
+  isExpired: boolean
+}
+
+/**
+ * Admin 권한 매트릭스 filter — 모두 optional.
+ * UI 측 빈 문자열 / undefined 는 query string에서 skip (api 레이어 처리).
+ */
+export type AdminPermissionFilters = {
+  subjectType?: AdminSubjectType
+  subjectId?: string
+  resourceType?: AdminResourceType
+  preset?: AdminPreset
+  q?: string
+  page?: number
+  size?: number
+}
+
+/** Spring {@code Page<AdminPermissionRowResponse>} 직렬화 모양. */
+export interface AdminPermissionPage {
+  content: AdminPermissionRow[]
+  totalElements: number
+  totalPages: number
+  number: number
+  size: number
+}
+
 export const PRESET_PERMISSIONS: Readonly<Record<Preset, ReadonlySet<Permission>>> = {
   read: new Set<Permission>(['READ', 'DOWNLOAD']),
   upload: new Set<Permission>(['READ', 'UPLOAD', 'DOWNLOAD']),

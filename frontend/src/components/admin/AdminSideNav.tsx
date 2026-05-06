@@ -23,12 +23,12 @@ const ACTIVE_ITEMS = [
   { label: '감사 로그', href: '/admin/audit/logs', match: 'exact' as const },
   { label: '사용자 초대', href: '/admin/users', match: 'prefix' as const },
   { label: '부서', href: '/admin/departments', match: 'prefix' as const },
+  { label: '권한', href: '/admin/permissions', match: 'prefix' as const },
   { label: '시스템', href: '/admin/system', match: 'prefix' as const },
 ]
 
 const DEFERRED_ITEMS = [
   '대시보드',
-  '권한',
   '스토리지',
   '휴지통',
   'Legal Hold',
