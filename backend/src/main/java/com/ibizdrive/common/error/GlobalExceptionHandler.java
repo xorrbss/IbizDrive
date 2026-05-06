@@ -1,5 +1,6 @@
 package com.ibizdrive.common.error;
 
+import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.folder.FolderRestoreConflictException;
@@ -86,6 +87,18 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleFolderRestoreConflict(FolderRestoreConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("RESTORE_CONFLICT", "동일 위치에 같은 이름의 폴더가 존재해 복원할 수 없습니다", null));
+    }
+
+    /**
+     * V9 partial unique({@code idx_departments_name_active}) 충돌 — admin-department-crud (Wave 2 T4).
+     *
+     * <p>{@link DepartmentConflictException}는 service의 사전 조회 또는 INSERT race로 발생.
+     * envelope code {@code DEPARTMENT_CONFLICT} (docs/02 §8 계약).
+     */
+    @ExceptionHandler(DepartmentConflictException.class)
+    public ResponseEntity<ApiError> handleDepartmentConflict(DepartmentConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("DEPARTMENT_CONFLICT", "동일 이름의 활성 부서가 이미 존재합니다", null));
     }
 
     /**
