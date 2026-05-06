@@ -351,6 +351,201 @@ class PermissionRepositoryTest {
         assertThat(ids).isEmpty();
     }
 
+    // ====================== Wave 2 T5 — admin matrix (findAllForAdminPageable) ======================
+
+    @Test
+    void adminMatrix_noFilters_returnsAllRowsCreatedDesc() {
+        // 시드: 동일 user 가 두 폴더에 grant — 정렬 기본 (created_at DESC, id DESC) 검증.
+        UUID actor = insertUser("admin-mx-1@test", "admin1");
+        UUID folder1 = insertFolder(null, "mx-f1", actor);
+        UUID folder2 = insertFolder(null, "mx-f2", actor);
+        insertPermission("folder", folder1, "user", actor, "read", actor);
+        insertPermission("folder", folder2, "user", actor, "edit", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                null, null, null, null, null,
+                PageRequest.of(0, 100)
+            );
+
+        // 본 트랙 외 helper(test) 가 다른 grant 를 시드하지 않은 fresh 컨테이너 가정 — 최소 2건 포함.
+        assertThat(page.getContent()).extracting(PermissionRow::getResourceId)
+            .contains(folder1, folder2);
+    }
+
+    @Test
+    void adminMatrix_filterBySubjectType_user() {
+        UUID actor = insertUser("admin-mx-2@test", "admin2");
+        UUID folder = insertFolder(null, "mx-f-st", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+        insertPermissionEveryone("folder", folder, "edit", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                "user", null, null, null, null,
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).allSatisfy(r ->
+            assertThat(r.getSubjectType()).isEqualTo("user"));
+        // 본 시드의 user grant 는 포함, everyone grant 는 제외.
+        assertThat(page.getContent()).anyMatch(r ->
+            r.getResourceId().equals(folder) && actor.equals(r.getSubjectId()));
+        assertThat(page.getContent()).noneMatch(r ->
+            r.getResourceId().equals(folder) && r.getSubjectType().equals("everyone"));
+    }
+
+    @Test
+    void adminMatrix_filterBySubjectId_returnsOnlyThatSubjectGrants() {
+        UUID actor = insertUser("admin-mx-3a@test", "admin3a");
+        UUID other = insertUser("admin-mx-3b@test", "admin3b");
+        UUID folder = insertFolder(null, "mx-f-sid", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+        insertPermission("folder", folder, "user", other, "edit", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                "user", actor, null, null, null,
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).allSatisfy(r ->
+            assertThat(r.getSubjectId()).isEqualTo(actor));
+    }
+
+    @Test
+    void adminMatrix_filterByResourceType_file() {
+        UUID actor = insertUser("admin-mx-4@test", "admin4");
+        UUID folder = insertFolder(null, "mx-f-rt", actor);
+        UUID file = insertFile(folder, "mx-file.txt", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+        insertPermission("file", file, "user", actor, "read", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                null, null, "file", null, null,
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).allSatisfy(r ->
+            assertThat(r.getResourceType()).isEqualTo("file"));
+        assertThat(page.getContent()).anyMatch(r -> r.getResourceId().equals(file));
+    }
+
+    @Test
+    void adminMatrix_filterByPreset_admin() {
+        UUID actor = insertUser("admin-mx-5@test", "admin5");
+        UUID folder = insertFolder(null, "mx-f-ps", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+        insertPermission("folder", folder, "user", actor, "admin", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                null, null, null, "admin", null,
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).allSatisfy(r ->
+            assertThat(r.getPreset()).isEqualTo("admin"));
+    }
+
+    @Test
+    void adminMatrix_qMatchesUserDisplayName() {
+        UUID actor = insertUser("admin-mx-6@test", "Distinct-Display-Q-Marker");
+        UUID folder = insertFolder(null, "mx-f-q", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                null, null, null, null, "%distinct-display-q-marker%",
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).anyMatch(r ->
+            r.getResourceId().equals(folder) && actor.equals(r.getSubjectId()));
+    }
+
+    @Test
+    void adminMatrix_qMatchesFolderName() {
+        UUID actor = insertUser("admin-mx-7@test", "admin7");
+        UUID folder = insertFolder(null, "Distinct-Folder-Q-Marker", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                null, null, null, null, "%distinct-folder-q-marker%",
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).anyMatch(r -> r.getResourceId().equals(folder));
+    }
+
+    @Test
+    void adminMatrix_includesExpiredRows() {
+        UUID actor = insertUser("admin-mx-8@test", "admin8");
+        UUID folder = insertFolder(null, "mx-f-exp", actor);
+        Instant past = Instant.now().minus(1, ChronoUnit.DAYS);
+        insertPermissionWithExpiry("folder", folder, "user", actor, "read", actor, past);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                "user", actor, null, null, null,
+                PageRequest.of(0, 100)
+            );
+
+        // 만료 row 도 admin matrix 에는 노출됨 (cron 정리 전 가시화).
+        assertThat(page.getContent()).anyMatch(r -> r.getResourceId().equals(folder));
+    }
+
+    @Test
+    void adminMatrix_pagination_respectsSizeAndOrder() {
+        UUID actor = insertUser("admin-mx-9@test", "admin9");
+        // 5개의 folder 에 grant 시드 — page size 2 로 페이지네이션 안정성 검증.
+        for (int i = 0; i < 5; i++) {
+            UUID f = insertFolder(null, "mx-pagi-" + i, actor);
+            insertPermission("folder", f, "user", actor, "read", actor);
+        }
+
+        org.springframework.data.domain.Page<PermissionRow> page0 =
+            permissionRepository.findAllForAdminPageable(
+                "user", actor, "folder", "read", null,
+                PageRequest.of(0, 2)
+            );
+        org.springframework.data.domain.Page<PermissionRow> page1 =
+            permissionRepository.findAllForAdminPageable(
+                "user", actor, "folder", "read", null,
+                PageRequest.of(1, 2)
+            );
+
+        assertThat(page0.getContent()).hasSize(2);
+        assertThat(page1.getContent()).hasSize(2);
+        assertThat(page0.getTotalElements()).isEqualTo(5);
+        // 페이지간 row 중복 0.
+        List<UUID> p0ids = page0.getContent().stream().map(PermissionRow::getId).toList();
+        List<UUID> p1ids = page1.getContent().stream().map(PermissionRow::getId).toList();
+        assertThat(p0ids).doesNotContainAnyElementsOf(p1ids);
+    }
+
+    @Test
+    void adminMatrix_filterByDeptSubject() {
+        UUID actor = insertUser("admin-mx-10@test", "admin10");
+        UUID dept = insertDepartment("MX-Dept");
+        UUID folder = insertFolder(null, "mx-f-dept", actor);
+        insertPermissionDept("folder", folder, dept, "edit", actor);
+        insertPermission("folder", folder, "user", actor, "read", actor);
+
+        org.springframework.data.domain.Page<PermissionRow> page =
+            permissionRepository.findAllForAdminPageable(
+                "department", dept, null, null, null,
+                PageRequest.of(0, 100)
+            );
+
+        assertThat(page.getContent()).anyMatch(r ->
+            r.getResourceId().equals(folder) && "department".equals(r.getSubjectType()));
+        assertThat(page.getContent()).allSatisfy(r ->
+            assertThat(r.getSubjectType()).isEqualTo("department"));
+    }
+
     // ====================== helpers ======================
 
     private UUID insertUser(String email, String displayName) {
