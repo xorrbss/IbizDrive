@@ -1533,6 +1533,7 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | GET | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (생성 + AFTER_COMMIT audit) | name→trim | partial unique `WHERE deleted_at IS NULL` | 400 VALIDATION_ERROR, 401, 403, 409 DEPARTMENT_CONFLICT |
 | PATCH | `/api/admin/departments/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (rename/(de)activate + AFTER_COMMIT audit) | name→trim | partial unique 보조 | 400 VALIDATION_ERROR, 401, 403, 404 NOT_FOUND, 409 DEPARTMENT_CONFLICT |
+| GET | `/api/admin/permissions` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (만료 grant 포함 — `is_expired` 노출) | 400 VALIDATION_ERROR, 401, 403 |
 | GET | `/api/admin/system/cron` | `hasRole('ADMIN')` (`@PreAuthorize`, Wave 1 T3 — AUDITOR 제외) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
@@ -1721,6 +1722,53 @@ PATCH /api/admin/departments/:id                       (admin-department-crud, W
 ```
 
 **관련 audit 이벤트** (docs/03 §4.1): `admin.department.created`, `admin.department.updated`, `admin.department.deactivated`.
+
+```text
+GET /api/admin/permissions?subjectType=user&subjectId=...&resourceType=folder
+                          &preset=read&q=alice&page=0&size=20      (admin-permission-matrix, Wave 2 T5, 2026-05-07)
+  Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Query:    subjectType   (선택; 'user' | 'department' | 'role' | 'everyone')
+            subjectId     (선택; subjectType 없이 단독 입력 시 400)
+                          - subjectType=user/department → UUID 검증
+                          - subjectType=role → enum 'MEMBER'|'AUDITOR'|'ADMIN' (text)
+                          - subjectType=everyone → 무시(서비스가 강제 null화)
+            resourceType  (선택; 'folder' | 'file')
+            preset        (선택; 'read' | 'upload' | 'edit' | 'admin')
+            q             (선택; subject/resource name 부분일치
+                           — service에서 trim+lowercase+LIKE escape `\` `%` `_`)
+            page          (default 0, min 0)
+            size          (default 20, min 1, max 100 — controller가 clamp)
+  Response: 200 Spring Page<AdminPermissionRowResponse>
+            {
+              content: [{
+                id: string (UUID — permissions.id),
+                subjectType: 'user' | 'department' | 'role' | 'everyone',
+                subjectId: string | null,             // everyone → null
+                subjectName: string | null,           // 삭제/비활성 사용자/부서 시 null
+                resourceType: 'folder' | 'file',
+                resourceId: string (UUID),
+                resourceName: string | null,          // soft-deleted resource 시 null
+                preset: 'read' | 'upload' | 'edit' | 'admin',
+                grantedByActorId: string (UUID),
+                grantedByName: string | null,
+                grantedAt: string (ISO-8601),         // permissions.created_at
+                expiresAt: string | null (ISO-8601),
+                isExpired: boolean                    // expiresAt < now
+              }, ...],
+              totalElements, totalPages, number, size
+            }
+            정렬: created_at DESC, id DESC (tie-break).
+            **만료된 grant도 결과 포함** — cron 정리 전 가시화 목적, isExpired=true 표시.
+            soft-deleted subject/resource 도 grant row가 살아 있으면 노출
+            (LEFT JOIN — name=null로 fallback).
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'subjectType'|'subjectId'|'resourceType'|'preset', rule: '...' } }
+                          (invalid enum / subjectId without subjectType / 잘못된 UUID)
+    401 (미인증)
+    403 (ADMIN role 아님 — `@PreAuthorize`, 본문 없음)
+```
+
+> read-only viewer — mutation(grant/revoke) endpoint는 v1.x deferred. 만료 정리는 별도 cron 트랙(미구현)에서 처리. 본 endpoint는 grant 가시화만 담당.
 
 ```text
 GET /api/admin/system/cron                              (Wave 1 T3 system-cron-readonly, 2026-05-07)

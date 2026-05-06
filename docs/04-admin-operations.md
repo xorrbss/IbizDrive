@@ -29,11 +29,12 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 2. 관리자 페이지 구조
 
-> **활성 라우트** (Wave 1 T3 closure, 2026-05-07):
-> - `/admin` — landing (가용 카드 4 + deferred 안내)
+> **활성 라우트** (Wave 2 T5 closure, 2026-05-07):
+> - `/admin` — landing (가용 카드 5 + deferred 안내)
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
 > - `/admin/users` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 (Wave 1 T1 closure)
 > - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
+> - `/admin/permissions` — 권한 매트릭스 read-only viewer (subject/resource/preset/q 필터 + 만료 배지, Wave 2 T5)
 > - `/admin/system` — 운영 cron 4종 read-only 노출 (Wave 1 T3, 변경은 application.yml + 재기동)
 >
 > 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
@@ -47,7 +48,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 ├─ /departments              부서 CRUD (생성/검색/rename/(de)activate)     (활성, Wave 2 T4)
 │  ├─ /tree                조직도 트리 편집                                 (v1.x deferred)
 │  └─ /:id                 부서 상세                                       (v1.x deferred)
-├─ /permissions
+├─ /permissions              권한 매트릭스 read-only viewer (필터+만료배지) (활성, Wave 2 T5)
 │  ├─ /bulk                권한 일괄 변경                                  (v1.x deferred)
 │  └─ /templates           권한 프리셋 템플릿                              (v1.x deferred)
 ├─ /storage
