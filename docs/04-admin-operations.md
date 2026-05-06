@@ -222,10 +222,10 @@ DB row 중 storage 객체가 없는 것 = phantom
 
 ### 7.2 내보내기
 
-- [x] CSV 다운로드 — `toAuditCsvBlob` (RFC 4180 quoting + UTF-8 BOM, `text/csv` MIME)
-- [x] 대상 기간 / 필터 조건 포함 — current-page 결과 기준
-- [ ] **server-side full-result 스트리밍** — 현재는 client-side current-page만 export. 전체 결과 export는 별도 backend endpoint 필요 (v1.x deferred)
-- [ ] **`audit.exported` runtime emission** — enum 정의 존재(`docs/03 §4.1`), runtime emission은 server export endpoint 도입 시점에 활성화 (v1.x deferred)
+- [x] CSV 다운로드 — `AuditCsvWriter` (RFC 4180 quoting + UTF-8 BOM + `\r\n`, `text/csv; charset=utf-8` MIME)
+- [x] 대상 기간 / 필터 조건 포함 — `AuditQueryFilters` 전체 (eventType / actorId / targetType / targetId / dateFrom / dateTo) query string 그대로 전달
+- [x] **server-side full-result 스트리밍** — Wave 1 T2: `GET /api/admin/audit/export` (`StreamingResponseBody`), 하드 캡 10,000행 + `LIMIT cap+1` truncation 감지, 초과 시 `X-Audit-Export-Truncated: true` 헤더
+- [x] **`audit.exported` runtime emission** — Wave 1 T2: `AuditExportListener` (`@EventListener` + `@Transactional(REQUIRES_NEW)`), metadata에 `filters` / `rowCount` / `truncated` / `format=csv` (append-only 보존을 위해 export read 트랜잭션과 분리)
 - [ ] JSON 다운로드 — v1.x deferred
 
 ### 7.3 상세 뷰

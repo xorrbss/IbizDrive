@@ -1,7 +1,7 @@
 # IbizDrive — Beta Release Checklist (사내 베타)
 
-Last Updated: 2026-05-05
-Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41) + `auth-must-change-pw` 트랙 closure (ADR #21 §2.7) + `auth-forgot-rate-limit` 트랙 closure (ADR #44) + `m-admin-entry-rewrite` 트랙 closure (admin shell + `POST /api/admin/users`, ADR #21) + `auth-password-policy` 트랙 closure (ADR #19 본문 회복) + `email-async` 트랙 closure (`@Async EmailService`, ADR #45)
+Last Updated: 2026-05-06
+Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41) + `auth-must-change-pw` 트랙 closure (ADR #21 §2.7) + `auth-forgot-rate-limit` 트랙 closure (ADR #44) + `m-admin-entry-rewrite` 트랙 closure (admin shell + `POST /api/admin/users`, ADR #21) + `auth-password-policy` 트랙 closure (ADR #19 본문 회복) + `email-async` 트랙 closure (`@Async EmailService`, ADR #45) + `admin-user-search-update` (Wave 1 T1 — `ADMIN_USER_UPDATED` emit, #59) + `audit-export-endpoint` (Wave 1 T2 — `GET /api/admin/audit/export` + `AUDIT_EXPORTED` emit)
 
 > **본 문서의 목적**: 사내 베타 GO/NO-GO 결정에 필요한 단일 페이지 체크리스트.
 > docs/03 §1.3 STRIDE matrix + docs/04 §13 cron + 인프라 게이트를 한 곳으로 모음.
@@ -98,7 +98,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | 항목 | 상태 |
 |---|---|
 | audit_log append-only (DB-level REVOKE) | ✓ V4 + `AuditLogAppendOnlyTest` |
-| audit emit coverage | 47 enum 중 39 emit (~83%) — `USER_REGISTERED` (auth-pages) + `USER_PASSWORD_FORGOT_REQUESTED` / `USER_PASSWORD_RESET` / `USER_PASSWORD_CHANGED` (a1.5-email-infra) + `ADMIN_USER_CREATED` (m-admin-entry-rewrite) + `ADMIN_USER_DEACTIVATED` / `ADMIN_ROLE_CHANGED` (admin-user-mgmt) + `ADMIN_USER_UPDATED` (admin-user-search-update Wave 1 T1) + `ADMIN_DEPARTMENT_CREATED` / `ADMIN_DEPARTMENT_UPDATED` / `ADMIN_DEPARTMENT_DEACTIVATED` (admin-department-crud Wave 2 T4) 신규 emit. **미emit 8개는 §7 deferred 매핑 (`audit-emit-gap-mapping` closure, 2026-05-05) — 누락(버그) 0건** |
+| audit emit coverage | 47 enum 중 40 emit (~85%) — `USER_REGISTERED` (auth-pages) + `USER_PASSWORD_FORGOT_REQUESTED` / `USER_PASSWORD_RESET` / `USER_PASSWORD_CHANGED` (a1.5-email-infra) + `ADMIN_USER_CREATED` (m-admin-entry-rewrite) + `ADMIN_USER_DEACTIVATED` / `ADMIN_ROLE_CHANGED` (admin-user-mgmt) + `ADMIN_USER_UPDATED` (admin-user-search-update Wave 1 T1) + `AUDIT_EXPORTED` (audit-export-endpoint Wave 1 T2) + `ADMIN_DEPARTMENT_CREATED` / `ADMIN_DEPARTMENT_UPDATED` / `ADMIN_DEPARTMENT_DEACTIVATED` (admin-department-crud Wave 2 T4) 신규 emit. **미emit 7개는 §7 deferred 매핑 (`audit-emit-gap-mapping` closure, 2026-05-05; T2 갱신 2026-05-06) — 누락(버그) 0건** |
 | `@PreAuthorize` 미보호 mutation | 0 (mvp-qa-security P2.3 검증) |
 | 권한 evaluator (`IbizDrivePermissionEvaluator`) | ✓ A4 + A11/A16 closure |
 | audit query — file 단위 활동 조회 | ✓ M-RP.4 (`?targetType=file&targetId=`) — RP-2 정책: 파일 READ 보유 시 actor 제한 우회 (ADR #40) |
@@ -112,7 +112,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - Legal Hold (전체 §6.3 / §10) — docs/00 §4.3 v2.x (`ADMIN_LEGAL_HOLD_PLACED` / `ADMIN_LEGAL_HOLD_RELEASED` emit deferred)
 - admin frontend (권한/스토리지/정책/시스템 페이지) — admin shell + `/admin/users` 초대/목록/role 변경/비활성/검색/재활성/displayName 편집 (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1) + `/admin/departments` 부서 CRUD(생성/검색/rename/(de)activate, admin-department-crud Wave 2 T4) + audit logs UI(M12) 활성. quota(`ADMIN_QUOTA_CHANGED` emit)는 v1.x
 - DB backup cron — managed Postgres / RDS 자동 백업으로 대체, docs/04 §13 "별도 cron 미구현" (`SYSTEM_BACKUP_COMPLETED` emit deferred)
-- audit log CSV/JSON export endpoint — docs/04 §7.2 line 203 v1.x (`AUDIT_EXPORTED` runtime emission deferred)
+- audit log JSON export endpoint — docs/04 §7.2 v1.x (CSV server-side export는 Wave 1 T2에서 ship — `GET /api/admin/audit/export`, `AUDIT_EXPORTED` emit 활성)
 
 ## 8. 모니터링 (사내 베타 최소)
 

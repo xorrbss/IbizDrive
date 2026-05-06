@@ -1523,6 +1523,7 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
 | GET | `/api/admin/audit` | `isAuthenticated()` (ADMIN/AUDITOR 전체, MEMBER `actor_id=self` — A2.3 트랙결정 #4) | — | — | (audit_log 자체에 deleted_at 없음) | 401 |
+| GET | `/api/admin/audit/export` | `hasRole('AUDITOR') OR hasRole('ADMIN')` (`@PreAuthorize`, Wave 1 T2) | — (SELECT only — `AUDIT_EXPORTED` emit은 별도 REQUIRES_NEW) | — | — | 401, 403 |
 | GET | `/api/admin/download-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |
