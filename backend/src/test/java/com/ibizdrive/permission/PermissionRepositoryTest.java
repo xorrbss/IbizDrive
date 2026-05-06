@@ -435,9 +435,12 @@ class PermissionRepositoryTest {
     @Test
     void adminMatrix_filterByPreset_admin() {
         UUID actor = insertUser("admin-mx-5@test", "admin5");
-        UUID folder = insertFolder(null, "mx-f-ps", actor);
-        insertPermission("folder", folder, "user", actor, "read", actor);
-        insertPermission("folder", folder, "user", actor, "admin", actor);
+        // V5 idx_permissions_unique 는 (resource_type, resource_id, subject_type, subject_id) 4 컬럼.
+        // preset 미포함이므로 동일 (folder, user) 에 두 preset 시드는 UNIQUE 위반 → folder 분리.
+        UUID folder1 = insertFolder(null, "mx-f-ps-read", actor);
+        UUID folder2 = insertFolder(null, "mx-f-ps-admin", actor);
+        insertPermission("folder", folder1, "user", actor, "read", actor);
+        insertPermission("folder", folder2, "user", actor, "admin", actor);
 
         org.springframework.data.domain.Page<PermissionRow> page =
             permissionRepository.findAllForAdminPageable(
@@ -447,6 +450,7 @@ class PermissionRepositoryTest {
 
         assertThat(page.getContent()).allSatisfy(r ->
             assertThat(r.getPreset()).isEqualTo("admin"));
+        assertThat(page.getContent()).anyMatch(r -> r.getResourceId().equals(folder2));
     }
 
     @Test
