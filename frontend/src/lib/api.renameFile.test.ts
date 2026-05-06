@@ -17,7 +17,10 @@ describe('api.renameFile', () => {
     expect(files.some((f) => f.name === '제안서_v2.pdf')).toBe(true)
   })
 
-  it('폴더 이름 변경 시 MOCK_TREE도 갱신', async () => {
+  // Phase A에서 getFolderTree가 real fetch로 전환되어 mock-tree mutation은 외부에서 관찰 불가능.
+  // renameFile 자체가 real backend 호출로 옮겨가는 Phase B 시점에 backend 응답으로 다시 검증.
+  // TODO(Phase B): backend `PATCH /api/folders/{id}` + tree 재조회로 재작성.
+  it.skip('폴더 이름 변경 시 tree에도 반영 (Phase B 재작성 대기)', async () => {
     await api.renameFile('folder_hr', '인사관리팀')
     const tree = await api.getFolderTree()
     const hr = tree.children?.find((c) => c.id === 'folder_hr')
