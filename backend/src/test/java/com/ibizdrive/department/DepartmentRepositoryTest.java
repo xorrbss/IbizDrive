@@ -4,6 +4,9 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -17,6 +20,7 @@ import java.util.UUID;
 import jakarta.persistence.EntityManager;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * A16 — {@link DepartmentRepository#searchActive} 통합 테스트. {@link com.ibizdrive.user.UserRepositoryTest}
@@ -109,6 +113,92 @@ class DepartmentRepositoryTest {
         List<Department> result = departmentRepository.searchActive("%50\\%%", 10);
 
         assertThat(result).extracting(Department::getId).containsExactly(idPercent);
+    }
+
+    // ============================================================
+    // admin-department-crud (Wave 2 T4) — findAllForAdminPageable + V9 unique
+    // ============================================================
+
+    @Test
+    void findAllForAdminPageable_includesInactive() {
+        UUID activeId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        departmentRepository.save(activeDept(activeId, "AdminA Active"));
+        departmentRepository.save(activeDept(deletedId, "AdminA Deleted"));
+        departmentRepository.flush();
+        markSoftDeleted(deletedId);
+
+        Page<Department> page = departmentRepository.findAllForAdminPageable("%admina%", PageRequest.of(0, 10));
+
+        // active 먼저 → 비활성 다음 (정렬은 `deletedAt IS NULL`로 활성 우선).
+        assertThat(page.getContent()).extracting(Department::getId).containsExactly(activeId, deletedId);
+    }
+
+    @Test
+    void findAllForAdminPageable_returnsAll_whenPatternIsNull() {
+        UUID a = UUID.randomUUID();
+        UUID b = UUID.randomUUID();
+        departmentRepository.save(activeDept(a, "AdminQ Alpha"));
+        departmentRepository.save(activeDept(b, "AdminQ Beta"));
+
+        Page<Department> page = departmentRepository.findAllForAdminPageable(null, PageRequest.of(0, 50));
+
+        assertThat(page.getContent()).extracting(Department::getName)
+            .contains("AdminQ Alpha", "AdminQ Beta");
+    }
+
+    @Test
+    void findAllForAdminPageable_paginates() {
+        for (int i = 0; i < 5; i++) {
+            departmentRepository.save(activeDept(UUID.randomUUID(), "AdminP " + i));
+        }
+
+        Page<Department> first = departmentRepository.findAllForAdminPageable("%adminp%", PageRequest.of(0, 2));
+        Page<Department> second = departmentRepository.findAllForAdminPageable("%adminp%", PageRequest.of(1, 2));
+
+        assertThat(first.getContent()).hasSize(2);
+        assertThat(second.getContent()).hasSize(2);
+        assertThat(first.getContent()).doesNotContainAnyElementsOf(second.getContent());
+        assertThat(first.getTotalElements()).isEqualTo(5);
+    }
+
+    @Test
+    void findActiveByName_excludesSoftDeleted() {
+        UUID activeId = UUID.randomUUID();
+        UUID deletedId = UUID.randomUUID();
+        departmentRepository.save(activeDept(activeId, "Lookup Same"));
+        departmentRepository.save(activeDept(deletedId, "Lookup Other"));
+        departmentRepository.flush();
+        markSoftDeleted(deletedId);
+
+        assertThat(departmentRepository.findActiveByName("Lookup Same")).isPresent();
+        assertThat(departmentRepository.findActiveByName("Lookup Other")).isEmpty();
+    }
+
+    @Test
+    void v9PartialUnique_rejectsDuplicateActiveName() {
+        // V9 partial unique idx_departments_name_active — 활성 row끼리만 충돌.
+        departmentRepository.save(activeDept(UUID.randomUUID(), "DupName"));
+        departmentRepository.flush();
+
+        assertThatThrownBy(() -> {
+            departmentRepository.save(activeDept(UUID.randomUUID(), "DupName"));
+            departmentRepository.flush();
+        }).isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    @Test
+    void v9PartialUnique_allowsSameNameWhenOneIsSoftDeleted() {
+        UUID firstId = UUID.randomUUID();
+        departmentRepository.save(activeDept(firstId, "SoftSame"));
+        departmentRepository.flush();
+        markSoftDeleted(firstId);
+
+        // 비활성 row는 partial unique에 포함되지 않음 — 활성 신규 row 생성 가능.
+        departmentRepository.save(activeDept(UUID.randomUUID(), "SoftSame"));
+        departmentRepository.flush();
+
+        assertThat(departmentRepository.findActiveByName("SoftSame")).isPresent();
     }
 
     private static Department activeDept(UUID id, String name) {
