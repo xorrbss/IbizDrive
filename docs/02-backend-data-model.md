@@ -1533,6 +1533,7 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | GET | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (생성 + AFTER_COMMIT audit) | name→trim | partial unique `WHERE deleted_at IS NULL` | 400 VALIDATION_ERROR, 401, 403, 409 DEPARTMENT_CONFLICT |
 | PATCH | `/api/admin/departments/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (rename/(de)activate + AFTER_COMMIT audit) | name→trim | partial unique 보조 | 400 VALIDATION_ERROR, 401, 403, 404 NOT_FOUND, 409 DEPARTMENT_CONFLICT |
+| GET | `/api/admin/system/cron` | `hasRole('ADMIN')` (`@PreAuthorize`, Wave 1 T3 — AUDITOR 제외) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 
@@ -1720,6 +1721,32 @@ PATCH /api/admin/departments/:id                       (admin-department-crud, W
 ```
 
 **관련 audit 이벤트** (docs/03 §4.1): `admin.department.created`, `admin.department.updated`, `admin.department.deactivated`.
+
+```text
+GET /api/admin/system/cron                              (Wave 1 T3 system-cron-readonly, 2026-05-07)
+  Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요 — AUDITOR 제외)
+  Response: 200 {
+              jobs: [{
+                key: 'purge.expired' | 'share.expire' | 'permission.expire' | 'storage.orphan.cleanup',
+                label: string,                  // 한글 라벨 (예: '휴지통 hard purge')
+                enabled: boolean,
+                cron: string,                   // 6-field Spring cron 표현식
+                zone: string,                   // 'Asia/Seoul' 등
+                batchSize?: number,             // share/permission expire 잡 한정
+                maxPerRun?: number,             // purge/storage 잡 한정
+                graceHours?: number             // storage.orphan.cleanup 한정
+              }, ...]                           // 항상 4개, 고정 순서
+            }
+            순서: purge.expired → share.expire → permission.expire → storage.orphan.cleanup
+            (controller에서 List.of로 강제 — 프론트 카드 순서 안정화).
+            optional 필드는 응답 직렬화 시 `@JsonInclude(NON_NULL)`로 생략.
+  Side-effects: 없음 (audit emit 0 — SELECT-only, 운영 설정 노출은 감사 대상 아님).
+  Errors:
+    401 (미인증)
+    403 (MEMBER 또는 AUDITOR — `@PreAuthorize` 차단, 본문 없음)
+  Note: 본 endpoint는 read-only 노출만 담당. 변경은 application.yml + 재기동
+        (mutation endpoint는 v1.x deferred — 운영팀이 SCM 통제하에 변경).
+```
 
 ### 7.13 SSE 실시간 동기화 (ADR #14)
 

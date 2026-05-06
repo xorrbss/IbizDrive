@@ -110,7 +110,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - MFA / refresh rotation / SCIM — ADR #18 (`USER_MFA_ENABLED` emit deferred)
 - audit_level / 파티션 / `FILE_VIEWED` emit / `FOLDER_AUDIT_LEVEL_CHANGED` emit — ADR #9 (docs/04 §6 line 269)
 - Legal Hold (전체 §6.3 / §10) — docs/00 §4.3 v2.x (`ADMIN_LEGAL_HOLD_PLACED` / `ADMIN_LEGAL_HOLD_RELEASED` emit deferred)
-- admin frontend (권한/스토리지/정책/시스템 페이지) — admin shell + `/admin/users` 초대/목록/role 변경/비활성/검색/재활성/displayName 편집 (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1) + `/admin/departments` 부서 CRUD(생성/검색/rename/(de)activate, admin-department-crud Wave 2 T4) + audit logs UI(M12) 활성. quota(`ADMIN_QUOTA_CHANGED` emit)는 v1.x
+- admin frontend (권한/스토리지/정책 페이지) — admin shell + `/admin/users` 초대/목록/role 변경/비활성/검색/재활성/displayName 편집 (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1) + `/admin/departments` 부서 CRUD(생성/검색/rename/(de)activate, admin-department-crud Wave 2 T4) + `/admin/system` 운영 cron 4종 read-only 노출 (Wave 1 T3 — `GET /api/admin/system/cron`, 변경은 application.yml + 재기동 → mutation은 v1.x) + audit logs UI(M12) 활성. quota(`ADMIN_QUOTA_CHANGED` emit)는 v1.x
 - DB backup cron — managed Postgres / RDS 자동 백업으로 대체, docs/04 §13 "별도 cron 미구현" (`SYSTEM_BACKUP_COMPLETED` emit deferred)
 - audit log JSON export endpoint — docs/04 §7.2 v1.x (CSV server-side export는 Wave 1 T2에서 ship — `GET /api/admin/audit/export`, `AUDIT_EXPORTED` emit 활성)
 

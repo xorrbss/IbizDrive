@@ -134,6 +134,14 @@ export const qk = {
   adminDepartmentsList: (page: number, size: number, q: string) =>
     [...qk.adminDepartments(), 'list', page, size, q] as const,
 
+  // ── 관리자 시스템 (Wave 1 — T3, docs/02 §7.13) ──
+  adminSystem: () => [...qk.all, 'admin', 'system'] as const,
+  /**
+   * 4 cron 잡 설정 스냅샷 (read-only). 본 트랙은 mutation 없음 — staleTime + refetch on focus로
+   * 충분. 별도 invalidations 헬퍼 미정의.
+   */
+  adminSystemCron: () => [...qk.adminSystem(), 'cron'] as const,
+
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,
   /**
