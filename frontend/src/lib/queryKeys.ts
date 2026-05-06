@@ -120,6 +120,20 @@ export const qk = {
   adminUsersList: (page: number, size: number, q = '') =>
     [...qk.adminUsers(), 'list', page, size, q.trim()] as const,
 
+  // ── 관리자 부서 목록 (admin-department-crud, Wave 2 T4, docs/02 §7.x) ──
+  adminDepartments: () => [...qk.all, 'admin', 'departments'] as const,
+  /**
+   * paginated admin department list — page/size/q까지 포함 정확한 단일 키. mutation 후
+   * prefix 매칭으로 모든 page/size/q 변종 일괄 무효화
+   * ({@link invalidations.afterAdminDepartmentChanged}).
+   *
+   * <p>q는 검색어 부분 일치(LIKE) — 빈 문자열은 "전체"로 키 분리. normalize는 q.trim().toLowerCase()
+   * (T4와 A16 search 모두 동일 정책 — backend service가 다시 trim/lowercase하지만 캐시 키는
+   * 정규화된 것을 써야 사용자 입력 변형이 동일 캐시를 가리킨다).
+   */
+  adminDepartmentsList: (page: number, size: number, q: string) =>
+    [...qk.adminDepartments(), 'list', page, size, q] as const,
+
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,
   /**
@@ -255,5 +269,18 @@ export const invalidations = {
    */
   afterAdminUserChanged(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.adminUsers() })
+  },
+
+  /**
+   * 관리자 부서 mutation 후 무효화 (admin-department-crud).
+   *
+   * <p>{@link afterAdminUserChanged}와 동형 — adminDepartments() prefix 단일로 모든
+   * page/size/q 변종을 일괄 갱신. share picker 캐시({@code qk.departments()})는
+   * 다른 keyspace이고 활성 목록에만 영향이 가므로 동일 prefix 무효화는 하지 않는다
+   * (UX 영향: rename/deactivate가 picker에 즉시 반영되지 않을 수 있으나, picker는
+   * staleTime + refetchOnWindowFocus로 충분 — admin 페이지에서만 부서 mutation 발생).
+   */
+  afterAdminDepartmentChanged(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.adminDepartments() })
   },
 } as const

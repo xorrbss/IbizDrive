@@ -6,7 +6,13 @@ import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
 import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
-import type { DepartmentSummary } from '@/types/department'
+import type {
+  AdminDepartmentCreateBody,
+  AdminDepartmentPage,
+  AdminDepartmentPatchBody,
+  AdminDepartmentSummary,
+  DepartmentSummary,
+} from '@/types/department'
 import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import { findNode, containsNode } from './folderTreeUtils'
 import { normalizedNameForDedup } from './normalize'
@@ -1165,6 +1171,104 @@ export const api = {
       throw await buildApiError(res, `adminUpdateUser failed: ${res.status}`)
     }
     return (await res.json()) as AdminUserSummary
+  },
+
+  // ── Admin departments (admin-department-crud, Wave 2 T4, docs/02 §7.x) ────
+
+  /**
+   * `GET /api/admin/departments` — admin 부서 목록 (admin-department-crud).
+   *
+   * <p>backend는 Spring {@code Page<T>} 직렬화를 그대로 노출 — {@link AdminDepartmentPage}로
+   * 부분집합 type-narrow. {@code q}는 부분 일치 검색어 — null/빈 문자열은 "전체"로 backend가 해석.
+   *
+   * <p>호출자({@code useAdminDepartments})는 q를 trim+lowercase 후 전달 — backend service도 동일
+   * normalize를 다시 적용하지만 캐시 키 일관성을 위해 호출 측에서 먼저 처리.
+   */
+  async adminListDepartments(
+    page = 0,
+    size = 50,
+    q?: string,
+  ): Promise<AdminDepartmentPage> {
+    const params = new URLSearchParams()
+    params.set('page', String(page))
+    params.set('size', String(size))
+    if (q && q.trim().length > 0) params.set('q', q.trim())
+    const res = await fetch(`/api/admin/departments?${params.toString()}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminListDepartments failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminDepartmentPage
+  },
+
+  /**
+   * `POST /api/admin/departments` — admin 부서 신규 생성 (admin-department-crud).
+   *
+   * <p>200 OK + body는 {@link AdminDepartmentSummary} (controller가 default 200 — m-admin invite와
+   * 다른 점은 {@code @ResponseStatus(CREATED)} 미부착). 에러 매핑:
+   * <ul>
+   *   <li>400 VALIDATION_ERROR — name blank/길이 초과</li>
+   *   <li>403 — ROLE_ADMIN 부재</li>
+   *   <li>409 DEPARTMENT_CONFLICT — 같은 name 활성 부서 존재</li>
+   * </ul>
+   */
+  async adminCreateDepartment(
+    body: AdminDepartmentCreateBody,
+  ): Promise<AdminDepartmentSummary> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch('/api/admin/departments', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminCreateDepartment failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminDepartmentSummary
+  },
+
+  /**
+   * `PATCH /api/admin/departments/:id` — admin 부서 부분 수정 (admin-department-crud).
+   *
+   * <p>{@code body}는 {@code {name?, isActive?}} — 둘 다 비어있으면 backend가 400.
+   * {@code isActive=false} → deactivate, {@code true} → reactivate, {@code name} → rename.
+   * 둘 다 보내면 rename → activate/deactivate 순으로 적용 (backend controller 일관 처리).
+   *
+   * <p>에러:
+   * <ul>
+   *   <li>400 VALIDATION_ERROR — 빈 body / name 길이 초과</li>
+   *   <li>403 — ROLE_ADMIN 부재</li>
+   *   <li>404 NOT_FOUND — 부서 미존재</li>
+   *   <li>409 DEPARTMENT_CONFLICT — rename/reactivate 시 같은 name 활성 부서 존재</li>
+   * </ul>
+   */
+  async adminUpdateDepartment(
+    id: string,
+    body: AdminDepartmentPatchBody,
+  ): Promise<AdminDepartmentSummary> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/admin/departments/${id}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminUpdateDepartment failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminDepartmentSummary
   },
 }
 
