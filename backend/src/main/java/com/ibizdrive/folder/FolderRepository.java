@@ -217,4 +217,10 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
           AND normalized_name LIKE :pattern ESCAPE '\\'
         """, nativeQuery = true)
     long countByNormalizedName(@Param("pattern") String pattern);
+
+    /**
+     * admin-dashboard — 활성 폴더 수 ({@code deleted_at IS NULL}).
+     * Spring Data derived method — 별도 {@code @Query} 불필요.
+     */
+    long countByDeletedAtIsNull();
 }

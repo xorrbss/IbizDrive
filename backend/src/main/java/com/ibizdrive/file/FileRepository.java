@@ -220,8 +220,8 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     long countByNormalizedName(@Param("pattern") String pattern);
 
     // ============================================================
-    // admin-storage-overview — read-only 합계 메서드 (append-only).
-    // `GET /api/admin/storage/overview` 응답 envelope 직접 입력.
+    // admin-storage-overview / admin-dashboard — read-only 합계 메서드 (append-only).
+    // `GET /api/admin/storage/overview` 와 `GET /api/admin/dashboard/summary` 공유.
     // ============================================================
 
     /** active 파일 수 (deleted_at IS NULL). */

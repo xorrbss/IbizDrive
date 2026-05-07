@@ -5,10 +5,12 @@ import { usePathname } from 'next/navigation'
 /**
  * Admin 영역 사이드 네비게이션 (m-admin-entry-rewrite, docs/04 §2 라우트 트리).
  *
- * <p>활성 항목(누적): `/admin/audit/logs` (m-audit), `/admin/users`
- * (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1),
- * `/admin/departments` (admin-department-crud Wave 2 T4), `/admin/system`
- * (Wave 1 T3 read-only cron 노출). 나머지 §2 트리 노드는 v1.x deferred —
+ * <p>활성 항목(누적): `/admin` 대시보드 (admin-dashboard 트랙 KPI),
+ * `/admin/audit/logs` (m-audit), `/admin/users` (m-admin-entry-rewrite +
+ * admin-user-mgmt + admin-user-search-update Wave 1 T1), `/admin/departments`
+ * (admin-department-crud Wave 2 T4), `/admin/permissions` (Wave 2 T5 read-only
+ * 권한 매트릭스), `/admin/system` (Wave 1 T3 read-only cron 노출).
+ * 나머지 §2 트리 노드는 v1.x deferred —
  * `<span>` + "v1.x" 배지로 노출하되 navigable한 `<Link>`는 만들지 않는다
  * (404 회피 + 미구현 명확화).
  *
@@ -20,6 +22,7 @@ import { usePathname } from 'next/navigation'
  * 하기 위해서다.
  */
 const ACTIVE_ITEMS = [
+  { label: '대시보드', href: '/admin', match: 'exact' as const },
   { label: '감사 로그', href: '/admin/audit/logs', match: 'exact' as const },
   { label: '사용자 초대', href: '/admin/users', match: 'prefix' as const },
   { label: '부서', href: '/admin/departments', match: 'prefix' as const },
@@ -29,7 +32,6 @@ const ACTIVE_ITEMS = [
 ]
 
 const DEFERRED_ITEMS = [
-  '대시보드',
   '휴지통',
   'Legal Hold',
   '정책',

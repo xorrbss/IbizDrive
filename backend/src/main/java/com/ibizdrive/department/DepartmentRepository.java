@@ -76,4 +76,12 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
         WHERE d.deletedAt IS NULL AND d.name = :name
         """)
     Optional<Department> findActiveByName(@Param("name") String name);
+
+    /**
+     * admin-dashboard — 활성 부서 수 ({@code deleted_at IS NULL}).
+     *
+     * <p>Department는 {@code is_active} 컬럼 없음 — total/active 의미 동일. envelope
+     * 일관성을 위해 dashboard 응답에서 두 필드 모두 본 메서드 결과를 사용.
+     */
+    long countByDeletedAtIsNull();
 }

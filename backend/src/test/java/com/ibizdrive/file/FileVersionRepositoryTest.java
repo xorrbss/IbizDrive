@@ -251,6 +251,35 @@ class FileVersionRepositoryTest {
         }
     }
 
+    // -------------------- sumAllVersionSizeBytes (admin-dashboard) --------------------
+
+    @Test
+    void sumAllVersionSizeBytes_emptyDb_returnsZero() {
+        // COALESCE(SUM(...), 0) — 빈 테이블에서 NULL 대신 0L 반환해야 admin dashboard storage 카드가 안전.
+        assertEquals(0L, fileVersionRepository.sumAllVersionSizeBytes(), "빈 file_versions → 0L (NULL 아님)");
+    }
+
+    @Test
+    void sumAllVersionSizeBytes_multipleVersions_returnsTotal() {
+        UUID owner = insertUser("sum@test", "sum");
+        UUID folder = insertFolder(owner, "sumf");
+        UUID file = insertFile(owner, folder, "sumfile");
+
+        FileVersion v1 = newVersion(file, 1, owner);
+        v1.setSizeBytes(1000L);
+        FileVersion v2 = newVersion(file, 2, owner);
+        v2.setSizeBytes(2500L);
+        FileVersion v3 = newVersion(file, 3, owner);
+        v3.setSizeBytes(750L);
+        fileVersionRepository.save(v1);
+        fileVersionRepository.save(v2);
+        fileVersionRepository.save(v3);
+        fileVersionRepository.flush();
+
+        assertEquals(4250L, fileVersionRepository.sumAllVersionSizeBytes(),
+            "모든 version size_bytes 합 — current/older 구분 없이 전체");
+    }
+
     // ====================== helpers ======================
 
     /** 테스트용 minimal {@link FileVersion} — V5가 요구하는 NOT NULL 컬럼을 모두 채운다. */

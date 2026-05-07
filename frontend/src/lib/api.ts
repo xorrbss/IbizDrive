@@ -21,6 +21,8 @@ import type {
 import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
+import type { AdminDashboardSummaryResponse } from '@/types/admin'
+
 export const api = {
   /**
    * Phase A — backend `GET /api/folders/tree` 호출 후 가상 root 노드로 래핑.
@@ -1382,6 +1384,28 @@ export const api = {
       throw await buildApiError(res, `adminGetCronStatus failed: ${res.status}`)
     }
     return (await res.json()) as CronJobsResponse
+  },
+
+  /**
+   * `GET /api/admin/dashboard/summary` (admin-dashboard 트랙) — KPI envelope.
+   *
+   * <p>read-only — CSRF 헤더 없음. backend가 6 derived count + 1 SUM + 1 audit native COUNT를
+   * 단일 응답으로 묶어 반환한다 ({@link AdminDashboardSummaryResponse}). 호출자는 envelope 그대로
+   * 받아 `summary.*` 경로로 KPI에 접근. retry는 react-query 측에서 false (admin 화면은 즉시 노출 우선).
+   *
+   * <p>403은 ROLE_ADMIN 부재(또는 비admin이 직접 URL 진입), 401은 미인증. 두 경우 모두 hook
+   * staleTime + retry false로 즉시 에러 노출. 본 메서드는 라우팅/렌더 정책을 가지지 않는다.
+   */
+  async adminGetDashboardSummary(): Promise<AdminDashboardSummaryResponse> {
+    const res = await fetch('/api/admin/dashboard/summary', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminGetDashboardSummary failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminDashboardSummaryResponse
   },
 
   /**

@@ -94,4 +94,20 @@ public interface UserRepository extends JpaRepository<User, UUID> {
         ORDER BY u.createdAt DESC, u.id ASC
         """)
     Page<User> findForAdminPageable(@Param("pattern") String pattern, Pageable pageable);
+
+    /**
+     * admin-dashboard — 등록 사용자 수 (soft-delete 제외).
+     *
+     * <p>Spring Data derived method — 별도 {@code @Query} 불필요. 인덱스 부담은
+     * V1 {@code lower(email) WHERE deleted_at IS NULL} partial index 외 별도 부재 — MVP 스케일 가정.
+     */
+    long countByDeletedAtIsNull();
+
+    /**
+     * admin-dashboard — 활성 사용자 수 ({@code deleted_at IS NULL AND is_active = TRUE}).
+     *
+     * <p>관리자 비활성화/잠금({@code is_active=false})은 제외, soft-delete도 제외 — admin-user-mgmt
+     * 정책과 동형의 "로그인 가능 사용자" 정의.
+     */
+    long countByDeletedAtIsNullAndIsActiveTrue();
 }

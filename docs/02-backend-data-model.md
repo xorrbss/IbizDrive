@@ -1546,8 +1546,36 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | PATCH | `/api/admin/departments/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (rename/(de)activate + AFTER_COMMIT audit) | name→trim | partial unique 보조 | 400 VALIDATION_ERROR, 401, 403, 404 NOT_FOUND, 409 DEPARTMENT_CONFLICT |
 | GET | `/api/admin/permissions` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (만료 grant 포함 — `is_expired` 노출) | 400 VALIDATION_ERROR, 401, 403 |
 | GET | `/api/admin/system/cron` | `hasRole('ADMIN') OR hasRole('AUDITOR')` (`@PreAuthorize`, Wave 1 T3 / 1.5 `auditor-cron-readonly`) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
+| GET | `/api/admin/dashboard/summary` | `hasRole('ADMIN')` (`@PreAuthorize`) | `readOnly=true` (count·SUM·audit native COUNT, audit emit 없음) | — | 활성: `deletedAt IS NULL`, 휴지통 파일은 `IS NOT NULL` 별도 카운트 | 401, 403 |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
+
+```text
+GET /api/admin/dashboard/summary                     (admin-dashboard 트랙 closure, 2026-05-07)
+  Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Response: 200 {
+              summary: {
+                users:       { total: number, active: number },
+                departments: { total: number, active: number },   // Department는 is_active 컬럼 부재로 둘 다 deletedAt IS NULL
+                folders:     { active: number },
+                files:       { active: number, trashed: number }, // active=deletedAt IS NULL, trashed=deletedAt IS NOT NULL
+                audit:       { last24h: number },                  // audit_log COUNT(*) WHERE occurred_at >= now()-24h
+                storage:     { usedBytes: number }                  // SUM(file_versions.size_bytes), 모든 버전 누적
+              }
+            }
+  Side-effects: 없음 (read-only — audit emit 없음)
+  Errors:
+    401 UNAUTHORIZED      (미인증)
+    403                   (ADMIN 아님 — `@PreAuthorize` 차단)
+```
+
+**관련 repository** (P1):
+- `User.countByDeletedAtIsNull()` / `countByDeletedAtIsNullAndIsActiveTrue()`
+- `Department.countByDeletedAtIsNull()`
+- `Folder.countByDeletedAtIsNull()`
+- `File.countByDeletedAtIsNull()` / `countByDeletedAtIsNotNull()`
+- `FileVersion.sumAllSizeBytes()` — `SELECT COALESCE(SUM(v.sizeBytes), 0)`
+- audit_log: `JdbcTemplate "SELECT COUNT(*) FROM audit_log WHERE occurred_at >= ?"` (Clock 주입으로 결정성 확보)
 
 ```text
 POST /api/admin/users                                (m-admin-entry-rewrite, ADR #21 closure, 2026-05-03)
