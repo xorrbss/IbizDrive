@@ -20,8 +20,10 @@ import java.util.Map;
  * 파라미터를 admin UI에서 확인할 수 있도록 노출. 변경(toggle/edit)은 v1.x deferred — application.yml
  * 직접 수정 + 재기동이 유일한 설정 변경 경로 (config server 부재).
  *
- * <p>read-only이므로 audit emit 0 (SELECT-only). T2 audit-export와 달리 운영 책임 영역이라
- * AUDITOR 미허용 — ADMIN 단독.
+ * <p>read-only이므로 audit emit 0 (SELECT-only). Wave 1.5(`auditor-cron-readonly`)에서
+ * AUDITOR에게도 read 허용 — 감사자는 운영 cron 설정을 확인할 책임이 있다(docs/04 §7.x).
+ * mutation은 정의되지 않았고(설정 변경 = application.yml + 재기동), 추후 mutation endpoint
+ * 추가 시 AUDITOR는 그 endpoint에서는 차단.
  */
 @RestController
 @RequestMapping("/api/admin/system")
@@ -51,7 +53,7 @@ public class AdminSystemController {
      * 배열 추가만으로 확장 가능.
      */
     @GetMapping("/cron")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN') or hasRole('AUDITOR')")
     public Map<String, List<CronJobStatusResponse>> getCronStatus() {
         List<CronJobStatusResponse> jobs = List.of(
             new CronJobStatusResponse(
