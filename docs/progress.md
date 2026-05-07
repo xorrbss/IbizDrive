@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-07 — 🏁 t6-fetch-mock-test-restoration 트랙 종료 (Wave 2 T6 후속 — `api.renameFile`/`api.moveFiles` fetch-mock 패턴 복구)
+
+### 범위
+
+Wave 2 T6 closure(2026-05-07)에서 `MOCK_TREE`/`MOCK_FILES` 일괄 제거와 함께 `describe.skip` 처리되었던 두 테스트 파일을 프로젝트 표준 fetch-mock 패턴(`vi.stubGlobal('fetch', ...)`)으로 재작성. real-wired된 `renameFile`/`moveFiles`의 회귀 가드 복원. 새 기능 도입 없음·docs 변경 없음·feature scope 0·테스트 위생만.
+
+### 변경 핵심
+
+**Frontend tests (T2~T3):**
+- `frontend/src/lib/api.renameFile.test.ts` 재작성 — 5 active (빈 이름 client-side 가드 / 200 OK rename / 409 RENAME_CONFLICT / 404 NOT_FOUND / 200 no-op 동명 rename) + 1 it.skip(폴더 rename tree 반영 — Phase B 의존).
+- `frontend/src/lib/api.moveFiles.test.ts` 재작성 — 5 active (400 MOVE_INTO_SELF / 400 MOVE_INTO_DESCENDANT / 404 TARGET_NOT_FOUND / 204 file move + body / 204 movedIds 단건). `moveItem` void 반환에 대응해 mock은 204 No Content.
+- 두 파일 동일 패턴(`api.adminStorage.test.ts` mirror): `jsonResponse(body, status=200)` helper + `beforeEach`/`afterEach` stub teardown + URL/method/body assertion.
+
+### 검증
+
+- `cd frontend && pnpm test --run` — 115 files / 862 passed | 1 skipped (Phase B 잔존 only). 트랙 시작 11 skipped → 1 skipped (net −10 active).
+- `pnpm typecheck` exit 0 / `pnpm lint` exit 0 / `pnpm build` Next.js 컴파일 26.0s 성공.
+- `grep -r 'MOCK_TREE\|MOCK_FILES' frontend/src/` empty(헤더 코멘트 토큰까지 "내장 모의 데이터"로 중립화).
+- `api.ts`/`errors.ts` 변경 없음(테스트 위생 한정).
+
+### 다음 세션 컨텍스트
+
+- `api.renameFile.test.ts`의 1 it.skip(`폴더 이름 변경 시 tree에도 반영`)은 Phase B(real-fetch tree refetch + cache invalidation 통합) 의존으로 본 트랙 외 보류. Phase B 트랙에서 활성화 예정.
+- 두 happy-path move test(case 4·5)가 단일 fetch fanout만 검증 — 멀티 아이템 `Promise.all` 병렬 호출 경로는 별도 unit가 부재. `useMoveBulk` mutation hook 테스트에서 커버하는 것이 자연 (별도 트랙 후보).
+- Code review에서 제안된 "case 4와 case 5 중복" 지적은 spec 준수 차원에서 단건 반환 검증으로 보존(향후 fanout 멀티 케이스 추가 시 재검토 가능).
+
+### 블로커
+
+- 없음. 본 트랙 closure 완료.
+
+---
+
 ## 2026-05-07 — 🏁 folder-create-ui 트랙 종료 (탐색기 "새 폴더" 진입점)
 
 ### 범위
