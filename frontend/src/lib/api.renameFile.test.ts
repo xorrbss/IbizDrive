@@ -4,7 +4,7 @@ import { api } from './api'
 /**
  * api.renameFile — fetch-mock 계약 검증.
  *
- * <p>T6 closure(2026-05-07)에서 MOCK_TREE/MOCK_FILES 제거되며 describe.skip 처리됨.
+ * <p>T6 closure(2026-05-07)에서 내장 모의 데이터 제거되며 describe.skip 처리됨.
  * 본 파일은 표준 fetch-mock 패턴(`api.adminStorage.test.ts` mirror)으로 재작성.
  */
 

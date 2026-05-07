@@ -4,7 +4,7 @@ import { api } from './api'
 /**
  * api.moveFiles — fetch-mock 계약 검증 (Promise.all fanout).
  *
- * <p>T6 closure(2026-05-07)에서 MOCK_TREE/MOCK_FILES 제거되며 describe.skip 처리됨.
+ * <p>T6 closure(2026-05-07)에서 내장 모의 데이터 제거되며 describe.skip 처리됨.
  * 본 파일은 표준 fetch-mock 패턴으로 재작성. moveItem void 반환에 대응해 mock은 204 No Content.
  * 첫 rejection이 전체 결정 (api.ts:354 — `Promise.all` 의도).
  */
