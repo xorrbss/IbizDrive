@@ -97,7 +97,12 @@ describe('MoveFolderDialog', () => {
     fireEvent.click(screen.getByLabelText(/인사팀/))
     fireEvent.click(screen.getByRole('button', { name: '이동' }))
     await waitFor(() => {
-      expect(api.moveFiles).toHaveBeenCalledWith(['file_x'], 'hr')
+      // P3 — moveFiles signature 변경 (ids → items: {id,type}[]).
+      // 캐시 미스(setQueryData 미설정) 항목은 type='file' 폴백.
+      expect(api.moveFiles).toHaveBeenCalledWith(
+        [{ id: 'file_x', type: 'file' }],
+        'hr',
+      )
     })
     expect(useMoveUiStore.getState().isMoveDialogOpen).toBe(false)
   })

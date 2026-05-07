@@ -111,7 +111,8 @@ describe('RenameDialog', () => {
     fireEvent.change(input, { target: { value: 'new.txt' } })
     fireEvent.submit(input.closest('form')!)
     await waitFor(() => {
-      expect(api.renameFile).toHaveBeenCalledWith('file_x', 'new.txt')
+      // P3 — renameFile signature 변경 (id, name, isFolder=false). MOCK_ITEM.type='file'.
+      expect(api.renameFile).toHaveBeenCalledWith('file_x', 'new.txt', false)
     })
   })
 
