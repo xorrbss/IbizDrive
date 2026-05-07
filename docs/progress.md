@@ -5,6 +5,71 @@
 
 ---
 
+## 2026-05-07 — 🏁 Wave 2 종료 (admin frontend 6 트랙 + 사내 베타 운영 런북)
+
+### 범위
+
+Wave 2는 admin frontend 활성화 + 탐색기 real-fetch 마무리를 묶은 wave다. T4~T9 6 메인 트랙 모두 closure 완료, T6 후속 갭 2건도 정리, T9 archive 완료. `dev/active/` 비우고 `docs/04-admin-operations.md §15`에 사내 베타 운영 런북 신규 작성하여 본 wave 의 운영 매뉴얼을 봉인.
+
+### Wave 2 트랙 인덱스 (closure 완료, merge 시간순)
+
+| 트랙 | PR | merge | 활성 라우트 / 산출물 |
+|---|---|---|---|
+| Wave 2 T4 — admin-department-crud | #61 (`1378d82`) | 2026-05-06 | `/admin/departments` + audit 3 emit |
+| Wave 2 T5 — admin-permission-matrix | #64 (`528ae4b`) | 2026-05-07 | `/admin/permissions` (read-only viewer + 만료 배지) |
+| Wave 2 T6 — folder-items-wire | #67 (`ee7781b`) | 2026-05-07 | `/api/folders/{id}/items` + `/api/files/{id}` + 탐색기 mock 일괄 제거 |
+| Wave 2 T6 followup — fetch-mock-test-restoration | #76 (`e8dc8b8`) | 2026-05-07 | `api.renameFile`/`api.moveFiles` fetch-mock 패턴 재작성 (10 active 복구) |
+| Wave 2 T6 followup — fetch-mock-followup-cleanup | #80 (`1dd30f6`) | 2026-05-07 | fanout 검증 추가 + Phase B skip 삭제 (frontend skipped 0) |
+| Wave 2 T7 — admin-dashboard | #70 (`ac63127`) | 2026-05-07 | `/admin` KPI 그리드 8종 + `GET /api/admin/dashboard/summary` |
+| Wave 2 T8 — admin-storage-overview | #69 (`4a8ae0f`) | 2026-05-07 | `/admin/storage` 시스템 합계 + 정리 기록 overview |
+| Wave 2 T9 — admin-global-trash | #79 (`fdd84e0`) | 2026-05-07 | `/admin/trash/all` + `GET /api/admin/trash` (cross-owner viewer) |
+| Wave 2 T9 archive | #81 (`0eafa65`) | 2026-05-07 | dev-docs `dev/active/` → `dev/completed/` 이관 |
+
+### 통계 (Wave 2 누적)
+
+- 코드 PR: 6 메인 + 2 followup = **8 feat/test PR**
+- closure docs: archive PR 1 (#81) + 본 entry + `docs/04 §15` 신규
+- 신규 backend endpoint: 5 (`/api/admin/dashboard/summary`, `/api/admin/storage`, `/api/admin/trash`, `/api/folders/{id}/items`, `/api/files/{id}`)
+- audit emit 변경: T4 +3 enum (`admin.dept.*`), T5/T6/T7/T8/T9 +0
+- DB schema 변경: 0 (모든 트랙 read 기반 + 기존 컬럼 재사용)
+- 권한 enum 변경: 0
+- frontend test: 트랙 시작 시 skipped 11 → closure 시 **0 skipped / 887 passed**
+
+### 핵심 결정 / 편차
+
+- **`deletedBy` 컬럼은 v1.x deferred** (T9 design rationale, docs/02 §7.11). cross-owner 복원 추적은 `audit_log.actor_id` 차선 — `docs/04 §15.1` 운영 SQL 로 봉인.
+- **T7 admin-dashboard 가 `/admin` landing 을 KPI 그리드로 재작성** → T9 plan §P6.3 "landing 카드 추가"는 skip. 가시성은 AdminSideNav + 휴지통 KPI 로 확보.
+- **휴지통 bulk restore/purge / 날짜 범위 필터 / 2인 승인 / full path resolve** 모두 v1.x deferred (T9 backlog, `docs/04 §15.6` 인덱스 보존).
+- **운영 cron 4종 런타임 토글** 미지원 — `application-prod.yml` 편집 + 재기동 절차로 봉인 (`docs/04 §15.4`).
+
+### 사내 베타 운영 런북 (`docs/04 §15`)
+
+코드 변경 없이 admin frontend + audit_log + cron 구성으로 처리 가능한 5 시나리오 + v1.x 분기 인덱스를 단일 섹션으로 정리:
+
+1. §15.1 ADMIN cross-owner 복원/영구삭제 추적 (audit_log SQL)
+2. §15.2 휴지통 일일 운영 (단건 처리 + cron 분담표)
+3. §15.3 권한 만료 모니터링 (T5 viewer + permissions-expired-cron 검증)
+4. §15.4 운영 cron 4종 변경 절차 (T3 read-only + application.yml 재기동)
+5. §15.5 스토리지 KPI 해석 (T7 8종 + T8 overview)
+6. §15.6 v1.x 전환 backlog 인덱스
+
+### 다음 세션 컨텍스트 (Wave 2 → v1.x)
+
+- `dev/active/` 비어있음. 다음 트랙 진입 시 `dev-docs` 또는 `docs/superpowers/` 신규 spec/plan 으로 시작.
+- v1.x 우선 후보 (영향도 ↓ → ↑ 정렬, 본 런북 §15.6 인용):
+  1. 휴지통 날짜 범위 필터 (admin/trash 가벼운 확장, 200~300 LoC 추정)
+  2. `/admin/trash/policy` UI (cron 런타임 토글)
+  3. 휴지통 bulk restore/purge
+  4. T7 KPI 확장 (오늘 업로드/다운로드, 쿼터 알림)
+  5. `deletedBy` 컬럼 V10 마이그레이션 (DB schema 변경)
+- 사내 베타 출시 게이트: `application-prod.yml` cron 4종 활성화 + ADMIN/AUDITOR 계정 프로비저닝 + 본 런북 §15 운영자 인계.
+
+### 블로커
+
+- 없음. Wave 2 6 트랙 + 2 followup + 1 archive 모두 closure. dev/active/ 비움.
+
+---
+
 ## 2026-05-07 — 🏁 t6-fetch-mock-followup-cleanup 트랙 종료 (T6 closure 갭 2건 정리: fanout 검증 추가 + Phase B skip 삭제)
 
 ### 범위
