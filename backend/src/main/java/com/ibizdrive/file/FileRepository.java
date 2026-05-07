@@ -218,4 +218,28 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
           AND normalized_name LIKE :pattern ESCAPE '\\'
         """, nativeQuery = true)
     long countByNormalizedName(@Param("pattern") String pattern);
+
+    // ============================================================
+    // admin-storage-overview — read-only 합계 메서드 (append-only).
+    // `GET /api/admin/storage/overview` 응답 envelope 직접 입력.
+    // ============================================================
+
+    /** active 파일 수 (deleted_at IS NULL). */
+    @Query(value = "SELECT COUNT(*) FROM files WHERE deleted_at IS NULL", nativeQuery = true)
+    long countActiveFiles();
+
+    /** 휴지통 파일 수 (deleted_at IS NOT NULL). */
+    @Query(value = "SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL", nativeQuery = true)
+    long countTrashedFiles();
+
+    /**
+     * 휴지통 점유 바이트 — files current-version size_bytes 합 (deleted_at IS NOT NULL).
+     * UI 의미: "휴지통 비우면 회수되는 양". 빈 결과는 COALESCE로 0.
+     */
+    @Query(value = """
+        SELECT COALESCE(SUM(size_bytes), 0)
+        FROM files
+        WHERE deleted_at IS NOT NULL
+        """, nativeQuery = true)
+    long sumTrashedSizeBytes();
 }
