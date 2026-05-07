@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -56,9 +57,27 @@ import java.util.UUID;
 public class FileController {
 
     private final FileMutationService fileMutationService;
+    private final FileQueryService fileQueryService;
 
-    public FileController(FileMutationService fileMutationService) {
+    public FileController(FileMutationService fileMutationService, FileQueryService fileQueryService) {
         this.fileMutationService = fileMutationService;
+        this.fileQueryService = fileQueryService;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // GET /api/files/{id}
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 파일 상세 조회 — frontend RightPanel wiring (Phase B P2). 활성 파일만 반환.
+     * 부재/soft-deleted 시 {@link FileNotFoundException} → 404.
+     */
+    @GetMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'file', 'READ')")
+    public ResponseEntity<Map<String, FileDto>> get(
+        @PathVariable("id") UUID id
+    ) {
+        return ResponseEntity.ok(Map.of("file", fileQueryService.loadDetail(id)));
     }
 
     // ──────────────────────────────────────────────────────────────────

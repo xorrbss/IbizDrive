@@ -44,13 +44,15 @@ class FileControllerTest {
     private static final UUID FILE_ID = UUID.fromString("33333333-3333-3333-3333-333333333333");
 
     private FileMutationService service;
+    private FileQueryService queryService;
     private FileController controller;
     private IbizDriveUserDetails principal;
 
     @BeforeEach
     void setUp() {
         service = mock(FileMutationService.class);
-        controller = new FileController(service);
+        queryService = mock(FileQueryService.class);
+        controller = new FileController(service, queryService);
 
         User u = new User(
             ACTOR, "user@example.com", "User", "{bcrypt}$2a$12$dummy",
@@ -167,6 +169,30 @@ class FileControllerTest {
 
         assertThatThrownBy(() -> controller.restore(FILE_ID, principal))
             .isInstanceOf(FileNameConflictException.class);
+    }
+
+    // ── get (Phase B P2) ──────────────────────────────────────────────
+
+    @Test
+    void get_returnsOk_andDelegatesToQueryService() {
+        FileDto dto = FileDto.from(newFile(FILE_ID, FOLDER_ID, "보고서.pdf"));
+        when(queryService.loadDetail(FILE_ID)).thenReturn(dto);
+
+        ResponseEntity<Map<String, FileDto>> res = controller.get(FILE_ID);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody()).isNotNull();
+        assertThat(res.getBody().get("file")).isEqualTo(dto);
+        verify(queryService).loadDetail(FILE_ID);
+    }
+
+    @Test
+    void get_propagatesNotFoundFromQueryService() {
+        when(queryService.loadDetail(FILE_ID))
+            .thenThrow(new FileNotFoundException("file not found: " + FILE_ID));
+
+        assertThatThrownBy(() -> controller.get(FILE_ID))
+            .isInstanceOf(FileNotFoundException.class);
     }
 
     // ── helpers ────────────────────────────────────────────────────────

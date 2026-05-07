@@ -1,7 +1,7 @@
 # IbizDrive — Beta Release Checklist (사내 베타)
 
 Last Updated: 2026-05-07
-Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41) + `auth-must-change-pw` 트랙 closure (ADR #21 §2.7) + `auth-forgot-rate-limit` 트랙 closure (ADR #44) + `m-admin-entry-rewrite` 트랙 closure (admin shell + `POST /api/admin/users`, ADR #21) + `auth-password-policy` 트랙 closure (ADR #19 본문 회복) + `email-async` 트랙 closure (`@Async EmailService`, ADR #45) + `admin-user-search-update` (Wave 1 T1 — `ADMIN_USER_UPDATED` emit, #59) + `audit-export-endpoint` (Wave 1 T2 — `GET /api/admin/audit/export` + `AUDIT_EXPORTED` emit) + `admin-department-crud` (Wave 2 T4 — `/admin/departments` + 3 emit) + `admin-permission-matrix` (Wave 2 T5 — `GET /api/admin/permissions` + `/admin/permissions` read-only viewer)
+Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile` 트랙 (application-prod.yml + cron 4종 활성화) + `m-rp-rightpanel-completion` 트랙 closure + `auth-pages` 트랙 closure (셀프 가입 + first-user-ADMIN, ADR #41) + `auth-must-change-pw` 트랙 closure (ADR #21 §2.7) + `auth-forgot-rate-limit` 트랙 closure (ADR #44) + `m-admin-entry-rewrite` 트랙 closure (admin shell + `POST /api/admin/users`, ADR #21) + `auth-password-policy` 트랙 closure (ADR #19 본문 회복) + `email-async` 트랙 closure (`@Async EmailService`, ADR #45) + `admin-user-search-update` (Wave 1 T1 — `ADMIN_USER_UPDATED` emit, #59) + `audit-export-endpoint` (Wave 1 T2 — `GET /api/admin/audit/export` + `AUDIT_EXPORTED` emit) + `admin-department-crud` (Wave 2 T4 — `/admin/departments` + 3 emit) + `admin-permission-matrix` (Wave 2 T5 — `GET /api/admin/permissions` + `/admin/permissions` read-only viewer) + `wave2-t6-folder-items-wire` (Wave 2 T6 — `GET /api/folders/{id}/items` + `GET /api/files/{id}` + frontend mock 일괄 제거)
 
 > **본 문서의 목적**: 사내 베타 GO/NO-GO 결정에 필요한 단일 페이지 체크리스트.
 > docs/03 §1.3 STRIDE matrix + docs/04 §13 cron + 인프라 게이트를 한 곳으로 모음.
@@ -17,7 +17,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 | 항목 | 상태 | 검증 |
 |---|---|---|
 | backend test GREEN | ✓ | `cd backend && ./gradlew test` — BUILD SUCCESSFUL (auth-pages/forgot-rate-limit/must-change-pw/admin-invite/password-policy/email-async 누적 TDD 케이스 포함) |
-| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 738/738 (auth-password-policy closure 시점 풀세트, 93 files) |
+| frontend test GREEN | ✓ | `cd frontend && pnpm test --run` — 817 passed / 11 skipped (Wave 2 T6 closure 시점, 105 files) |
 | frontend typecheck/lint/build | ✓ | `pnpm typecheck && pnpm lint && pnpm build` 모두 exit 0 |
 | 코드 위반 (CLAUDE.md §3 11개 원칙) | ✓ FAIL 0 | `findings/principle-conformance.md` |
 | STRIDE 매트릭스 evidence | ✓ 28/28 매핑 | `findings/stride-gap-analysis.md` |

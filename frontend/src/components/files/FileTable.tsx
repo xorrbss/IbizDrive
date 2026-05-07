@@ -21,6 +21,8 @@ import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { UploadOverlay } from '@/components/upload/UploadOverlay'
 import { computeNextIndex, type ArrowKey } from '@/lib/gridNav'
+import { isVirtualRoot } from '@/lib/folderPath'
+import { toast } from 'sonner'
 import type { FileItem } from '@/types/file'
 
 const ROW_HEIGHT = 40
@@ -53,7 +55,13 @@ export function FileTable({ folderId }: Props) {
   const { enqueue: enqueueUploads } = useUpload()
   const handleNativeDrop = useCallback(
     (files: File[]) => {
-      if (files.length > 0) enqueueUploads(files, folderId)
+      if (files.length === 0) return
+      // 가상 root는 backend 폴더가 아니므로 업로드 시 400 — UploadButton과 동일 정책으로 사전 차단.
+      if (isVirtualRoot(folderId)) {
+        toast.info('내 드라이브에는 직접 업로드할 수 없습니다. 폴더를 선택하세요.')
+        return
+      }
+      enqueueUploads(files, folderId)
     },
     [enqueueUploads, folderId],
   )

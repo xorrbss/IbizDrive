@@ -1,7 +1,10 @@
 package com.ibizdrive.folder;
 
 import com.ibizdrive.folder.dto.CreateFolderRequest;
+import com.ibizdrive.folder.dto.FolderDetailResponse;
 import com.ibizdrive.folder.dto.FolderDto;
+import com.ibizdrive.folder.dto.FolderItemsResponse;
+import com.ibizdrive.folder.dto.FolderNodeDto;
 import com.ibizdrive.folder.dto.MoveFolderRequest;
 import com.ibizdrive.folder.dto.RenameFolderRequest;
 import com.ibizdrive.user.IbizDriveUserDetails;
@@ -11,13 +14,16 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -64,9 +70,65 @@ public class FolderController {
     private static final String DEFAULT_AUDIT_LEVEL = "standard";
 
     private final FolderMutationService folderMutationService;
+    private final FolderQueryService folderQueryService;
 
-    public FolderController(FolderMutationService folderMutationService) {
+    public FolderController(FolderMutationService folderMutationService,
+                            FolderQueryService folderQueryService) {
         this.folderMutationService = folderMutationService;
+        this.folderQueryService = folderQueryService;
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // GET /api/folders/tree
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 활성 폴더 전체 트리 — frontend FolderTree wiring (Phase A).
+     *
+     * <p>인가: 현재 모든 인증 사용자가 트리 구조를 볼 수 있음 — 노출 정책은 후속 Phase에서
+     * grant 기반 필터로 좁힐 예정 (CLAUDE.md §3 원칙 14의 read scope). 각 노드의 실제 접근은
+     * detail/items endpoint에서 별도 SpEL로 게이트되므로 트리 노출 자체는 메타데이터 레벨.
+     */
+    @GetMapping("/tree")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<Map<String, List<FolderNodeDto>>> tree() {
+        return ResponseEntity.ok(Map.of("tree", folderQueryService.loadTree()));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // GET /api/folders/{id}
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 폴더 상세 + breadcrumb (root → self) — frontend Breadcrumb / 헤더 wiring (Phase A).
+     */
+    @GetMapping("/{id}")
+    @PreAuthorize("hasPermission(#id, 'folder', 'READ')")
+    public ResponseEntity<FolderDetailResponse> detail(@PathVariable("id") UUID id) {
+        return ResponseEntity.ok(folderQueryService.loadDetail(id));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // GET /api/folders/{id}/items
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 폴더에 들어있는 자식 폴더 + 파일 합본 listing — frontend FileTable wiring (Phase B).
+     *
+     * <p>{@code sort}/{@code dir} 미지정 시 default {@code NAME asc}. 잘못된 enum 값은
+     * Spring이 {@code MethodArgumentTypeMismatchException} → 400 으로 매핑.
+     *
+     * <p>frontend는 'root' 가상 폴더에 대해 본 endpoint를 호출하지 않음 — Phase A 정책 답습
+     * (root는 frontend에서 tree로부터 합성). backend는 항상 실제 UUID만 받는다.
+     */
+    @GetMapping("/{id}/items")
+    @PreAuthorize("hasPermission(#id, 'folder', 'READ')")
+    public ResponseEntity<FolderItemsResponse> items(
+        @PathVariable("id") UUID id,
+        @RequestParam(name = "sort", required = false, defaultValue = "NAME") SortKey sort,
+        @RequestParam(name = "dir", required = false, defaultValue = "ASC") SortDir dir
+    ) {
+        return ResponseEntity.ok(folderQueryService.loadItems(id, sort, dir));
     }
 
     // ──────────────────────────────────────────────────────────────────

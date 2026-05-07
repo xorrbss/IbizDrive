@@ -203,7 +203,7 @@ class AuditQueryE2ETest {
         String csrfToken = (String) csrfRes.getBody().get("csrfToken");
         String xsrfCookie = extractCookie(csrfRes, "XSRF-TOKEN");
         HttpHeaders h = new HttpHeaders();
-        h.add("X-XSRF-TOKEN", csrfToken);
+        h.add("X-CSRF-Token", csrfToken);
         h.add(HttpHeaders.COOKIE, "XSRF-TOKEN=" + xsrfCookie);
         return h;
     }

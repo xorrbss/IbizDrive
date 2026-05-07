@@ -1,4 +1,4 @@
-import type { FolderNode, FolderDetail } from '@/types/folder'
+import type { BreadcrumbItem, FolderDetail, FolderNode } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type {
@@ -20,206 +20,196 @@ import type {
 } from '@/types/department'
 import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import type { CronJobsResponse } from '@/types/system'
-import { findNode, containsNode } from './folderTreeUtils'
-import { normalizedNameForDedup } from './normalize'
-
-// MOCK DATA — 실제 API 붙이면 제거
-const MOCK_TREE: FolderNode = {
-  id: 'root',
-  parentId: null,
-  name: '내 드라이브',
-  slug: '',
-  children: [
-    {
-      id: 'folder_sales',
-      parentId: 'root',
-      name: '영업팀',
-      slug: '영업팀',
-      children: [
-        {
-          id: 'folder_contracts',
-          parentId: 'folder_sales',
-          name: '계약서',
-          slug: '계약서',
-        },
-      ],
-    },
-    {
-      id: 'folder_hr',
-      parentId: 'root',
-      name: '인사팀',
-      slug: '인사팀',
-    },
-  ],
-}
-
-const MOCK_FILES: FileItem[] = [
-  {
-    id: 'file_proposal',
-    name: '제안서_2026.pdf',
-    type: 'file',
-    mimeType: 'application/pdf',
-    size: 2_400_000,
-    updatedAt: '2026-04-20T09:00:00Z',
-    updatedBy: '김영수',
-    parentId: 'root',
-  },
-  {
-    id: 'file_budget',
-    name: '예산안.xlsx',
-    type: 'file',
-    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    size: 580_000,
-    updatedAt: '2026-04-18T14:30:00Z',
-    updatedBy: '이지은',
-    parentId: 'root',
-  },
-  {
-    id: 'file_minutes',
-    name: '회의록_0415.docx',
-    type: 'file',
-    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    size: 120_000,
-    updatedAt: '2026-04-15T11:00:00Z',
-    updatedBy: '박준형',
-    parentId: 'root',
-  },
-  {
-    id: 'file_contract_a',
-    name: '계약서_A사.pdf',
-    type: 'file',
-    mimeType: 'application/pdf',
-    size: 3_100_000,
-    updatedAt: '2026-04-22T16:00:00Z',
-    updatedBy: '김영수',
-    parentId: 'folder_contracts',
-  },
-  {
-    id: 'file_contract_b',
-    name: '계약서_B사.pdf',
-    type: 'file',
-    mimeType: 'application/pdf',
-    size: 2_800_000,
-    updatedAt: '2026-04-21T10:00:00Z',
-    updatedBy: '이지은',
-    parentId: 'folder_contracts',
-  },
-  {
-    id: 'folder_sales',
-    name: '영업팀',
-    type: 'folder',
-    mimeType: null,
-    size: null,
-    updatedAt: '2026-04-19T08:00:00Z',
-    updatedBy: '관리자',
-    parentId: 'root',
-  },
-  {
-    id: 'folder_hr',
-    name: '인사팀',
-    type: 'folder',
-    mimeType: null,
-    size: null,
-    updatedAt: '2026-04-10T08:00:00Z',
-    updatedBy: '관리자',
-    parentId: 'root',
-  },
-]
-
-function findNodeAndPath(
-  node: FolderNode,
-  id: string,
-  path: FolderNode[] = []
-): FolderNode[] | null {
-  const next = [...path, node]
-  if (node.id === id) return next
-  for (const c of node.children ?? []) {
-    const r = findNodeAndPath(c, id, next)
-    if (r) return r
-  }
-  return null
-}
-
-function detachFromTree(tree: FolderNode, nodeId: string): FolderNode | null {
-  if (!tree.children) return null
-  const idx = tree.children.findIndex((c) => c.id === nodeId)
-  if (idx !== -1) {
-    const [removed] = tree.children.splice(idx, 1)
-    return removed
-  }
-  for (const c of tree.children) {
-    const r = detachFromTree(c, nodeId)
-    if (r) return r
-  }
-  return null
-}
-
-function relocateInTree(
-  tree: FolderNode,
-  nodeId: string,
-  newParentId: string,
-): void {
-  const node = detachFromTree(tree, nodeId)
-  if (!node) return // MOCK_FILES에만 있는 파일은 트리 작업 불필요
-  const newParent = findNode(tree, newParentId)
-  if (!newParent) {
-    // 호출 전 newParent 존재를 보장해야 함. 도달 시 일관성 깨진 상태.
-    throw { status: 500, code: 'TREE_RELOCATE_FAILED' }
-  }
-  newParent.children = [...(newParent.children ?? []), node]
-  node.parentId = newParentId
-}
-
 export const api = {
+  /**
+   * Phase A — backend `GET /api/folders/tree` 호출 후 가상 root 노드로 래핑.
+   *
+   * Frontend는 URL의 첫 segment 부재 시 `id='root'`인 가상 노드를 사용한다 (folderPath.ts 정책).
+   * Backend는 실제 top-level 폴더들의 평면 트리만 반환하므로 여기서 한 번만 합성한다.
+   */
   async getFolderTree(): Promise<FolderNode> {
-    await new Promise((r) => setTimeout(r, 100))
-    return MOCK_TREE
-  },
-
-  async getFolder(id: string): Promise<FolderDetail> {
-    await new Promise((r) => setTimeout(r, 100))
-    const chain = findNodeAndPath(MOCK_TREE, id)
-    if (!chain) throw { status: 404, code: 'NOT_FOUND' }
-    const self = chain[chain.length - 1]
-    const slugPath = chain.slice(1).map((n) => n.slug) // root 제외
+    const res = await fetch('/api/folders/tree', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getFolderTree fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const body = (await res.json()) as { tree: FolderNode[] }
     return {
-      id: self.id,
-      name: self.name,
-      slugPath,
-      breadcrumb: chain.map((n, i) => ({
-        id: n.id,
-        name: n.name,
-        slugPath: chain.slice(1, i + 1).map((x) => x.slug),
-      })),
-      parentId: self.parentId,
+      id: 'root',
+      parentId: null,
+      name: '내 드라이브',
+      slug: '',
+      children: body.tree,
     }
   },
 
+  /**
+   * Phase A — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
+   * 누적 slugPath 형태로 prefix-scan하여 frontend `BreadcrumbItem` 계약 (slugPath: string[])에
+   * 맞춘다. 가상 root({@code id='root'})는 backend 호출 없이 합성 응답으로 처리.
+   */
+  async getFolder(id: string): Promise<FolderDetail> {
+    if (id === 'root') {
+      return {
+        id: 'root',
+        name: '내 드라이브',
+        slugPath: [],
+        breadcrumb: [{ id: 'root', name: '내 드라이브', slugPath: [] }],
+        parentId: null,
+      }
+    }
+    const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getFolder fetch failed: ${res.status}`,
+      ) as Error & { status: number; code?: string }
+      err.status = res.status
+      if (res.status === 404) err.code = 'NOT_FOUND'
+      throw err
+    }
+    const body = (await res.json()) as {
+      folder: { id: string; name: string }
+      breadcrumb: { id: string; name: string; slug: string }[]
+    }
+    // 누적 slug — backend는 단일 segment만 보내므로 prefix scan으로 조립.
+    const slugPath = body.breadcrumb.map((c) => c.slug)
+    // 가상 root를 breadcrumb 앞에 합성 — frontend 라우팅이 root crumb을 기대.
+    const breadcrumb: BreadcrumbItem[] = [
+      { id: 'root', name: '내 드라이브', slugPath: [] },
+      ...body.breadcrumb.map((c, i) => ({
+        id: c.id,
+        name: c.name,
+        slugPath: slugPath.slice(0, i + 1),
+      })),
+    ]
+    const parentBcrumb = body.breadcrumb[body.breadcrumb.length - 2]
+    return {
+      id: body.folder.id,
+      name: body.folder.name,
+      slugPath,
+      breadcrumb,
+      parentId: parentBcrumb ? parentBcrumb.id : 'root',
+    }
+  },
+
+  /**
+   * Phase B P3 — 폴더 자식(폴더+파일) listing.
+   *
+   * <p>{@code folderId === 'root'}: backend는 'root' literal을 받지 않으므로 ({@code GET /api/folders/{id}/items}는
+   * UUID만 수용) tree 응답의 top-level 폴더만 합성 — files=[]. 가상 root 정책 답습 (Phase A getFolder와 동일).
+   *
+   * <p>그 외 UUID: {@code GET /api/folders/{id}/items?sort=&dir=} 호출. backend가 폴더-먼저 → 파일 그룹 정렬 적용.
+   * 응답 envelope의 {@code FolderItemDto}({type:'folder'|'file', size:Long?|null, mimeType:String?|null,
+   * updatedBy:UUID?})를 frontend {@link FileItem} 1:1 mapping. backend는 {@code @JsonInclude(NON_NULL)}이므로
+   * 폴더의 size/mimeType 키 자체가 응답에 없을 수 있다 — 매핑 시 null 보정.
+   */
   async getFilesInFolder(
     folderId: string,
     sort: SortKey = 'name',
-    dir: 'asc' | 'desc' = 'asc'
+    dir: 'asc' | 'desc' = 'asc',
   ): Promise<FileItem[]> {
-    await new Promise((r) => setTimeout(r, 150))
-    const items = MOCK_FILES.filter((f) => f.parentId === folderId)
-    return items.sort((a, b) => {
-      let cmp = 0
-      if (sort === 'name') {
-        cmp = a.name.localeCompare(b.name, 'ko')
-      } else if (sort === 'updatedAt') {
-        cmp = a.updatedAt.localeCompare(b.updatedAt)
-      } else if (sort === 'size') {
-        cmp = (a.size ?? 0) - (b.size ?? 0)
-      }
-      return dir === 'asc' ? cmp : -cmp
+    if (folderId === 'root') {
+      // 가상 root는 backend 호출 없이 tree top-level 폴더 합성 — Phase A와 동일 정책.
+      const tree = await this.getFolderTree()
+      const topFolders = tree.children ?? []
+      return topFolders.map((f) => ({
+        id: f.id,
+        name: f.name,
+        type: 'folder',
+        mimeType: null,
+        size: null,
+        // tree 응답에 updatedAt이 없는 경우 빈 문자열 — UI는 hyphen으로 표시. 후속에서 tree DTO 확장 시 보강.
+        updatedAt: '',
+        updatedBy: '',
+        parentId: 'root',
+      }))
+    }
+    const url =
+      `/api/folders/${encodeURIComponent(folderId)}/items` +
+      `?sort=${encodeURIComponent(sort.toUpperCase())}` +
+      `&dir=${encodeURIComponent(dir.toUpperCase())}`
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
     })
+    if (!res.ok) {
+      throw await buildApiError(res, `getFilesInFolder fetch failed: ${res.status}`)
+    }
+    const body = (await res.json()) as {
+      items: Array<{
+        id: string
+        type: 'folder' | 'file'
+        name: string
+        mimeType?: string | null
+        size?: number | null
+        updatedAt: string
+        updatedBy?: string | null
+        parentId?: string | null
+      }>
+    }
+    return body.items.map((it) => ({
+      id: it.id,
+      name: it.name,
+      type: it.type,
+      mimeType: it.mimeType ?? null,
+      size: it.size ?? null,
+      updatedAt: it.updatedAt,
+      updatedBy: it.updatedBy ?? '',
+      parentId: it.parentId ?? folderId,
+    }))
   },
 
+  /**
+   * Phase B P3 — 파일 상세 (RightPanel meta 탭).
+   *
+   * <p>{@code GET /api/files/{id}} 응답 envelope `{ file: FileDto }`. frontend {@link FileItem}으로 mapping.
+   * 활성 파일만 (backend service 정책) — 부재/soft-delete 모두 404.
+   */
   async getFileDetail(id: string): Promise<FileItem> {
-    await new Promise((r) => setTimeout(r, 100))
-    const found = MOCK_FILES.find((f) => f.id === id)
-    if (!found) throw { status: 404, code: 'NOT_FOUND' }
-    return found
+    const res = await fetch(`/api/files/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `getFileDetail fetch failed: ${res.status}`)
+    }
+    const body = (await res.json()) as {
+      file: {
+        id: string
+        folderId: string
+        name: string
+        ownerId: string
+        sizeBytes: number
+        mimeType?: string | null
+        currentVersionId?: string | null
+        createdAt: string
+        updatedAt: string
+      }
+    }
+    const f = body.file
+    return {
+      id: f.id,
+      name: f.name,
+      type: 'file',
+      mimeType: f.mimeType ?? null,
+      size: f.sizeBytes,
+      updatedAt: f.updatedAt,
+      updatedBy: f.ownerId,
+      parentId: f.folderId,
+    }
   },
 
   /**
@@ -327,73 +317,141 @@ export const api = {
     }
   },
 
-  async moveFiles(
-    ids: string[],
+  /**
+   * Phase B P3 — 단건 이동(file/folder 분기). useMoveBulk이 fanout으로 호출.
+   *
+   * <p>backend는 단건 endpoint만 제공 ({@code POST /api/{files|folders}/{id}/move}). all-or-nothing은 v1.x bulk endpoint.
+   * MOVE_INTO_SELF/MOVE_INTO_DESCENDANT는 backend FolderMutationService/FileMutationService가 검증 → 400 envelope.
+   */
+  async moveItem(
+    id: string,
+    type: 'file' | 'folder',
     targetFolderId: string,
-  ): Promise<{ movedIds: string[] }> {
-    await new Promise((r) => setTimeout(r, 400))
-
-    // 1) 타겟 폴더 존재 검증
-    const targetExists = !!findNode(MOCK_TREE, targetFolderId)
-    if (!targetExists) throw { status: 404, code: 'TARGET_NOT_FOUND' }
-
-    // 2) self / descendant 검증 (원칙 #10 — UI와 독립적인 서버 재검증)
-    for (const id of ids) {
-      if (id === targetFolderId) {
-        throw { status: 400, code: 'MOVE_INTO_SELF' }
-      }
-      const node = findNode(MOCK_TREE, id)
-      if (node && containsNode(node, targetFolderId)) {
-        throw { status: 400, code: 'MOVE_INTO_DESCENDANT' }
-      }
+  ): Promise<void> {
+    const url =
+      type === 'folder'
+        ? `/api/folders/${encodeURIComponent(id)}/move`
+        : `/api/files/${encodeURIComponent(id)}/move`
+    const res = await fetch(url, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ targetFolderId }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `moveItem failed: ${res.status}`)
     }
-
-    // 3) 적용 — MOCK_FILES.parentId 갱신 + 폴더면 MOCK_TREE에서 재배치
-    for (const id of ids) {
-      const fileIdx = MOCK_FILES.findIndex((f) => f.id === id)
-      if (fileIdx !== -1) {
-        MOCK_FILES[fileIdx].parentId = targetFolderId
-      }
-      relocateInTree(MOCK_TREE, id, targetFolderId)
-    }
-
-    return { movedIds: ids }
   },
 
-  async renameFile(id: string, newName: string): Promise<FileItem> {
-    await new Promise((r) => setTimeout(r, 200))
+  /**
+   * Phase B P3 — 묶음 이동 fanout. backend 단건 endpoint를 {@link Promise.all}로 병렬 호출.
+   *
+   * <p>signature 변경 (이전 ids: string[] → items: {id, type}[]) — useDeleteBulk 패턴 답습. 첫 rejection이 전체
+   * 결정 (부분 성공 정밀 처리는 v1.x bulk endpoint).
+   */
+  async moveFiles(
+    items: Array<{ id: string; type: 'file' | 'folder' }>,
+    targetFolderId: string,
+  ): Promise<{ movedIds: string[] }> {
+    await Promise.all(items.map((it) => this.moveItem(it.id, it.type, targetFolderId)))
+    return { movedIds: items.map((it) => it.id) }
+  },
 
+  /**
+   * Phase B P3 — 이름 변경 (file/folder 분기).
+   *
+   * <p>backend {@code PATCH /api/{files|folders}/{id}} 호출. body는 {@code { name }}. 응답은 {@code { file|folder }}
+   * envelope. frontend는 {@link FileItem} 형태로 정규화하여 반환.
+   *
+   * <p>{@code isFolder} param은 caller(useRenameFile)가 selection의 type 정보로 명시 — backend는 키 분리(folder/file
+   * UUID 시퀀스 별도)이므로 유추 불가.
+   */
+  async renameFile(
+    id: string,
+    newName: string,
+    isFolder = false,
+  ): Promise<FileItem> {
     const trimmed = newName.trim()
     if (trimmed.length === 0) {
+      // server validation으로 충분하지만 UX(즉시 inline error)를 위한 client-side 가드 유지.
       throw { status: 400, code: 'VALIDATION_ERROR' }
     }
 
-    const target = MOCK_FILES.find((f) => f.id === id)
-    if (!target) throw { status: 404, code: 'NOT_FOUND' }
-
-    // 같은 부모 내 normalized 중복 검사 (자기 자신 제외)
-    const normalized = normalizedNameForDedup(trimmed)
-    const conflict = MOCK_FILES.find(
-      (f) =>
-        f.id !== id &&
-        f.parentId === target.parentId &&
-        normalizedNameForDedup(f.name) === normalized,
-    )
-    if (conflict) throw { status: 409, code: 'RENAME_CONFLICT' }
-
-    target.name = trimmed
-    target.updatedAt = new Date().toISOString()
-
-    // 폴더면 MOCK_TREE의 노드 이름도 갱신
-    if (target.type === 'folder') {
-      const node = findNode(MOCK_TREE, id)
-      if (node) {
-        node.name = trimmed
-        node.slug = trimmed
-      }
+    const url = isFolder
+      ? `/api/folders/${encodeURIComponent(id)}`
+      : `/api/files/${encodeURIComponent(id)}`
+    const res = await fetch(url, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ name: trimmed }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `renameFile failed: ${res.status}`)
     }
 
-    return target
+    const body = (await res.json()) as
+      | { file: { id: string; folderId: string; name: string; ownerId: string; sizeBytes: number; mimeType?: string | null; updatedAt: string } }
+      | { folder: { id: string; parentId?: string | null; name: string; ownerId?: string; updatedAt: string } }
+
+    if (isFolder) {
+      const f = (body as { folder: { id: string; parentId?: string | null; name: string; ownerId?: string; updatedAt: string } }).folder
+      return {
+        id: f.id,
+        name: f.name,
+        type: 'folder',
+        mimeType: null,
+        size: null,
+        updatedAt: f.updatedAt,
+        updatedBy: f.ownerId ?? '',
+        parentId: f.parentId ?? 'root',
+      }
+    }
+    const f = (body as { file: { id: string; folderId: string; name: string; ownerId: string; sizeBytes: number; mimeType?: string | null; updatedAt: string } }).file
+    return {
+      id: f.id,
+      name: f.name,
+      type: 'file',
+      mimeType: f.mimeType ?? null,
+      size: f.sizeBytes,
+      updatedAt: f.updatedAt,
+      updatedBy: f.ownerId,
+      parentId: f.folderId,
+    }
+  },
+
+  /**
+   * Phase B P3 — 폴더 생성 ({@code POST /api/folders}). body는 {@code { parentId, name }}.
+   * 응답은 {@code { folder: FolderDto }}. 가상 root에서 생성하면 caller가 parentId를 실제 root UUID로 변환.
+   * (v1.x ADR 미정 — 현재 호출부 미존재로 backend root UUID 정책 결정 시 재검토.)
+   */
+  async createFolder(parentId: string, name: string): Promise<{ id: string; name: string; parentId: string | null }> {
+    const res = await fetch('/api/folders', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      body: JSON.stringify({ parentId: parentId === 'root' ? null : parentId, name: name.trim() }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `createFolder failed: ${res.status}`)
+    }
+    const body = (await res.json()) as {
+      folder: { id: string; parentId?: string | null; name: string }
+    }
+    return {
+      id: body.folder.id,
+      name: body.folder.name,
+      parentId: body.folder.parentId ?? null,
+    }
   },
 
   /**
@@ -426,6 +484,10 @@ export const api = {
 
     xhr.open('POST', '/api/files')
     xhr.withCredentials = true
+    // CSRF 토큰: 로그인 후 XSRF-TOKEN 쿠키가 항상 존재. 타 mutation들과 동일 정책 (login/logout 참고).
+    // 누락 시 Spring CSRF 필터가 403 반환 → uploadErrors가 "권한 없음"으로 오해 매핑되는 회귀 방지.
+    const csrf = readCookie('XSRF-TOKEN')
+    if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
     xhr.send(form)
     return xhr
   },

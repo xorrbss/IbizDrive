@@ -56,10 +56,16 @@ public class SecurityConfig {
     /**
      * CSRF token repository bean — {@link CsrfTokenController}에서 saveToken 호출에 재사용.
      * cookie {@code XSRF-TOKEN} (HttpOnly=false, SameSite=Lax 기본) 발급 담당.
+     *
+     * <p>header name은 docs/02 §7.1 + docs/03 §1.3 계약에 따라 {@code X-CSRF-Token}으로 명시.
+     * Spring default(X-XSRF-TOKEN)는 docs와 어긋나 frontend의 {@code X-CSRF-TOKEN} 헤더 송신과
+     * 헤더 이름 mismatch로 모든 인증 후 mutation을 403으로 거부하던 회귀 차단.
      */
     @Bean
     public CsrfTokenRepository csrfTokenRepository() {
-        return CookieCsrfTokenRepository.withHttpOnlyFalse();
+        CookieCsrfTokenRepository repo = CookieCsrfTokenRepository.withHttpOnlyFalse();
+        repo.setHeaderName("X-CSRF-Token");
+        return repo;
     }
 
     /**

@@ -13,6 +13,8 @@ import org.springframework.security.authentication.event.AuthenticationSuccessEv
 import org.springframework.security.authentication.event.LogoutSuccessEvent;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
 
 import java.util.Locale;
 import java.util.UUID;
@@ -81,8 +83,13 @@ public class AuthAuditListener {
      * ADR #41 self-signup → audit_log {@code user.registered} INSERT.
      * SignupService가 user.save 직후 publish. login.success와 별개 이벤트로 기록되어
      * 가입과 자동 로그인이 동일 audit row에 합쳐지지 않는다.
+     *
+     * <p>{@code AFTER_COMMIT}로 listen — User INSERT가 UUID 수동 할당이라 JPA 1차 캐시에 보류되며
+     * raw {@link AuditService} (JdbcTemplate)는 Hibernate auto-flush를 트리거하지 않는다. plain
+     * {@code @EventListener}로 동기 처리 시 audit_log {@code actor_id} FK가 아직 commit 전 user row를
+     * 보지 못해 위반(rollback) 발생. {@link com.ibizdrive.admin.AdminAuditListener}와 동일 패턴.
      */
-    @EventListener
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onRegistered(UserRegisteredEvent event) {
         safeRecord(AuditEventType.USER_REGISTERED, new AuditEvent(
             AuditEventType.USER_REGISTERED,

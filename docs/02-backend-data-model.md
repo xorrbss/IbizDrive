@@ -1010,6 +1010,7 @@ POST /api/auth/password/change                     (A1.5, ADR #43)
 |---|---|---|---|---|---|---|
 | GET | `/api/folders/tree` | `hasPermission(#root, 'folder', 'READ')` (필터링) | — | — | `WHERE deleted_at IS NULL` | — |
 | GET | `/api/folders/:id` | `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` | — | — | `WHERE deleted_at IS NULL` | 404 NOT_FOUND |
+| GET | `/api/folders/:id/items` | `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` | — | — | `WHERE deleted_at IS NULL` (subfolders/files 모두) | 404 NOT_FOUND |
 | POST | `/api/folders` | `#req.parentId == null ? hasRole('ADMIN') : hasPermission(#req.parentId, 'folder', 'EDIT')` (ADR #30) | REQUIRED + FOR UPDATE on `parentId` | `name → normalized_name` | — | 400 VALIDATION_ERROR, 404 (parent), 409 RENAME_CONFLICT |
 | PATCH | `/api/folders/:id` | `hasPermission(#id, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + sibling | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `(#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))` (ADR #30) | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
@@ -1051,6 +1052,16 @@ POST /api/folders/:id/restore
   Note:     자기 자신만 복원 (후손은 휴지통 잔존). original_parent_id가 soft-deleted면 404.
             후손 일괄 복원은 별도 endpoint 트랙(out of scope).
   Errors:   404 (target/original parent), 409 RESTORE_CONFLICT (원위치에 동일 normalized_name 활성 폴더)
+
+GET /api/folders/:id/items
+  Request:  Query params — sort=NAME|UPDATED_AT|SIZE (default NAME), dir=ASC|DESC (default ASC)
+  Response: 200 { items: FolderItemDto[] }
+            FolderItemDto = { id, type: 'folder'|'file', name, size?, mimeType?, updatedAt, updatedBy, parentId }
+  Order:    folders 그룹 → files 그룹 (각 그룹 내 sort/dir 적용).
+            sort=SIZE 시 folder 그룹은 size 무의미 — name asc fallback.
+  SoftDel:  parent 폴더 soft-deleted면 404. 자식 중 deleted_at IS NOT NULL은 제외.
+  Errors:   404 NOT_FOUND
+  Note:     Wave 2 T6 — frontend explorer mock 제거 + listing real wire용 endpoint.
 ```
 
 ### 7.6 파일 (Files)
