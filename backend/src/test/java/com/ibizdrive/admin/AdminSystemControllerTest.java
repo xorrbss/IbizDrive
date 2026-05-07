@@ -36,7 +36,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * {@link AdminSystemController} sliced WebMvcTest — Wave 1 — T3.
  *
  * <p>{@code GET /api/admin/system/cron}이 4개 cron 잡 설정을 정해진 순서/페이로드로 노출하는지 검증.
- * read-only — audit emit 0, side effect 0. 매트릭스: 200 / 401 / 403.
+ * read-only — audit emit 0, side effect 0. 권한 매트릭스: ADMIN/AUDITOR=200, MEMBER=403, 익명=401
+ * (Wave 1.5 `auditor-cron-readonly`에서 AUDITOR 읽기 허용).
  */
 @WebMvcTest(controllers = AdminSystemController.class)
 @Import({SecurityConfig.class, MethodSecurityConfig.class,
@@ -157,10 +158,16 @@ class AdminSystemControllerTest {
     }
 
     @Test
-    void getCronStatus_auditor_returns403() throws Exception {
-        // 운영 cron 설정은 ADMIN 단독 책임 — AUDITOR 미허용 (T2 audit-export와 분리).
+    void getCronStatus_auditor_returns200WithFourJobs() throws Exception {
+        // Wave 1.5(`auditor-cron-readonly`) — AUDITOR read-only 허용 (docs/04 §7.x).
+        // 단순 200이 아닌 jobs 페이로드 contract도 ADMIN과 동형임을 확인.
         mvc.perform(get("/api/admin/system/cron").with(user(auditorPrincipal)))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.jobs.length()").value(4))
+            .andExpect(jsonPath("$.jobs[0].key").value("purge.expired"))
+            .andExpect(jsonPath("$.jobs[1].key").value("share.expire"))
+            .andExpect(jsonPath("$.jobs[2].key").value("permission.expire"))
+            .andExpect(jsonPath("$.jobs[3].key").value("storage.orphan.cleanup"));
     }
 
     /**

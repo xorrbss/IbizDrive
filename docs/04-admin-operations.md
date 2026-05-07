@@ -401,6 +401,8 @@ storage 객체 (LocalFs):
 > **MVP 상태 (mvp-qa-security closure, 2026-05-02)**: 4개 cron 활성 (`purge.expired`, `share.expire`, `permission.expire`, `storage.orphan.cleanup`). 모두 default `enabled=false` — 운영자가 staging/prod에서 명시 enable. 5개는 v1.x.
 >
 > **현재 설정 노출** (Wave 1 T3, 2026-05-07): admin 페이지 `/admin/system`에서 4개 잡의 `enabled/cron/zone/batchSize/maxPerRun/graceHours`를 read-only 카드로 노출 (docs/02 §7.12 `GET /api/admin/system/cron`). 변경은 application.yml + 재기동 — mutation endpoint는 v1.x deferred.
+>
+> **읽기 권한 확장** (Wave 1.5 `auditor-cron-readonly`, 2026-05-07): 백엔드 `GET /api/admin/system/cron` 가드를 `hasRole('ADMIN') OR hasRole('AUDITOR')`로 확장. 감사자가 외부 모니터링/스크립트로 cron 설정을 직접 확인 가능. 프론트엔드 UI(`<AdminGuard>`)는 여전히 ADMIN 단독 — UI 레벨 AUDITOR 진입은 별도 트랙(`auditor-admin-ui-access`, deferred)에서 처리.
 
 | 작업 | 주기 | 상태 | 설명 |
 |---|---|---|---|

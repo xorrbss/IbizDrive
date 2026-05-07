@@ -1545,7 +1545,7 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | POST | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (생성 + AFTER_COMMIT audit) | name→trim | partial unique `WHERE deleted_at IS NULL` | 400 VALIDATION_ERROR, 401, 403, 409 DEPARTMENT_CONFLICT |
 | PATCH | `/api/admin/departments/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (rename/(de)activate + AFTER_COMMIT audit) | name→trim | partial unique 보조 | 400 VALIDATION_ERROR, 401, 403, 404 NOT_FOUND, 409 DEPARTMENT_CONFLICT |
 | GET | `/api/admin/permissions` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (만료 grant 포함 — `is_expired` 노출) | 400 VALIDATION_ERROR, 401, 403 |
-| GET | `/api/admin/system/cron` | `hasRole('ADMIN')` (`@PreAuthorize`, Wave 1 T3 — AUDITOR 제외) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
+| GET | `/api/admin/system/cron` | `hasRole('ADMIN') OR hasRole('AUDITOR')` (`@PreAuthorize`, Wave 1 T3 / 1.5 `auditor-cron-readonly`) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 
