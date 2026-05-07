@@ -9,7 +9,7 @@ import { api } from './api'
  * 첫 rejection이 전체 결정 (api.ts:354 — `Promise.all` 의도).
  */
 
-function jsonResponse(body: unknown, status: number): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'content-type': 'application/json' },
