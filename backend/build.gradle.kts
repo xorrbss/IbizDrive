@@ -67,6 +67,10 @@ tasks.withType<Test> {
     // fixtures는 repo root의 docs/normalize-fixtures.json을 직접 로드
     // (단일 진실 출처, ADR #16). 작업 디렉토리는 backend/ 가정.
     workingDir = projectDir
+    // 다수의 @SpringBootTest 컨텍스트(현재 30+개)가 ContextCache에 누적 — 기본 heap(512m)으로
+    // GitHub Actions ubuntu-latest에서 OOM 시 Hikari pool이 강제 shutdown되며 후속 테스트가
+    // "Connection refused"/"Interrupted during connection acquisition"으로 일제 실패. 2g로 상향.
+    maxHeapSize = "2g"
     // CI에서 실패 시 expected/actual + stacktrace 전체를 콘솔에 출력 — 로컬-CI 환차 디버깅용
     testLogging {
         events("failed")
