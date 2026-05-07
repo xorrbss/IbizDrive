@@ -25,11 +25,11 @@ const ACTIVE_ITEMS = [
   { label: '부서', href: '/admin/departments', match: 'prefix' as const },
   { label: '권한', href: '/admin/permissions', match: 'prefix' as const },
   { label: '시스템', href: '/admin/system', match: 'prefix' as const },
+  { label: '스토리지', href: '/admin/storage', match: 'prefix' as const },
 ]
 
 const DEFERRED_ITEMS = [
   '대시보드',
-  '스토리지',
   '휴지통',
   'Legal Hold',
   '정책',

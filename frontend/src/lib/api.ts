@@ -20,6 +20,7 @@ import type {
 } from '@/types/department'
 import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import type { CronJobsResponse } from '@/types/system'
+import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
 export const api = {
   /**
    * Phase A — backend `GET /api/folders/tree` 호출 후 가상 root 노드로 래핑.
@@ -1579,5 +1580,38 @@ function readCookie(name: string): string | null {
   const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
   const match = document.cookie.match(new RegExp(`(?:^|; )${escaped}=([^;]+)`))
   return match ? decodeURIComponent(match[1]) : null
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// admin-storage-overview — `GET /api/admin/storage/overview` (read-only).
+//
+// 본 트랙은 신설 함수를 파일 끝에 추가해 다른 admin 트랙과의 머지 충돌 면적을
+// 최소화한다. `api` 객체에 메서드를 끼우는 대신 standalone export.
+// 타입은 `@/types/admin-storage`에서 import (re-export로 호출자 import 단순화).
+// ───────────────────────────────────────────────────────────────────────────
+
+export type {
+  AdminStorageOverview,
+  AdminStorageOrphanCleanupSummary,
+  AdminStorageOverviewResponse,
+} from '@/types/admin-storage'
+
+/**
+ * 시스템 전체 스토리지 overview — ADMIN role 전용. 401/403/200 외 에러 코드 없음 (read-only).
+ *
+ * <p>응답 envelope: `{ overview: { totalFiles, totalVersions, totalBytes, trashedFiles,
+ * trashedBytes, orphanCleanup? } }`. `orphanCleanup`은 audit_log에 `storage.orphan.cleaned`
+ * 0건이면 `null`.
+ */
+export async function getAdminStorageOverview(): Promise<AdminStorageOverviewResponse> {
+  const res = await fetch('/api/admin/storage/overview', {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `getAdminStorageOverview failed: ${res.status}`)
+  }
+  return (await res.json()) as AdminStorageOverviewResponse
 }
 
