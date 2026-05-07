@@ -138,6 +138,54 @@
 
 ---
 
+## 2026-05-06 — 🏁 audit-export-endpoint 트랙 종료 (Wave 1 — T2: server-side CSV 스트리밍 export + `AUDIT_EXPORTED` emit)
+
+> closure entry backfill (2026-05-07) — PR #60 머지(2026-05-06 15:00) 시점에 progress.md 등재가 누락되어 사후 보충. dev/completed/audit-export-endpoint/(plan|context|tasks).md는 머지 시 정상 archive됨.
+
+### 범위
+
+`/admin/audit/logs`가 client-side current-page CSV에서 server-side full-result CSV 스트리밍으로 전환. `GET /api/admin/audit/export` 신설 — 기존 query endpoint와 동일 필터(`eventType`/`fromDate`/`toDate`/`actorQuery`) 재사용, 하드 캡 10,000행 + 초과 시 `X-Audit-Export-Truncated: true` 헤더 + AUDIT_EXPORTED metadata `truncated=true`. 가드는 ADMIN/AUDITOR (T3 admin-only와 분리 — 감사권은 운영권과 별개).
+
+### 변경 핵심
+
+**Backend (P1~P3):**
+- `AuditCsvWriter.write(OutputStream, List<AuditLogEntryDto>)` (NEW) — `\uFEFF` BOM + RFC 4180 quoting + `\r\n`. metadata는 Jackson serialize(`LinkedHashMap` 결정적 순서, null → 빈 셀). 헤더 10 컬럼은 frontend `AUDIT_CSV_HEADERS`와 1:1.
+- `AuditQueryService.exportAll(filters, viewerId, viewerRole)` — `ADMIN`/`AUDITOR` 외 IllegalStateException 가드, `LIMIT cap+1` (cap=10,000)으로 truncation 감지, return record `AuditExportResult(entries, truncated)`. WHERE 빌더 `appendFilterClauses(...)` private helper 추출 → `search()`와 공유 (필터 시맨틱 drift 차단).
+- `AuditQueryController.exportCsv(...)` — `@PreAuthorize("hasRole('AUDITOR') or hasRole('ADMIN')")`, `@GetMapping("/export")`, `ResponseEntity<StreamingResponseBody>`. 응답 헤더: `Content-Type: text/csv;charset=UTF-8`, `Content-Disposition: attachment; filename="audit_logs_<yyyy-MM-dd>.csv"`. 응답 stream 작성 후 같은 메서드에서 `applicationEventPublisher.publishEvent(new AuditExportEvent(...))`.
+- `AuditExportEvent` (NEW record: `actorId`/`actorIp`/`userAgent`/`filtersJson`/`rowCount`/`truncated`) — IP/UA를 이벤트에 carry. `StreamingResponseBody`가 다른 스레드에서 실행될 때 `WebRequestContextHolder` ThreadLocal 손실 방지.
+- `AuditExportListener.onExport(...)` (NEW) — `AuditService.record(...)` (REQUIRES_NEW, ADR #24). metadataJson = `{"filters":{...},"rowCount":N,"truncated":bool,"format":"csv"}`. RuntimeException → ERROR 로그만 (PermissionAuditListener와 동형 — caller 흐름 보호).
+
+**Frontend (P5):**
+- `lib/api.ts` `getAuditLogsExportUrl(filters)` — `URLSearchParams`로 `eventType/fromDate/toDate/actorQuery` 빌드.
+- `app/admin/audit/logs/page.tsx` — 기존 `handleExport`(client-side `toAuditCsvBlob`)를 `<a href={url} download>` anchor 패턴으로 교체. fetch 미사용.
+- 죽은 코드 제거: `lib/auditCsv.ts`, `lib/auditCsv.test.ts` (KISS / YAGNI).
+- `app/admin/audit/logs/page.test.tsx` (NEW) — 기본 URL, eventType 필터 반영, click 시 fetch 미발생 검증.
+
+**Docs:**
+- BETA-RELEASE.md §6 emit coverage `36/44 → 37/44`, line 115 deferred 라인 정정 (CSV는 ship, JSON v1.x).
+- docs/02 §7.12 — `GET /api/admin/audit/export` 행 + 풀 스펙(가드 ADMIN/AUDITOR + truncation 헤더 + 캡 10k).
+- docs/04 §7.2 — 두 deferred 체크박스 `[x]` 처리 (server-side streaming + `AUDIT_EXPORTED` runtime emission).
+- docs/audit-emit-gap-mapping.md — `AUDIT_EXPORTED` 항목 deferred → ✓ emit으로 갱신.
+
+### 검증
+
+- backend `./gradlew test --tests "com.ibizdrive.audit.*"` ✅ — 신규 `AuditExportE2ETest`(MEMBER 403 / AUDITOR·ADMIN 200 / CSV 본문 / `AUDIT_EXPORTED` row 검증) + `AuditCsvWriterTest`(quoting / escape / BOM / metadata 직렬화) + 회귀(`AuditQueryE2ETest`/`AuthAuditE2ETest`/`AuthScenarioIntegrationTest`) 전체 그린.
+- frontend `pnpm exec vitest run` 769/769 ✅, `pnpm exec tsc --noEmit` 0 error, `pnpm exec next lint` clean.
+
+### 핵심 결정 (KISS)
+
+- **publish는 controller 메서드 내부 (요청 스레드)** — `StreamingResponseBody`가 다른 스레드에서 실행되면 `WebRequestContextHolder` IP/UA가 손실. 응답 stream 작성 직후 같은 메서드에서 publish하여 listener가 정상 캡처.
+- **WHERE 빌더 헬퍼 공유** — `search()`와 `exportAll()`이 `appendFilterClauses(...)` 동일 사용. 두 endpoint의 필터 의미가 자동 일치 (drift 차단).
+- **CSV injection 정책** — v1은 RFC 4180 quoting만. `=`/`+`/`-`/`@` prefix 셀 sanitize는 v1.x로 미룸 (외부 첨부 아닌 내부 audit 데이터 → 노출 표면 작음).
+- **MEMBER 가드 분리** — query endpoint는 self 조회 허용이지만 export는 정책상 ADMIN/AUDITOR로 더 엄격. 두 endpoint 가드 차이를 docs/02 §7.12에 명시.
+
+### 다음 세션 컨텍스트
+
+- audit log JSON export는 v1.x (docs/04 §7.2). 본 트랙은 CSV만 ship.
+- Wave 1 — T3 (시스템 정책 페이지 — cron 토글 read-only 노출) 트랙 진입 가능. 별도 worktree 권장 (T2 PR과 독립).
+
+---
+
 ## 2026-05-06 — 🏁 admin-department-crud 트랙 종료 (Wave 2 T4 — 관리자 부서 CRUD + audit emit 3종)
 
 ### 범위
