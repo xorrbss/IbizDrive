@@ -7,7 +7,7 @@ Last Updated: 2026-05-07
 ## Phase 진행 표
 
 - [x] P1 — Backend `GET /api/folders/{id}/items` (2026-05-07)
-- [ ] P2 — Backend `GET /api/files/{id}`
+- [x] P2 — Backend `GET /api/files/{id}` (2026-05-07)
 - [ ] P3 — Frontend api wrapper + queryKeys + types + MOCK 제거
 - [ ] P4 — Frontend hooks + invalidations + 낙관/pending 정책
 - [ ] P5 — Test 전환 + 회귀 fix + 풀 게이트
