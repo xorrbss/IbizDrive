@@ -120,6 +120,13 @@ export const qk = {
   adminUsersList: (page: number, size: number, q = '') =>
     [...qk.adminUsers(), 'list', page, size, q.trim()] as const,
 
+  // ── 관리자 스토리지 overview (admin-storage-overview) ──
+  /**
+   * 단일 read-only summary — 페이지 진입 시 1회. invalidation 대상 mutation 없음
+   * (audit_log row를 통한 마지막 orphan cleanup 메트릭만 노출이며 본 페이지에서 mutation 없음).
+   */
+  adminStorageOverview: () => [...qk.all, 'admin', 'storage', 'overview'] as const,
+
   // ── 관리자 부서 목록 (admin-department-crud, Wave 2 T4, docs/02 §7.x) ──
   adminDepartments: () => [...qk.all, 'admin', 'departments'] as const,
   /**
