@@ -203,6 +203,27 @@ export const invalidations = {
   },
 
   /**
+   * 폴더 신규 생성 후 무효화 (folder-create-ui 트랙).
+   * - parentId 폴더의 자식 목록 (`getFilesInFolder`는 폴더+파일 통합 listing)
+   * - folderTree (사이드바)
+   * - folder(parentId) (breadcrumb / detail의 자식 카운트가 노출될 수 있어 보수적)
+   *
+   * 가상 root(`'root'`)도 그대로 호출 — `getFilesInFolder('root')`가 tree top-level
+   * 합성 캐시를 사용하므로 `qk.filesListPrefix('root')` invalidate가 정합.
+   */
+  afterFolderCreated(
+    qc: QueryClient,
+    opts: { parentId: string },
+  ): Promise<void> {
+    const { parentId } = opts
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: qk.filesListPrefix(parentId) }),
+      qc.invalidateQueries({ queryKey: qk.folderTree() }),
+      qc.invalidateQueries({ queryKey: qk.folder(parentId) }),
+    ]).then(() => undefined)
+  },
+
+  /**
    * 단일 항목 이름 변경 후 무효화.
    * - parentId 폴더의 파일 목록
    * - 해당 항목의 fileDetail
