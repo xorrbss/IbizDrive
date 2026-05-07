@@ -5,6 +5,7 @@ import {
   useAdminDepartments,
   useAdminUpdateDepartment,
 } from '@/hooks/useAdminDepartments'
+import { AdminGuard } from '@/components/auth/AdminGuard'
 import type { AdminDepartmentSummary } from '@/types/department'
 
 /**
@@ -20,13 +21,18 @@ import type { AdminDepartmentSummary } from '@/types/department'
  * <p>self-protection은 부서 도메인에 없음 (사용자 self-demote 방지와 다른 레이어). 권한 가드는
  * backend {@code @PreAuthorize("hasRole('ADMIN')")}가 진실 — UI는 UX용. admin-user-mgmt 페이지의
  * 매트릭스를 1:1 답습.
+ *
+ * <p>가드: ADMIN-only mutation 페이지 — default `<AdminGuard>`로 좁힌다
+ * (wave1.5-auditor-admin-ui-access).
  */
 export default function AdminDepartmentsPage() {
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-10">
-      <CreateSection />
-      <ListSection />
-    </div>
+    <AdminGuard>
+      <div className="flex-1 overflow-auto p-6 space-y-10">
+        <CreateSection />
+        <ListSection />
+      </div>
+    </AdminGuard>
   )
 }
 

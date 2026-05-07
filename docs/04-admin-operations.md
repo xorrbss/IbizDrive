@@ -16,14 +16,29 @@
 
 > 역할 분리는 감사 원칙의 핵심: "한 명이 모든 것을 할 수 있으면 감사가 의미 없음"
 
-### 1.1 가드 분리 — UX 게이트 vs 보안 게이트 (m-admin-entry-rewrite, 2026-05-03)
+### 1.1 가드 분리 — UX 게이트 vs 보안 게이트 (m-admin-entry-rewrite, 2026-05-03; wave1.5-auditor-admin-ui-access, 2026-05-07)
 
 ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
-- **프론트 `AdminGuard` = UX 가드만**. `useMe`로 현재 역할을 확인해 비-ADMIN을 `/files`로 redirect. 사용자에게 "권한 없는 화면을 잠깐이라도 보지 않게" 하는 표면 보호. 보안 강제 없음.
-- **백엔드 `@PreAuthorize("hasRole('ADMIN')")` = 보안의 진실**. 모든 `/api/admin/**` endpoint는 컨트롤러 메서드 단위에서 강제. 프론트 가드를 우회한 직접 호출은 401(미인증) 또는 403(역할 부족)으로 차단된다.
-- **AuthGuard와 중첩 순서**: `<AuthGuard><AdminGuard>...</AdminGuard></AuthGuard>` — AuthGuard가 비로그인을 `/login?next=/admin`으로 먼저 처리한 뒤 AdminGuard가 role 검사. 두 가드의 책임은 분리(인증 보유 vs 역할).
+- **프론트 `AdminGuard` = UX 가드만**. `useMe`로 현재 역할을 확인해 허용 role 외에는 `/files`로 redirect. 사용자에게 "권한 없는 화면을 잠깐이라도 보지 않게" 하는 표면 보호. 보안 강제 없음.
+- **백엔드 `@PreAuthorize` = 보안의 진실**. 모든 `/api/admin/**` endpoint는 컨트롤러 메서드 단위에서 강제. 프론트 가드를 우회한 직접 호출은 401(미인증) 또는 403(역할 부족)으로 차단된다. read-only 엔드포인트(audit/*, audit/export, system/cron)는 `hasAnyRole('ADMIN','AUDITOR')`로 확장.
+- **AuthGuard와 중첩 순서**: `<AuthGuard><AdminGuard allowedRoles=...>...</AdminGuard></AuthGuard>` — AuthGuard가 비로그인을 `/login?next=/admin`으로 먼저 처리한 뒤 AdminGuard가 role 검사. 두 가드의 책임은 분리(인증 보유 vs 역할).
+- **이중 가드(layout + page)**: layout `<AdminGuard allowedRoles={['ADMIN','AUDITOR']}>`로 read-only 영역 진입을 허용하고, ADMIN-only mutation 페이지는 페이지 단에서 default `<AdminGuard>` (allowedRoles 기본값 `['ADMIN']`)로 다시 좁힌다. 같은 `useMe` 캐시(staleTime 60s)를 공유해 추가 fetch 없음.
 - **중요 회귀 가드**: 프론트 게이트 강도를 보안 강도와 혼동하지 말 것. `/api/admin/**`는 `SecurityConfig` `permitAll` 목록에 포함되지 않아야 하며, 신규 admin 컨트롤러에는 항상 메서드 레벨 `@PreAuthorize` 또는 클래스 레벨 강제가 붙어야 한다.
+
+### 1.2 페이지별 진입 허용 role (wave1.5-auditor-admin-ui-access, 2026-05-07)
+
+| 페이지 | 진입 허용 (UI 가드) | 백엔드 가드 |
+|---|---|---|
+| `/admin` (대시보드) | ADMIN | `hasRole('ADMIN')` |
+| `/admin/audit/logs` | ADMIN, AUDITOR | `hasAnyRole('ADMIN','AUDITOR')` |
+| `/admin/system` | ADMIN, AUDITOR | `hasAnyRole('ADMIN','AUDITOR')` |
+| `/admin/users` | ADMIN | `hasRole('ADMIN')` |
+| `/admin/departments` | ADMIN | `hasRole('ADMIN')` |
+| `/admin/permissions` | ADMIN | `hasRole('ADMIN')` |
+| `/admin/storage` | ADMIN | `hasRole('ADMIN')` |
+
+`AdminSideNav`는 AUDITOR에게 `감사 로그` + `시스템`만 노출하고 deferred 섹션도 hide(화면 단순화). ADMIN에게는 7 active + 3 deferred 항목 모두 노출 — 회귀.
 
 ---
 
@@ -404,7 +419,9 @@ storage 객체 (LocalFs):
 >
 > **현재 설정 노출** (Wave 1 T3, 2026-05-07): admin 페이지 `/admin/system`에서 4개 잡의 `enabled/cron/zone/batchSize/maxPerRun/graceHours`를 read-only 카드로 노출 (docs/02 §7.12 `GET /api/admin/system/cron`). 변경은 application.yml + 재기동 — mutation endpoint는 v1.x deferred.
 >
-> **읽기 권한 확장** (Wave 1.5 `auditor-cron-readonly`, 2026-05-07): 백엔드 `GET /api/admin/system/cron` 가드를 `hasRole('ADMIN') OR hasRole('AUDITOR')`로 확장. 감사자가 외부 모니터링/스크립트로 cron 설정을 직접 확인 가능. 프론트엔드 UI(`<AdminGuard>`)는 여전히 ADMIN 단독 — UI 레벨 AUDITOR 진입은 별도 트랙(`auditor-admin-ui-access`, deferred)에서 처리.
+> **읽기 권한 확장** (Wave 1.5 `auditor-cron-readonly`, 2026-05-07): 백엔드 `GET /api/admin/system/cron` 가드를 `hasRole('ADMIN') OR hasRole('AUDITOR')`로 확장. 감사자가 외부 모니터링/스크립트로 cron 설정을 직접 확인 가능.
+>
+> **UI 진입 확장** (Wave 1.5 `auditor-admin-ui-access`, 2026-05-07): 프론트 `<AdminGuard>`에 `allowedRoles` prop을 도입하고 admin layout을 `['ADMIN','AUDITOR']`로 완화. AUDITOR는 `/admin/audit/logs`, `/admin/system`에 직접 진입 가능. 그 외 ADMIN-only 페이지는 페이지 단에서 default 가드로 다시 좁힌다(§1.1, §1.2). `AdminSideNav`도 AUDITOR에게는 두 항목만 노출.
 
 | 작업 | 주기 | 상태 | 설명 |
 |---|---|---|---|

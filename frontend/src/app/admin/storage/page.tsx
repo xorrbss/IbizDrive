@@ -2,6 +2,7 @@
 import { useAdminStorageOverview } from '@/hooks/useAdminStorageOverview'
 import { StorageOverviewCards } from '@/components/admin/StorageOverviewCards'
 import { StorageOverviewTable } from '@/components/admin/StorageOverviewTable'
+import { AdminGuard } from '@/components/auth/AdminGuard'
 
 /**
  * /admin/storage — 시스템 스토리지 합계 + 정리 기록 (admin-storage-overview, docs/04 §스토리지).
@@ -9,8 +10,19 @@ import { StorageOverviewTable } from '@/components/admin/StorageOverviewTable'
  * <p>읽기 전용 단일 페이지 — page/size 없음. KPI 카드 5장 + orphan-cleanup 표.
  * 권한 가드는 backend {@code @PreAuthorize("hasRole('ADMIN')")}가 진실, UI는 UX용.
  * 401/403 시 retry false로 즉시 에러 노출.
+ *
+ * <p>가드: ADMIN-only — default `<AdminGuard>`로 좁힌다
+ * (wave1.5-auditor-admin-ui-access).
  */
 export default function AdminStoragePage() {
+  return (
+    <AdminGuard>
+      <StoragePageBody />
+    </AdminGuard>
+  )
+}
+
+function StoragePageBody() {
   const { data, isLoading, isError } = useAdminStorageOverview()
 
   return (

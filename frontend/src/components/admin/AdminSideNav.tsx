@@ -1,9 +1,11 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
+import { useMe } from '@/hooks/useMe'
 
 /**
- * Admin 영역 사이드 네비게이션 (m-admin-entry-rewrite, docs/04 §2 라우트 트리).
+ * Admin 영역 사이드 네비게이션 (m-admin-entry-rewrite, docs/04 §2 라우트 트리;
+ * wave1.5-auditor-admin-ui-access — role-based 필터링).
  *
  * <p>활성 항목(누적): `/admin` 대시보드 (admin-dashboard 트랙 KPI),
  * `/admin/audit/logs` (m-audit), `/admin/users` (m-admin-entry-rewrite +
@@ -20,15 +22,27 @@ import { usePathname } from 'next/navigation'
  * <p>deferred 표기를 별도 섹션으로 분리하지 않고 같은 리스트에 섞은 이유는
  * 향후 활성화 시 `<span>`을 `<Link>`로 swap만 하면 되어 anchor 일관성을 보존
  * 하기 위해서다.
+ *
+ * <p>role 분기: 항목별 `auditorAllowed` 플래그로 AUDITOR 노출 여부를 표시.
+ * AUDITOR는 audit/logs + system만 보고, ADMIN은 전부 본다(deferred는 둘 다
+ * 표시 — 정보성). 다른 role(MEMBER 등)은 layout `<AdminGuard>`가 이미 차단
+ * 하므로 정상 경로에서 도달하지 않지만, 방어적으로 빈 nav를 렌더한다.
  */
-const ACTIVE_ITEMS = [
-  { label: '대시보드', href: '/admin', match: 'exact' as const },
-  { label: '감사 로그', href: '/admin/audit/logs', match: 'exact' as const },
-  { label: '사용자 초대', href: '/admin/users', match: 'prefix' as const },
-  { label: '부서', href: '/admin/departments', match: 'prefix' as const },
-  { label: '권한', href: '/admin/permissions', match: 'prefix' as const },
-  { label: '시스템', href: '/admin/system', match: 'prefix' as const },
-  { label: '스토리지', href: '/admin/storage', match: 'prefix' as const },
+type RoleScope = 'ADMIN' | 'AUDITOR-OK'
+
+const ACTIVE_ITEMS: ReadonlyArray<{
+  label: string
+  href: string
+  match: 'exact' | 'prefix'
+  scope: RoleScope
+}> = [
+  { label: '대시보드', href: '/admin', match: 'exact', scope: 'ADMIN' },
+  { label: '감사 로그', href: '/admin/audit/logs', match: 'exact', scope: 'AUDITOR-OK' },
+  { label: '사용자 초대', href: '/admin/users', match: 'prefix', scope: 'ADMIN' },
+  { label: '부서', href: '/admin/departments', match: 'prefix', scope: 'ADMIN' },
+  { label: '권한', href: '/admin/permissions', match: 'prefix', scope: 'ADMIN' },
+  { label: '시스템', href: '/admin/system', match: 'prefix', scope: 'AUDITOR-OK' },
+  { label: '스토리지', href: '/admin/storage', match: 'prefix', scope: 'ADMIN' },
 ]
 
 const DEFERRED_ITEMS = [
@@ -37,8 +51,25 @@ const DEFERRED_ITEMS = [
   '정책',
 ]
 
+/**
+ * 사용자 roles에서 해당 항목 노출 여부 결정.
+ * - ADMIN: 모든 scope 노출
+ * - AUDITOR (without ADMIN): AUDITOR-OK 항목만 노출
+ * - 그 외: 빈 nav (방어)
+ */
+function isVisible(scope: RoleScope, roles: ReadonlyArray<string>): boolean {
+  if (roles.includes('ADMIN')) return true
+  if (roles.includes('AUDITOR')) return scope === 'AUDITOR-OK'
+  return false
+}
+
 export function AdminSideNav() {
   const pathname = usePathname()
+  const { data } = useMe()
+  const roles = data?.roles ?? []
+  const visibleItems = ACTIVE_ITEMS.filter((item) => isVisible(item.scope, roles))
+  // deferred 항목은 진입 시점 정보성이므로 ADMIN에게만 노출 (AUDITOR 화면 단순화).
+  const showDeferred = roles.includes('ADMIN')
 
   return (
     <aside
@@ -50,7 +81,7 @@ export function AdminSideNav() {
         <span className="text-[14px] font-semibold tracking-tight text-fg">관리자</span>
       </div>
       <nav aria-label="관리자 네비게이션" className="flex flex-col gap-0.5 text-[13px]">
-        {ACTIVE_ITEMS.map((item) => {
+        {visibleItems.map((item) => {
           const isActive =
             item.match === 'exact' ? pathname === item.href : pathname.startsWith(item.href)
           return (
@@ -67,21 +98,25 @@ export function AdminSideNav() {
             </Link>
           )
         })}
-        <div className="mt-3 mb-1 px-2.5 text-[11px] uppercase tracking-wider text-fg-muted">
-          예정
-        </div>
-        {DEFERRED_ITEMS.map((label) => (
-          <span
-            key={label}
-            aria-disabled="true"
-            className="px-2.5 py-1.5 rounded flex items-center justify-between text-fg-muted cursor-not-allowed"
-          >
-            <span>{label}</span>
-            <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-fg-muted">
-              v1.x
-            </span>
-          </span>
-        ))}
+        {showDeferred && (
+          <>
+            <div className="mt-3 mb-1 px-2.5 text-[11px] uppercase tracking-wider text-fg-muted">
+              예정
+            </div>
+            {DEFERRED_ITEMS.map((label) => (
+              <span
+                key={label}
+                aria-disabled="true"
+                className="px-2.5 py-1.5 rounded flex items-center justify-between text-fg-muted cursor-not-allowed"
+              >
+                <span>{label}</span>
+                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-fg-muted">
+                  v1.x
+                </span>
+              </span>
+            ))}
+          </>
+        )}
       </nav>
     </aside>
   )
