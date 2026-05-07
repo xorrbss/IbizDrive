@@ -196,7 +196,7 @@ class AuthAuditE2ETest {
             Map.of("email", newEmail, "password", PW, "displayName", "Signup E2E"), csrf);
         assertThat(signupRes.getStatusCode())
             .as("signup response (body=%s) — TX rollback 시 5xx", signupRes.getBody())
-            .isEqualTo(HttpStatus.OK);
+            .isEqualTo(HttpStatus.CREATED);
 
         Optional<User> created = userRepository.findActiveByEmail(newEmail);
         assertThat(created).as("user TX는 commit되어야 한다 — audit FK 위반으로 rollback되면 부재").isPresent();
