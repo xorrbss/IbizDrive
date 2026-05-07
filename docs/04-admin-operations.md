@@ -206,7 +206,22 @@ DB row 중 storage 객체가 없는 것 = phantom
 - [x] orphan 정리 cron 구현 — `storage.orphan.cleanup` (ADR #38, `app.storage.orphan-cleanup.*`)
 - [ ] 관리자 트리거 endpoint (HTTP `/api/admin/storage/orphan/run`) — *v1.x deferred (cron으로 1차 충분)*
 - [ ] phantom 감지 + 알림 — *v1.x deferred*
-- [ ] 사용량 대시보드 UI — *v1.x deferred (admin frontend 미구현)*
+- [x] 시스템 합계 + 정리 기록 overview UI — `/admin/storage` (admin-storage-overview, 2026-05-07)
+
+### 6.4 시스템 합계 overview (`/admin/storage`)
+
+> **MVP 구현 (admin-storage-overview, 2026-05-07)**: 읽기 전용 단일 페이지. quota/부서별 차트(§6.2)는 v1.x deferred 유지.
+
+- 진입점: `AdminSideNav` "스토리지" → `/admin/storage` (ADMIN role only)
+- API: `GET /api/admin/storage/overview` (`@PreAuthorize("hasRole('ADMIN')")`, 읽기 전용)
+- 응답 envelope: `{ overview: { totalFiles, totalVersions, totalBytes, trashedFiles, trashedBytes, orphanCleanup?: { lastRunAt, lastDeletedCount } } }`
+- 데이터 의미:
+  - `totalFiles` — `files.deleted_at IS NULL` (활성 파일 수)
+  - `totalVersions` — `file_versions` 전체 row 수 (휴지통 포함, 버전 히스토리 보존)
+  - `totalBytes` — 모든 `file_versions.size_bytes` 합 (실제 storage 점유의 가장 가까운 근사)
+  - `trashedFiles` / `trashedBytes` — `files.deleted_at IS NOT NULL` count + 그 파일들의 `size_bytes` 합
+  - `orphanCleanup` — `audit_log` 마지막 `storage.orphan.cleaned` 이벤트 (없으면 `null`)
+- TanStack Query: `qk.adminStorageOverview()`, `staleTime=30s`, `retry: false` (401/403 즉시 노출)
 
 ---
 
