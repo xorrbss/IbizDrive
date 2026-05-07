@@ -1,35 +1,43 @@
 package com.ibizdrive.folder;
 
+import com.ibizdrive.file.FileItem;
+import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.dto.BreadcrumbCrumbDto;
 import com.ibizdrive.folder.dto.FolderDetailResponse;
 import com.ibizdrive.folder.dto.FolderDto;
+import com.ibizdrive.folder.dto.FolderItemDto;
+import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * Phase A 읽기 전용 service — frontend 트리/상세 화면 wiring 용도.
+ * Phase A/B 읽기 전용 service — frontend 트리/상세/items 화면 wiring 용도.
  *
  * <p>책임 분리: mutation은 {@link FolderMutationService}, 본 service는 fetch + DTO 조립만.
  * Audit 미발행 (read-only는 audit 비대상 — docs/03 §4 노출 정책).
  *
- * <p>visibility: 현재 모든 활성 폴더 반환 — Phase A 단순화 (TODO Phase B: grant-based 필터).
+ * <p>visibility: 현재 모든 활성 폴더 반환 — Phase A 단순화 (TODO Phase B+: grant-based 필터).
  * controller layer가 인증/READ 권한을 SpEL로 게이트하므로 endpoint 별 분리는 controller 책임.
  */
 @Service
 public class FolderQueryService {
 
     private final FolderRepository folderRepository;
+    private final FileRepository fileRepository;
 
-    public FolderQueryService(FolderRepository folderRepository) {
+    public FolderQueryService(FolderRepository folderRepository, FileRepository fileRepository) {
         this.folderRepository = folderRepository;
+        this.fileRepository = fileRepository;
     }
 
     /**
@@ -97,5 +105,66 @@ public class FolderQueryService {
         Collections.reverse(chain);
 
         return new FolderDetailResponse(FolderDto.from(self), chain);
+    }
+
+    /**
+     * 폴더 안의 자식 폴더 + 파일을 단일 items 리스트로 합본하여 반환 (Phase B).
+     *
+     * <p>정렬 정책:
+     * <ul>
+     *   <li>type-first: 폴더 그룹이 항상 파일 그룹보다 앞 (sort/dir 무관).</li>
+     *   <li>그룹 내 정렬: {@link SortKey} × {@link SortDir} 조합 적용.</li>
+     *   <li>{@code SIZE} 정렬 시 폴더 그룹은 size 컬럼이 없으므로 {@code name asc} fallback.</li>
+     * </ul>
+     *
+     * @throws FolderNotFoundException parent가 없거나 soft-delete 상태일 때
+     */
+    @Transactional(readOnly = true)
+    public FolderItemsResponse loadItems(UUID id, SortKey sort, SortDir dir) {
+        // soft-delete된 parent에 대해 자식 노출 금지 — race 방지 + 명시적 404 신호.
+        folderRepository.findByIdAndDeletedAtIsNull(id)
+            .orElseThrow(() -> new FolderNotFoundException("folder not found: " + id));
+
+        List<Folder> subFolders = folderRepository.findByParentIdAndDeletedAtIsNull(id);
+        List<FileItem> subFiles = fileRepository.findByFolderIdAndDeletedAtIsNull(id);
+
+        Comparator<Folder> folderCmp = folderComparator(sort, dir);
+        Comparator<FileItem> fileCmp = fileComparator(sort, dir);
+
+        List<Folder> sortedFolders = new ArrayList<>(subFolders);
+        sortedFolders.sort(folderCmp);
+        List<FileItem> sortedFiles = new ArrayList<>(subFiles);
+        sortedFiles.sort(fileCmp);
+
+        List<FolderItemDto> items = new ArrayList<>(sortedFolders.size() + sortedFiles.size());
+        for (Folder f : sortedFolders) items.add(FolderItemDto.fromFolder(f));
+        for (FileItem fi : sortedFiles) items.add(FolderItemDto.fromFile(fi));
+
+        return new FolderItemsResponse(items);
+    }
+
+    /**
+     * 폴더 그룹 비교자. SIZE는 size 컬럼이 없으므로 name asc로 fallback (sort/dir에 영향받지 않음).
+     */
+    private static Comparator<Folder> folderComparator(SortKey sort, SortDir dir) {
+        Comparator<Folder> base = switch (sort) {
+            case NAME -> Comparator.comparing(Folder::getName, Comparator.nullsLast(Comparator.naturalOrder()));
+            case UPDATED_AT -> Comparator.comparing(Folder::getUpdatedAt, Comparator.nullsLast(Instant::compareTo));
+            case SIZE -> Comparator.comparing(Folder::getName, Comparator.nullsLast(Comparator.naturalOrder()));
+        };
+        if (sort == SortKey.SIZE) {
+            // SIZE 폴더 그룹은 항상 name asc fallback — dir 무시.
+            return base;
+        }
+        return dir == SortDir.DESC ? base.reversed() : base;
+    }
+
+    private static Comparator<FileItem> fileComparator(SortKey sort, SortDir dir) {
+        Comparator<FileItem> base = switch (sort) {
+            case NAME -> Comparator.comparing(FileItem::getName, Comparator.nullsLast(Comparator.naturalOrder()));
+            case UPDATED_AT -> Comparator.comparing(FileItem::getUpdatedAt, Comparator.nullsLast(Instant::compareTo));
+            case SIZE -> Comparator.comparingLong(FileItem::getSizeBytes);
+        };
+        return dir == SortDir.DESC ? base.reversed() : base;
     }
 }

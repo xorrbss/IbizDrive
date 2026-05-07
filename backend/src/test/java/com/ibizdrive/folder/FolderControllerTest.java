@@ -2,6 +2,8 @@ package com.ibizdrive.folder;
 
 import com.ibizdrive.folder.dto.CreateFolderRequest;
 import com.ibizdrive.folder.dto.FolderDto;
+import com.ibizdrive.folder.dto.FolderItemDto;
+import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.MoveFolderRequest;
 import com.ibizdrive.folder.dto.RenameFolderRequest;
 import com.ibizdrive.user.IbizDriveUserDetails;
@@ -14,6 +16,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.time.Instant;
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -208,6 +211,48 @@ class FolderControllerTest {
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().get("folder").id()).isEqualTo(FOLDER_ID);
         verify(service).restore(FOLDER_ID, ACTOR);
+    }
+
+    // ── items (Phase B P1) ────────────────────────────────────────────
+
+    @Test
+    void items_defaultParams_delegatesWithNameAsc() {
+        FolderItemsResponse svcRes = new FolderItemsResponse(List.of(
+            new FolderItemDto(FOLDER_ID, "folder", "docs", null, null, Instant.now(),
+                ACTOR.toString(), PARENT_ID)
+        ));
+        when(queryService.loadItems(eq(FOLDER_ID), eq(SortKey.NAME), eq(SortDir.ASC)))
+            .thenReturn(svcRes);
+
+        ResponseEntity<FolderItemsResponse> res =
+            controller.items(FOLDER_ID, SortKey.NAME, SortDir.ASC);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(res.getBody()).isNotNull();
+        assertThat(res.getBody().items()).hasSize(1);
+        verify(queryService).loadItems(FOLDER_ID, SortKey.NAME, SortDir.ASC);
+    }
+
+    @Test
+    void items_explicitParams_passedThrough() {
+        FolderItemsResponse svcRes = new FolderItemsResponse(List.of());
+        when(queryService.loadItems(eq(FOLDER_ID), eq(SortKey.SIZE), eq(SortDir.DESC)))
+            .thenReturn(svcRes);
+
+        ResponseEntity<FolderItemsResponse> res =
+            controller.items(FOLDER_ID, SortKey.SIZE, SortDir.DESC);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(queryService).loadItems(FOLDER_ID, SortKey.SIZE, SortDir.DESC);
+    }
+
+    @Test
+    void items_propagatesNotFoundFromService() {
+        when(queryService.loadItems(eq(FOLDER_ID), any(), any()))
+            .thenThrow(new FolderNotFoundException("folder not found: " + FOLDER_ID));
+
+        assertThatThrownBy(() -> controller.items(FOLDER_ID, SortKey.NAME, SortDir.ASC))
+            .isInstanceOf(FolderNotFoundException.class);
     }
 
     private Folder newFolder(UUID id, UUID parentId, String name, String auditLevel) {

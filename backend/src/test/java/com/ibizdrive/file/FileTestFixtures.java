@@ -13,6 +13,26 @@ public final class FileTestFixtures {
 
     private FileTestFixtures() {}
 
+    /**
+     * 활성(미삭제) FileItem fixture — folder/items P1 정렬 테스트 등에서 호출.
+     * mimeType은 "application/octet-stream" 기본, deletedAt/purgeAfter는 null.
+     */
+    public static FileItem activeFile(
+        UUID id, UUID folderId, UUID ownerId, String name, long sizeBytes, Instant updatedAt
+    ) {
+        FileItem f = new FileItem();
+        f.setId(id);
+        f.setFolderId(folderId);
+        f.setName(name);
+        f.setNormalizedName(name);
+        f.setOwnerId(ownerId);
+        f.setSizeBytes(sizeBytes);
+        f.setMimeType("application/octet-stream");
+        f.setCreatedAt(updatedAt);
+        f.setUpdatedAt(updatedAt);
+        return f;
+    }
+
     public static FileItem trashedFile(UUID id, UUID folderId, UUID ownerId, String name, Instant deletedAt) {
         FileItem f = new FileItem();
         f.setId(id);

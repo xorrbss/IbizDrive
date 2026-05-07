@@ -3,6 +3,7 @@ package com.ibizdrive.folder;
 import com.ibizdrive.folder.dto.CreateFolderRequest;
 import com.ibizdrive.folder.dto.FolderDetailResponse;
 import com.ibizdrive.folder.dto.FolderDto;
+import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
 import com.ibizdrive.folder.dto.MoveFolderRequest;
 import com.ibizdrive.folder.dto.RenameFolderRequest;
@@ -19,6 +20,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -104,6 +106,29 @@ public class FolderController {
     @PreAuthorize("hasPermission(#id, 'folder', 'READ')")
     public ResponseEntity<FolderDetailResponse> detail(@PathVariable("id") UUID id) {
         return ResponseEntity.ok(folderQueryService.loadDetail(id));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // GET /api/folders/{id}/items
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 폴더에 들어있는 자식 폴더 + 파일 합본 listing — frontend FileTable wiring (Phase B).
+     *
+     * <p>{@code sort}/{@code dir} 미지정 시 default {@code NAME asc}. 잘못된 enum 값은
+     * Spring이 {@code MethodArgumentTypeMismatchException} → 400 으로 매핑.
+     *
+     * <p>frontend는 'root' 가상 폴더에 대해 본 endpoint를 호출하지 않음 — Phase A 정책 답습
+     * (root는 frontend에서 tree로부터 합성). backend는 항상 실제 UUID만 받는다.
+     */
+    @GetMapping("/{id}/items")
+    @PreAuthorize("hasPermission(#id, 'folder', 'READ')")
+    public ResponseEntity<FolderItemsResponse> items(
+        @PathVariable("id") UUID id,
+        @RequestParam(name = "sort", required = false, defaultValue = "NAME") SortKey sort,
+        @RequestParam(name = "dir", required = false, defaultValue = "ASC") SortDir dir
+    ) {
+        return ResponseEntity.ok(folderQueryService.loadItems(id, sort, dir));
     }
 
     // ──────────────────────────────────────────────────────────────────

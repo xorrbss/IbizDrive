@@ -6,7 +6,7 @@ Last Updated: 2026-05-07
 
 ## Phase 진행 표
 
-- [ ] P1 — Backend `GET /api/folders/{id}/items`
+- [x] P1 — Backend `GET /api/folders/{id}/items` (2026-05-07)
 - [ ] P2 — Backend `GET /api/files/{id}`
 - [ ] P3 — Frontend api wrapper + queryKeys + types + MOCK 제거
 - [ ] P4 — Frontend hooks + invalidations + 낙관/pending 정책
@@ -30,29 +30,19 @@ Last Updated: 2026-05-07
 - `backend/src/test/java/com/ibizdrive/folder/FolderQueryServiceTest.java` — Mockito 6 case 답습 패턴.
 
 ### 구현 대상
-- [ ] `FolderRepository.findChildrenByParentIdAndDeletedAtIsNull(UUID parentId)` 존재 여부 확인. 없으면 추가.
-- [ ] `FileRepository.findByFolderIdAndDeletedAtIsNull(UUID folderId)` 존재 여부 확인. 없으면 추가.
-- [ ] DTO: `folder/dto/FolderItemDto`(record, 8 fields per plan), `folder/dto/FolderItemsResponse`(record `(List<FolderItemDto> items)`).
-- [ ] enum: `folder/SortKey`(`NAME`, `UPDATED_AT`, `SIZE`), `folder/SortDir`(`ASC`, `DESC`). controller에서 query string → enum 변환 시 `@RequestParam(defaultValue=)` + `valueOf` 또는 `Converter` 등록.
-- [ ] `FolderQueryService.loadItems(UUID id, SortKey sort, SortDir dir)`:
-  - `folderRepository.findById(id).filter(f -> f.getDeletedAt()==null).orElseThrow(NotFound)` — 부모 폴더 active 확인.
-  - subfolders fetch + files fetch.
-  - 매핑: each → `FolderItemDto(type='folder'|'file', ...)`.
-  - 정렬: 폴더 그룹 정렬 → 파일 그룹 정렬 → concat. `size` 정렬 시 폴더 그룹은 `name asc` fallback.
-  - return `FolderItemsResponse(combined)`.
-- [ ] **TDD**: `FolderQueryServiceItemsTest` 6 case (Mockito):
-  1. name asc — 폴더 먼저, 같은 그룹 내 가나다순.
-  2. name desc — 폴더 먼저(그룹 순서 유지), 같은 그룹 내 역순.
-  3. updatedAt desc — 폴더 먼저, 같은 그룹 내 최신순.
-  4. size desc — 폴더 그룹은 `name asc` (size null fallback), 파일 그룹은 size 큰 순.
-  5. 폴더 0 + 파일만 → 빈 폴더 그룹.
-  6. parent folder가 soft-deleted → `FolderNotFoundException`.
-- [ ] `FolderController.items(@PathVariable UUID id, @RequestParam(defaultValue="name") String sort, @RequestParam(defaultValue="asc") String dir)` — `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")`.
-- [ ] **MockMvc test** `FolderControllerItemsTest`:
-  1. 200 — name asc 정상.
-  2. 403 — READ 부재 (`@WithMockUser` + permission deny mock).
-  3. 404 — soft-deleted parent.
-  4. 400 — `sort=invalid` 또는 `dir=foo` enum 위반.
+- [x] `FolderRepository.findByParentIdAndDeletedAtIsNull` — 이미 존재(라인 36), 재사용.
+- [x] `FileRepository.findByFolderIdAndDeletedAtIsNull` — 이미 존재(라인 38), 재사용.
+- [x] DTO: `folder/dto/FolderItemDto`(record, 8 fields), `folder/dto/FolderItemsResponse`(record `(List<FolderItemDto> items)`).
+- [x] enum: `folder/SortKey`(`NAME`, `UPDATED_AT`, `SIZE`), `folder/SortDir`(`ASC`, `DESC`). `@RequestParam(defaultValue="NAME"/"ASC")` 자동 변환.
+- [x] `FolderQueryService.loadItems(UUID id, SortKey sort, SortDir dir)` — parent active 확인 → subfolders/files fetch → 그룹별 정렬 → concat. SIZE 시 폴더 그룹 `name asc` fallback.
+- [x] `FileTestFixtures.activeFile(...)` 신설 — 패키지 외부 테스트(folder pkg)에서 active FileItem 생성.
+- [x] **TDD**: `FolderQueryServiceItemsTest` 6 case (Mockito) — 모두 GREEN.
+- [x] `FolderController.items(...)` — `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` + `@RequestParam` enum default.
+- [x] **Controller test** (project pattern: 직접 호출, WebMvc slice 미사용) `FolderControllerTest.items_*` 3 case:
+  1. 200 default(name asc) — delegate 검증.
+  2. 200 explicit(size desc) — args pass-through.
+  3. 404 propagate — `FolderNotFoundException` 그대로 throw (envelope 매핑은 `GlobalExceptionHandler` 책임).
+- [~] 403 / 400 — 프로젝트 controller test 정책상 SpEL/framework 인프라 책임. `IbizDrivePermissionEvaluator` 및 Spring `MethodArgumentTypeMismatch` 측에서 커버 (P1 범위 외).
 
 ### 검증 참조
 - gate: `cd backend && ./gradlew test --tests "*FolderQueryServiceItemsTest" "*FolderControllerItemsTest" --no-daemon` GREEN.

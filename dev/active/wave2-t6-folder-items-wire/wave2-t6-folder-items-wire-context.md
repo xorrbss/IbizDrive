@@ -6,7 +6,8 @@ Last Updated: 2026-05-07
 
 ## SESSION PROGRESS
 
-- 2026-05-07 — bootstrap. plan/context/tasks 3파일 생성. design spec 별도 파일(`docs/superpowers/specs/2026-05-07-wave2-t6-folder-items-mutations-wire-design.md`, master c15a3e8)에서 4 결정점 합의 완료(스코프=Phase B 통째, API 통합 endpoint, 'root' frontend 합성, mock 일괄 제거). 다음: P1 진입 — `GET /api/folders/{id}/items` TDD.
+- 2026-05-07 — bootstrap. plan/context/tasks 3파일 생성. design spec 별도 파일(`docs/superpowers/specs/2026-05-07-wave2-t6-folder-items-mutations-wire-design.md`, master c15a3e8)에서 4 결정점 합의 완료(스코프=Phase B 통째, API 통합 endpoint, 'root' frontend 합성, mock 일괄 제거).
+- 2026-05-07 — **P1 완료**. backend `GET /api/folders/{id}/items` GREEN. 신규 4 파일 (SortKey/SortDir/FolderItemDto/FolderItemsResponse) + service `loadItems` + controller items() + tests 9 case (service 6 + controller 3) + FileTestFixtures.activeFile 추가. 기존 repo 메서드 (`findByParentIdAndDeletedAtIsNull`, `findByFolderIdAndDeletedAtIsNull`) 재사용. 풀 backend test GREEN. 다음: P2 — `GET /api/files/{id}` TDD.
 
 ## Current Execution Contract
 
@@ -19,8 +20,8 @@ Last Updated: 2026-05-07
 
 ## Active phase / task
 
-- **active phase**: P1 — Backend `GET /api/folders/{id}/items`.
-- **active task**: TDD — 먼저 `FolderQueryServiceItemsTest`(Mockito) 6 case 작성 + RED 확인. 6 case = 정렬 4(name asc/desc, updatedAt desc, size desc), 폴더 먼저 정렬 1, 빈 폴더 1.
+- **active phase**: P2 — Backend `GET /api/files/{id}` (P1은 2026-05-07 완료, commit 대기 중).
+- **active task**: P1 결과 commit → P2 진입. P2는 `FileQueryService` 신설 vs `FileMutationService`에 query 메서드 추가 결정 후 TDD.
 
 ## 다음 세션 읽기 순서
 
