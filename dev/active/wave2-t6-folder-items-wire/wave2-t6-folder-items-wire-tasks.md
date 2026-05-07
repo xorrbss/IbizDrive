@@ -10,8 +10,8 @@ Last Updated: 2026-05-07 (P3 + P4 완료)
 - [x] P2 — Backend `GET /api/files/{id}` (2026-05-07)
 - [x] P3 — Frontend api wrapper + queryKeys + types + MOCK 제거 (2026-05-07, commit `62c08a4`)
 - [x] P4 — Frontend hooks + invalidations + pending 정책 (2026-05-07)
-- [ ] P5 — Test 전환 + 회귀 fix + 풀 게이트
-- [ ] P6 — Smoke + docs sync + closure + PR
+- [x] P5 — Test 전환 + 회귀 fix + 풀 게이트 (2026-05-07, commit `6d744a5`. 게이트: BE 5m16s ✓ / FE 817 passed+11 skipped / lint clean / build ✓)
+- [ ] P6 — Smoke + docs sync + closure + PR (docs sync 완료, manual smoke + PR 대기)
 
 ---
 
