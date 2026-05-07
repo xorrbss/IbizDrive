@@ -165,6 +165,9 @@ export const qk = {
     size?: number
   }) => [...qk.adminPermissions(), 'list', filters] as const,
 
+  // ── 관리자 대시보드 (admin-dashboard 트랙) ──
+  adminDashboard: () => [...qk.all, 'admin', 'dashboard'] as const,
+
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,
   /**
