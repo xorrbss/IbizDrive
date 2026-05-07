@@ -98,4 +98,25 @@ describe('api.moveFiles', () => {
     expect(result).toEqual({ movedIds: ['file_minutes'] })
     expect(fetchMock.mock.calls.length).toBe(1)
   })
+
+  // 멀티-아이템 fanout: api.moveFiles는 items.map을 Promise.all로 묶음 (api.ts:354).
+  // 단건 case들로는 N개 fetch가 실제로 발생하는지 검증 불가 — 이 책임은 api 레이어 소관.
+  it('멀티 아이템은 Promise.all로 N개 fetch fanout', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const result = await api.moveFiles(
+      [
+        { id: 'a', type: 'file' },
+        { id: 'b', type: 'file' },
+      ],
+      'dst',
+    )
+
+    expect(result).toEqual({ movedIds: ['a', 'b'] })
+    expect(fetchMock.mock.calls.length).toBe(2)
+    // Promise.all은 호출 순서를 보장하지 않으므로 URL 집합으로 단언.
+    const urls = fetchMock.mock.calls.map((c) => c[0]).sort()
+    expect(urls).toEqual(['/api/files/a/move', '/api/files/b/move'])
+  })
 })
