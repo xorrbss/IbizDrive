@@ -51,6 +51,8 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 > - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
 > - `/admin/permissions` — 권한 매트릭스 read-only viewer (subject/resource/preset/q 필터 + 만료 배지, Wave 2 T5)
 > - `/admin/system` — 운영 cron 4종 read-only 노출 (Wave 1 T3, 변경은 application.yml + 재기동)
+> - `/admin/storage` — 시스템 합계 + 정리 기록 overview (admin-storage-overview, Wave 2 T8, 2026-05-07)
+> - `/admin/trash/all` — 전역 휴지통 viewer (q/type/ownerId 필터 + cursor pagination + 단건 복원/영구삭제, Wave 2 T9, 2026-05-07)
 >
 > 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
 
@@ -75,7 +77,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 │  ├─ /permissions         권한 변경 이력                                  (v1.x deferred)
 │  └─ /export              로그 내보내기 (CSV/JSON)                        (v1.x deferred)
 ├─ /trash
-│  ├─ /all                 전역 휴지통                                     (v1.x deferred)
+│  ├─ /all                 전역 휴지통 viewer (q/type/ownerId 필터)        (활성, Wave 2 T9, 2026-05-07)
 │  └─ /policy              휴지통 정책 설정                                (v1.x deferred)
 ├─ /legal-hold             법적 보존 관리                                  (v1.x deferred)
 ├─ /policies
@@ -290,9 +292,12 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 
 ### 8.3 전역 휴지통 뷰
 
-- [ ] 전체 사용자의 휴지통 파일 (관리자 전용) — *v1.x deferred (admin frontend 미구현)*
-- [ ] 긴급 복원 (사용자 요청 시) — *v1.x deferred (사용자 본인 복원은 구현됨, A6 closure)*
-- [ ] 즉시 영구 삭제 (승인 워크플로) — *v1.x deferred*
+- [x] 전체 사용자의 휴지통 파일 (관리자 전용) — `/admin/trash/all` (Wave 2 T9, 2026-05-07)
+  - 목록: `GET /api/admin/trash` (admin DTO: owner/originalParent/size 노출 — docs/02 §7.11)
+  - 단건 복원/영구삭제: 기존 endpoint 재사용 (`POST /api/files|folders/{id}/restore` + `DELETE /api/trash/{type}/{id}` — ADMIN ROLE이 SpEL 가드 통과)
+  - 정책 조정 UI(`/admin/trash/policy`) / bulk restore·purge / 2인 승인 / `deletedBy` 컬럼: v1.x deferred
+- [ ] 긴급 복원 (사용자 요청 시) — *v1.x deferred (사용자 본인 복원은 구현됨, A6 closure; cross-owner 관리자 복원은 Wave 2 T9 closure)*
+- [ ] 즉시 영구 삭제 (승인 워크플로) — *v1.x deferred (단건 영구 삭제는 Wave 2 T9 closure, 승인 워크플로는 v1.x)*
 
 ---
 

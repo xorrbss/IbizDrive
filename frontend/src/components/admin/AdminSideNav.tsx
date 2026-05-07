@@ -11,8 +11,9 @@ import { useMe } from '@/hooks/useMe'
  * `/admin/audit/logs` (m-audit), `/admin/users` (m-admin-entry-rewrite +
  * admin-user-mgmt + admin-user-search-update Wave 1 T1), `/admin/departments`
  * (admin-department-crud Wave 2 T4), `/admin/permissions` (Wave 2 T5 read-only
- * 권한 매트릭스), `/admin/system` (Wave 1 T3 read-only cron 노출).
- * 나머지 §2 트리 노드는 v1.x deferred —
+ * 권한 매트릭스), `/admin/system` (Wave 1 T3 read-only cron 노출),
+ * `/admin/storage` (admin-storage-overview Wave 2 T8), `/admin/trash/all`
+ * (admin-global-trash Wave 2 T9). 나머지 §2 트리 노드는 v1.x deferred —
  * `<span>` + "v1.x" 배지로 노출하되 navigable한 `<Link>`는 만들지 않는다
  * (404 회피 + 미구현 명확화).
  *
@@ -43,10 +44,10 @@ const ACTIVE_ITEMS: ReadonlyArray<{
   { label: '권한', href: '/admin/permissions', match: 'prefix', scope: 'ADMIN' },
   { label: '시스템', href: '/admin/system', match: 'prefix', scope: 'AUDITOR-OK' },
   { label: '스토리지', href: '/admin/storage', match: 'prefix', scope: 'ADMIN' },
+  { label: '휴지통', href: '/admin/trash/all', match: 'prefix', scope: 'ADMIN' },
 ]
 
 const DEFERRED_ITEMS = [
-  '휴지통',
   'Legal Hold',
   '정책',
 ]

@@ -28,3 +28,28 @@ export interface TrashPage {
   /** 다음 페이지가 있을 때만 backend가 echo. 없으면 null. */
   nextCursor: string | null
 }
+
+// Wave 2 T9 — admin global trash (spec §4.4)
+export interface AdminTrashItem {
+  id: string
+  name: string
+  type: 'file' | 'folder'
+  deletedAt: string  // ISO-8601
+  purgeAfter: string
+  ownerId: string
+  ownerEmail: string
+  originalParentId: string | null
+  originalParentName: string | null
+  sizeBytes: number | null
+}
+
+export interface AdminTrashFilters {
+  q: string
+  type: 'file' | 'folder' | null
+  ownerId: string | null
+}
+
+export interface AdminTrashPage {
+  items: AdminTrashItem[]
+  nextCursor: string | null
+}

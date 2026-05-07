@@ -14,9 +14,9 @@ import java.util.UUID;
  * <p>형식 변경 시 frontend도 함께 업데이트 — 다만 wire는 opaque이므로 구조 변경은 backend
  * 단독 결정 가능 (하지만 구버전 cursor 호환은 별도 ADR).
  */
-record TrashCursor(Instant deletedAt, UUID id) {
+public record TrashCursor(Instant deletedAt, UUID id) {
 
-    static String encode(Instant deletedAt, UUID id) {
+    public static String encode(Instant deletedAt, UUID id) {
         if (deletedAt == null || id == null) {
             return null;
         }
@@ -29,7 +29,7 @@ record TrashCursor(Instant deletedAt, UUID id) {
      * @return null when {@code wire} is null/blank — 첫 페이지로 해석. invalid 형식은
      *         {@link IllegalArgumentException} (controller에서 400 매핑).
      */
-    static TrashCursor decode(String wire) {
+    public static TrashCursor decode(String wire) {
         if (wire == null || wire.isBlank()) {
             return null;
         }

@@ -7,7 +7,13 @@ import type {
   Permission,
   PermissionListItem,
 } from '@/types/permission'
-import type { TrashItem, TrashItemType, TrashPage } from '@/types/trash'
+import type {
+  AdminTrashFilters,
+  AdminTrashPage,
+  TrashItem,
+  TrashItemType,
+  TrashPage,
+} from '@/types/trash'
 import type { FileVersionDto } from '@/types/version'
 import type { ShareCreateRequest, ShareDto, SharePage } from '@/types/share'
 import type { UserSummary } from '@/types/user'
@@ -1619,6 +1625,45 @@ export type {
   AdminStorageOrphanCleanupSummary,
   AdminStorageOverviewResponse,
 } from '@/types/admin-storage'
+
+// ───────────────────────────────────────────────────────────────────────────
+// admin-global-trash (Wave 2 T9) — `GET /api/admin/trash` (read-only).
+//
+// 신설 함수를 파일 끝에 추가해 다른 admin 트랙과의 머지 충돌 면적을 최소화한다.
+// `api` 객체에 메서드를 끼우는 대신 standalone export — admin-storage 트랙과 동형.
+// ───────────────────────────────────────────────────────────────────────────
+
+export type {
+  AdminTrashItem,
+  AdminTrashFilters,
+  AdminTrashPage,
+} from '@/types/trash'
+
+/**
+ * Wave 2 T9 — admin global trash listing.
+ *
+ * <p>빈 filter 값은 query string에서 제거. 401/403/400 envelope을 {@link buildApiError}로 throw.
+ * cursor 는 backend opaque base64 — 그대로 echo back.
+ */
+export async function adminListTrash(
+  filters: AdminTrashFilters,
+  cursor: string | null,
+): Promise<AdminTrashPage> {
+  const params = new URLSearchParams()
+  if (filters.q && filters.q.trim()) params.set('q', filters.q.trim())
+  if (filters.type) params.set('type', filters.type)
+  if (filters.ownerId) params.set('ownerId', filters.ownerId)
+  if (cursor) params.set('cursor', cursor)
+
+  const qs = params.toString()
+  const url = `/api/admin/trash${qs ? `?${qs}` : ''}`
+
+  const res = await fetch(url, { method: 'GET', credentials: 'include' })
+  if (!res.ok) {
+    throw await buildApiError(res, `adminListTrash failed: ${res.status}`)
+  }
+  return (await res.json()) as AdminTrashPage
+}
 
 /**
  * 시스템 전체 스토리지 overview — ADMIN role 전용. 401/403/200 외 에러 코드 없음 (read-only).
