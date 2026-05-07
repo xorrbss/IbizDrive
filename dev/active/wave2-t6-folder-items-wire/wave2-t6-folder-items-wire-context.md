@@ -7,7 +7,12 @@ Last Updated: 2026-05-07
 ## SESSION PROGRESS
 
 - 2026-05-07 — bootstrap. plan/context/tasks 3파일 생성. design spec 별도 파일(`docs/superpowers/specs/2026-05-07-wave2-t6-folder-items-mutations-wire-design.md`, master c15a3e8)에서 4 결정점 합의 완료(스코프=Phase B 통째, API 통합 endpoint, 'root' frontend 합성, mock 일괄 제거).
-- 2026-05-07 — **P1 완료**. backend `GET /api/folders/{id}/items` GREEN. 신규 4 파일 (SortKey/SortDir/FolderItemDto/FolderItemsResponse) + service `loadItems` + controller items() + tests 9 case (service 6 + controller 3) + FileTestFixtures.activeFile 추가. 기존 repo 메서드 (`findByParentIdAndDeletedAtIsNull`, `findByFolderIdAndDeletedAtIsNull`) 재사용. 풀 backend test GREEN. 다음: P2 — `GET /api/files/{id}` TDD.
+- 2026-05-07 — **P1 완료**. backend `GET /api/folders/{id}/items` GREEN. 신규 4 파일 (SortKey/SortDir/FolderItemDto/FolderItemsResponse) + service `loadItems` + controller items() + tests 9 case (service 6 + controller 3) + FileTestFixtures.activeFile 추가. 기존 repo 메서드 (`findByParentIdAndDeletedAtIsNull`, `findByFolderIdAndDeletedAtIsNull`) 재사용. 풀 backend test GREEN. commit `ecb84ba`.
+- 2026-05-07 — **P2 완료**. backend `GET /api/files/{id}` GREEN. 신규 `FileQueryService` (read-only, FolderQueryService 동형) + `FileController.get()` SpEL READ. tests `FileQueryServiceTest` 3 case + `FileControllerTest.get_*` 3 case. commit `b3247a0`.
+- 2026-05-07 — **P3 완료**. frontend `MOCK_TREE`/`MOCK_FILES`/in-memory tree mutation helpers 일괄 제거. `getFilesInFolder`/`getFileDetail`/`moveFiles`/`renameFile`/`createFolder` real-fetch 전환. `moveFiles` payload `{id,type}` 변경, `renameFile`에 `isFolder` 인자 추가. commit `62c08a4`.
+- 2026-05-07 — **P4 완료**. upload 201 신규/200 신버전 동시 처리 + `qk.filesListPrefix(targetFolderId)` invalidate 추가 (listing 즉시 갱신). 기존 mutation hooks(`useRenameFile`/`useMoveBulk`/`useDeleteBulk`/`useRestoreItem`)는 모두 pending-only 패턴(원칙 #3) 준수 — 변경 0건. commit `2461f40`.
+- 2026-05-07 — **P5 완료**. 회귀 fix: `MoveFolderDialog.test`/`RenameDialog.test` 시그니처 args 정렬, `api.renameFile.test`는 MOCK 의존이라 fetch 모킹 패턴 재작성 post-T6 보류(`describe.skip`). 풀 게이트: BE GREEN 5m16s + FE 817 passed/11 skipped + lint clean + compile ✓. Windows 환경에서 `.next/server/pages-manifest.json` ENOENT (worktree 깊은 경로 race) — 환경 이슈, 코드 비관련. commit `6d744a5`.
+- 2026-05-07 — **P6 완료(docs sync 부분)**. `docs/progress.md` 트랙 closure 엔트리 + `docs/01 §6.1` `qk.filesListPrefix` 추가 + `docs/02 §7.5` items endpoint 명세 행+블록 추가 + `BETA-RELEASE.md` Wave 2 T6 sources/test count 갱신. commit `d581807`. **Track 종료** — push + PR은 사용자 게이트.
 
 ## Current Execution Contract
 
@@ -20,8 +25,8 @@ Last Updated: 2026-05-07
 
 ## Active phase / task
 
-- **active phase**: P2 — Backend `GET /api/files/{id}` (P1은 2026-05-07 완료, commit 대기 중).
-- **active task**: P1 결과 commit → P2 진입. P2는 `FileQueryService` 신설 vs `FileMutationService`에 query 메서드 추가 결정 후 TDD.
+- **active phase**: P6 closure (push + PR 대기 — 사용자 게이트).
+- **active task**: 트랙 코드/docs 작업 완료. 사용자가 push 승인 시 `git push -u origin wave2-t6-folder-items-wire` + `gh pr create --base master` 실행.
 
 ## 다음 세션 읽기 순서
 
