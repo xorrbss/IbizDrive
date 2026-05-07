@@ -80,7 +80,7 @@ public interface FileVersionRepository extends JpaRepository<FileVersion, UUID> 
     Stream<UUID> streamActiveStorageKeys();
 
     // ============================================================
-    // admin-storage-overview — read-only 합계 메서드 (append-only).
+    // admin-storage-overview / admin-dashboard — read-only 합계 (append-only).
     // ============================================================
 
     /** 전체 file_versions row 수. storage 객체 수와 1:1 (orphan cleanup liveSet 크기와 동치). */
@@ -90,6 +90,7 @@ public interface FileVersionRepository extends JpaRepository<FileVersion, UUID> 
     /**
      * 전체 file_versions size_bytes 합 — 실제 disk 점유량.
      * 휴지통/active 무관 모든 row 포함 (file_versions는 trash 보존 전략으로 deleted_at 없음).
+     * admin-dashboard storage usedBytes KPI에서도 재사용.
      */
     @Query("SELECT COALESCE(SUM(v.sizeBytes), 0) FROM FileVersion v")
     long sumAllVersionSizeBytes();
