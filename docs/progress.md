@@ -5,6 +5,28 @@
 
 ---
 
+## 2026-05-07 — 🏁 t6-fetch-mock-followup-cleanup 트랙 종료 (T6 closure 갭 2건 정리: fanout 검증 추가 + Phase B skip 삭제)
+
+### 범위
+
+직전 PR #76(`t6-fetch-mock-test-restoration`, e8dc8b8) closure에서 명시한 두 갭을 단일 PR로 정리. 새 기능 0·docs 변경 0·테스트 위생만.
+
+### 변경 핵심
+
+- `frontend/src/lib/api.moveFiles.test.ts` (+1 case) — "멀티 아이템은 Promise.all로 N개 fetch fanout". `Promise.all` 호출 순서 비결정성을 고려해 URL 집합 단언(`.sort()`). `useMoveBulk.test.tsx`는 `api.moveFiles`를 통째 mock하므로 fanout은 api 레이어에서만 검증 가능 — 책임 경계 정확.
+- `frontend/src/lib/api.renameFile.test.ts` (-1 it.skip + 코멘트 2줄) — 폴더 rename + folderTree invalidate은 `useRenameFile.test.tsx:91-117`에서 hook 레이어로 이미 커버. api 함수는 캐시 무효화 책임 없음 → 보류 테스트는 misplaced였음. Phase B 재작성이 아니라 삭제가 정답.
+
+### 검증
+
+- `cd frontend && pnpm test --run` — 118 files / **887 passed | 0 skipped | 0 failed**. 직전 1 skipped → 0.
+- `pnpm typecheck` exit 0 / `pnpm lint` exit 0 / `pnpm build` exit 0.
+
+### 다음 세션 컨텍스트
+
+- T6 fetch-mock 후속 갭 모두 정리. 프론트 테스트 skipped=0 상태 유지.
+
+---
+
 ## 2026-05-07 세션 — Wave 2 T9: admin-global-trash
 
 ### 완료

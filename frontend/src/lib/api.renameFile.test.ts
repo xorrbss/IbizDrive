@@ -68,12 +68,6 @@ describe('api.renameFile', () => {
     })
   })
 
-  // Phase B(real-fetch tree refetch + cache invalidation 통합) 의존, 본 트랙 외.
-  // TODO(Phase B): backend `PATCH /api/folders/{id}` 응답 + tree 재조회 mock으로 재작성.
-  it.skip('폴더 이름 변경 시 tree에도 반영 (Phase B 재작성 대기)', async () => {
-    // Phase B에서 활성화
-  })
-
   it('중복 이름 → RENAME_CONFLICT (409)', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({ error: { code: 'RENAME_CONFLICT', message: '중복' } }, 409),
