@@ -66,7 +66,9 @@ export function useUpload() {
 
       xhr.onload = () => {
         xhrMap.current.delete(task.id)
-        if (xhr.status === 200) {
+        // backend FileUploadController: 신규 파일 → 201 Created, 기존 파일에 새 version → 200 OK.
+        // 둘 다 성공 — done + listing invalidate (sort/dir 변종 일괄 — qk.files() 'list' prefix).
+        if (xhr.status === 200 || xhr.status === 201) {
           updateTask(task.id, { status: 'done', progress: 1 })
           queryClient.invalidateQueries({
             queryKey: [...qk.files(), 'list', task.targetFolderId],

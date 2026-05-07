@@ -1,5 +1,5 @@
 ---
-Last Updated: 2026-05-07
+Last Updated: 2026-05-07 (P3 + P4 완료)
 ---
 
 # Tasks — wave2-t6-folder-items-wire (Wave 2 — T6)
@@ -8,8 +8,8 @@ Last Updated: 2026-05-07
 
 - [x] P1 — Backend `GET /api/folders/{id}/items` (2026-05-07)
 - [x] P2 — Backend `GET /api/files/{id}` (2026-05-07)
-- [ ] P3 — Frontend api wrapper + queryKeys + types + MOCK 제거
-- [ ] P4 — Frontend hooks + invalidations + 낙관/pending 정책
+- [x] P3 — Frontend api wrapper + queryKeys + types + MOCK 제거 (2026-05-07, commit `62c08a4`)
+- [x] P4 — Frontend hooks + invalidations + pending 정책 (2026-05-07)
 - [ ] P5 — Test 전환 + 회귀 fix + 풀 게이트
 - [ ] P6 — Smoke + docs sync + closure + PR
 
@@ -185,8 +185,25 @@ Last Updated: 2026-05-07
 ### 문서 반영
 - P6 일괄.
 
+### 실제 수행 결과 (2026-05-07)
+
+P3 완료 시점에 모든 mutation hook이 이미 새 api 시그니처와 정합:
+- useRenameFile — `mutationFn`에 `isFolder` 전달 (P3에서 갱신).
+- useMoveBulk — `Vars.items: {id,type}[]` 패턴 (P3에서 갱신).
+- useDeleteBulk — file/folder 분기 (기존 real-wired).
+- useRestoreItem — file/folder 분기 (기존 real-wired).
+
+invalidation 측면:
+- `qk.filesListPrefix(folderId)` + `invalidations.afterFilesMoved/afterRename/afterDelete/afterRestore`가 plan의 5 helper와 동등한 무효화 매트릭스를 이미 제공. CLAUDE.md INVARIANT #3(기존 구조 우선), #4(구조 무결성) 따라 별도 invalidations.ts 신설 회피 — KISS.
+
+**결정적 사용자 가시 버그 fix**: `useUpload.ts` xhr.onload 분기가 status 200만 success로 처리 → 신규 파일 업로드(backend 201 Created)는 'failed'로 폴백되어 listing에 표시 안 되던 근본 원인. 200||201 모두 done+invalidate로 수정.
+
+낙관 rename은 plan 명시 사항이지만, 기존 hook이 pending+invalidate로 안정성 우선 정책을 이미 채택하고 있어 KISS 우선 — P5/P6 smoke 결과에 따라 재검토.
+
+useCreateFolder hook은 UI 진입점이 아직 없어 YAGNI — api wrapper만 정비, hook은 호출부 도착 시 추가.
+
 ### Commit
-- [ ] `feat(folder-items-wire): hooks + invalidations + 낙관/pending 정책 (P4)`
+- [x] `fix(folder-items-wire): upload 201 응답 처리 + listing invalidate (P4)`
 
 ---
 
