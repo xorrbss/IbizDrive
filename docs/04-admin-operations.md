@@ -29,8 +29,8 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 2. 관리자 페이지 구조
 
-> **활성 라우트** (Wave 2 T5 closure, 2026-05-07):
-> - `/admin` — landing (가용 카드 5 + deferred 안내)
+> **활성 라우트** (admin-dashboard 트랙 closure, 2026-05-07):
+> - `/admin` — KPI 대시보드 (admin-dashboard 트랙 closure, 2026-05-07)
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
 > - `/admin/users` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 (Wave 1 T1 closure)
 > - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
@@ -40,8 +40,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 > 그 외 노드는 모두 **v1.x deferred**. 사이드바에는 disabled 항목으로 노출하되 라우트는 만들지 않음(YAGNI).
 
 ```text
-/admin                       (활성 — landing)
-├─ /dashboard              운영 현황 요약                                 (v1.x deferred)
+/admin                       (활성 — KPI 대시보드, admin-dashboard 트랙 2026-05-07)
 ├─ /users                  사용자 초대 + 목록 (검색/편집/활성 토글)         (활성, 2026-05-06)
 │  ├─ /:id                 사용자 상세 + 활동                              (v1.x deferred)
 │  └─ /import              CSV 일괄 import                                (v1.x deferred)
@@ -78,19 +77,22 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 3. 대시보드 (핵심 지표)
 
-> **v1.x deferred (전체)**. metrics 인프라 + admin frontend `/admin/dashboard` 미구현. MVP는 `application logs` + `audit_log` 직접 조회로 대체.
+> **MVP closure (admin-dashboard 트랙, 2026-05-07)**. 단일 endpoint `GET /api/admin/dashboard/summary`(`@PreAuthorize hasRole('ADMIN')`)가 8개 KPI를 envelope `{ summary: {...} }`로 반환. 프론트 `/admin` 페이지가 KPI 그리드를 렌더한다. 메트릭스 인프라는 도입하지 않음 — 기존 repository count + audit_log 24h native COUNT로 충분.
 
-### 3.1 실시간 지표
+### 3.1 KPI (현재)
 
-- [ ] 활성 사용자 수 — *v1.x deferred*
-- [ ] 총 저장 용량 / 한도 — *v1.x deferred (quota 시스템 미구현)*
-- [ ] 오늘 업로드/다운로드 수 — *v1.x deferred*
-- [ ] 오늘 감사 이벤트 수 — *v1.x deferred (audit_log 직접 쿼리로 대체)*
+- [x] 등록 사용자 / 활성 사용자 — `users.total` / `users.active` (`User.deletedAt IS NULL`, `+ isActive=TRUE`)
+- [x] 부서(전체/활성) — `departments.total` / `departments.active` (Department는 `is_active` 컬럼 부재 — 둘 다 `deletedAt IS NULL`)
+- [x] 활성 폴더 수 — `folders.active` (`Folder.deletedAt IS NULL`)
+- [x] 활성 / 휴지통 파일 수 — `files.active` / `files.trashed` (`File.deletedAt IS NULL` vs `IS NOT NULL`)
+- [x] 24시간 감사 이벤트 수 — `audit.last24h` (`audit_log` JdbcTemplate `COUNT(*) WHERE occurred_at >= now()-24h`, `Clock` 주입)
+- [x] 스토리지 사용량 — `storage.usedBytes` (`SUM(file_versions.size_bytes)` 모든 버전 누적, current/older 미구분)
+
+### 3.2 v1.x deferred (실시간 지표/알림)
+
+- [ ] 오늘 업로드/다운로드 수 — *v1.x deferred (별도 카운터 미구현)*
 - [ ] 대기 중인 바이러스 스캔 수 — *v1.x deferred (AV 미도입)*
-
-### 3.2 알림
-
-- [ ] 쿼터 80% 초과 사용자 — *v1.x deferred*
+- [ ] 쿼터 80% 초과 사용자 — *v1.x deferred (quota 시스템 미구현)*
 - [ ] 바이러스 감지 — *v1.x deferred*
 - [ ] 비정상 다운로드 패턴 (한 사용자가 1시간 내 1000건+) — *v1.x deferred*
 - [ ] 권한 변경 대량 발생 — *v1.x deferred*
