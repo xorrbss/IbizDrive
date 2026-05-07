@@ -4,8 +4,10 @@ import { api } from '@/lib/api'
 import { invalidations } from '@/lib/queryKeys'
 import { useSelectionStore } from '@/stores/selection'
 
+type MoveItem = { id: string; type: 'file' | 'folder' }
+
 type Vars = {
-  ids: string[]
+  items: MoveItem[]
   sourceFolderId: string
   targetFolderId: string
 }
@@ -31,11 +33,11 @@ export function useMoveBulk(options: Options = {}) {
   const clear = useSelectionStore((s) => s.clear)
 
   return useMutation({
-    mutationFn: ({ ids, targetFolderId }: Vars) =>
-      api.moveFiles(ids, targetFolderId),
+    mutationFn: ({ items, targetFolderId }: Vars) =>
+      api.moveFiles(items, targetFolderId),
 
-    onMutate: ({ ids }: Vars) => {
-      markPending(ids)
+    onMutate: ({ items }: Vars) => {
+      markPending(items.map((i) => i.id))
     },
 
     onSuccess: async (_data, vars: Vars) => {
@@ -43,15 +45,15 @@ export function useMoveBulk(options: Options = {}) {
       await invalidations.afterFilesMoved(qc, {
         sourceFolderId: vars.sourceFolderId,
         targetFolderId: vars.targetFolderId,
-        ids: vars.ids,
+        ids: vars.items.map((i) => i.id),
       })
-      unmarkPending(vars.ids)
+      unmarkPending(vars.items.map((i) => i.id))
       clear()
       options.onSuccess?.(vars)
     },
 
     onError: (err, vars: Vars) => {
-      unmarkPending(vars.ids)
+      unmarkPending(vars.items.map((i) => i.id))
       options.onError?.(err, vars)
     },
   })

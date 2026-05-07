@@ -40,7 +40,7 @@ export function useRenameFile(options: Options = {}) {
   const setError = useRenameUiStore((s) => s.setError)
 
   return useMutation({
-    mutationFn: ({ id, newName }: Vars) => api.renameFile(id, newName),
+    mutationFn: ({ id, newName, isFolder }: Vars) => api.renameFile(id, newName, isFolder),
 
     onMutate: ({ id }: Vars) => {
       markPending([id])

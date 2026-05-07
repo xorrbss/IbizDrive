@@ -1,11 +1,14 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
+import { useQueryClient } from '@tanstack/react-query'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useFolderTree } from '@/hooks/useFolderTree'
 import { useMoveBulk } from '@/hooks/useMoveBulk'
+import { qk } from '@/lib/queryKeys'
 import { isSelfOrDescendantOfAny } from '@/lib/folderTreeUtils'
 import type { FolderNode } from '@/types/folder'
+import type { FileItem } from '@/types/file'
 
 export function MoveFolderDialog() {
   const isOpen = useMoveUiStore((s) => s.isMoveDialogOpen)
@@ -16,9 +19,12 @@ export function MoveFolderDialog() {
   const moveBulk = useMoveBulk({
     // hook-level 콜백 — 다이얼로그가 mount된 동안 호출되어야 sonner 토스트가 보장됨.
     // 따라서 close()는 mutate options.onSettled에 두어 mutation 완료 후로 미룸.
-    onSuccess: (vars) => toast.success(`${vars.ids.length}개 항목을 이동했습니다`),
+    onSuccess: (vars) => toast.success(`${vars.items.length}개 항목을 이동했습니다`),
     onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
   })
+  // backend file/folder 분기 — 캐시에서 type을 조회 (handleDelete와 동일 패턴).
+  // sort/dir 무관하게 sourceFolderId 캐시 prefix를 스캔 — sortParams hook 의존 회피.
+  const qc = useQueryClient()
   const [selectedTargetId, setSelectedTargetId] = useState<string | null>(null)
   const dialogRef = useRef<HTMLDivElement>(null)
 
@@ -39,7 +45,15 @@ export function MoveFolderDialog() {
   const handleConfirm = () => {
     if (!selectedTargetId || !sourceFolderId) return
     if (selectedTargetId === sourceFolderId) return
-    moveBulk.mutate({ ids, sourceFolderId, targetFolderId: selectedTargetId })
+    // sourceFolderId 폴더의 캐시 entries (sort/dir 모든 조합)에서 첫 hit 찾음 — sort 컨텍스트 무관.
+    const cached = qc
+      .getQueriesData<FileItem[]>({ queryKey: qk.filesListPrefix(sourceFolderId) })
+      .flatMap(([, data]) => data ?? [])
+    const items = ids.map((id) => {
+      const found = cached.find((it) => it.id === id)
+      return { id, type: (found?.type ?? 'file') as 'file' | 'folder' }
+    })
+    moveBulk.mutate({ items, sourceFolderId, targetFolderId: selectedTargetId })
     // close() 즉시 호출 — 다이얼로그가 ClientFilesPage에서 항상 mount되어 있고
     // 단지 isOpen 분기로 null/JSX만 바꾸므로 useMoveBulk hook은 살아있다.
     // 따라서 hook-level onSuccess/onError 콜백은 mutation 완료 시 정상 실행됨.

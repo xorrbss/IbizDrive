@@ -22,7 +22,7 @@ import { parseFolderDroppableId, type MoveDragData } from './types'
 export function DndProvider({ children }: { children: React.ReactNode }) {
   const [activeData, setActiveData] = useState<MoveDragData | null>(null)
   const moveBulk = useMoveBulk({
-    onSuccess: (vars) => toast.success(`${vars.ids.length}개 항목을 이동했습니다`),
+    onSuccess: (vars) => toast.success(`${vars.items.length}개 항목을 이동했습니다`),
     onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
   })
 
@@ -52,8 +52,15 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
     // 자기/후손 — useFolderDroppable의 disabled가 1차로 막음. 방어적 재검증.
     if (data.containsFolderIds.includes(targetFolderId)) return
 
+    // backend는 file/folder 분기 endpoint이므로 useMoveBulk에 type 정보를 함께 전달.
+    // MoveDragData.containsFolderIds는 ids 중 폴더인 것의 부분집합 — 나머지는 file로 결정.
+    const folderSet = new Set(data.containsFolderIds)
+    const items = data.ids.map((id) => ({
+      id,
+      type: (folderSet.has(id) ? 'folder' : 'file') as 'file' | 'folder',
+    }))
     moveBulk.mutate({
-      ids: data.ids,
+      items,
       sourceFolderId: data.sourceFolderId,
       targetFolderId,
     })

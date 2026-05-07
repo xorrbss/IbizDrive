@@ -39,7 +39,10 @@ describe('useMoveBulk', () => {
 
     act(() => {
       result.current.mutate({
-        ids: ['a', 'b'],
+        items: [
+          { id: 'a', type: 'file' },
+          { id: 'b', type: 'file' },
+        ],
         sourceFolderId: 'src',
         targetFolderId: 'dst',
       })
@@ -61,7 +64,10 @@ describe('useMoveBulk', () => {
 
     act(() => {
       result.current.mutate({
-        ids: ['a', 'b'],
+        items: [
+          { id: 'a', type: 'file' },
+          { id: 'b', type: 'file' },
+        ],
         sourceFolderId: 'src',
         targetFolderId: 'dst',
       })
@@ -86,7 +92,10 @@ describe('useMoveBulk', () => {
 
     act(() => {
       result.current.mutate({
-        ids: ['a', 'b'],
+        items: [
+          { id: 'a', type: 'file' },
+          { id: 'b', type: 'file' },
+        ],
         sourceFolderId: 'src',
         targetFolderId: 'dst',
       })
