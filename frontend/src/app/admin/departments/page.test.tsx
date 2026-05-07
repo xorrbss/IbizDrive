@@ -48,6 +48,24 @@ let depQueryState: {
 const updateMutateAsyncMock = vi.fn()
 const updateIsPendingRef = { current: false }
 
+// AdminGuard 격리 — wave1.5-auditor-admin-ui-access로 페이지가 default
+// `<AdminGuard>` 안쪽에 들어갔으므로 children이 렌더되도록 ADMIN role mock.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), back: vi.fn() }),
+}))
+vi.mock('@/hooks/useMe', () => ({
+  useMe: () => ({
+    data: {
+      user: { id: 'u1', email: 'a@b.com', name: 'A', kind: 'human', mustChangePassword: false },
+      departments: [],
+      roles: ['ADMIN'],
+      effectivePermissionsCacheKey: 'k',
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}))
+
 import AdminDepartmentsPage from './page'
 
 const wrap = (node: React.ReactNode) => {

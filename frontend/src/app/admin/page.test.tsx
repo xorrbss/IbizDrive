@@ -20,6 +20,25 @@ vi.mock('@/hooks/useAdminDashboardSummary', () => ({
   useAdminDashboardSummary: () => dashboardState,
 }))
 
+// AdminGuard 의존성 mock — /admin 페이지가 default `<AdminGuard>`로 감싸이게
+// 변경되었으므로 (wave1.5-auditor-admin-ui-access) useMe + next/navigation을
+// 격리. ADMIN role을 줘야 children이 렌더된다.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), back: vi.fn() }),
+}))
+vi.mock('@/hooks/useMe', () => ({
+  useMe: () => ({
+    data: {
+      user: { id: 'u1', email: 'a@b.com', name: 'A', kind: 'human', mustChangePassword: false },
+      departments: [],
+      roles: ['ADMIN'],
+      effectivePermissionsCacheKey: 'k',
+    },
+    isLoading: false,
+    isError: false,
+  }),
+}))
+
 import AdminDashboardPage from './page'
 
 const wrap = (node: React.ReactNode) => {

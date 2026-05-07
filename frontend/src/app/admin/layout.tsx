@@ -4,10 +4,13 @@ import { AdminGuard } from '@/components/auth/AdminGuard'
 import { AdminSideNav } from '@/components/admin/AdminSideNav'
 
 /**
- * 관리자 영역 레이아웃 (m-admin-entry-rewrite, docs/04 §1 §2).
+ * 관리자 영역 레이아웃 (m-admin-entry-rewrite, docs/04 §1 §2;
+ * wave1.5-auditor-admin-ui-access — AUDITOR 진입 허용).
  *
  * <p>가드 중첩: `<AuthGuard>` (비로그인 → /login) 안쪽에 `<AdminGuard>`
- * (비-ADMIN → /files). 두 가드의 책임은 분리되어야 한다 — AuthGuard는 인증
+ * (`allowedRoles=['ADMIN','AUDITOR']`). layout은 read-only 영역 진입을 허용
+ * 하고, ADMIN-only mutation 페이지는 페이지 단에서 default `<AdminGuard>`로
+ * 다시 감싸 좁힌다. 두 가드의 책임은 분리되어야 한다 — AuthGuard는 인증
  * 보유 여부를, AdminGuard는 role을 검사. 보안의 진실은 백엔드 `@PreAuthorize`.
  *
  * <p>레이아웃은 header / (사이드 nav | main) 2열. header는 진입 anchor만
@@ -16,7 +19,7 @@ import { AdminSideNav } from '@/components/admin/AdminSideNav'
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   return (
     <AuthGuard>
-      <AdminGuard>
+      <AdminGuard allowedRoles={['ADMIN', 'AUDITOR']}>
         <div className="flex flex-col h-screen w-screen bg-bg text-fg overflow-hidden">
           <header
             aria-label="관리자 헤더"

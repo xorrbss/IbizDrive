@@ -4,6 +4,7 @@ import { useAdminInviteUser } from '@/hooks/useAdminInviteUser'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { useAdminUpdateUser } from '@/hooks/useAdminUpdateUser'
 import { useDebounce } from '@/hooks/useDebounce'
+import { AdminGuard } from '@/components/auth/AdminGuard'
 import type { AdminUserSummary } from '@/lib/api'
 
 type Role = 'MEMBER' | 'AUDITOR' | 'ADMIN'
@@ -23,13 +24,19 @@ type Role = 'MEMBER' | 'AUDITOR' | 'ADMIN'
  * (이중 검증 회피 + UX 단순화). 클릭 시 403 SELF_PROTECTION이면 인라인 에러로 안내.
  *
  * <p>임시 PW는 invite 응답/list 응답 어디에도 부재 (docs/03 §2.8).
+ *
+ * <p>가드: layout이 ADMIN+AUDITOR 통과(read-only 영역 진입)이므로 본 ADMIN-only
+ * mutation 페이지는 default `<AdminGuard>`로 다시 좁힌다 — AUDITOR가 직접 URL
+ * 진입 시 /files redirect (wave1.5-auditor-admin-ui-access).
  */
 export default function AdminUsersPage() {
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-10">
-      <InviteSection />
-      <ListSection />
-    </div>
+    <AdminGuard>
+      <div className="flex-1 overflow-auto p-6 space-y-10">
+        <InviteSection />
+        <ListSection />
+      </div>
+    </AdminGuard>
   )
 }
 

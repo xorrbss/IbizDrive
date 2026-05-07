@@ -10,6 +10,7 @@ import {
   type AdminResourceType,
   type AdminSubjectType,
 } from '@/types/permission'
+import { AdminGuard } from '@/components/auth/AdminGuard'
 
 /**
  * /admin/permissions — 관리자 권한 매트릭스 (admin-permission-matrix, Wave 2 T5, docs/04 §9).
@@ -24,19 +25,24 @@ import {
  *   <li>Table — id, subjectType+subjectName, resourceType+resourceName, preset, grantedByName, grantedAt, expiresAt+isExpired.</li>
  *   <li>Pagination — prev/next + "page X / Y".</li>
  * </ol>
+ *
+ * <p>가드: read-only viewer지만 권한 도메인 자체가 ADMIN 운영 영역이므로 ADMIN-only.
+ * default `<AdminGuard>`로 좁힌다 (wave1.5-auditor-admin-ui-access).
  */
 export default function AdminPermissionsPage() {
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-6">
-      <header>
-        <h1 className="text-lg font-semibold">권한 매트릭스</h1>
-        <p className="text-[12px] text-fg-2 mt-1">
-          폴더/파일 권한 grant 전체 목록을 검색·조회합니다. 만료된 grant 도 표시되며 빨간 배지로
-          구분됩니다 (cron 정리 전 가시화).
-        </p>
-      </header>
-      <PermissionsView />
-    </div>
+    <AdminGuard>
+      <div className="flex-1 overflow-auto p-6 space-y-6">
+        <header>
+          <h1 className="text-lg font-semibold">권한 매트릭스</h1>
+          <p className="text-[12px] text-fg-2 mt-1">
+            폴더/파일 권한 grant 전체 목록을 검색·조회합니다. 만료된 grant 도 표시되며 빨간 배지로
+            구분됩니다 (cron 정리 전 가시화).
+          </p>
+        </header>
+        <PermissionsView />
+      </div>
+    </AdminGuard>
   )
 }
 
