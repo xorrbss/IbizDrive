@@ -434,8 +434,11 @@ export const qk = {
   folderPath: (id: string) => [...qk.folders(), 'path', id] as const,  // breadcrumb용
 
   files: () => [...qk.all, 'files'] as const,
+  /** sort/dir 포함 정확한 단일 키 — direct cache read/write 시 사용. */
   filesInFolder: (folderId: string, sort: SortKey, dir: 'asc' | 'desc') =>
     [...qk.files(), 'list', folderId, sort, dir] as const,
+  /** sort/dir 변종 일괄 무효화용 prefix 키 (Wave 2 T6 — 서버가 진실 원칙). */
+  filesListPrefix: (folderId: string) => [...qk.files(), 'list', folderId] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
   versions: (fileId: string) => [...qk.files(), 'versions', fileId] as const,
   activity: (fileId: string) => [...qk.files(), 'activity', fileId] as const,

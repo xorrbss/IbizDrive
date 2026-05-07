@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-05-07 — 🏁 wave2-t6-folder-items-wire 트랙 종료 (Wave 2 T6 — explorer mock 제거 + listing/detail/mutation real wire)
+
+### 범위
+
+탐색기 화면이 mock 데이터를 끊고 backend로 완전 연결되었다. P1~P2에서 backend 2개 read endpoint(`GET /api/folders/{id}/items`, `GET /api/files/{id}`) 추가, P3에서 frontend의 `MOCK_TREE`/`MOCK_FILES`와 in-memory tree mutation helper(`detachFromTree`, `relocateInTree` 등)를 일괄 제거, P4에서 hooks/invalidations와 upload 파이프라인을 real-fetch로 정렬. 파일 업로드 후 listing 미반영 회귀(서버 201 응답 처리 누락)도 함께 수정.
+
+### 변경 핵심
+
+**Backend (P1~P2):**
+- `FolderController.items(UUID id, SortKey sort, SortDir dir)` + `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` — `GET /api/folders/{id}/items` (folder/file 묶음 응답).
+- `FolderQueryService.loadItems(...)` — parent active 검증 → subfolders/files fetch → 그룹별 정렬 후 concat. SIZE 정렬 시 폴더 그룹은 `name asc` fallback (folder size 무의미).
+- `SortKey`/`SortDir` enum + `@RequestParam` 자동 변환. DTO `FolderItemDto`(8 fields) + `FolderItemsResponse`.
+- `FileController.detail(UUID id)` + `@PreAuthorize("hasPermission(#id, 'file', 'READ')")` — `GET /api/files/{id}`.
+- `FileQueryService.loadDetail(id)` — soft-delete 제외 필터.
+- TDD: `FolderQueryServiceItemsTest` 6 case + `FolderControllerItemsTest` 3 case + `FileQueryServiceTest` 3 case + `FileControllerDetailTest` 3 case.
+
+**Frontend (P3~P4):**
+- `lib/api.ts` — `MOCK_TREE`/`MOCK_FILES`/`detachFromTree`/`relocateInTree`/`findNode`/`containsNode`/`normalizedNameForDedup` 일괄 제거(약 130 LOC). `getFilesInFolder`, `getFileDetail`, `moveItem`, `moveFiles`(Promise.all fanout), `renameFile`, `createFolder`를 real-fetch로 전환.
+- `renameFile(id, newName, isFolder=false)` 시그니처에 `isFolder` 추가 — backend dispatch(`/api/files/{id}` PATCH vs `/api/folders/{id}` PATCH)에 사용.
+- `moveFiles(items: Array<{id, type}>, targetFolderId)` — id-only에서 `{id, type}` discriminated payload로 변경. 호출부(MoveFolderDialog, DnD)에서 캐시 룩업 또는 drag data로 type 결정.
+- `useMoveBulk` Vars: `{ items, sourceFolderId, targetFolderId }` — 동일 패턴 (id-only → items).
+- `useUpload`: backend `FileUploadController`가 신규=201 / 신버전=200 — 기존 `xhr.status === 200`만 done 처리하던 분기 → `200 || 201` 동시 처리. 성공 시 `qk.filesListPrefix(targetFolderId)` invalidate로 listing 즉시 갱신.
+
+**Docs:**
+- docs/02 §7.5 — `GET /api/folders/{id}/items` 행 + 응답/정렬/SoftDel 명세 블록 추가.
+- docs/01 §6.1 — `qk.filesListPrefix(folderId)` 추가 (sort/dir 변종 일괄 invalidate용 prefix).
+
+### 검증
+
+- backend: `./gradlew test --no-daemon` BUILD SUCCESSFUL in 5m 16s ✓.
+- frontend: `pnpm test --run` 817 passed / 11 skipped(105 files), `pnpm lint` exit 0, `pnpm build` exit 0 (`/files/[...parts]` 25.4 kB / First Load 171 kB).
+- skipped 11: `api.renameFile.test.ts` / `api.moveFiles.test.ts`는 P3에서 MOCK 의존이 끊겨 fetch 모킹 패턴 재작성을 post-T6로 보류(`describe.skip`).
+
+### 핵심 결정 (KISS)
+
+- `qk.folderItems(folderId, sort, dir)` 신설 대신 기존 `qk.filesInFolder` 재사용 — `/items` 응답이 file/folder 합쳐진 형태이지만 캐시 keyspace 분리 효용보다 invalidations 엔트리 일관성이 큼. 호출부는 type discriminator로 분기.
+- backend 단일 endpoint(`/items`) → frontend bulk 작업은 `Promise.all` fanout 패턴 — 트랜잭션 경계는 단일 항목 단위 유지(부분 실패 visibility).
+- 'root' 가상 노드는 frontend-only (UUID 변환 안 됨) — 업로드/listing은 root 시 special-case 처리.
+
+### 다음 세션 컨텍스트
+
+- P5 게이트에서 `api.renameFile.test.ts` / `api.moveFiles.test.ts`를 fetch-mock 패턴(`vi.stubGlobal('fetch', ...)`)으로 전환 필요 — 별도 후속 트랙.
+- Manual smoke 7 시나리오는 PR 머지 전 사용자 점검 필요(자동화 환경 외).
+- `qk.fileVersions`/`fileActivity` 등 RightPanel 키와 docs/01 §6.1의 wording 차이가 일부 남음 — 다른 트랙과의 통합 sync는 별도.
+
+---
+
 ## 2026-05-07 — 🏁 admin-permission-matrix 트랙 종료 (Wave 2 T5 — 권한 매트릭스 read-only viewer)
 
 ### 범위
