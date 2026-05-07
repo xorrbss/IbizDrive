@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-05-07 — 🏁 admin-dashboard 트랙 종료 (운영 KPI 대시보드 — `/admin` 활성화)
+
+### 범위
+
+`/admin` 진입점을 v1.x deferred landing(가용 카드 2 + 안내 박스)에서 8개 KPI 그리드로 교체. backend `GET /api/admin/dashboard/summary` 단일 endpoint가 `@PreAuthorize hasRole('ADMIN')`로 envelope `{ summary: {...} }` 반환 — 등록·활성 사용자, 부서(전체/활성), 활성 폴더, 활성·휴지통 파일, 24h 감사 이벤트, 스토리지 사용량(SUM(file_versions.size_bytes)).
+
+### 변경 핵심
+
+**Backend (P1):**
+- `AdminDashboardController` GET `/api/admin/dashboard/summary` + `@PreAuthorize("hasRole('ADMIN')")`.
+- `AdminDashboardService` 6 derived count + 1 JPQL SUM + 1 JdbcTemplate native (audit_log COUNT 24h, `Clock` 주입으로 결정성 확보).
+- `AdminDashboardSummaryResponse` nested record envelope.
+- repository 확장(append-only): `User.countByDeletedAtIsNull/+IsActiveTrue`, `Department.countByDeletedAtIsNull`, `Folder.countByDeletedAtIsNull`, `File.countByDeletedAtIsNull/+IsNotNull`, `FileVersion.sumAllSizeBytes()`.
+- audit emit 없음 (read-only). DB 스키마 변경 없음.
+
+**Frontend (P2~P3):**
+- `types/admin.ts` (`AdminDashboardSummary` + Response envelope, backend record 1:1 mirror).
+- `lib/api.ts`: `api.adminGetDashboardSummary()` (read-only, no CSRF).
+- `lib/queryKeys.ts`: `qk.adminDashboard()`.
+- `lib/formatBytes.ts`: 1024 진법 B/KB/MB/GB/TB.
+- `hooks/useAdminDashboardSummary.ts` (envelope unwrap, retry false, staleTime 0).
+- `components/admin/DashboardKpiCard.tsx` (label + value + sub) + `DashboardSummary.tsx` (8 KPI 그리드 + 단일 로딩/에러).
+- `app/admin/page.tsx` 전면 재작성 (deferred landing → KPI 그리드).
+- `components/admin/AdminSideNav.tsx`: '대시보드'를 ACTIVE_ITEMS로 이동(`/admin` exact), DEFERRED_ITEMS에서 제거.
+
+### 검증
+
+- `cd backend && ./gradlew test` — BUILD SUCCESSFUL (4m 46s, 신규 ServiceTest 5 + ControllerTest 3 + sumAllSizeBytes 2 = 10건).
+- `cd frontend && pnpm vitest run` — 105 files / 820 passed (2 skipped) — 신규 api 3 + hook 2 + formatBytes 7 + page 5 + sidenav 3 = 20건.
+- `pnpm typecheck` exit 0.
+
+### 다음 세션 컨텍스트
+
+- KPI 8개 모두 단일 응답 — 카드별 fetch 분산 안 함(KISS). 추가 KPI는 동일 envelope 확장.
+- audit_log 24h count는 JdbcTemplate 직접 — JPA 엔티티 미도입(기존 `AuditQueryService` 패턴 답습).
+- Department의 total/active 동치는 `is_active` 컬럼 부재 결과(envelope 일관성을 위해 두 필드 동일 값).
+- v1.x 후속: 오늘 업로드/다운로드 수, 쿼터 알림, 비정상 패턴 감지(docs/04 §3.2).
+
+### 블로커
+
+- 없음. 본 트랙 P4 closure 완료.
+
+---
+
 ## 2026-05-07 — 🏁 wave2-t6-folder-items-wire 트랙 종료 (Wave 2 T6 — explorer mock 제거 + listing/detail/mutation real wire)
 
 ### 범위
