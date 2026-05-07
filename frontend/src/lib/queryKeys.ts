@@ -1,6 +1,7 @@
 import type { QueryClient } from '@tanstack/react-query'
 import type { SortKey } from '@/types/file'
 import type { AuditLogFilters } from '@/types/audit'
+import type { AdminTrashFilters } from '@/types/trash'
 
 /**
  * TanStack Query 캐시 키 팩토리. (docs/01 §6.1)
@@ -164,6 +165,23 @@ export const qk = {
     page?: number
     size?: number
   }) => [...qk.adminPermissions(), 'list', filters] as const,
+
+  // ── 관리자 글로벌 휴지통 (admin-global-trash, Wave 2 T9, docs/02 §7.x) ──
+  adminTrash: () => [...qk.all, 'admin', 'trash'] as const,
+  /**
+   * cursor-paginated admin trash list — q/type/ownerId + cursor까지 포함 정확한 단일 키.
+   * mutation(restore/purge) 후 prefix 매칭으로 모든 변종 일괄 무효화
+   * ({@link invalidations.afterAdminTrashChanged}). cursor=null은 첫 페이지.
+   */
+  adminTrashList: (filters: AdminTrashFilters, cursor: string | null) =>
+    [
+      ...qk.adminTrash(),
+      'list',
+      filters.q ?? '',
+      filters.type ?? null,
+      filters.ownerId ?? null,
+      cursor ?? null,
+    ] as const,
 
   // ── 관리자 대시보드 (admin-dashboard 트랙) ──
   adminDashboard: () => [...qk.all, 'admin', 'dashboard'] as const,
@@ -337,5 +355,17 @@ export const invalidations = {
    */
   afterAdminDepartmentChanged(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.adminDepartments() })
+  },
+
+  /**
+   * 관리자 글로벌 휴지통 mutation 후 무효화 (admin-global-trash, Wave 2 T9).
+   *
+   * <p>adminTrash() prefix 단일 — 모든 q/type/ownerId/cursor 변종 일괄 갱신.
+   * 일반 사용자 trash keyspace({@code qk.trash()})는 별도 — admin restore/purge가
+   * 다른 사용자의 trash에 영향을 주므로 동일 prefix로 묶지 않음 (cross-user impact는
+   * 사용자별 useQuery refetchOnWindowFocus + staleTime로 충분).
+   */
+  afterAdminTrashChanged(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.adminTrash() })
   },
 } as const
