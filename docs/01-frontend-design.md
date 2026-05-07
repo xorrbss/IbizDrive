@@ -462,7 +462,7 @@ export const qk = {
 |---|---|---|
 | **파일 업로드 성공** | `filesInFolder(target)` prepend | `folderTree()` |
 | **파일 이름 변경** | `fileDetail(id)`, 리스트 내 아이템 | - |
-| **폴더 생성** | `folderTree()` 노드 추가 | - |
+| **폴더 생성** | ❌ (단순화 — KISS) | 완료 후: `filesListPrefix(parentId)`, `folderTree()`, `folder(parentId)` (helper: `invalidations.afterFolderCreated`) |
 | **파일 이동** | ❌ (파괴적) | 완료 후: `filesInFolder(from)`, `filesInFolder(to)`, `folderTree()`, `fileDetail(id)` |
 | **파일 삭제 (휴지통)** | ❌ (파괴적) | 완료 후: `filesInFolder(from)`, `trash()`, `folderTree()` |
 | **휴지통 복원** | ❌ | 완료 후: `trash()`, `filesInFolder(restored.parent)`, `folderTree()` |
