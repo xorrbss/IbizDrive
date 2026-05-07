@@ -5,6 +5,29 @@
 
 ---
 
+## 2026-05-07 세션 — Wave 2 T9: admin-global-trash
+
+### 완료
+- [Wave 2 T9] `GET /api/admin/trash` admin listing endpoint (DTO: owner/originalParent/size 노출)
+- [Wave 2 T9] `/admin/trash/all` 페이지 (filter q/type/ownerId + cursor pagination + ConfirmDialog purge + AdminSideNav 토글)
+- [Wave 2 T9] mutation 0 신규 — 기존 `api.restoreFile/restoreFolder/purgeTrashItem` 재사용 (ADMIN ROLE이 SpEL 가드 통과)
+- [Wave 2 T9] audit emit 변경 0 (47 enum 유지)
+- [Wave 2 T9] DB schema 변경 0 (deletedBy 컬럼 미도입, audit_log lookup이 차선)
+- [Wave 2 T9] docs/02 §7.11, docs/04 §2 + §8.3, BETA-RELEASE Source/§7 갱신
+
+### 결정/편차
+- T7 admin-dashboard(`ac63127`)가 `app/admin/page.tsx`를 KPI 그리드로 재작성하여 plan §P6.3 "landing 카드 추가"는 skip. 가시성은 AdminSideNav 활성 + 기존 '휴지통 파일' KPI로 확보.
+- spec §4.4 `deletedBy` 미surface는 의도적 제한. cross-owner 복원 추적은 audit_log의 actor_id로 차선 경로.
+
+### 다음 세션 컨텍스트
+- v1.x backlog: `deletedBy` 컬럼(V10) / 휴지통 정책 UI(/admin/trash/policy) / bulk restore·purge / 2인 승인 워크플로 / 날짜 범위 필터 / full path resolve / folder subtree size.
+- 사내 베타 운영 매뉴얼: ADMIN cross-owner 복원 시 audit_log 의 actor_id 추적 절차 문서화 필요(별도 트랙).
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-05-07 — 🏁 t6-fetch-mock-test-restoration 트랙 종료 (Wave 2 T6 후속 — `api.renameFile`/`api.moveFiles` fetch-mock 패턴 복구)
 
 ### 범위
