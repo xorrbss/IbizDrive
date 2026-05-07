@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-07 — 🏁 folder-create-ui 트랙 종료 (탐색기 "새 폴더" 진입점)
+
+### 범위
+
+backend `POST /api/folders` + frontend `api.createFolder()`는 이미 존재했으나 진입 UI가 없어 사용자가 폴더를 만들 수 없는 상태였다. `FolderToolbar`에 "새 폴더" 버튼 + `CreateFolderDialog` (제어 컴포넌트, props 기반) + `useCreateFolder` mutation + `invalidations.afterFolderCreated` 헬퍼 4종을 frontend 단독으로 추가.
+
+### 변경 핵심
+
+- `lib/queryKeys.ts`: `invalidations.afterFolderCreated(qc, { parentId })` — `qk.filesListPrefix(parentId)` + `qk.folderTree()` + `qk.folder(parentId)` 3개 무효화 (afterRename 폴더 케이스 답습).
+- `hooks/useCreateFolder.ts`: `useMutation` — onSuccess에서 위 헬퍼 호출. 409/403은 envelope 그대로 onError surface.
+- `components/explorer/CreateFolderDialog.tsx`: 제어 컴포넌트(`parentId`/`open`/`onClose` props). `normalizeFileName` 클라이언트 사전 validation으로 빈/길이/금지문자/예약어/끝점 5종 인라인 메시지. 409 RENAME_CONFLICT → "같은 이름의 폴더가 이미 있습니다", 403 → "폴더를 만들 권한이 없습니다", 그 외 → generic — 다이얼로그 유지하여 사용자가 이름 수정 후 재시도.
+- `components/upload/FolderToolbar.tsx`: UploadButton 옆 "새 폴더" 버튼 + 다이얼로그 mount (`useState`로 보유, 전역 store 도입 안 함 — KISS).
+- `docs/01 §6.2` 무효화 매트릭스 row 갱신 (helper 명시).
+
+### 게이트 통과
+
+- `pnpm typecheck` ✅, `pnpm lint` ✅, `pnpm test` ✅ 116 files / 865 tests pass / 11 skipped / **0 fail**
+- §3 핵심 원칙 11개 위반 없음. 특히:
+  - 원칙 1 (URL이 어디 소유): parentId는 `useCurrentFolder().folderId`로 URL 단일 소스
+  - 원칙 3 (낙관적 업데이트는 비파괴적만): 본 트랙은 신규 추가이지만 단순화를 위해 mutation pending 상태 사용, 낙관 캐시 prepend 없음
+  - 원칙 11 (정규화 함수 동일): `normalizeFileName` 그대로 호출, 신규 정책 추가 안 함
+
+### 의도적으로 v1.x deferred
+
+- FolderTree 인라인 "+ 새 폴더" / 컨텍스트 메뉴
+- FileTable 빈 영역 우클릭
+- 키보드 단축키 (Ctrl+Shift+N)
+- 생성 직후 자동 네비게이션 / 자동 선택 / rename 인라인 모드
+
+### 다음 세션 컨텍스트
+
+- 본 트랙 PR 머지 후 `dev/active/folder-create-ui/` → `dev/completed/folder-create-ui/` 이관.
+- 향후 deferred 아이템 활성화 시 helper(`afterFolderCreated`) + dialog 재사용.
+
+---
+
 ## 2026-05-07 — 🏁 admin-dashboard 트랙 종료 (운영 KPI 대시보드 — `/admin` 활성화)
 
 ### 범위
