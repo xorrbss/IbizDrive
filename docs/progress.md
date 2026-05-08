@@ -44,6 +44,39 @@ Wave 1 T2(`audit-export-endpoint`)의 CSV-only 다운로드를 `format=csv|json`
 
 ---
 
+## 2026-05-08 — Wave 2 T9 follow-up: `deleted_by` 컬럼 (V10) closure
+
+### 완료
+
+- [Wave 2 T9 follow-up] `files`/`folders.deleted_by UUID` 추가 (V10 마이그레이션) — nullable + 단방향 CHECK(`deleted_at IS NOT NULL OR deleted_by IS NULL`) + FK ON DELETE SET NULL
+- soft-delete write path 4곳에 actor 전파: `FileMutationService.softDelete`, `FolderMutationService.softDelete`(root + cascade JPQL `softDeleteByIds(actorId)`), `FileRepository.softDeleteByFolderIds`, `FolderRepository.softDeleteByIds`
+- restore 2곳에서 `deleted_by = NULL` 클리어
+- `AdminTrashItemDto` 13필드 (`deletedById` + `deletedByEmail` 추가), `AdminTrashService.list` userIds 모음에 deleter 합류 → 단일 batch lookup 유지 (N+1 회피)
+- `frontend/src/types/trash.ts` `AdminTrashItem` 확장 (`deletedById/Email: string | null`)
+- `/admin/trash/all` 테이블 9컬럼 (크기 ↔ 삭제일 사이에 "삭제자" 추가, NULL은 em dash "—")
+- 문서 4: docs/02 §6.5.1 / docs/04 §8.3 / BETA-RELEASE §7 / progress.md
+- 게이트: backend `./gradlew test --tests "com.ibizdrive.{admin.trash,folder,file,purge}.*"` BUILD SUCCESSFUL + frontend `pnpm test --run` 121 files / 904 tests / **skipped 0** + `pnpm typecheck/lint/build` exit 0
+
+### 핵심 결정
+
+- **Backfill 미실시**: V10 적용(2026-05-08) 이전 trash row는 `deleted_by IS NULL` 영구 유지. audit_log derivation은 fragile/expensive — UI는 컷오프 이전을 "—"로 렌더 (docs/04 §8.3).
+- **단방향 CHECK**: 활성 row에 deleter set 차단만, trash row의 NULL은 허용 (backfill + ON DELETE SET NULL fallback 수용).
+- **owner-trash UI 미변경**: owner=deleter 범위라 정보 가치 0, v1.x++로 미룸.
+- **새 audit emit 0**: 기존 `FILE_DELETED`/`FOLDER_DELETED` actor_id로 정합성 이미 보장.
+- **인덱스 미추가**: `deleted_by` 필터링은 빈도 낮음, v1.x++.
+
+### 다음 세션 컨텍스트
+
+- 본 트랙 PR open 후 merge → `dev/active/wave2-t9-deleted-by/` archive (별도 PR, T9 본체 archive 패턴 재사용 — PR #81 참조).
+- BETA-RELEASE §7 `deletedBy 컬럼은 v1.x` 항목은 본 트랙에서 closure 마킹 (해당 라인은 `wave2-t9-deleted-by` backlink로 갱신됨).
+- V10 운영 적용은 nullable 컬럼 추가라 PG O(1) — 단일 트랜잭션 적용 KISS.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-07 — 🏁 wave2-t9-followup-trash-date-filter 트랙 종료 (Wave 2 T9 후속 — admin global trash 날짜 범위 필터)
 
 ### 범위
@@ -85,6 +118,7 @@ PR #79 (Wave 2 T9 admin global trash) closure에서 v1.x backlog로 명시되었
 ### 다음 세션 컨텍스트
 
 - v1.x backlog 잔여: `deletedBy` 컬럼(V10) / 휴지통 정책 UI(/admin/trash/policy) / bulk restore·purge / 2인 승인 워크플로 / full path resolve / folder subtree size / 시간대 인지(KST 경계) 날짜 필터.
+- (2026-05-08 update) `deletedBy` 컬럼(V10)은 본 페이지 최상단 entry로 closure.
 
 ### 블로커
 

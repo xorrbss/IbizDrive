@@ -12,8 +12,8 @@ Last Updated: 2026-05-08
 | P2 backend write path | ✅ 완료 (P1과 합쳐 commit 624f395) | Mutation services 단위 테스트 GREEN |
 | P3 backend admin DTO/Service | ✅ 완료 (commit adef4fd) | AdminTrashService/Controller 테스트 GREEN |
 | P4 frontend types | ✅ 완료 (commit d4f0bd2) | `pnpm typecheck` exit 0 |
-| P5 frontend UI | ✅ 완료 | page test + `pnpm test --run` skipped=0 + typecheck/lint/build exit 0 |
-| P6 docs | 🟡 대기 | drift check + 4 문서 업데이트 |
+| P5 frontend UI | ✅ 완료 (commit 9c7386b) | page test + `pnpm test --run` skipped=0 + typecheck/lint/build exit 0 |
+| P6 docs | ✅ 완료 | drift check + 4 문서 업데이트 |
 
 ---
 
@@ -220,12 +220,12 @@ Last Updated: 2026-05-08
 
 ### 체크리스트
 
-- [ ] `docs/02-backend-data-model.md` §6.5 (휴지통)에 `deleted_by` 컬럼 + 단방향 CHECK + backfill cutoff 명시
-- [ ] `docs/04-admin-operations.md` §8.3 응답 예시에 `deletedById/Email` 추가 + UI "삭제자" 컬럼 명시
-- [ ] `BETA-RELEASE.md` §7 `deletedBy 컬럼은 v1.x` 항목 closure (✓ marker + 트랙명)
-- [ ] `docs/progress.md` 최상단에 closure entry (cutoff 시점 명시)
-- [ ] (선택) `docs/00-overview.md §5 ADR` 인덱스에 트랙명 1줄 추가
-- [ ] 게이트: drift check (spec/plan ↔ 실제 코드 ↔ docs 정합)
+- [x] `docs/02-backend-data-model.md` §6.5 (휴지통)에 `deleted_by` 컬럼 + 단방향 CHECK + backfill cutoff 명시 (§6.5.1 신설)
+- [x] `docs/04-admin-operations.md` §8.3 응답 예시에 `deletedById/Email` 추가 + UI "삭제자" 컬럼 명시 + cutoff 설명
+- [x] `BETA-RELEASE.md` §7 `deletedBy 컬럼은 v1.x` 항목 closure (트랙명 backlink + V10 명시 + cutoff)
+- [x] `docs/progress.md` 최상단에 closure entry (V10 cutoff 시점 명시)
+- [ ] (선택) `docs/00-overview.md §5 ADR` 인덱스에 트랙명 1줄 추가 — skip (본 트랙은 ADR 신설 안 함, plan §ADR 명시)
+- [x] 게이트: drift check — spec ↔ plan ↔ 코드 ↔ docs 정합 확인
 - [ ] commit: `docs(wave2-t9-deleted-by): docs/02 §6.5 + docs/04 §8.3 + BETA + progress`
 
 ### 작업 전 필독

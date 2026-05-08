@@ -293,9 +293,24 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 ### 8.3 전역 휴지통 뷰
 
 - [x] 전체 사용자의 휴지통 파일 (관리자 전용) — `/admin/trash/all` (Wave 2 T9, 2026-05-07)
-  - 목록: `GET /api/admin/trash` (admin DTO: owner/originalParent/size 노출 — docs/02 §7.11)
+  - 목록: `GET /api/admin/trash` (admin DTO: owner/originalParent/size + V10 `deletedById`/`deletedByEmail` 노출 — docs/02 §7.11, §6.5.1)
   - 단건 복원/영구삭제: 기존 endpoint 재사용 (`POST /api/files|folders/{id}/restore` + `DELETE /api/trash/{type}/{id}` — ADMIN ROLE이 SpEL 가드 통과)
-  - 정책 조정 UI(`/admin/trash/policy`) / bulk restore·purge / 2인 승인 / `deletedBy` 컬럼: v1.x deferred
+  - 정책 조정 UI(`/admin/trash/policy`) / bulk restore·purge / 2인 승인: v1.x deferred
+- [x] `deletedBy` 컬럼 (Wave 2 T9 follow-up, 2026-05-08, V10)
+  - 응답 예시:
+    ```json
+    {
+      "id": "11111111-...", "name": "report.pdf", "type": "file",
+      "deletedAt": "2026-05-08T03:14:00Z", "purgeAfter": "2026-06-07T03:14:00Z",
+      "ownerId": "aaaa-...", "ownerEmail": "alice@example.com",
+      "originalParentId": "ffff-...", "originalParentName": "Reports",
+      "sizeBytes": 12345,
+      "deletedById": "bbbb-...", "deletedByEmail": "admin@example.com"
+    }
+    ```
+  - UI 테이블에 "삭제자" 컬럼 (크기 ↔ 삭제일 사이). NULL은 em dash "—".
+  - **Backfill cutoff**: V10 적용(2026-05-08) 이전에 휴지통에 들어간 row는 `deletedBy IS NULL`로 영구 유지 (backfill 미실시). UI는 컷오프 이전을 "—"로 렌더한다.
+  - NULL 의미: (a) V10 이전 삭제분, (b) deleter 계정 hard-delete (FK ON DELETE SET NULL), (c) 시스템/cron 자동 삭제 — 모두 동일 표기.
 - [ ] 긴급 복원 (사용자 요청 시) — *v1.x deferred (사용자 본인 복원은 구현됨, A6 closure; cross-owner 관리자 복원은 Wave 2 T9 closure)*
 - [ ] 즉시 영구 삭제 (승인 워크플로) — *v1.x deferred (단건 영구 삭제는 Wave 2 T9 closure, 승인 워크플로는 v1.x)*
 

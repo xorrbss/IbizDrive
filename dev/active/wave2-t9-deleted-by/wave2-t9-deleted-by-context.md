@@ -11,7 +11,8 @@ Last Updated: 2026-05-08
 - 2026-05-08 — P1 + P2 합쳐 commit 624f395 (V10 schema + write-path actor)
 - 2026-05-08 — P3 (admin DTO + service enrichment) 완료 (commit adef4fd). AdminTrashItemDto 13필드, userIds union batch lookup.
 - 2026-05-08 — P4 (frontend types) 완료 (commit d4f0bd2). AdminTrashItem `deletedById/Email: string | null` (originalParentId 패턴).
-- 2026-05-08 — P5 (frontend UI) 완료. /admin/trash/all 9컬럼 (삭제자 추가), em dash 렌더, page test 3 보강. 다음 phase: **P6 (docs)**.
+- 2026-05-08 — P5 (frontend UI) 완료 (commit 9c7386b). /admin/trash/all 9컬럼, em dash 렌더, page test 3 보강.
+- 2026-05-08 — P6 (docs) 완료. docs/02 §6.5.1 신설 + docs/04 §8.3 응답 예시/cutoff + BETA §7 closure + progress entry. 다음: **PR open + closure**.
 
 ## Current Execution Contract
 
@@ -25,9 +26,9 @@ Last Updated: 2026-05-08
 
 ## Active task
 
-**P6 — docs** (docs/02 §6.5 + docs/04 §8.3 + BETA-RELEASE §7 + progress.md).
+**PR open + closure** (전체 phase 완료 → master rebase → PR open → review → merge → archive).
 
-게이트: spec ↔ plan ↔ 코드 ↔ docs 4-way drift 0.
+게이트: PR CI GREEN.
 
 ## 다음 세션 읽기 순서
 
