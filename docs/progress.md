@@ -5,6 +5,65 @@
 
 ---
 
+## 2026-05-08 — 🏁 admin-trash-bulk 트랙 종료 (Wave 2 T9 follow-up — `/admin/trash/all` 일괄 복원·영구삭제)
+
+### 범위
+
+`/admin/trash/all` bulk restore/purge. 30일 만료 직전 일괄 정리 / 사용자 대량 오삭제 후 일괄 복원 시나리오 흡수. BETA-RELEASE §7 v1.x deferred "bulk restore·purge" 항목 closure.
+
+### 변경 핵심
+
+**Backend** (`POST /api/admin/trash/bulk`):
+- `AdminTrashBulkRequestDto` / `AdminTrashBulkResponseDto` record 신설.
+- `AdminTrashService.bulk(action, items, actorId)` — items 1..200 fan-out. `FileMutationService.restore` / `FolderMutationService.restore` / `TrashPurgeService.purgeFile|purgeFolder` 단건 service 그대로 호출. 도메인 예외(`FileNotFoundException`/`FolderNotFoundException` → "NOT_FOUND", `FileNameConflictException`/`FolderRestoreConflictException` → "NAME_CONFLICT")만 catch, 기타 RuntimeException은 글로벌 핸들러 전파.
+- `AdminTrashController.bulk` — `@PreAuthorize("hasRole('ADMIN')")` + `@AuthenticationPrincipal IbizDriveUserDetails`.
+- 응답 status는 항상 200 (부분 실패 허용); cap/action 검증 실패만 400. 단건 endpoint·V10 schema·audit enum 무변경.
+
+**Frontend**:
+- `types/trash.ts`에 `AdminTrashBulkAction`, `AdminTrashBulkItem`, `AdminTrashBulkRequest`, `AdminTrashBulkResponse` 추가.
+- `lib/api.ts` `adminBulkTrash(action, items)` 신규.
+- `hooks/useAdminTrash.ts` `useAdminBulkTrash()` mutation hook 신규 — onSuccess에서 `qk.adminTrash()` prefix invalidate.
+- `components/admin/AdminTrashBulkActionBar.tsx` (NEW, admin 전용) — "선택 N개 / 전체 해제 / 일괄 복원 / 일괄 영구삭제".
+- `app/admin/trash/all/page.tsx`: 행 좌측 체크박스 + 헤더 select-all (페이지 한정) + BulkActionBar + 결과 banner + ConfirmDialog (단건/일괄 message prop 분기). 필터 변경 / cursor 페이지 이동 시 선택 초기화.
+
+**Tests**:
+- `AdminTrashServiceBulkTest` (NEW, 12 tests) — action/cap 검증, fan-out, 부분 실패 매핑(NOT_FOUND/NAME_CONFLICT/INVALID_TYPE/INVALID_ITEM), idempotency, cap 200 boundary
+- `AdminTrashControllerBulkTest` (NEW, 6 tests) — 200/401/403/400 매트릭스
+- `api.adminTrashBulk.test.ts` (NEW, 6 tests) — wire 송신/응답/4xx
+- `useAdminTrash.test.tsx` +2 tests — bulk mutation invalidate 검증
+- `page.test.tsx` +6 tests — 다중 선택, select-all 토글, 일괄 복원/영구삭제 mutate, 부분 실패 banner, 필터 변경 시 선택 초기화
+
+**Docs**:
+- `docs/02 §7.11`에 `POST /api/admin/trash/bulk` 표 row + 상세 endpoint 블록 추가.
+- `docs/04 §8.3`에 일괄 복원·영구삭제 항목 [x] 전환 + UI/audit 정책 명시.
+- `BETA-RELEASE.md §7` admin-trash-bulk 트랙 backlink + "휴지통 보존 정책 UI / 2인 승인은 v1.x" 명시 (bulk는 closure).
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.admin.trash.*"` BUILD SUCCESSFUL (2m17s) + 영향 범위 (file/folder/trash) GREEN.
+- `cd frontend && pnpm test --run` 123 files / **926 passed** (skipped 0).
+- `pnpm typecheck` exit 0 / `pnpm lint` exit 0 / `pnpm build` Next.js 컴파일 성공.
+
+### 결정/편차
+
+- 단일 endpoint + action discriminator (RESTful 분리 대신 KISS).
+- 부분 실패 모델 (status 항상 200, body의 `failed[]`로 표현) — all-or-nothing은 NAME_CONFLICT 흔한 시나리오에서 운영 가치 ↓.
+- 새 audit enum 0 — per-item 기존 emit + actor + timestamp로 묶음 식별 가능.
+- Cap 200 (q 길이 cap과 정합) — 클라이언트는 페이지당 max 100을 따라가게 두면 자연스럽게 안전.
+- select-all은 현재 페이지(cursor 결과)만 — cursor 다음 페이지 자동 누적은 의도치 않은 영구삭제 위험.
+- bulk service는 트랜잭션 미보유 — 단건 service의 짧은 트랜잭션 200개 직렬 처리 (한 항목 실패가 다른 항목 막지 않음).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI(`/admin/trash/policy`) / 2인 승인 워크플로 / full path resolve / folder subtree size / 시간대 인지(KST 경계) 날짜 필터 / 권한 grant/revoke direct CRUD / quota.
+- progress streaming(SSE/WS) / chunked client(200 초과 자동 분할)도 v1.x++.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 audit-export-json 트랙 종료 (Wave 1 T2 후속 — `GET /api/admin/audit/export?format=csv|json`)
 
 ### 범위

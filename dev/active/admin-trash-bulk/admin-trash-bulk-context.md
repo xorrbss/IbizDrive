@@ -7,7 +7,11 @@ Last Updated: 2026-05-08
 ## SESSION PROGRESS
 
 - 2026-05-08 — brainstorming → design spec commit (`ff64667` on `feat/admin-trash-bulk`).
-- 2026-05-08 — dev-docs bootstrap (plan/context/tasks). active phase: **P1 (backend bulk)** 시작 직전.
+- 2026-05-08 — dev-docs bootstrap (plan/context/tasks).
+- 2026-05-08 — P1 (backend bulk) 완료 (commit a2acd2b). DTO 2종 + service.bulk + controller.bulk + 18 tests.
+- 2026-05-08 — P2 (frontend wire) 완료 (commit 0b63bad). types + api + hook + 12 tests.
+- 2026-05-08 — P3 (frontend UI) 완료 (commit cd8ac5a). BulkActionBar + 선택 모델 + 결과 banner + 6 page tests. 게이트 GREEN(123 files / 926 tests / skipped 0 + typecheck/lint/build exit 0).
+- 2026-05-08 — P4 (docs) 완료. docs/02 §7.11 + docs/04 §8.3 + BETA §7 + progress entry. 다음: **PR open + closure**.
 
 ## Current Execution Contract
 
@@ -21,9 +25,9 @@ Last Updated: 2026-05-08
 
 ## Active task
 
-**P1 — backend bulk** (`AdminTrashService.bulk` + `AdminTrashController.bulk` + 2 DTO + tests).
+**PR open + closure** (전체 phase 완료 → master rebase → PR open → review → merge → archive).
 
-게이트: `cd backend && ./gradlew test --tests "com.ibizdrive.admin.trash.*"` BUILD SUCCESSFUL.
+게이트: PR CI GREEN.
 
 ## 다음 세션 읽기 순서
 

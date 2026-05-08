@@ -8,10 +8,10 @@ Last Updated: 2026-05-08
 
 | Phase | 상태 | 게이트 |
 |---|---|---|
-| P1 backend bulk | 🟡 대기 | `./gradlew test --tests "com.ibizdrive.admin.trash.*"` GREEN |
-| P2 frontend wire | ⏸️ blocked-by-P1 | `pnpm typecheck` exit 0 + `api.adminTrashBulk.test.ts` GREEN |
-| P3 frontend UI | ⏸️ blocked-by-P2 | `pnpm test --run` skipped=0 + typecheck/lint/build exit 0 |
-| P4 docs | ⏸️ blocked-by-P3 | drift check + 4 문서 업데이트 |
+| P1 backend bulk | ✅ 완료 (commit a2acd2b) | `./gradlew test --tests "com.ibizdrive.admin.trash.*"` GREEN |
+| P2 frontend wire | ✅ 완료 (commit 0b63bad) | `pnpm typecheck` exit 0 + `api.adminTrashBulk.test.ts` GREEN |
+| P3 frontend UI | ✅ 완료 (commit cd8ac5a) | `pnpm test --run` 123 files / 926 / skipped=0 + typecheck/lint/build exit 0 |
+| P4 docs | ✅ 완료 | drift check + 4 문서 업데이트 |
 
 ---
 
