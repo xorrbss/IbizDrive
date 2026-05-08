@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-05-09 — 🏁 admin-permission-revoke 트랙 종료 (Wave 2 T5 follow-up — `/admin/permissions` 단일 row 철회 UI)
+
+### 범위
+
+PR #120 (wave2-trash-original-path) 후속. `/admin/permissions` viewer가 read-only로만 동작하던 상태에서 **단일 row 철회**를 추가해, 잘못 부여된 권한 또는 만료 임박 이전 즉시 회수가 필요한 grant를 운영자가 클릭 한 번으로 정리할 수 있게 한다. grant 다이얼로그(subject/resource picker)는 v1.x deferred.
+
+### 변경 핵심
+
+**Backend**: 변경 0건. 기존 `PermissionController#revoke` (`DELETE /api/permissions/{id}`)가 `@permissionService.canRevokePermission`로 가드되어 ROLE.ADMIN 통과. audit emit(`PERMISSION_REVOKED`)도 기존 동작.
+
+**Frontend**:
+- `lib/api.ts` — `adminRevokePermission(id)` 추가 (DELETE + `X-CSRF-TOKEN` 헤더, 다른 mutation 동형). `adminListPermissions` 직후 위치.
+- `hooks/useAdminRevokePermission.ts` (NEW) — `useMutation`, onSuccess `qk.adminPermissions()` 전체 invalidate. 낙관적 업데이트 미적용(§3 원칙 3 정합).
+- `app/admin/permissions/page.tsx` — table에 "작업" column 추가 + 행 우측 "철회" 버튼 + ConfirmDialog 인라인. 만료된 grant도 동일 버튼으로 정리 가능. mutation pending 동안 모든 버튼 disabled. ARIA label은 `${subject} ${resource} ${preset} 철회` 패턴으로 spinner-free 식별성 확보.
+- `lib/api.adminRevokePermission.test.ts` (NEW, 4 tests) — DELETE 메서드 + URL + CSRF 헤더 회귀 가드 + permissionId encodeURIComponent + 404/403 envelope.
+- `app/admin/permissions/page.test.tsx` — `vi.hoisted`로 revokeMutate spy 모킹. 신규 4 tests: 행별 철회 버튼 노출 / 확인 후 mutate(rowId) + dialog 닫힘 / 취소 시 mutate 호출 없음 / 만료 grant도 동일 버튼 정리.
+
+**Docs**:
+- `docs/04 §2.2` admin 페이지 표 — `/admin/permissions` 설명에 "단일 row 철회" 추가, grant deferred 명시.
+- `docs/04 §2.3` 사이드바 트리 — 동일 closure 마커.
+- `docs/04 §15.3` 권한 만료 모니터링 — viewer 정의에서 read-only 제거 + 철회 흐름 문장 추가, grant 다이얼로그 deferred 표기.
+
+### 검증
+
+- `cd frontend && pnpm typecheck` exit 0, `pnpm lint` exit 0.
+- `pnpm test --run page.test.tsx api.adminRevokePermission.test.ts` — 18 tests passed (page 14 + api 4).
+- backend 무변경 — wire/policy 변경 0.
+
+### 결정/편차
+
+- **revoke만 closure** — grant는 subject/resource picker UI(user-search + folder/file picker + preset + expiresAt)가 작은 PR을 넘는 규모. 1 PR 단위로 자르기 위해 revoke만 우선. 만료 임박 권한 즉시 정리라는 운영 가치는 revoke만으로도 95% 달성.
+- **별도 admin endpoint 미신설** — backend `DELETE /api/permissions/{id}` + ROLE.ADMIN 통과로 기존 endpoint 재사용. KISS + 단건 endpoint 무변경 원칙 (admin-trash-bulk와 동일).
+- **낙관적 업데이트 미적용** — §3 원칙 3 정합. mutation pending 동안 row 버튼 disabled + invalidate 후 row 사라짐. 사용자 인지 충분.
+- **ConfirmDialog 인라인 유지** — AdminTrashAllPage 동일 패턴. 프로젝트에 공통 ConfirmDialog 컴포넌트가 아직 표준화되지 않음. 향후 공통화 시 함께 추출.
+- **테스트 모킹 = `vi.hoisted`** — `vi.mock` factory가 hoist되어 module-scope `let` 변수 reference 시 ReferenceError 가능. `vi.hoisted`로 spy 변수 명시 호이스팅.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여(권한 grant 다이얼로그 / 보존 정책 mutation UI / 2인 승인 / quota / progress streaming SSE/WS)는 별도 트랙. 권한 grant는 user-search/folder picker 컴포넌트 재사용 가능성 검토 필요.
+- 본 트랙으로 docs/04 권한 매트릭스 노드의 "read-only viewer" 표기는 closure로 전환됨. grant 다이얼로그 트랙에서 docs/04 §15.3의 "갱신은 v1.x deferred" 항목도 일부 closure 가능.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-09 — 🏁 wave2-trash-original-path 트랙 종료 (Wave 2 T9 follow-up — admin trash 항목의 원위치 절대 경로 노출)
 
 ### 범위
