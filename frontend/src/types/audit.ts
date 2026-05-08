@@ -55,6 +55,7 @@ export type AuditEventType =
   | 'admin.department.created'
   | 'admin.department.updated'
   | 'admin.department.deactivated'
+  | 'admin.cron.toggled'
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'

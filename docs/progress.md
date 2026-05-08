@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-05-08 — 🏁 admin-cron-toggle 트랙 종료 (Wave 2 closure 후속 — cron 4종 runtime 토글)
+
+### 범위
+
+`/admin/system` viewer 페이지(Wave 1 T3, PR #73)에 ADMIN-only mutation 추가. cron 4종(`purge.expired`/`share.expire`/`permission.expire`/`storage.orphan.cleanup`)의 enabled를 재기동 없이 UI로 토글. 토글은 신규 `cron_policy` 테이블에 영구 저장, audit_log `admin.cron.toggled`로 추적.
+
+### 변경 핵심
+
+**Backend:**
+- V11 마이그레이션 — `cron_policy` 테이블 + 4 row 시드(전부 false). yml의 `app.*.enabled`는 dead config(cleanup v1.x).
+- `CronPolicy` entity + `CronPolicyRepository`(`isEnabled` 헬퍼).
+- `AdminCronToggledEvent` + `AdminCronToggledListener`(AFTER_COMMIT) — `AdminDepartmentAuditListener` 패턴 미러.
+- `AdminSystemService.toggleCron(key, enabled, actor, ip, ua)` — 트랜잭션 + event publish. unknown key는 `IllegalArgumentException` → 글로벌 핸들러 400.
+- `AdminSystemController` — `PUT /api/admin/system/cron/{key}` (ADMIN-only `@PreAuthorize`). 응답 204.
+- 4 cron job 클래스 — `@ConditionalOnProperty` 제거 + `run()` 첫 줄에 `cronPolicyRepository.isEnabled(KEY)` 가드.
+- `AuditEventType.ADMIN_CRON_TOGGLED("admin.cron.toggled")` 추가 (47 → 48).
+- 테스트: Repository slice 4 케이스, Listener 단위 2 케이스, Service 단위 3 케이스, Controller slice 4 케이스, E2E (login + toggle + audit_log + cron skip).
+
+**Frontend:**
+- `api.adminToggleCron(key, enabled)` PUT 메서드 + 단위 테스트 4 케이스.
+- `useAdminToggleCron()` mutation hook — `qk.adminSystemCron()` 무효화.
+- `/admin/system` page — ADMIN 세션에서만 토글 switch + ConfirmDialog. AUDITOR는 viewer 그대로.
+- `types/audit.ts` — `'admin.cron.toggled'` union 추가.
+
+**Docs:**
+- `docs/03 §4.1` — admin.cron.toggled 행 + enum 47 → 48.
+- `docs/04 §15.4` — yml 편집 + 재기동 → UI 토글 + audit 추적 절차.
+- `BETA-RELEASE.md §7` — v1.x deferred "cron 4종 런타임 토글" 라인 제거 + Source 체인에 admin-cron-toggle 추가.
+
+### 검증
+
+- `cd backend && ./gradlew test` BUILD SUCCESSFUL (Repository 4 / Listener 2 / Service 3 / Controller slice 4 / E2E 모두 GREEN).
+- `cd frontend && npm run typecheck && npm run lint && npm test -- --run && npm run build` 모두 exit 0.
+- AUDIT_EXPORTED enum 47 → 48 (1 추가). 새 에러 코드 0 (기존 `BAD_REQUEST` / `FORBIDDEN` 재사용).
+
+### 다음 세션 컨텍스트
+
+- yml의 `app.*.enabled` 필드 제거(dead config) — v1.x 후속 트랙.
+- schedule(cron expression) UI 편집 — v1.x.
+- 2인 승인 워크플로(파괴적 토글 보호) — Wave 2 closure backlog의 일반 항목.
+- `prod 첫 적용 시` V11 시드가 모든 cron을 OFF로 두므로 운영자가 적용 직후 UI에서 4종 토글로 의도된 상태로 설정 필요(release note 준비).
+
+---
+
 ## 2026-05-08 — 🏁 wave2-admin-trash-format-size 트랙 종료 (admin trash 페이지 size 표시 formatBytes 적용)
 
 ### 범위

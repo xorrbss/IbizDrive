@@ -1,21 +1,26 @@
-import { describe, it, expect, vi } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { CronJobsResponse } from '@/types/system'
+import type { AuthSession } from '@/types/auth'
 
 /**
- * /admin/system — Wave 1 — T3 read-only cron 노출 페이지 검증.
+ * /admin/system — Wave 1 — T3 read-only cron 노출 페이지 + admin-cron-policy-toggle 확장.
  *
  * <p>핵심 가드:
  * <ul>
  *   <li>4 카드가 fixed order(purge → share → permission → storage)로 렌더</li>
  *   <li>각 카드: label / enabled 배지(ON/OFF) / cron / zone</li>
- *   <li>"read-only" 안내 문구가 페이지 헤더에 노출 (변경은 application.yml + 재기동)</li>
  *   <li>loading / error 분기</li>
+ *   <li>(P6) ADMIN 세션 — 4 카드 모두 토글 switch 노출</li>
+ *   <li>(P6) AUDITOR 세션 — 토글 switch 미노출, 카드는 그대로</li>
+ *   <li>(P6) 토글 클릭 → ConfirmDialog → 확인 → mutation 호출</li>
+ *   <li>(P6) 토글 클릭 → ConfirmDialog → 취소 → mutation 미호출</li>
  * </ul>
  *
- * <p>{@code useAdminSystemCron}은 mock — query/fetch 자체는 useAdminSystem.test 책임.
+ * <p>{@code useAdminSystemCron}/{@code useAdminToggleCron}/{@code useMe}는 mock —
+ * query/mutation/auth fetch 자체는 각자의 hook 단위 테스트 책임.
  */
 
 const FIXTURE: CronJobsResponse = {
@@ -56,9 +61,30 @@ const FIXTURE: CronJobsResponse = {
   ],
 }
 
+const SESSION_ADMIN: AuthSession = {
+  user: { id: 'u1', email: 'admin@example.com', name: 'Admin', kind: 'human', mustChangePassword: false },
+  departments: [],
+  roles: ['ADMIN'],
+  effectivePermissionsCacheKey: 'k',
+}
+
+const SESSION_AUDITOR: AuthSession = {
+  user: { id: 'u2', email: 'auditor@example.com', name: 'Auditor', kind: 'human', mustChangePassword: false },
+  departments: [],
+  roles: ['AUDITOR'],
+  effectivePermissionsCacheKey: 'k',
+}
+
 const mockUseAdminSystemCron = vi.fn()
+const mockUseAdminToggleCron = vi.fn()
+const mockUseMe = vi.fn()
+
 vi.mock('@/hooks/useAdminSystem', () => ({
   useAdminSystemCron: () => mockUseAdminSystemCron(),
+  useAdminToggleCron: () => mockUseAdminToggleCron(),
+}))
+vi.mock('@/hooks/useMe', () => ({
+  useMe: () => mockUseMe(),
 }))
 
 import AdminSystemPage from './page'
@@ -69,13 +95,21 @@ const wrap = (node: React.ReactNode) => {
 }
 
 describe('/admin/system — read-only cron status', () => {
+  beforeEach(() => {
+    mockUseAdminSystemCron.mockReset()
+    mockUseAdminToggleCron.mockReset()
+    mockUseMe.mockReset()
+    // 기본값: AUDITOR(토글 비노출) + idle mutation. 토글 케이스에서 override.
+    mockUseAdminToggleCron.mockReturnValue({ mutate: vi.fn(), isPending: false })
+    mockUseMe.mockReturnValue({ data: SESSION_AUDITOR })
+  })
+
   it('renders 4 jobs in fixed order with label/cron/zone/enabled badge', () => {
     mockUseAdminSystemCron.mockReturnValue({ data: FIXTURE, isLoading: false, isError: false })
     wrap(<AdminSystemPage />)
 
-    // 헤더 + read-only 안내
+    // 헤더
     expect(screen.getByRole('heading', { level: 1, name: /시스템/ })).toBeTruthy()
-    expect(screen.getByText(/application\.yml/)).toBeTruthy()
 
     // 4 카드 — testid로 순서 확인
     const cards = screen.getAllByTestId(/^cron-card-/)
@@ -111,5 +145,72 @@ describe('/admin/system — read-only cron status', () => {
     mockUseAdminSystemCron.mockReturnValue({ data: undefined, isLoading: false, isError: true })
     wrap(<AdminSystemPage />)
     expect(screen.getByText(/불러오지 못했습니다/)).toBeTruthy()
+  })
+})
+
+describe('AdminSystemPage — cron 토글 (admin-cron-policy-toggle)', () => {
+  beforeEach(() => {
+    mockUseAdminSystemCron.mockReset()
+    mockUseAdminToggleCron.mockReset()
+    mockUseMe.mockReset()
+    mockUseAdminSystemCron.mockReturnValue({ data: FIXTURE, isLoading: false, isError: false })
+    mockUseAdminToggleCron.mockReturnValue({ mutate: vi.fn(), isPending: false })
+  })
+
+  it('ADMIN 세션 — 4 카드 모두에 토글 switch 노출', async () => {
+    mockUseMe.mockReturnValue({ data: SESSION_ADMIN })
+    wrap(<AdminSystemPage />)
+    await waitFor(() => {
+      expect(screen.getByTestId('cron-card-purge.expired')).toBeTruthy()
+    })
+    expect(screen.getByTestId('cron-toggle-purge.expired')).toBeTruthy()
+    expect(screen.getByTestId('cron-toggle-share.expire')).toBeTruthy()
+    expect(screen.getByTestId('cron-toggle-permission.expire')).toBeTruthy()
+    expect(screen.getByTestId('cron-toggle-storage.orphan.cleanup')).toBeTruthy()
+  })
+
+  it('AUDITOR 세션 — 토글 switch 미노출, 카드는 그대로', async () => {
+    mockUseMe.mockReturnValue({ data: SESSION_AUDITOR })
+    wrap(<AdminSystemPage />)
+    await waitFor(() => {
+      expect(screen.getByTestId('cron-card-purge.expired')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('cron-toggle-purge.expired')).toBeNull()
+    expect(screen.queryByTestId('cron-toggle-share.expire')).toBeNull()
+    expect(screen.queryByTestId('cron-toggle-permission.expire')).toBeNull()
+    expect(screen.queryByTestId('cron-toggle-storage.orphan.cleanup')).toBeNull()
+  })
+
+  it('토글 클릭 → ConfirmDialog → 확인 → mutation 호출', async () => {
+    const mutate = vi.fn()
+    mockUseAdminToggleCron.mockReturnValue({ mutate, isPending: false })
+    mockUseMe.mockReturnValue({ data: SESSION_ADMIN })
+    wrap(<AdminSystemPage />)
+    const toggle = await screen.findByTestId('cron-toggle-purge.expired')
+    // purge.expired 는 fixture에서 enabled=false → 토글 시 requested=true(활성화)
+    fireEvent.click(toggle)
+    expect(screen.getByTestId('cron-confirm-dialog')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('cron-confirm-confirm'))
+    await waitFor(() => {
+      expect(mutate).toHaveBeenCalledTimes(1)
+    })
+    expect(mutate).toHaveBeenCalledWith(
+      { key: 'purge.expired', enabled: true },
+      expect.objectContaining({ onSettled: expect.any(Function) }),
+    )
+  })
+
+  it('ConfirmDialog 취소 → mutation 미호출', async () => {
+    const mutate = vi.fn()
+    mockUseAdminToggleCron.mockReturnValue({ mutate, isPending: false })
+    mockUseMe.mockReturnValue({ data: SESSION_ADMIN })
+    wrap(<AdminSystemPage />)
+    const toggle = await screen.findByTestId('cron-toggle-purge.expired')
+    fireEvent.click(toggle)
+    expect(screen.getByTestId('cron-confirm-dialog')).toBeTruthy()
+    fireEvent.click(screen.getByTestId('cron-confirm-cancel'))
+    expect(mutate).not.toHaveBeenCalled()
+    // dialog 닫힘
+    expect(screen.queryByTestId('cron-confirm-dialog')).toBeNull()
   })
 })

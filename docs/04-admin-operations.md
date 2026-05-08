@@ -574,7 +574,9 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 
 ### 15.4 운영 cron 4종 변경 절차
 
-`/admin/system` (T3 wave1-t3) 은 `app.{purge,share.expiration,permission.expiration,storage.orphan-cleanup}` 4 cron 의 **read-only 노출**만 제공한다. 변경은 `application.yml` 직접 편집 + 재기동.
+**enabled 토글**: ADMIN UI(`/admin/system`)에서 카드별 토글. 즉시 반영(다음 tick부터). 변경 이력은 audit_log `admin.cron.toggled`로 추적되며 `cron_policy` 테이블에 영구 저장(재기동 후에도 유지). admin-cron-policy-toggle 트랙(2026-05-08).
+
+**schedule / zone / batchSize / maxPerRun / graceHours 변경**: `application-prod.yml` 편집 + 재기동 (기존 절차).
 
 **운영 cron 4종** (`backend/src/main/resources/application.yml` line 60~95):
 
@@ -585,17 +587,11 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 | `app.permission.expiration` | `enabled:false`, `cron:"0 */5 * * * *"` (매 5분) | PERMISSION_EXPIRED — 만료 permission row hard delete + audit |
 | `app.storage.orphan-cleanup` | `enabled:false`, `cron:"0 0 1 * * *"` (매일 새벽 1시) | A15 backlog — 고아 객체 정리 |
 
-**변경 절차**:
+> `app.*.enabled` yml 필드는 V11 시드 이후 dead config(읽지 않음, 잡-개별 가드는 `cron_policy` 테이블 row를 참조). yml cleanup은 v1.x 후속.
 
-1. `application-prod.yml` 에서 해당 cron 의 `enabled: true` + 필요시 `cron`/`max-per-run` 수정 (overrides base `application.yml`).
-2. `git commit` + 배포 파이프라인 진행 (인프라 책임).
-3. 재기동 후 `/admin/system` 으로 4 cron 모두 활성 표시 검증.
-4. AUDITOR 계정으로도 `/admin/system` 접근 가능 (Wave 1.5 auditor-cron-readonly closure, 2026-05-07).
+**조회 / 권한**:
 
-**제약**:
-
-- 런타임 토글 미지원 — config 변경은 항상 재기동 동반.
-- cron schedule 변경시 audit_log 에 trace 안 남음 (config-driven). git commit 이 trace.
+- AUDITOR 계정으로도 `/admin/system` 접근 가능 (Wave 1.5 auditor-cron-readonly closure, 2026-05-07) — 토글 mutation은 ADMIN-only.
 
 ### 15.5 스토리지 KPI 해석 가이드
 

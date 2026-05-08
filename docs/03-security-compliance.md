@@ -530,6 +530,7 @@ type AuditEventType =
   | 'admin.department.created'      // Wave 2 T4 활성화 (admin-department-crud, 2026-05-06) — POST /api/admin/departments
   | 'admin.department.updated'      // Wave 2 T4 활성화 — PATCH (rename + reactivate 흡수, before/after JSON)
   | 'admin.department.deactivated'  // Wave 2 T4 활성화 — PATCH isActive=false (제재 분기)
+  | 'admin.cron.toggled'            // admin-cron-policy-toggle 활성화 (2026-05-08) — PUT /api/admin/system/cron/{key}, metadata={key, fromEnabled, toEnabled}
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'

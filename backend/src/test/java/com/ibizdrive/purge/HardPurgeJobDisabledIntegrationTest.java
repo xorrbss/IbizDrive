@@ -1,9 +1,11 @@
 package com.ibizdrive.purge;
 
+import com.ibizdrive.admin.CronPolicyRepository;
 import com.ibizdrive.config.SchedulingConfig;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.ApplicationContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -13,17 +15,18 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 /**
- * A7.3 — {@code app.purge.enabled=false} 일 때 {@link HardPurgeJob} 빈 미등록 검증.
+ * A7.3 — {@code cron_policy.enabled=false} 일 때 {@link HardPurgeJob} 가드가 service 호출을 차단하는지 검증.
  *
- * <p>SHARE_EXPIRED cron 도입(2026-05-01) 이후 {@link SchedulingConfig}는 다중 잡 스케줄링 진입점으로
- * 무조건 활성 — 잡 활성화는 잡-개별 {@code @ConditionalOnProperty}가 담당. 따라서 {@code SchedulingConfig}
- * 빈 자체는 항상 컨텍스트에 존재하지만 등록된 {@code @Scheduled} 메서드는 0개(idle scheduler).
+ * <p>admin-cron-policy-toggle 트랙(P4) 이후: {@code @ConditionalOnProperty}는 폐기되고
+ * {@link CronPolicyRepository#isEnabled} (DB 단일 row lookup)이 진실의 출처. 빈 자체는 항상 등록되며
+ * run() 진입부 가드가 비활성 tick을 즉시 return.
  *
- * <p>{@link HardPurgeJobIntegrationTest}와 다른 properties 컨텍스트가 필요해 별도 클래스로 분리.
- * (Spring TestContext caches per properties — 같은 클래스 내 nested로 두면 컨텍스트 공유 시점에
- * 의도하지 않은 빈 누수 가능)
+ * <p>{@link HardPurgeJobIntegrationTest}와 다른 properties 컨텍스트가 필요해 별도 클래스로 분리
+ * (Spring TestContext caches per properties).
  */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
@@ -43,13 +46,21 @@ class HardPurgeJobDisabledIntegrationTest {
         registry.add("spring.jpa.hibernate.ddl-auto", () -> "validate");
     }
 
+    @MockBean HardPurgeService service;
+    @MockBean CronPolicyRepository cronPolicyRepository;
+    @Autowired HardPurgeJob job;
     @Autowired ApplicationContext ctx;
 
     @Test
-    void jobBeanNotRegistered_whenEnabledFalse() {
-        // HardPurgeJob 빈은 @ConditionalOnProperty(app.purge.enabled=true)로 미등록.
-        assertThat(ctx.getBeansOfType(HardPurgeJob.class)).isEmpty();
-        // SchedulingConfig는 다중 잡 스케줄링 진입점(SHARE_EXPIRED cron 추가 이후) — 항상 등록.
+    void jobBeanAlwaysRegistered_butGuardSkipsWhenPolicyDisabled() {
+        // P4 이후: 빈은 무조건 등록 (조건부 어노테이션 제거).
+        assertThat(ctx.getBeansOfType(HardPurgeJob.class)).hasSize(1);
+        // SchedulingConfig는 다중 잡 진입점 — 항상 등록.
         assertThat(ctx.getBean(SchedulingConfig.class)).isNotNull();
+
+        // 가드 비활성 → service 미호출.
+        when(cronPolicyRepository.isEnabled("purge.expired")).thenReturn(false);
+        job.run();
+        verifyNoInteractions(service);
     }
 }

@@ -1,5 +1,7 @@
 package com.ibizdrive.purge;
 
+import com.ibizdrive.admin.CronPolicyRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,15 +24,17 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 /**
- * A7.3 — {@code app.purge.enabled=true} 일 때 {@link HardPurgeJob} 빈 등록 + cron 트리거(직접 호출)
- * 가 {@link HardPurgeService}로 위임되는지 검증.
+ * A7.3 — {@link HardPurgeJob} 빈 등록 + cron 트리거(직접 호출)가 {@link HardPurgeService}로 위임되는지 검증.
  *
  * <p>실 cron 대기는 회피 (테스트 시간/안정성). job.run() 직접 호출이면 cron 표현식 자체의 검증은
  * Spring Boot가 부트 시점에 수행하므로 충분 — KISS.
  *
  * <p>{@link HardPurgeService}는 {@code @MockBean} — service 본체는 {@link HardPurgeServiceTest}가 검증.
+ * {@link CronPolicyRepository}도 {@code @MockBean}로 두고 toggle=true를 강제 (V11 시드는 false라
+ * 기본 상태에선 가드가 service 호출을 차단). admin-cron-policy-toggle 트랙 P4 이후 빈 등록은 무조건 —
+ * {@code @ConditionalOnProperty} 폐기.
  *
- * <p>비활성 시나리오는 {@link HardPurgeJobDisabledIntegrationTest} (다른 properties 컨텍스트).
+ * <p>비활성 시나리오는 {@link HardPurgeJobDisabledIntegrationTest}가 검증.
  */
 @SpringBootTest
 @Testcontainers(disabledWithoutDocker = true)
@@ -56,14 +60,19 @@ class HardPurgeJobIntegrationTest {
     }
 
     @MockBean HardPurgeService service;
+    @MockBean CronPolicyRepository cronPolicyRepository;
     @Autowired HardPurgeJob job;
     @Autowired HardPurgeProperties props;
     @Autowired ApplicationContext ctx;
 
+    @BeforeEach
+    void enableCronToggle() {
+        when(cronPolicyRepository.isEnabled("purge.expired")).thenReturn(true);
+    }
+
     @Test
-    void jobBeanRegistered_whenEnabledTrue() {
+    void jobBeanRegistered() {
         assertThat(ctx.getBeansOfType(HardPurgeJob.class)).hasSize(1);
-        assertThat(props.enabled()).isTrue();
         assertThat(props.maxPerRun()).isEqualTo(500);
         assertThat(props.cron()).isEqualTo("0 0 0 * * *");
         assertThat(props.zone()).isEqualTo("Asia/Seoul");
