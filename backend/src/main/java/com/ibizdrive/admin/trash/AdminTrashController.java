@@ -1,9 +1,13 @@
 package com.ibizdrive.admin.trash;
 
 import com.ibizdrive.trash.TrashItemType;
+import com.ibizdrive.user.IbizDriveUserDetails;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -58,6 +62,28 @@ public class AdminTrashController {
         AdminTrashFilters filters = new AdminTrashFilters(
             q, parsedType, parsedOwner, deletedFromMin, deletedToMax);
         return ResponseEntity.ok(service.list(filters, cursor, limit));
+    }
+
+    /**
+     * Bulk restore/purge — Wave 2 T9 follow-up (spec §3).
+     *
+     * <p>응답 status는 부분 실패에도 항상 200. cap/action 검증 실패만 400 (글로벌 핸들러).
+     * 단건 endpoint(`POST /api/files|folders/{id}/restore`, `DELETE /api/trash/{type}/{id}`)는
+     * 무변경 — 본 endpoint는 그 service layer를 fan-out 호출만 한다.
+     */
+    @PostMapping("/bulk")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AdminTrashBulkResponseDto> bulk(
+        @RequestBody AdminTrashBulkRequestDto req,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        UUID actorId = principal.getUser().getId();
+        AdminTrashBulkResponseDto result = service.bulk(
+            req == null ? null : req.action(),
+            req == null ? null : req.items(),
+            actorId
+        );
+        return ResponseEntity.ok(result);
     }
 
     /**

@@ -1,10 +1,17 @@
 package com.ibizdrive.admin.trash;
 
 import com.ibizdrive.file.FileItem;
+import com.ibizdrive.file.FileMutationService;
+import com.ibizdrive.file.FileNameConflictException;
+import com.ibizdrive.file.FileNotFoundException;
 import com.ibizdrive.folder.Folder;
+import com.ibizdrive.folder.FolderMutationService;
+import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.trash.TrashCursor;
 import com.ibizdrive.trash.TrashItemType;
+import com.ibizdrive.trash.TrashPurgeService;
 import com.ibizdrive.user.User;
 import com.ibizdrive.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -39,17 +46,28 @@ public class AdminTrashService {
     private static final int DEFAULT_LIMIT = 50;
     private static final int MAX_LIMIT = 100;
     private static final int MAX_Q_LENGTH = 200;
+    /** bulk endpoint cap. q 길이 cap과 정합, 단일 request lock window 보호 (spec §3.7). */
+    static final int BULK_MAX_ITEMS = 200;
 
     private final AdminTrashRepository adminRepo;
     private final UserRepository userRepository;
     private final FolderRepository folderRepository;
+    private final FileMutationService fileMutationService;
+    private final FolderMutationService folderMutationService;
+    private final TrashPurgeService trashPurgeService;
 
     public AdminTrashService(AdminTrashRepository adminRepo,
                              UserRepository userRepository,
-                             FolderRepository folderRepository) {
+                             FolderRepository folderRepository,
+                             FileMutationService fileMutationService,
+                             FolderMutationService folderMutationService,
+                             TrashPurgeService trashPurgeService) {
         this.adminRepo = adminRepo;
         this.userRepository = userRepository;
         this.folderRepository = folderRepository;
+        this.fileMutationService = fileMutationService;
+        this.folderMutationService = folderMutationService;
+        this.trashPurgeService = trashPurgeService;
     }
 
     @Transactional(readOnly = true)
@@ -167,5 +185,104 @@ public class AdminTrashService {
     private static int clampLimit(Integer requested) {
         if (requested == null || requested <= 0) return DEFAULT_LIMIT;
         return Math.min(requested, MAX_LIMIT);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // bulk restore/purge — Wave 2 T9 follow-up (spec §3)
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * 여러 휴지통 항목을 한 번에 복원 또는 영구삭제 (spec §3).
+     *
+     * <p><b>트랜잭션 모델</b>: 본 메서드는 트랜잭션을 열지 않는다. 항목별로 단건
+     * mutation service({@link FileMutationService#restore}, {@link FolderMutationService#restore},
+     * {@link TrashPurgeService#purgeFile}/{@link TrashPurgeService#purgeFolder})가
+     * 자기 트랜잭션을 가진다 — 한 항목 실패가 다른 항목 처리를 막지 않는 부분 실패 모델
+     * (spec §3.4 / §5.2).
+     *
+     * <p><b>예외 → wire 문자열 매핑</b>: per-item 단건 service의 도메인 예외는
+     * {@code failed[].error}의 안정적 enum-like 문자열로 변환 (docs/02 §8 정합).
+     *
+     * @param action {@code "restore"} | {@code "purge"} (그 외 → IAE → 글로벌 핸들러 400)
+     * @param items  1..200개. 0 또는 201+ → IAE → 400
+     * @param actorId SecurityContext에서 추출한 ADMIN user id — 단건 service에 전파, audit
+     *                emit 시 actor_id로 기록되며 V10 {@code deleted_by} restore 흐름에서 클리어됨
+     */
+    public AdminTrashBulkResponseDto bulk(String action,
+                                          List<AdminTrashBulkRequestDto.Item> items,
+                                          UUID actorId) {
+        if (action == null) {
+            throw new IllegalArgumentException("action is required");
+        }
+        if (items == null || items.isEmpty()) {
+            throw new IllegalArgumentException("items must be 1..200");
+        }
+        if (items.size() > BULK_MAX_ITEMS) {
+            throw new IllegalArgumentException("items must be 1..200");
+        }
+        BulkAction parsedAction = BulkAction.from(action);
+
+        List<AdminTrashBulkResponseDto.Item> succeeded = new ArrayList<>();
+        List<AdminTrashBulkResponseDto.FailedItem> failed = new ArrayList<>();
+
+        for (AdminTrashBulkRequestDto.Item item : items) {
+            // 항목 자체의 형태 검증(type/id null) 실패는 failed로 누적 — 한 항목의 잘못된 입력이
+            // 전체 batch를 막지 않는다 (부분 실패 모델). action/cap 검증과는 분리.
+            if (item == null || item.type() == null || item.id() == null) {
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(
+                    null, item == null ? null : item.id(), "INVALID_ITEM"));
+                continue;
+            }
+            TrashItemType type;
+            try {
+                type = TrashItemType.from(item.type());
+            } catch (IllegalArgumentException ex) {
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(
+                    null, item.id(), "INVALID_TYPE"));
+                continue;
+            }
+            try {
+                dispatch(parsedAction, type, item.id(), actorId);
+                succeeded.add(new AdminTrashBulkResponseDto.Item(type, item.id()));
+            } catch (FileNotFoundException | FolderNotFoundException ex) {
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), "NOT_FOUND"));
+            } catch (FileNameConflictException | FolderRestoreConflictException ex) {
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), "NAME_CONFLICT"));
+            }
+            // 그 외 RuntimeException은 의도적으로 잡지 않음 — 인프라/프로그래밍 오류는
+            // 글로벌 핸들러에서 500으로 처리되어야 한다(부분 실패 모델은 도메인 예외 한정).
+        }
+
+        return new AdminTrashBulkResponseDto(succeeded, failed);
+    }
+
+    private void dispatch(BulkAction action, TrashItemType type, UUID id, UUID actorId) {
+        switch (action) {
+            case RESTORE -> {
+                switch (type) {
+                    case FILE -> fileMutationService.restore(id, actorId);
+                    case FOLDER -> folderMutationService.restore(id, actorId);
+                }
+            }
+            case PURGE -> {
+                switch (type) {
+                    case FILE -> trashPurgeService.purgeFile(id, actorId);
+                    case FOLDER -> trashPurgeService.purgeFolder(id, actorId);
+                }
+            }
+        }
+    }
+
+    /**
+     * bulk action wire 문자열 → 내부 enum. 그 외 값은 IAE → 글로벌 핸들러 400.
+     */
+    enum BulkAction {
+        RESTORE, PURGE;
+
+        static BulkAction from(String wire) {
+            if ("restore".equals(wire)) return RESTORE;
+            if ("purge".equals(wire)) return PURGE;
+            throw new IllegalArgumentException("invalid action (expected 'restore' or 'purge'): " + wire);
+        }
     }
 }

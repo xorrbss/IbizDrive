@@ -51,12 +51,17 @@ class AdminTrashServiceTest {
     @Mock private AdminTrashRepository adminRepo;
     @Mock private UserRepository userRepository;
     @Mock private FolderRepository folderRepository;
+    @Mock private com.ibizdrive.file.FileMutationService fileMutationService;
+    @Mock private com.ibizdrive.folder.FolderMutationService folderMutationService;
+    @Mock private com.ibizdrive.trash.TrashPurgeService trashPurgeService;
 
     private AdminTrashService service;
 
     @BeforeEach
     void setUp() {
-        service = new AdminTrashService(adminRepo, userRepository, folderRepository);
+        service = new AdminTrashService(
+            adminRepo, userRepository, folderRepository,
+            fileMutationService, folderMutationService, trashPurgeService);
     }
 
     // ===== 1. empty page =====
