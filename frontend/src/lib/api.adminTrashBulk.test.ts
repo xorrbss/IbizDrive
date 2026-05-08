@@ -49,7 +49,9 @@ describe('adminBulkTrash', () => {
     expect(url).toBe('/api/admin/trash/bulk')
     expect(init.method).toBe('POST')
     expect(init.credentials).toBe('include')
-    expect(init.headers).toEqual({ 'content-type': 'application/json' })
+    // CSRF 헤더(X-CSRF-TOKEN)는 csrf-mutation-sweep 트랙에서 별도 회귀 가드(`api.csrfMutations.test.ts`)
+    // 가 책임지므로 본 wire 계약 검증에서는 content-type만 subset 매칭(toMatchObject)으로 단언한다.
+    expect(init.headers).toMatchObject({ 'content-type': 'application/json' })
     expect(JSON.parse(init.body as string)).toEqual({ action: 'restore', items: ITEMS })
     expect(out).toEqual(RESPONSE_FIXTURE)
   })
