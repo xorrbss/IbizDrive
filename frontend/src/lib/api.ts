@@ -282,12 +282,13 @@ export const api = {
    * 권한은 backend `hasPermission(#fileId, 'file', 'EDIT')` — READ만 보유한 사용자는 403.
    */
   async restoreVersion(fileId: string, versionId: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(
       `/api/files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/restore`,
       {
         method: 'POST',
         credentials: 'include',
-        headers: { Accept: 'application/json' },
+        headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
       },
     )
     if (!res.ok) {
@@ -303,9 +304,11 @@ export const api = {
   // file/folder를 판별해 본 함수와 softDeleteFolder를 분기 호출한다 (backend는 bulk endpoint
   // 미제공, ADR #32 §운영 노트). 응답은 204 NO_CONTENT라 본문 무시.
   async softDeleteFile(id: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(`/api/files/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
     })
     if (!res.ok) {
       const err = new Error(`softDeleteFile failed: ${res.status}`) as Error & { status: number }
@@ -315,9 +318,11 @@ export const api = {
   },
 
   async softDeleteFolder(id: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
     })
     if (!res.ok) {
       const err = new Error(`softDeleteFolder failed: ${res.status}`) as Error & { status: number }
@@ -341,12 +346,14 @@ export const api = {
       type === 'folder'
         ? `/api/folders/${encodeURIComponent(id)}/move`
         : `/api/files/${encodeURIComponent(id)}/move`
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(url, {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
       },
       body: JSON.stringify({ targetFolderId }),
     })
@@ -392,12 +399,14 @@ export const api = {
     const url = isFolder
       ? `/api/folders/${encodeURIComponent(id)}`
       : `/api/files/${encodeURIComponent(id)}`
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(url, {
       method: 'PATCH',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
       },
       body: JSON.stringify({ name: trimmed }),
     })
@@ -968,14 +977,16 @@ export const api = {
    * 새 이름으로 복원, 충돌 시 'RENAME_CONFLICT' (다이얼로그 inline alert).
    */
   async restoreFile(id: string, opts?: { newName?: string }): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(`/api/files/${encodeURIComponent(id)}/restore`, {
       method: 'POST',
       credentials: 'include',
+      headers:
+        opts?.newName !== undefined
+          ? { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf }
+          : { 'X-CSRF-TOKEN': csrf },
       ...(opts?.newName !== undefined
-        ? {
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: opts.newName }),
-          }
+        ? { body: JSON.stringify({ name: opts.newName }) }
         : {}),
     })
     if (!res.ok) {
@@ -987,14 +998,16 @@ export const api = {
    * 휴지통 폴더 복원. opts.newName 동일 시맨틱 (RESTORE_CONFLICT vs RENAME_CONFLICT 분기는 file 과 동일).
    */
   async restoreFolder(id: string, opts?: { newName?: string }): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}/restore`, {
       method: 'POST',
       credentials: 'include',
+      headers:
+        opts?.newName !== undefined
+          ? { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf }
+          : { 'X-CSRF-TOKEN': csrf },
       ...(opts?.newName !== undefined
-        ? {
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: opts.newName }),
-          }
+        ? { body: JSON.stringify({ name: opts.newName }) }
         : {}),
     })
     if (!res.ok) {
@@ -1007,11 +1020,13 @@ export const api = {
    * 응답 204 NO_CONTENT.
    */
   async purgeTrashItem(type: TrashItemType, id: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(
       `/api/trash/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
       {
         method: 'DELETE',
         credentials: 'include',
+        headers: { 'X-CSRF-TOKEN': csrf },
       },
     )
     if (!res.ok) {
@@ -1048,9 +1063,11 @@ export const api = {
    * 응답 204 NO_CONTENT. 이미 revoked된 share는 404로 폴백 (멱등).
    */
   async revokeShare(shareId: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(`/api/shares/${encodeURIComponent(shareId)}`, {
       method: 'DELETE',
       credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
     })
     if (!res.ok) {
       throw await buildApiError(res, `revokeShare failed: ${res.status}`)
@@ -1423,10 +1440,11 @@ export const api = {
    * `@PreAuthorize("hasRole('ADMIN')")` (진실 출처) — 프론트 hook 가드는 UX용.
    */
   async adminToggleCron(key: string, enabled: boolean): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
     const res = await fetch(`/api/admin/system/cron/${encodeURIComponent(key)}`, {
       method: 'PUT',
       credentials: 'include',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
       body: JSON.stringify({ enabled }),
     })
     if (!res.ok) {
@@ -1588,10 +1606,11 @@ async function postShareCreate(
   req: ShareCreateRequest,
   errorLabel: string,
 ): Promise<ShareDto[]> {
+  const csrf = readCookie('XSRF-TOKEN') ?? ''
   const res = await fetch(path, {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf },
     body: JSON.stringify(req),
   })
   if (!res.ok) {
@@ -1749,10 +1768,11 @@ export async function adminBulkTrash(
   action: import('@/types/trash').AdminTrashBulkAction,
   items: import('@/types/trash').AdminTrashBulkItem[],
 ): Promise<import('@/types/trash').AdminTrashBulkResponse> {
+  const csrf = readCookie('XSRF-TOKEN') ?? ''
   const res = await fetch('/api/admin/trash/bulk', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'X-CSRF-TOKEN': csrf },
     body: JSON.stringify({ action, items }),
   })
   if (!res.ok) {
