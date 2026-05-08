@@ -306,7 +306,10 @@ class AuditExportE2ETest {
             HttpMethod.GET, new HttpEntity<>(h), Map.class);
 
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(r.getBody().get("code")).isEqualTo("BAD_REQUEST");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> error = (Map<String, Object>) r.getBody().get("error");
+        assertThat(error).isNotNull();
+        assertThat(error.get("code")).isEqualTo("BAD_REQUEST");
     }
 
     // ─────────────────────────── helpers ───────────────────────────
