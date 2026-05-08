@@ -86,14 +86,18 @@ public class AdminTrashService {
                 qPattern, ownerId, deletedFromMin, deletedToMax, cursorAt, cursorId, fetchSize)
             : List.of();
 
+        // V10 — deletedBy도 동일 batch lookup에 합류 (1회 query 유지). owner와 동일 user pool이라
+        // 별도 RPC로 분리하지 않는다.
         Set<UUID> userIds = new HashSet<>();
         Set<UUID> parentIds = new HashSet<>();
         for (FileItem f : files) {
             userIds.add(f.getOwnerId());
+            if (f.getDeletedBy() != null) userIds.add(f.getDeletedBy());
             if (f.getOriginalFolderId() != null) parentIds.add(f.getOriginalFolderId());
         }
         for (Folder fd : folders) {
             userIds.add(fd.getOwnerId());
+            if (fd.getDeletedBy() != null) userIds.add(fd.getDeletedBy());
             if (fd.getOriginalParentId() != null) parentIds.add(fd.getOriginalParentId());
         }
 
@@ -108,23 +112,29 @@ public class AdminTrashService {
 
         List<AdminTrashItemDto> merged = new ArrayList<>(files.size() + folders.size());
         for (FileItem f : files) {
+            UUID deletedBy = f.getDeletedBy();
             merged.add(new AdminTrashItemDto(
                 f.getId(), f.getName(), TrashItemType.FILE,
                 f.getDeletedAt(), f.getPurgeAfter(),
                 f.getOwnerId(), userEmailById.get(f.getOwnerId()),
                 f.getOriginalFolderId(),
                 f.getOriginalFolderId() != null ? parentNameById.get(f.getOriginalFolderId()) : null,
-                f.getSizeBytes()
+                f.getSizeBytes(),
+                deletedBy,
+                deletedBy != null ? userEmailById.get(deletedBy) : null
             ));
         }
         for (Folder fd : folders) {
+            UUID deletedBy = fd.getDeletedBy();
             merged.add(new AdminTrashItemDto(
                 fd.getId(), fd.getName(), TrashItemType.FOLDER,
                 fd.getDeletedAt(), fd.getPurgeAfter(),
                 fd.getOwnerId(), userEmailById.get(fd.getOwnerId()),
                 fd.getOriginalParentId(),
                 fd.getOriginalParentId() != null ? parentNameById.get(fd.getOriginalParentId()) : null,
-                null
+                null,
+                deletedBy,
+                deletedBy != null ? userEmailById.get(deletedBy) : null
             ));
         }
 

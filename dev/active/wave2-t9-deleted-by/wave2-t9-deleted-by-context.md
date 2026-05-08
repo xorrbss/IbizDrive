@@ -8,6 +8,8 @@ Last Updated: 2026-05-08
 
 - 2026-05-07 — brainstorming → design spec commit (`afebf33` on `feat/wave2-t9-deleted-by`)
 - 2026-05-08 — dev-docs bootstrap (plan/context/tasks). active phase: **P1 (backend schema)** 시작 직전.
+- 2026-05-08 — P1 + P2 합쳐 commit 624f395 (V10 schema + write-path actor)
+- 2026-05-08 — P3 (admin DTO + service enrichment) 완료. AdminTrashItemDto 13필드, userIds union batch lookup. 다음 phase: **P4 (frontend types)**.
 
 ## Current Execution Contract
 
@@ -21,9 +23,9 @@ Last Updated: 2026-05-08
 
 ## Active task
 
-**P1 — backend schema** (V10 + Entity 매핑 + Repository 시그니처).
+**P4 — frontend types** (`AdminTrashItem`에 `deletedById?` + `deletedByEmail?` 추가).
 
-게이트: `cd backend && ./gradlew test` GREEN (마이그레이션 적용 + entity round-trip).
+게이트: `cd frontend && pnpm typecheck` exit 0.
 
 ## 다음 세션 읽기 순서
 
