@@ -52,6 +52,54 @@ PR #120 (wave2-trash-original-path) 후속. `/admin/permissions` viewer가 read-
 
 ---
 
+## 2026-05-09 — 📝 v1x-confirm-2admin-design 트랙 (v1.x deferred Generic dual-approval framework 설계 명세 정합화)
+
+### 범위
+
+여러 종료 entry "다음 세션 컨텍스트"에서 반복 언급된 "2인 승인" 항목을 spec으로 정합화. Legal Hold dual-approval(ADR #46 §6.3.9)을 generic framework로 추출하여 N개 admin destructive action에 일반 적용. 코드 0줄 — 활성화는 v1.x 진입 시.
+
+### 변경 핵심
+
+- **ADR #47 신규** (docs/00 §5) — Generic dual-approval framework: `pending_admin_approvals` 메타 테이블 + state machine(`REQUESTED→APPROVED/REJECTED/CANCELLED/EXPIRED`) + per-action config 게이트. 1차 적용(Tier 0) = role 변경 / trash purge / retention 변경 3종.
+- **ADR #46 보강** — Legal Hold release dual-approval를 ADR #47 framework로 이관 명시 (v2.x 진입 시 함께 활성화). `legal_holds.dual_approval_*` 컬럼 deprecated, payload_json='legal_hold_release' 사용.
+- **docs/02 §2.11 신설** — `pending_admin_approvals` 테이블 + 인덱스 4종(action_type+status / requested_by+date / expires_at / decided_at) + state machine 다이어그램 + payload_json 스키마 매트릭스. ER 요약(§2.12)에 edge 추가.
+- **docs/02 §8** — 에러 코드 4종 신규: `APPROVAL_REQUIRED` 202 / `APPROVAL_SELF` 403 / `APPROVAL_NOT_FOUND` 404 / `APPROVAL_ALREADY_DECIDED` 409.
+- **docs/03 §3.1** — `APPROVE_ADMIN_ACTION` 권한 enum 추가, ROLE=ADMIN 매핑.
+- **docs/03 §3.2.5** — ADMIN ROLE 매트릭스에 `APPROVE_ADMIN_ACTION` 명시.
+- **docs/03 §4.1** — audit enum 4종 신규: `admin.approval.requested/granted/rejected/expired`. cancellation은 audit row 미발행 (KISS).
+- **docs/03 §6.4 본문화** — Dual-Approval Framework 9 sub-section: 정책 개요 / 데이터 모델 / Tier 0 매트릭스 / self-approval 차단 / API 계약 / audit 매핑 / per-action 게이트 / expiration cron / v1.x 작업 분해.
+- **docs/04 §16 본문화** — 운영 명세 6 sub-section: Tier 0 / 활성화 정책(env별) / 운영 흐름(요청→승인→실행) / `/admin/approvals` UI / 운영 런북(긴급 우회 + 만료 모니터링) / v1.x 분해.
+- **dev/active/v1x-confirm-2admin-design/** — `plan.md`/`context.md`/`tasks.md` 3파일. tasks는 §A(현재 — 설계, 12항목 완료) + §B(v1.x 활성화, 9 sub-track 미실행) + §C(Tier 1 후속) + §D(산출물 위치) 구성.
+
+### 검증
+
+- 코드 변경 0건 (백엔드/프론트 0줄). docs + dev-docs only.
+- `git diff --stat` 4 파일 (docs/00, 02, 03, 04, progress) + dev/active/v1x-confirm-2admin-design 3파일.
+- Cross-reference 정합 검사: ADR #47 ↔ ADR #46 보강, docs/02 §2.11 ↔ §8 ↔ docs/03 §6.4 ↔ docs/04 §16. 모든 forward-reference 해소.
+- 다른 worktree 작업 충돌 0: yml-enabled-cleanup #118 / csrf-mutation-sweep #121 / audit-export-filename-timestamp #107 / m12-audit-log-ui (codex). 영역 분리.
+
+### 결정/편차
+
+- **데이터 모델 = Generic framework** (2안 중 선택) — ad-hoc(각 액션 자기 컬럼)는 단발성 mutation에 부적합. Generic이 N개 액션을 단일 service + state machine으로 흡수, 일관 audit/UI/알림.
+- **Tier 0 = 3종** (role 변경 / trash purge / retention 변경) — 보안 critical + 회복 불가 + 데이터 손실 위험 명확. cron toggle / user 비활성화는 Tier 1로 명세에 backlog 명시.
+- **Per-action config 게이트** (default false) — Legal Hold / share-expired-cron / permission-expired-cron 동형. 환경별 점진 활성화 (dev OFF → staging role-change ON → prod 전체 ON).
+- **Self-approval 차단**: 모든 action 공통 `secondary != requested_by` + `role_change` 추가 `secondary != payload.userId` (자기 ADMIN 부여 차단).
+- **TTL 7일 + expiration cron** — share-expired-cron 동형, default `enabled=false`.
+- **Cancellation audit 미발행** (KISS) — 자가 취소는 보안 이벤트 아니라 운영 이벤트, audit_log 폭증 회피. CANCELLED status 필터로 history 조회.
+- **Action 자체 audit 별도 emit** — `role_change` APPROVED 시 기존 `ADMIN_ROLE_CHANGED` listener가 emit. framework는 governance trail(`admin.approval.*`)만 담당.
+- **거부**: Multi-secondary 합의("2 of 3 admins") / approval cancellation audit / dual-approval 통계 대시보드 — 모두 v1.x 후반 또는 별도 ADR로 분리.
+
+### 다음 세션 컨텍스트
+
+- 본 트랙은 design-only. 활성화 트리거 = v1.x 진입 시점에 `dev/active/v1x-confirm-2admin-design/v1x-confirm-2admin-design-tasks.md §B` (V_ 마이그레이션 → permission/audit enum → entity/repository/service → controller → 진입점 변형 → ADR #46 보강 → frontend → 검증 → 운영 런북) 그대로 실행.
+- Wave 2 closure / MVP 라인과 무관.
+
+### 블로커
+
+- 없음 (v1.x 활성화 트리거는 v1.x 진입 의사결정 — 본 트랙 범위 외).
+
+---
+
 ## 2026-05-09 — 🏁 wave2-trash-original-path 트랙 종료 (Wave 2 T9 follow-up — admin trash 항목의 원위치 절대 경로 노출)
 
 ### 범위
