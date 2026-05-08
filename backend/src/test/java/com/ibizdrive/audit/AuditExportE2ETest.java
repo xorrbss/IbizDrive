@@ -246,6 +246,72 @@ class AuditExportE2ETest {
         assertThat(row.get("event_type")).isEqualTo("user.login.success");
     }
 
+    @Test
+    void auditor_export_json_returns_json_array_and_emits_format_json() throws Exception {
+        // 1) MEMBER 2회 wrong-PW → audit_log에 user.login.failed 2건
+        HttpHeaders memberCsrf = csrfHandshake();
+        for (int i = 0; i < 2; i++) {
+            postJson("/api/auth/login",
+                Map.of("email", memberEmail, "password", "wrong-" + i), memberCsrf);
+        }
+
+        // 2) AUDITOR 로그인
+        HttpHeaders auditorCsrf = csrfHandshake();
+        ResponseEntity<Map> login = postJson("/api/auth/login",
+            Map.of("email", auditorEmail, "password", PW), auditorCsrf);
+        String session = extractCookie(login, "SESSION");
+
+        HttpHeaders h = new HttpHeaders();
+        h.add(HttpHeaders.COOKIE, auditorCsrf.getFirst(HttpHeaders.COOKIE) + "; SESSION=" + session);
+        ResponseEntity<byte[]> r = rest.exchange(
+            "/api/admin/audit/export?format=json",
+            HttpMethod.GET, new HttpEntity<>(h), byte[].class);
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(r.getHeaders().getContentType().toString())
+            .startsWith("application/json");
+        assertThat(r.getHeaders().getContentDisposition().getFilename())
+            .startsWith("audit_logs_").endsWith(".json");
+
+        // 응답 본문 — JSON 배열 검증
+        String body = new String(r.getBody(), java.nio.charset.StandardCharsets.UTF_8);
+        assertThat(body).startsWith("[").endsWith("]");
+        com.fasterxml.jackson.databind.JsonNode arr =
+            new com.fasterxml.jackson.databind.ObjectMapper().readTree(body);
+        assertThat(arr.isArray()).isTrue();
+        assertThat(arr.size()).isGreaterThanOrEqualTo(1);
+
+        // audit_log metadata.format = json 검증
+        Map<String, Object> row = jdbc.queryForMap(
+            "SELECT metadata->>'format' AS format, " +
+            "       (metadata->>'rowCount')::int AS row_count, " +
+            "       (metadata->>'truncated')::boolean AS truncated " +
+            "FROM audit_log WHERE event_type='audit.exported' ORDER BY occurred_at DESC LIMIT 1");
+        assertThat(row.get("format")).isEqualTo("json");
+        assertThat((Integer) row.get("row_count")).isGreaterThanOrEqualTo(1);
+        assertThat(row.get("truncated")).isEqualTo(false);
+    }
+
+    @Test
+    void invalid_format_returns_400_bad_request() {
+        HttpHeaders csrf = csrfHandshake();
+        ResponseEntity<Map> login = postJson("/api/auth/login",
+            Map.of("email", adminEmail, "password", PW), csrf);
+        String session = extractCookie(login, "SESSION");
+
+        HttpHeaders h = new HttpHeaders();
+        h.add(HttpHeaders.COOKIE, csrf.getFirst(HttpHeaders.COOKIE) + "; SESSION=" + session);
+        ResponseEntity<Map> r = rest.exchange(
+            "/api/admin/audit/export?format=xml",
+            HttpMethod.GET, new HttpEntity<>(h), Map.class);
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> error = (Map<String, Object>) r.getBody().get("error");
+        assertThat(error).isNotNull();
+        assertThat(error.get("code")).isEqualTo("BAD_REQUEST");
+    }
+
     // ─────────────────────────── helpers ───────────────────────────
 
     private HttpHeaders csrfHandshake() {

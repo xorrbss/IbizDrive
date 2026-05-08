@@ -882,16 +882,20 @@ export const api = {
   },
 
   /**
-   * 감사 로그 server-side CSV export URL 빌더 (Wave 1 — T2).
+   * 감사 로그 server-side export URL 빌더 (Wave 1 — T2, audit-export-json 트랙으로 format 추가).
    *
    * <p>실제 다운로드는 anchor element의 `href`/`download`로 트리거 — fetch가 아닌 브라우저
    * navigation을 사용해야 Content-Disposition을 그대로 인식한다. 호출 측은 본 URL을
    * `<a href>`에 그대로 넣고 click한다.
    *
    * <p>backend `GET /api/admin/audit/export` 가드: `@PreAuthorize(AUDITOR or ADMIN)` — MEMBER는 403.
+   * `format`은 `'csv'` 또는 `'json'`. backend에서 그 외 값은 400 BAD_REQUEST.
    * 본 함수는 URL만 빌드하므로 권한 가드는 backend가 단독 책임 (UX는 호출 측 페이지가 분기).
    */
-  getAuditLogsExportUrl(filters: AuditLogFilters = {}): string {
+  getAuditLogsExportUrl(
+    filters: AuditLogFilters = {},
+    format: 'csv' | 'json' = 'csv'
+  ): string {
     const params = new URLSearchParams()
     if (filters.fromDate) params.set('fromDate', filters.fromDate)
     if (filters.toDate) params.set('toDate', filters.toDate)
@@ -899,8 +903,8 @@ export const api = {
       params.set('actorQuery', filters.actorQuery.trim())
     }
     if (filters.eventType) params.set('eventType', filters.eventType)
-    const qs = params.toString()
-    return qs ? `/api/admin/audit/export?${qs}` : '/api/admin/audit/export'
+    params.set('format', format)
+    return `/api/admin/audit/export?${params.toString()}`
   },
 
   // ──────────────────────────────────────────────────────────────────

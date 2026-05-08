@@ -260,9 +260,9 @@ DB row 중 storage 객체가 없는 것 = phantom
 
 - [x] CSV 다운로드 — `AuditCsvWriter` (RFC 4180 quoting + UTF-8 BOM + `\r\n`, `text/csv; charset=utf-8` MIME)
 - [x] 대상 기간 / 필터 조건 포함 — `AuditQueryFilters` 전체 (eventType / actorId / targetType / targetId / dateFrom / dateTo) query string 그대로 전달
-- [x] **server-side full-result 스트리밍** — Wave 1 T2: `GET /api/admin/audit/export` (`StreamingResponseBody`), 하드 캡 10,000행 + `LIMIT cap+1` truncation 감지, 초과 시 `X-Audit-Export-Truncated: true` 헤더
-- [x] **`audit.exported` runtime emission** — Wave 1 T2: `AuditExportListener` (`@EventListener` + `@Transactional(REQUIRES_NEW)`), metadata에 `filters` / `rowCount` / `truncated` / `format=csv` (append-only 보존을 위해 export read 트랜잭션과 분리)
-- [ ] JSON 다운로드 — v1.x deferred
+- [x] **server-side full-result 스트리밍** — Wave 1 T2: `GET /api/admin/audit/export` (`StreamingResponseBody`), 하드 캡 10,000행 + `LIMIT cap+1` truncation 감지, 초과 시 `X-Audit-Export-Truncated: true` 헤더. `format=csv|json` 분기(audit-export-json 트랙, 2026-05-08) — default csv, json은 plain array(metadata는 nested object).
+- [x] **`audit.exported` runtime emission** — Wave 1 T2: `AuditExportListener` (`@EventListener` + `@Transactional(REQUIRES_NEW)`), metadata에 `filters` / `rowCount` / `truncated` / `format`(`"csv"` 또는 `"json"`, audit-export-json 트랙) — append-only 보존을 위해 export read 트랜잭션과 분리.
+- [x] JSON 다운로드 — audit-export-json 트랙(2026-05-08): `GET /api/admin/audit/export?format=json` 응답으로 `application/json` plain array. `AuditJsonWriter`(`ObjectMapper.writeValue`) 단일 호출, BOM 미부착. 진정한 SQL → JSON streaming은 v1.x deferred.
 
 ### 7.3 상세 뷰
 

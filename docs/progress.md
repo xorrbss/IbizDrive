@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-05-08 — 🏁 audit-export-json 트랙 종료 (Wave 1 T2 후속 — `GET /api/admin/audit/export?format=csv|json`)
+
+### 범위
+
+Wave 1 T2(`audit-export-endpoint`)의 CSV-only 다운로드를 `format=csv|json` 분기로 확장. 기존 호출자 호환성 유지(default csv) + AUDIT_EXPORTED audit metadata `format` 동적화. 신규 `AuditJsonWriter`(plain JSON 배열, BOM 미부착, nested metadata) + `AuditExportEvent.format` 필드 + Listener defensive guard.
+
+### 변경 핵심
+
+**Backend:**
+- `AuditJsonWriter` 신규 — `ObjectMapper.writeValue(out, entries)`. SequenceWriter 미사용(KISS).
+- `AuditExportEvent`에 `String format` 필드 추가(7-arg record).
+- `AuditExportListener` — metadata `"format":"csv"` 하드코딩 → `event.format()` 동적, "csv"/"json" 외 값은 "csv" fallback + WARN 로그(defense-in-depth).
+- `AuditQueryController.exportCsv` → `export`로 rename + `format` 파라미터(default csv) 분기. `format` 검증 실패 시 `IllegalArgumentException` → `GlobalExceptionHandler.handleBadRequest`가 400 `BAD_REQUEST`.
+- 테스트: `AuditExportListenerTest`(신규, 3 케이스), `AuditJsonWriterTest`(신규, 4 케이스), `AuditQueryControllerTest` slice에 jsonWriter mock 추가, `AuditExportE2ETest` 2 케이스 추가(format=json + format=invalid 400).
+
+**Frontend:**
+- `api.getAuditLogsExportUrl(filters, format='csv')` 시그니처 확장 + `format` query param 합성. 단위 테스트 5 케이스(`api.getAuditLogsExportUrl.test.ts`).
+- `/admin/audit/logs` 페이지 — "CSV 내보내기" + "JSON 내보내기" 두 anchor. testid는 `audit-export-link-csv` / `audit-export-link-json`로 분리. page.test.tsx 갱신(4 케이스).
+
+**Docs:**
+- `docs/02 §7.12` — table row에 format 분기 명시 + audit/export 상세 code block 추가.
+- `docs/04 §7.2` line 263~265 — `format=csv|json` 분기 + nested metadata + JSON 다운로드 항목 [x] 전환.
+- `BETA-RELEASE.md §7` v1.x deferred "audit log JSON export endpoint" 라인 제거 + Source 체인에 audit-export-json 트랙 추가 + audit emit coverage 행에 metadata.format 동적화 명시.
+
+### 검증
+
+- `cd backend && ./gradlew test --tests AuditExportListenerTest --tests AuditJsonWriterTest --tests AuditQueryControllerTest` BUILD SUCCESSFUL (Listener 3 / Writer 4 / Slice 9 모두 GREEN)
+- `cd frontend && npm test -- --run api.getAuditLogsExportUrl` 5 PASS, `npm test -- --run page.test.tsx`(audit/logs) 4 PASS
+- AUDIT_EXPORTED enum 변경 0 (47 enum 유지). 새 에러 코드 0 (기존 `BAD_REQUEST` 재사용).
+
+### 다음 세션 컨텍스트
+
+- 진정한 SQL → JSON streaming(메모리 cap 제거)은 v1.x.
+- `format` enum 강타입화는 v1.x — 현재는 string check + 400으로 충분.
+- NDJSON 형식 / `application/x-ndjson`은 별도 트랙 후보.
+- 이 트랙은 worktree에서 `frontend/node_modules`를 main repo로 junction(`mklink /J`) — 후속 작업 시 동일 패턴 활용 가능(`npm install`이 stuck하는 환경).
+
+---
+
 ## 2026-05-07 — 🏁 wave2-t9-followup-trash-date-filter 트랙 종료 (Wave 2 T9 후속 — admin global trash 날짜 범위 필터)
 
 ### 범위

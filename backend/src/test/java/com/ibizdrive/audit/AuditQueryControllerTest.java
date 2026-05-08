@@ -63,6 +63,9 @@ class AuditQueryControllerTest {
     private AuditCsvWriter csvWriter;                  // /export 엔드포인트용 — 본 슬라이스는 호출 안 함
 
     @MockBean
+    private AuditJsonWriter jsonWriter;                // /export?format=json용 — 본 슬라이스는 호출 안 함
+
+    @MockBean
     private UserRepository userRepository;             // SecurityConfig 그래프 충족
 
     @MockBean
