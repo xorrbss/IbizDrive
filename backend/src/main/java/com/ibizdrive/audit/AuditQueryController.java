@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 import java.io.IOException;
+import java.time.Instant;
 import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -47,7 +49,15 @@ import java.util.UUID;
 @RequestMapping("/api/admin/audit")
 public class AuditQueryController {
 
-    private static final DateTimeFormatter FILENAME_DATE = DateTimeFormatter.ofPattern("yyyy-MM-dd");
+    /**
+     * Export filename용 UTC timestamp 포맷 — {@code yyyy-MM-dd_HHmmss'Z'}.
+     *
+     * <p>같은 날 여러 번 다운로드 시 OS 자동 `(1)` suffix 회피 + 정렬 친화. UTC 명시(`Z`)로
+     * 운영자 timezone과 무관하게 결정적. 콜론(`:`)은 Windows 파일명 금지 문자라 시각부는
+     * delimiter 없이 작성. ISO 8601 basic format에 준한다.
+     */
+    private static final DateTimeFormatter FILENAME_TIMESTAMP =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd_HHmmss'Z'").withZone(ZoneOffset.UTC);
 
     /** export 응답 헤더 — cap 초과 시 true. 클라이언트가 사용자 안내에 활용 가능. */
     static final String HEADER_TRUNCATED = "X-Audit-Export-Truncated";
@@ -179,8 +189,9 @@ public class AuditQueryController {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(contentTypeFor(parsedFormat));
         String extension = parsedFormat.wire();
+        // UTC timestamp로 같은 날 여러 다운로드 시 파일명 충돌 회피.
         headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment()
-            .filename("audit_logs_" + LocalDate.now().format(FILENAME_DATE) + "." + extension)
+            .filename("audit_logs_" + FILENAME_TIMESTAMP.format(Instant.now()) + "." + extension)
             .build());
         if (result.truncated()) {
             headers.add(HEADER_TRUNCATED, "true");

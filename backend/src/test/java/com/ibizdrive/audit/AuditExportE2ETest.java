@@ -159,8 +159,9 @@ class AuditExportE2ETest {
         assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(r.getHeaders().getContentType().toString())
             .startsWith("text/csv");
+        // filename에 UTC timestamp 포함 (audit-export-filename-timestamp 트랙) — 같은 날 여러 다운로드 시 충돌 회피.
         assertThat(r.getHeaders().getContentDisposition().getFilename())
-            .startsWith("audit_logs_").endsWith(".csv");
+            .matches("audit_logs_\\d{4}-\\d{2}-\\d{2}_\\d{6}Z\\.csv");
         assertThat(r.getHeaders().getFirst(AuditQueryController.HEADER_TRUNCATED))
             .as("row 수가 cap 미만이라 truncated 헤더 없음").isNull();
 
@@ -271,7 +272,7 @@ class AuditExportE2ETest {
         assertThat(r.getHeaders().getContentType().toString())
             .startsWith("application/json");
         assertThat(r.getHeaders().getContentDisposition().getFilename())
-            .startsWith("audit_logs_").endsWith(".json");
+            .matches("audit_logs_\\d{4}-\\d{2}-\\d{2}_\\d{6}Z\\.json");
 
         // 응답 본문 — JSON 배열 검증
         String body = new String(r.getBody(), java.nio.charset.StandardCharsets.UTF_8);
