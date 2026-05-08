@@ -10,7 +10,8 @@ Last Updated: 2026-05-08
 - 2026-05-08 — dev-docs bootstrap (plan/context/tasks). active phase: **P1 (backend schema)** 시작 직전.
 - 2026-05-08 — P1 + P2 합쳐 commit 624f395 (V10 schema + write-path actor)
 - 2026-05-08 — P3 (admin DTO + service enrichment) 완료 (commit adef4fd). AdminTrashItemDto 13필드, userIds union batch lookup.
-- 2026-05-08 — P4 (frontend types) 완료. AdminTrashItem `deletedById/Email: string | null` (originalParentId 패턴). 다음 phase: **P5 (frontend UI)**.
+- 2026-05-08 — P4 (frontend types) 완료 (commit d4f0bd2). AdminTrashItem `deletedById/Email: string | null` (originalParentId 패턴).
+- 2026-05-08 — P5 (frontend UI) 완료. /admin/trash/all 9컬럼 (삭제자 추가), em dash 렌더, page test 3 보강. 다음 phase: **P6 (docs)**.
 
 ## Current Execution Contract
 
@@ -24,9 +25,9 @@ Last Updated: 2026-05-08
 
 ## Active task
 
-**P5 — frontend UI** (`/admin/trash/all` 테이블에 "삭제자" 컬럼 추가, NULL은 "—").
+**P6 — docs** (docs/02 §6.5 + docs/04 §8.3 + BETA-RELEASE §7 + progress.md).
 
-게이트: page test (컬럼 헤더 + non-NULL/NULL 시나리오) + `pnpm test --run` skipped=0 + `pnpm typecheck` + `pnpm lint` + `pnpm build` exit 0.
+게이트: spec ↔ plan ↔ 코드 ↔ docs 4-way drift 0.
 
 ## 다음 세션 읽기 순서
 

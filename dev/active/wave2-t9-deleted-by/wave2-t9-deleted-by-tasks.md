@@ -11,9 +11,9 @@ Last Updated: 2026-05-08
 | P1 backend schema | ✅ 완료 (commit 624f395) | `./gradlew test` 영향 범위 GREEN |
 | P2 backend write path | ✅ 완료 (P1과 합쳐 commit 624f395) | Mutation services 단위 테스트 GREEN |
 | P3 backend admin DTO/Service | ✅ 완료 (commit adef4fd) | AdminTrashService/Controller 테스트 GREEN |
-| P4 frontend types | ✅ 완료 | `pnpm typecheck` exit 0 |
-| P5 frontend UI | ⏸️ blocked-by-P4 | page test + `pnpm test --run` skipped=0 |
-| P6 docs | ⏸️ blocked-by-P5 | drift check + 4 문서 업데이트 |
+| P4 frontend types | ✅ 완료 (commit d4f0bd2) | `pnpm typecheck` exit 0 |
+| P5 frontend UI | ✅ 완료 | page test + `pnpm test --run` skipped=0 + typecheck/lint/build exit 0 |
+| P6 docs | 🟡 대기 | drift check + 4 문서 업데이트 |
 
 ---
 
@@ -185,10 +185,10 @@ Last Updated: 2026-05-08
 
 ### 체크리스트
 
-- [ ] `/admin/trash/all` 페이지 테이블 헤더에 "삭제자" 추가 (소유자 ↔ 삭제일시 사이)
-- [ ] 행 렌더에 `deletedByEmail ?? "—"` 셀 추가
-- [ ] page test (Vitest): 컬럼 헤더 존재 + non-NULL/NULL 시나리오 모두 렌더 검증
-- [ ] 게이트: `pnpm test --run` skipped=0 + `pnpm typecheck` + `pnpm lint` + `pnpm build` exit 0
+- [x] `/admin/trash/all` 페이지 테이블 헤더에 "삭제자" 추가 (크기 ↔ 삭제일 사이) — plan은 "소유자 ↔ 삭제일시"로 명시했으나 현 헤더 순서(이름/타입/소유자/원위치/크기/삭제일/...)에 자연스럽게 맞춰 "크기 ↔ 삭제일" 사이로 배치. 사용자에게 가까운 정보(소유자) 옆이 아니라 메타(크기)와 시각(삭제일) 사이가 시각적으로 정합.
+- [x] 행 렌더에 `deletedByEmail ?? <span>"—"</span>` 셀 추가 (em dash, originalParentName "(루트)" 패턴과 정합)
+- [x] page test (Vitest) 3개 추가: "삭제자" columnheader, deletedByEmail 표시, NULL em dash 렌더
+- [x] 게이트: `pnpm test --run` 121 files / 904 tests passed (skipped 0) + `pnpm typecheck` + `pnpm lint` + `pnpm build` exit 0
 - [ ] commit: `feat(wave2-t9-deleted-by): P5 /admin/trash/all 삭제자 컬럼`
 
 ### 작업 전 필독
