@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-05-08 — 🏁 audit-format-enum 트랙 종료 (Wave 1 T2 follow-up — audit export `format` 강타입화)
+
+### 범위
+
+`audit-export-json` 트랙(PR #85)의 다음 세션 컨텍스트에 명시된 v1.x 항목. `format` String 비교(3 군데) → `AuditExportFormat` enum 강타입화. wire 호환·audit_log row byte-by-byte 동일.
+
+### 변경 핵심
+
+- 신규 `com.ibizdrive.audit.AuditExportFormat` enum (`CSV`, `JSON` + `wire()` + `from(String)`).
+- `AuditExportEvent.format`: `String` → `AuditExportFormat`.
+- `AuditQueryController.export`: `if/else String 비교` → `AuditExportFormat.from(format)` 단일 검증 + enum 변수로 stream/header/extension 분기.
+- `AuditExportListener.onExport`: 5줄 fallback 로직 삭제 — enum이 컴파일러로 검증되어 fallback 도달 가능성 0. metadata는 `event.format().wire()`.
+- `AuditExportListenerTest`: String 호출 → enum 마이그. `unknownFormatFallsBackToCsv` 테스트 삭제 (enum 도입으로 컴파일 단계 차단).
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.audit.*"` BUILD SUCCESSFUL (2m56s).
+- frontend 영향 0 (wire 호환).
+- audit_log metadata JSON byte-by-byte 동일 (CSV → `"csv"`, JSON → `"json"`).
+
+### 결정/편차
+
+- listener의 fallback 로직 **삭제** — enum이 valid 값만 허용하므로 defense-in-depth 의미 없음 (spec §5.1).
+- enum 명: `AuditExportFormat` (도메인 명시). 짧은 `ExportFormat`은 다른 export 트랙과 충돌 위험.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / folder subtree size / KST 경계 날짜 필터 / 권한 grant/revoke direct CRUD / quota / audit SQL→JSON streaming / NDJSON.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 admin-trash-bulk 트랙 종료 (Wave 2 T9 follow-up — `/admin/trash/all` 일괄 복원·영구삭제)
 
 ### 범위

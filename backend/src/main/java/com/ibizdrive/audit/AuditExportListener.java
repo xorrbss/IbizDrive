@@ -28,19 +28,11 @@ public class AuditExportListener {
     @EventListener
     public void onExport(AuditExportEvent event) {
         // metadata 키 순서를 결정적으로 유지해 audit row diff·테스트 용이하게 한다.
-        // format은 controller에서 검증되지만, listener는 defense-in-depth로
-        // 지원되지 않는 값은 "csv"로 fallback (audit_log 무결성 우선).
-        String safeFormat = ("csv".equals(event.format()) || "json".equals(event.format()))
-            ? event.format()
-            : "csv";
-        if (!safeFormat.equals(event.format())) {
-            log.warn("AuditExportEvent.format='{}' is unsupported; falling back to 'csv' for audit metadata",
-                event.format());
-        }
+        // format은 컴파일러가 보증하는 enum — fallback 로직 불필요(이전 String 시절 정리).
         String metadata = "{\"filters\":" + (event.filtersJson() == null ? "null" : event.filtersJson())
             + ",\"rowCount\":" + event.rowCount()
             + ",\"truncated\":" + event.truncated()
-            + ",\"format\":\"" + safeFormat + "\"}";
+            + ",\"format\":\"" + event.format().wire() + "\"}";
         try {
             auditService.record(new AuditEvent(
                 AuditEventType.AUDIT_EXPORTED,
