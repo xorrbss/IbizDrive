@@ -10,6 +10,7 @@ import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.trash.TrashRetentionProperties;
 import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -58,22 +59,23 @@ import java.util.UUID;
 @Transactional
 public class FileMutationService {
 
-    /** 휴지통 보존 기간 — 30일 (docs/02 §6.5). 이 기간 이후 system purge 대상. */
-    private static final int PURGE_DAYS = 30;
-
     private final FileRepository fileRepository;
     private final FolderRepository folderRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (docs/02 §6.5). */
+    private final TrashRetentionProperties retention;
 
     public FileMutationService(FileRepository fileRepository,
                                FolderRepository folderRepository,
                                AuditService auditService,
-                               ObjectMapper objectMapper) {
+                               ObjectMapper objectMapper,
+                               TrashRetentionProperties retention) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.retention = retention;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -208,7 +210,7 @@ public class FileMutationService {
 
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         target.setDeletedAt(now);
-        target.setPurgeAfter(now.plus(PURGE_DAYS, ChronoUnit.DAYS));
+        target.setPurgeAfter(now.plus(retention.days(), ChronoUnit.DAYS));
         target.setOriginalFolderId(target.getFolderId());
         // V10 — admin global trash UI에서 cross-owner 복원 시 deleter 식별용 (audit_log 별도 lookup 우회).
         target.setDeletedBy(actorId);
