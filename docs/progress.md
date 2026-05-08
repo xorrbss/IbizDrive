@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-05-08 — 🏁 audit-export-cap-metadata 트랙 종료 (cap 값 audit metadata 노출)
+
+### 범위
+
+직전 `audit-export-cap-config` 트랙(PR #97)으로 cap이 동적이 되면서, 운영 디버깅 시 어떤 cap에서 `truncated=true` 발생했는지 audit_log row만으로 추적 가능하도록 metadata에 `rowCap` 필드 추가.
+
+### 변경 핵심
+
+- `AuditExportEvent.rowCap` 필드 추가 (record 7→8 필드).
+- `AuditQueryController.export`: `AuditExportProperties` 의존성 추가, event publish 시 `exportProperties.rowCap()` 전달.
+- `AuditExportListener.onExport`: metadata JSON에 `"rowCap":N` 키 추가 (가장 마지막 위치).
+- `AuditExportListenerTest`: 기존 3 케이스에 `CAP=10000` arg 추가 + `"rowCap"` assert. 1 신규 — 운영자가 cap을 5000으로 줄인 시나리오.
+- `AuditQueryControllerTest`: `@MockBean AuditExportProperties` 추가.
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.audit.*"` BUILD SUCCESSFUL (4m8s).
+- wire 호환 0 — 응답 형태/필터 처리 변경 0, frontend 영향 0.
+- audit_log metadata는 추가만(기존 키 위치/타입 변경 0).
+
+### 결정/편차
+
+- metadata 키 위치는 마지막에 추가 — 기존 키 순서 유지로 audit row diff·테스트 안정.
+- `AuditExportProperties`를 controller에 직접 주입 — service 경유 우회는 의미 없음(service는 cap을 적용하지만 publish 책임은 controller).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / 권한 grant/revoke direct CRUD / quota / audit SQL→JSON streaming.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 wave2-folder-subtree-size 트랙 종료 (Wave 2 T9 follow-up — admin trash folder DTO subtree size)
 
 ### 범위

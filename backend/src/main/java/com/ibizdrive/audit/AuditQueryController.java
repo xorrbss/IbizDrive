@@ -58,19 +58,22 @@ public class AuditQueryController {
     private final AuditNdjsonWriter ndjsonWriter;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
+    private final AuditExportProperties exportProperties;
 
     public AuditQueryController(AuditQueryService queryService,
                                 AuditCsvWriter csvWriter,
                                 AuditJsonWriter jsonWriter,
                                 AuditNdjsonWriter ndjsonWriter,
                                 ApplicationEventPublisher eventPublisher,
-                                ObjectMapper objectMapper) {
+                                ObjectMapper objectMapper,
+                                AuditExportProperties exportProperties) {
         this.queryService = queryService;
         this.csvWriter = csvWriter;
         this.jsonWriter = jsonWriter;
         this.ndjsonWriter = ndjsonWriter;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
+        this.exportProperties = exportProperties;
     }
 
     @GetMapping
@@ -168,7 +171,8 @@ public class AuditQueryController {
             // 본문 작성 성공 후에만 audit emit — 실패한 export는 기록하지 않는다.
             eventPublisher.publishEvent(new AuditExportEvent(
                 actorId, actorIp, userAgent, filtersJson,
-                result.entries().size(), result.truncated(), parsedFormat
+                result.entries().size(), result.truncated(), parsedFormat,
+                exportProperties.rowCap()
             ));
         };
 

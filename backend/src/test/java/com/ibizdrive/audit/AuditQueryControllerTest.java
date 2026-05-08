@@ -69,6 +69,9 @@ class AuditQueryControllerTest {
     private AuditNdjsonWriter ndjsonWriter;            // /export?format=ndjson용 — 본 슬라이스는 호출 안 함
 
     @MockBean
+    private AuditExportProperties auditExportProperties; // controller 의존성 충족 (cap 값 publish 용)
+
+    @MockBean
     private UserRepository userRepository;             // SecurityConfig 그래프 충족
 
     @MockBean
