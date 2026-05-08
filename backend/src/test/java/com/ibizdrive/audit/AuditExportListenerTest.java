@@ -13,18 +13,24 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 
 /**
- * AuditExportListener — AUDIT_EXPORTED metadata의 {@code format} 필드가
- * AuditExportEvent.format() 값을 그대로 반영하는지 검증.
+ * AuditExportListener — AUDIT_EXPORTED metadata의 {@code format}/{@code rowCap} 필드가
+ * {@link AuditExportEvent}의 값을 그대로 반영하는지 검증.
  *
- * <p>audit-format-enum 트랙(2026-05-08)으로 String → {@link AuditExportFormat} enum 마이그.
- * 이전 String 시절의 {@code unknownFormatFallsBackToCsv} 테스트는 enum 도입으로 컴파일 단계에서
- * invalid 값이 차단되어 삭제 (spec §5.1).
+ * <p>이력:
+ * <ul>
+ *   <li>audit-format-enum (2026-05-08): {@code format} String → enum 마이그. 이전
+ *       {@code unknownFormatFallsBackToCsv} 테스트는 enum이 컴파일 단계에서 invalid 값을
+ *       차단해 삭제.</li>
+ *   <li>audit-export-cap-metadata (2026-05-08): {@code rowCap} 필드 추가 — 운영 디버깅용.</li>
+ * </ul>
  */
 @ExtendWith(MockitoExtension.class)
 class AuditExportListenerTest {
 
     @Mock
     private AuditService auditService;
+
+    private static final int CAP = 10_000;
 
     @Test
     void csvFormatEventEmitsMetadataFormatCsv() throws Exception {
@@ -36,14 +42,17 @@ class AuditExportListenerTest {
             "{\"eventType\":\"user.login.failed\"}",
             42,
             false,
-            AuditExportFormat.CSV
+            AuditExportFormat.CSV,
+            CAP
         );
 
         listener.onExport(event);
 
         ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
         verify(auditService).record(captor.capture());
-        assertThat(captor.getValue().metadata()).contains("\"format\":\"csv\"");
+        assertThat(captor.getValue().metadata())
+            .contains("\"format\":\"csv\"")
+            .contains("\"rowCap\":10000");
     }
 
     @Test
@@ -56,7 +65,8 @@ class AuditExportListenerTest {
             "{}",
             7,
             true,
-            AuditExportFormat.JSON
+            AuditExportFormat.JSON,
+            CAP
         );
 
         listener.onExport(event);
@@ -66,7 +76,8 @@ class AuditExportListenerTest {
         assertThat(captor.getValue().metadata())
             .contains("\"format\":\"json\"")
             .contains("\"rowCount\":7")
-            .contains("\"truncated\":true");
+            .contains("\"truncated\":true")
+            .contains("\"rowCap\":10000");
     }
 
     @Test
@@ -79,7 +90,8 @@ class AuditExportListenerTest {
             "{}",
             3,
             false,
-            AuditExportFormat.NDJSON
+            AuditExportFormat.NDJSON,
+            CAP
         );
 
         listener.onExport(event);
@@ -88,6 +100,29 @@ class AuditExportListenerTest {
         verify(auditService).record(captor.capture());
         assertThat(captor.getValue().metadata())
             .contains("\"format\":\"ndjson\"")
-            .contains("\"rowCount\":3");
+            .contains("\"rowCount\":3")
+            .contains("\"rowCap\":10000");
+    }
+
+    @Test
+    void rowCapInMetadataReflectsEventValue() throws Exception {
+        // 운영자가 application.yml로 cap을 5000으로 줄인 시나리오.
+        AuditExportListener listener = new AuditExportListener(auditService);
+        AuditExportEvent event = new AuditExportEvent(
+            UUID.randomUUID(),
+            InetAddress.getByName("10.0.0.1"),
+            "TestAgent/1.0",
+            "{}",
+            5_000,
+            true,
+            AuditExportFormat.CSV,
+            5_000
+        );
+
+        listener.onExport(event);
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        assertThat(captor.getValue().metadata()).contains("\"rowCap\":5000");
     }
 }

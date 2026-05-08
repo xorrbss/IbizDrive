@@ -29,10 +29,13 @@ public class AuditExportListener {
     public void onExport(AuditExportEvent event) {
         // metadata 키 순서를 결정적으로 유지해 audit row diff·테스트 용이하게 한다.
         // format은 컴파일러가 보증하는 enum — fallback 로직 불필요(이전 String 시절 정리).
+        // rowCap은 audit-export-cap-config 트랙(2026-05-08) 이후 동적 — audit_log에 노출해
+        // 운영 디버깅 시 어떤 cap에서 truncated=true 발생했는지 추적 가능.
         String metadata = "{\"filters\":" + (event.filtersJson() == null ? "null" : event.filtersJson())
             + ",\"rowCount\":" + event.rowCount()
             + ",\"truncated\":" + event.truncated()
-            + ",\"format\":\"" + event.format().wire() + "\"}";
+            + ",\"format\":\"" + event.format().wire() + "\""
+            + ",\"rowCap\":" + event.rowCap() + "}";
         try {
             auditService.record(new AuditEvent(
                 AuditEventType.AUDIT_EXPORTED,
