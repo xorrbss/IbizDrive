@@ -1,5 +1,6 @@
 package com.ibizdrive.file;
 
+import com.ibizdrive.common.dto.RestoreRequest;
 import com.ibizdrive.file.dto.FileDto;
 import com.ibizdrive.file.dto.MoveFileRequest;
 import com.ibizdrive.file.dto.RenameFileRequest;
@@ -20,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -152,23 +154,35 @@ class FileControllerTest {
     @Test
     void restore_returnsOk_andDelegates() {
         FileItem restored = newFile(FILE_ID, FOLDER_ID, "doc.txt");
-        when(service.restore(eq(FILE_ID), eq(ACTOR))).thenReturn(restored);
+        when(service.restore(eq(FILE_ID), eq(ACTOR), isNull())).thenReturn(restored);
 
-        ResponseEntity<Map<String, FileDto>> res = controller.restore(FILE_ID, principal);
+        ResponseEntity<Map<String, FileDto>> res = controller.restore(FILE_ID, null, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().get("file").id()).isEqualTo(FILE_ID);
         assertThat(res.getBody().get("file").folderId()).isEqualTo(FOLDER_ID);
-        verify(service).restore(FILE_ID, ACTOR);
+        verify(service).restore(FILE_ID, ACTOR, null);
+    }
+
+    @Test
+    void restore_withNewName_delegatesNewName() {
+        FileItem restored = newFile(FILE_ID, FOLDER_ID, "renamed.txt");
+        when(service.restore(eq(FILE_ID), eq(ACTOR), eq("renamed.txt"))).thenReturn(restored);
+
+        ResponseEntity<Map<String, FileDto>> res = controller.restore(
+            FILE_ID, new RestoreRequest("renamed.txt"), principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(service).restore(FILE_ID, ACTOR, "renamed.txt");
     }
 
     @Test
     void restore_serviceThrowsConflict_propagated() {
-        when(service.restore(any(), any()))
-            .thenThrow(new FileNameConflictException("dup at original folder"));
+        when(service.restore(any(), any(), any()))
+            .thenThrow(new FileRestoreConflictException("dup at original folder"));
 
-        assertThatThrownBy(() -> controller.restore(FILE_ID, principal))
-            .isInstanceOf(FileNameConflictException.class);
+        assertThatThrownBy(() -> controller.restore(FILE_ID, null, principal))
+            .isInstanceOf(FileRestoreConflictException.class);
     }
 
     // ── get (Phase B P2) ──────────────────────────────────────────────

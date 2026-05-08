@@ -1,5 +1,6 @@
 package com.ibizdrive.folder;
 
+import com.ibizdrive.common.dto.RestoreRequest;
 import com.ibizdrive.folder.dto.CreateFolderRequest;
 import com.ibizdrive.folder.dto.FolderDto;
 import com.ibizdrive.folder.dto.FolderItemDto;
@@ -204,13 +205,25 @@ class FolderControllerTest {
     @Test
     void restore_returnsOk_andDelegates() {
         Folder restored = newFolder(FOLDER_ID, PARENT_ID, "docs", "standard");
-        when(service.restore(eq(FOLDER_ID), eq(ACTOR))).thenReturn(restored);
+        when(service.restore(eq(FOLDER_ID), eq(ACTOR), isNull())).thenReturn(restored);
 
-        ResponseEntity<Map<String, FolderDto>> res = controller.restore(FOLDER_ID, principal);
+        ResponseEntity<Map<String, FolderDto>> res = controller.restore(FOLDER_ID, null, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().get("folder").id()).isEqualTo(FOLDER_ID);
-        verify(service).restore(FOLDER_ID, ACTOR);
+        verify(service).restore(FOLDER_ID, ACTOR, null);
+    }
+
+    @Test
+    void restore_withNewName_delegatesNewName() {
+        Folder restored = newFolder(FOLDER_ID, PARENT_ID, "renamed", "standard");
+        when(service.restore(eq(FOLDER_ID), eq(ACTOR), eq("renamed"))).thenReturn(restored);
+
+        ResponseEntity<Map<String, FolderDto>> res = controller.restore(
+            FOLDER_ID, new RestoreRequest("renamed"), principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(service).restore(FOLDER_ID, ACTOR, "renamed");
     }
 
     // ── items (Phase B P1) ────────────────────────────────────────────

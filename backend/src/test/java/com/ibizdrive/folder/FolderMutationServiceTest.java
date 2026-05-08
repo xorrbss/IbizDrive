@@ -472,8 +472,39 @@ class FolderMutationServiceTest {
         service.create(null, "RestoreRs2", owner, "standard", owner);
         reset(auditService);
 
+        // newName 미지정 + 원본 충돌 → FolderRestoreConflictException (RESTORE_CONFLICT envelope).
         assertThatThrownBy(() -> service.restore(first.getId(), owner))
             .isInstanceOf(FolderRestoreConflictException.class);
+        verify(auditService, never()).record(any());
+    }
+
+    @Test
+    void restore_withNewName_renamesAndEmitsAudit() {
+        UUID owner = insertUser("rs3@test", "rs3");
+        Folder f = service.create(null, "OldFolderRs3", owner, "standard", owner);
+        service.delete(f.getId(), owner);
+        reset(auditService);
+
+        Folder restored = service.restore(f.getId(), owner, "NewFolderRs3");
+
+        assertThat(restored.getName()).isEqualTo("NewFolderRs3");
+        assertThat(restored.getNormalizedName()).isEqualTo("newfolderrs3");
+        assertThat(restored.getDeletedAt()).isNull();
+        verifyAuditEmitted(AuditEventType.FOLDER_RESTORED, restored.getId(), owner);
+    }
+
+    @Test
+    void restore_withNewName_conflict_throwsNameConflict() {
+        UUID owner = insertUser("rs4@test", "rs4");
+        Folder f = service.create(null, "OriginalRs4", owner, "standard", owner);
+        service.delete(f.getId(), owner);
+        // 새 이름이 충돌하는 활성 폴더 INSERT
+        service.create(null, "TakenRs4", owner, "standard", owner);
+        reset(auditService);
+
+        // newName 지정 + 새 이름 충돌 → FolderNameConflictException (RENAME_CONFLICT envelope).
+        assertThatThrownBy(() -> service.restore(f.getId(), owner, "TakenRs4"))
+            .isInstanceOf(FolderNameConflictException.class);
         verify(auditService, never()).record(any());
     }
 

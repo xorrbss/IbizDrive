@@ -374,7 +374,7 @@ class FileMutationServiceTest {
     }
 
     @Test
-    void restore_conflictAtOriginalFolder_throwsConflict() {
+    void restore_conflictAtOriginalFolder_throwsRestoreConflict() {
         UUID owner = insertUser("fs4@test", "fs4");
         UUID folder = insertFolder(owner, "FolderFS4");
         FileItem f = insertFile(folder, owner, "Common.txt");
@@ -383,7 +383,40 @@ class FileMutationServiceTest {
         insertFile(folder, owner, "Common.txt");
         reset(auditService);
 
+        // newName 미지정 + 원본 충돌 → FileRestoreConflictException (RESTORE_CONFLICT envelope, v1.x).
         assertThatThrownBy(() -> service.restore(f.getId(), owner))
+            .isInstanceOf(FileRestoreConflictException.class);
+        verify(auditService, never()).record(any());
+    }
+
+    @Test
+    void restore_withNewName_renamesAndClearsTombstone() {
+        UUID owner = insertUser("fs6@test", "fs6");
+        UUID folder = insertFolder(owner, "FolderFS6");
+        FileItem f = insertFile(folder, owner, "OldName.txt");
+        service.delete(f.getId(), owner);
+        reset(auditService);
+
+        FileItem restored = service.restore(f.getId(), owner, "NewName.txt");
+
+        assertThat(restored.getName()).isEqualTo("NewName.txt");
+        assertThat(restored.getNormalizedName()).isEqualTo("newname.txt");
+        assertThat(restored.getDeletedAt()).isNull();
+        verifyAuditEmitted(AuditEventType.FILE_RESTORED, restored.getId(), owner);
+    }
+
+    @Test
+    void restore_withNewName_conflict_throwsNameConflict() {
+        UUID owner = insertUser("fs7@test", "fs7");
+        UUID folder = insertFolder(owner, "FolderFS7");
+        FileItem f = insertFile(folder, owner, "OriginalA.txt");
+        service.delete(f.getId(), owner);
+        // 새 이름이 충돌하는 활성 파일 INSERT
+        insertFile(folder, owner, "Taken.txt");
+        reset(auditService);
+
+        // newName 지정 + 새 이름 충돌 → FileNameConflictException (RENAME_CONFLICT envelope).
+        assertThatThrownBy(() -> service.restore(f.getId(), owner, "Taken.txt"))
             .isInstanceOf(FileNameConflictException.class);
         verify(auditService, never()).record(any());
     }
