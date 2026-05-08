@@ -128,6 +128,10 @@ public class AdminTrashService {
             parentNameById.put(p.getId(), p.getName());
         }
 
+        // folder DTO sizeBytes — page에 노출된 trashed folder들의 subtree size를 한 번에 조회.
+        // file은 자기 size_bytes 그대로 사용. 빈 폴더는 0 (CTE의 COALESCE).
+        Map<UUID, Long> folderSubtreeSizes = subtreeSizesFor(folders);
+
         List<AdminTrashItemDto> merged = new ArrayList<>(files.size() + folders.size());
         for (FileItem f : files) {
             UUID deletedBy = f.getDeletedBy();
@@ -150,7 +154,7 @@ public class AdminTrashService {
                 fd.getOwnerId(), userEmailById.get(fd.getOwnerId()),
                 fd.getOriginalParentId(),
                 fd.getOriginalParentId() != null ? parentNameById.get(fd.getOriginalParentId()) : null,
-                null,
+                folderSubtreeSizes.get(fd.getId()),
                 deletedBy,
                 deletedBy != null ? userEmailById.get(deletedBy) : null
             ));
@@ -185,6 +189,23 @@ public class AdminTrashService {
     private static int clampLimit(Integer requested) {
         if (requested == null || requested <= 0) return DEFAULT_LIMIT;
         return Math.min(requested, MAX_LIMIT);
+    }
+
+    /**
+     * folder DTO {@code sizeBytes}를 채우기 위한 subtree size batch lookup.
+     * 빈 입력은 short-circuit (Postgres {@code IN ()} 문법 오류 방지). repo 결과의
+     * {@code Object[1]}은 Postgres NUMERIC → JDBC {@link Number} → {@link Number#longValue()}로
+     * Long 변환 (안전한 widening, NULL은 CTE의 {@code COALESCE(..., 0)}이 차단).
+     */
+    private Map<UUID, Long> subtreeSizesFor(List<Folder> folders) {
+        if (folders.isEmpty()) return Map.of();
+        Set<UUID> rootIds = new HashSet<>(folders.size());
+        for (Folder fd : folders) rootIds.add(fd.getId());
+        Map<UUID, Long> sizes = new HashMap<>(rootIds.size());
+        for (Object[] row : adminRepo.findFolderSubtreeSizes(rootIds)) {
+            sizes.put((UUID) row[0], ((Number) row[1]).longValue());
+        }
+        return sizes;
     }
 
     // ──────────────────────────────────────────────────────────────────

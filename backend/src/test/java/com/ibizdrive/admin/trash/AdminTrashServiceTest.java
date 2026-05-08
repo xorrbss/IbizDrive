@@ -14,6 +14,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
+
 import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -366,6 +370,64 @@ class AdminTrashServiceTest {
         ArgumentCaptor<Iterable<UUID>> idsCaptor = ArgumentCaptor.forClass(Iterable.class);
         verify(userRepository).findAllById(idsCaptor.capture());
         assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(owner, deleter);
+    }
+
+    // ===== 14. folder subtree size — Wave 2 T9 follow-up =====
+
+    @Test
+    void list_populatesFolderSubtreeSize() {
+        UUID folderId1 = UUID.randomUUID();
+        UUID folderId2 = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        // 동일 deletedAt이면 id DESC 정렬 → 결과 순서가 id에 의존하므로 시간 차이를 두어 안정화.
+        Folder f1 = mockFolder(folderId1, "Reports",
+            Instant.parse("2026-05-04T00:00:00Z"), owner, null);
+        Folder f2 = mockFolder(folderId2, "Empty",
+            Instant.parse("2026-05-03T00:00:00Z"), owner, null);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(f1, f2));
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
+            new User(owner, "o@x", "O", null, Role.MEMBER, true, false, OffsetDateTime.now())
+        ));
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
+        // CTE 결과: f1 subtree = 1500B, f2 = 0 (빈 폴더). Postgres SUM은 NUMERIC이지만
+        // service에서 Number.longValue()로 받으므로 Long stub로 충분.
+        when(adminRepo.findFolderSubtreeSizes(any(Collection.class))).thenReturn(List.of(
+            new Object[]{folderId1, 1500L},
+            new Object[]{folderId2, 0L}
+        ));
+
+        AdminTrashPage page = service.list(
+            new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        Map<UUID, Long> sizesById = new HashMap<>();
+        for (AdminTrashItemDto dto : page.items()) sizesById.put(dto.id(), dto.sizeBytes());
+        assertThat(sizesById).containsEntry(folderId1, 1500L);
+        assertThat(sizesById).containsEntry(folderId2, 0L);
+    }
+
+    @Test
+    void list_skipsSubtreeQuery_whenNoFolders() {
+        UUID owner = UUID.randomUUID();
+        FileItem file = mockFile(UUID.randomUUID(), "f", Instant.parse("2026-05-01T00:00:00Z"),
+            owner, null, 1L);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(file));
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
+            new User(owner, "o@x", "O", null, Role.MEMBER, true, false, OffsetDateTime.now())
+        ));
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
+
+        service.list(new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        // Postgres IN ()는 문법 오류 — 빈 입력에서 query 호출 자체가 일어나면 안 된다.
+        verify(adminRepo, never()).findFolderSubtreeSizes(any());
     }
 
     // ===== helpers =====

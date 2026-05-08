@@ -1539,7 +1539,7 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
               ownerEmail:         string,                  // users.email (batch lookup)
               originalParentId:   string (UUID) | null,    // null = root
               originalParentName: string | null,           // 활성 부모 폴더명, 부모 soft-deleted 시 null
-              sizeBytes:          number | null            // file만 채움. folder는 항상 null (subtree size는 v1.x deferred)
+              sizeBytes:          number                   // file: 자기 size_bytes. folder: subtree size — 자기 자신 + 모든 하위 폴더의 file size 합 (Wave 2 T9 follow-up folder-subtree-size, 빈 폴더는 0). always not-null.
             }
   Side-effects: 없음 (read-only — audit emit 0건. mutation은 기존 endpoint 재사용)
   Errors:
@@ -1555,9 +1555,10 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
             - 날짜 범위 필터(deletedFrom/deletedTo): T9 follow-up으로 추가 (date-only 와이어,
               KST(`Asia/Seoul`) 경계 — 사내 단일 지역 운영, 운영자 wall-clock 일치). bulk
               restore·purge: T9 follow-up으로 추가 (`POST /api/admin/trash/bulk`, 하단 #7.11.0
-              참조). 그 외 2인 승인 / full path resolve / folder subtree size:
-              v1.x deferred. `deletedBy` 컬럼은 V10(2026-05-08)으로 closure (cross-owner 추적은
-              `deletedById`/`deletedByEmail`로 노출).
+              참조). folder subtree size: T9 follow-up으로 closure (`AdminTrashItemDto.sizeBytes`가
+              folder에서도 not-null — 단일 재귀 CTE batch lookup, 빈 폴더는 0). 그 외 2인 승인 /
+              full path resolve: v1.x deferred. `deletedBy` 컬럼은 V10(2026-05-08)으로 closure
+              (cross-owner 추적은 `deletedById`/`deletedByEmail`로 노출).
 
 POST /api/admin/trash/bulk                       (Wave 2 T9 follow-up, 2026-05-08)
   Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
