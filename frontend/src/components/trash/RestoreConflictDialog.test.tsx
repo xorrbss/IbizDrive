@@ -26,8 +26,8 @@ describe('RestoreConflictDialog', () => {
       error: null,
     })
     vi.restoreAllMocks()
-    vi.mocked(toast).success.mockClear()
-    vi.mocked(toast).error.mockClear()
+    vi.mocked(toast.success).mockClear()
+    vi.mocked(toast.error).mockClear()
   })
 
   afterEach(() => {
@@ -73,7 +73,7 @@ describe('RestoreConflictDialog', () => {
       fireEvent.submit(input.closest('form')!)
     })
     expect(restoreSpy).toHaveBeenCalledWith('f-2', { newName: 'doc-renamed.txt' })
-    expect(vi.mocked(toast).success).toHaveBeenCalledWith(
+    expect(vi.mocked(toast.success)).toHaveBeenCalledWith(
       "'doc-renamed.txt' (으)로 복원했습니다",
     )
     // dialog closed
@@ -117,7 +117,7 @@ describe('RestoreConflictDialog', () => {
       fireEvent.submit(input.closest('form')!)
     })
     expect(useRestoreConflictUiStore.getState().isOpen).toBe(false)
-    expect(vi.mocked(toast).error).toHaveBeenCalledWith('복원에 실패했습니다')
+    expect(vi.mocked(toast.error)).toHaveBeenCalledWith('복원에 실패했습니다')
   })
 
   it('Esc key closes the dialog', () => {
