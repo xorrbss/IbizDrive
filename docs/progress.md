@@ -55,6 +55,52 @@ PR #108 (wave2-trash-retention-config — `app.trash.retention.days` 외부화) 
 
 ---
 
+## 2026-05-08 — 📝 legal-hold-design 트랙 (v2.x deferred Legal Hold 설계 명세 정합화)
+
+### 범위
+
+`docs/03 §6.3` Legal Hold가 v2.x deferred 스텁만 보유하던 상태를 **설계 명세**로 본문화. 코드 0줄 — 활성화는 v2.x 진입 시.
+
+### 변경 핵심
+
+- **ADR #46 신규** (docs/00 §5) — Legal Hold 데이터 모델 = 하이브리드(메타 테이블 `legal_holds` + cache flag `files.legal_hold`/`folders.legal_hold`). 활성화 시점 v2.x deferred 명시.
+- **ADR #31 보강** — `WHERE legal_hold IS NOT TRUE` forward-reference가 ADR #46 cache flag와 정합함을 명시.
+- **docs/02 §2.10 신설** — `legal_holds` 테이블 + cache flag 2개 + 인덱스 4개 + 동기화 invariant. ER 요약(§2.11)에 edge 추가.
+- **docs/02 §8** — `LEGAL_HOLD_VIOLATION` 423 + `LEGAL_HOLD_RECENTLY_RELEASED` 409 신규.
+- **docs/02 §7.13.1 stub 갱신** — `purge.expired` Skip 항목이 ADR #46 참조하도록 정정.
+- **docs/03 §3.1** — `MANAGE_LEGAL_HOLD` 권한 enum 추가, ROLE=ADMIN 매핑.
+- **docs/03 §3.2.5** — ADMIN ROLE 매트릭스에 `MANAGE_LEGAL_HOLD` 명시.
+- **docs/03 §4.1** — audit enum 4종 정렬 (placeholder 2종 활성화 noted + 신규 `expired`/`violation_blocked` 2종).
+- **docs/03 §6.3 본문화** — 정책 개요/데이터 모델/차단 액션 매트릭스 9종/API wire format/audit 매핑/권한/30일 락/만료 cron/dual-approval 게이트/v2.x 진입 시 task 분해 10개 sub-section.
+- **docs/04 §10 본문화** — 대상 지정/Hold 동작/해제 워크플로/만료/관리자 페이지/운영 런북 진입 7개 sub-section.
+- **dev/active/legal-hold-design/** — `plan.md`/`context.md`/`tasks.md` 3파일. tasks는 §A(현재 — 설계, 12항목 완료) + §B(v2.x 활성화, 7 sub-track 미실행) + §C(후반 backlog) + §D(산출물 위치) 구성.
+
+### 검증
+
+- 코드 변경 0건 (백엔드/프론트 0줄). docs + dev-docs only.
+- `git diff --stat` 4 파일 (docs/00, 02, 03, 04) + dev/active/legal-hold-design 3파일 + dev/process/legal-hold-design.md.
+- Cross-reference 정합 검사: ADR #46 ↔ ADR #31, docs/02 §2.10 ↔ §8 ↔ docs/03 §6.3 ↔ docs/04 §10. 모든 forward-reference 해소.
+- 충돌 검증: 다른 세션 `dev/process/*.md` 0건 → 작업 파일 겹침 0.
+
+### 결정/편차
+
+- **데이터 모델 = 하이브리드** (3안 중 선택) — flag-only는 메타 부재로 컴플라이언스 증거 부족, 메타 테이블만은 ADR #31 forward-ref 정합 깨짐. 하이브리드는 (a) hot path 1줄 검사 + (b) 풍부한 메타 둘 다 확보.
+- **dual-approval = config 게이트** (default false) — A7 hard purge / share-expired-cron / permission-expired-cron 패턴 답습. v2.x MVP는 단일 admin, 외부 출시 시 환경별로 활성화.
+- **30일 재지정 락** — 실수 방지. `app.legal-hold.replace-cooldown-days` properties로 환경별 조정.
+- **차단 매트릭스 = 9 mutation entry** (휴지통/restore/purge/버전/이름/이동/공유/권한/신규업로드). 다운로드/조회는 허용 (보존 목적상 access trail 정상).
+- **거부**: 태그 기반 hold (v2.x 1차 컷 미포함, reason LIKE 검색으로 임시 대체) / hold export endpoint (audit log export로 대체) — context.md backlog 명시.
+
+### 다음 세션 컨텍스트
+
+- 본 트랙은 design-only. 활성화 트리거 = 외부 출시 + 컴플라이언스 도메인 진입 시점에 `dev/active/legal-hold-design/legal-hold-design-tasks.md §B` (V_ 마이그레이션 → permission/audit enum → guard → controller → frontend → 검증 → 운영 런북) 그대로 실행.
+- v1.x backlog 잔여(휴지통 UI / full path resolve / 권한 CRUD / quota / audit streaming)와 무관.
+
+### 블로커
+
+- 없음 (v2.x 활성화 트리거는 외부 출시 + 컴플라이언스 도메인 진입 의사결정 — 본 트랙 범위 외).
+
+---
+
 ## 2026-05-08 — 🏁 admin-cron-toggle 트랙 종료 (Wave 2 closure 후속 — cron 4종 runtime 토글)
 
 ### 범위

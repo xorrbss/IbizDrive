@@ -368,25 +368,142 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 
 ## 10. Legal Hold (법적 보존)
 
-> **v2.x deferred (전체)** (docs/00 §4.3 명시). 외부 출시 + 컴플라이언스 도메인 진입 시점에 별도 트랙.
+> **Status: v2.x deferred** (docs/00 §4.3, ADR #46). 본 절은 **운영 명세 — 활성화 = v2.x 진입**. 보안/컴플라이언스 명세는 docs/03 §6.3, 데이터 모델은 docs/02 §2.10.
 
 ### 10.1 대상 지정
 
-- [ ] 개별 파일 / 폴더 / 사용자 — *v2.x deferred*
-- [ ] 태그 기반 (예: "소송 ABC") — *v2.x deferred*
-- [ ] 지정 사유 기록 — *v2.x deferred*
+#### 10.1.1 대상 유형
+
+- **개별 파일** (`target_type='file'`): 단일 file row
+- **폴더** (`target_type='folder'`): folder + 모든 후손 folder/file 시점 스냅샷 cascade. hold 후 신규 업로드 file은 ancestor folder hold 검사 후 `legal_hold=TRUE`로 자동 INSERT
+- **사용자** (`target_type='user'`): 해당 user 소유의 모든 file/folder (owner_id 매칭)
+
+#### 10.1.2 입력 필드 (place 폼)
+
+| 필드 | 필수 | 검증 |
+|---|---|---|
+| 대상 유형 (file/folder/user) | ✅ | 라디오 |
+| 대상 선택 | ✅ | 검색 콤보 — 파일/폴더는 path 기반, 사용자는 displayName 기반 (UserSearchCombobox 재사용) |
+| 사유 | ✅ | textarea, 최소 10자, 최대 1000자 — 사건번호/케이스 ID 등 추적 가능한 정보 권장 |
+| 만료일 (optional) | ❌ | datetime-local, 미입력=무기한 |
+
+> **태그 기반 hold (예: "소송 ABC" 묶음)**: v2.x 1차 컷 미포함. `metadata.caseId` 자유 텍스트 검색은 admin 페이지 필터에서 reason LIKE로 대체 가능. 정식 tag 도메인은 별도 트랙(backlog).
 
 ### 10.2 Hold 상태 동작
 
-- [ ] 삭제 버튼 비활성 + "Legal Hold" 배지 표시 — *v2.x deferred*
-- [ ] 휴지통 이동 API 거부 (423 LOCKED) — *v2.x deferred*
-- [ ] Purge 크론 스킵 — *v2.x deferred*
+#### 10.2.1 UI 표현 (모든 사용자에 노출)
+
+- 파일/폴더 detail 카드에 **"⚖ Legal Hold"** 배지 (붉은 외곽선) + 호버 시 사유/지정자/지정일 노출 (사유 본문은 `MANAGE_LEGAL_HOLD` 권한자만, 그 외에는 "법적 보존 중" 단순 메시지)
+- 휴지통/이동/이름변경/삭제 버튼 **비활성** + 호버 툴팁 "법적 보존으로 인해 작업할 수 없습니다"
+- RightPanel(file detail)에 active hold 메타 카드 (지정자/지정일/만료일/사유 — 권한자 한정)
+- 검색 결과/리스트 row에도 ⚖ 아이콘 prefix
+
+#### 10.2.2 백엔드 차단 (진실의 출처)
+
+→ docs/03 §6.3.3 차단 액션 매트릭스. 9개 mutation entry 모두 423 `LEGAL_HOLD_VIOLATION`.
+
+> **CLAUDE.md §3 핵심 원칙 10**: 프론트 비활성은 UX 게이트, 백엔드 423이 보안 게이트. 직접 fetch 또는 curl 호출도 동일하게 거부.
+
+#### 10.2.3 Hard purge 스킵
+
+ADR #31 `HardPurgeService` 후보 SQL에 `AND legal_hold IS NOT TRUE` 1줄 추가. 휴지통 30일 경과한 row라도 hold 활성이면 purge 보류.
+
+> **30일 휴지통 + hold**: 휴지통 이동 자체가 차단되므로 정상 흐름에서 휴지통+hold 동시 상태는 발생하지 않음. 단, hold place **이전에 이미 휴지통 상태**였던 row에 user-target hold가 cascade된 케이스는 가능 — 이 row는 hold 동안 30일 카운트가 멈춘 효과 (purge 보류). release 후 만료 카운트 재개.
+
+#### 10.2.4 Trash UI
+
+전역 휴지통(`/admin/trash`, Wave 2 T9) 결과 row에 hold 활성이면 ⚖ 배지 + 복원/영구삭제 버튼 비활성.
 
 ### 10.3 해제 워크플로
 
-- [ ] 관리자 2인 승인 (optional) — *v2.x deferred*
-- [ ] 해제 사유 기록 — *v2.x deferred*
-- [ ] 해제 후 30일 내 재지정 불가 (실수 방지) — *v2.x deferred*
+#### 10.3.1 단일 admin 모드 (default — `app.legal-hold.dual-approval.enabled=false`)
+
+1. 관리자가 hold 상세 페이지에서 "해제" 클릭
+2. release 사유 입력 dialog → `DELETE /api/admin/legal-holds/:holdId` (`releaseReason`)
+3. 트랜잭션 내: `legal_holds.released_at/by/reason` set + cache flag clear (cascade) + `admin.legal_hold.released` audit 1건
+4. 즉시 토스트 "해제 완료 (영향 N개)"
+
+#### 10.3.2 Dual-approval 모드 (`enabled=true`)
+
+| 단계 | 액션 | 결과 |
+|---|---|---|
+| 1 | primary admin이 release 요청 (`DELETE /api/admin/legal-holds/:holdId`) | `dual_approval_status = 'pending'` + secondary 후보 admin들에게 이메일 알림 (`EmailService` 재사용 — ADR #42/45) |
+| 2 | secondary admin이 승인 (`POST .../approve` decision=approve) | `released_at` set + cache flag clear + `admin.legal_hold.released` audit (`metadata.dualApproval=true, secondaryApproverId=...`) |
+| 2' | secondary admin이 거부 (decision=reject) | `dual_approval_status = NULL` 복귀, hold 유지, primary에게 거부 알림 |
+
+**self-approval 차단**: secondary admin은 primary와 다른 user여야 함 (`secondary_approver_id != placed_by AND != primary_release_actor`). 동일 인물이 approve 시도 시 403.
+
+#### 10.3.3 30일 재지정 락
+
+release 직후 동일 (target_type, target_id)에 대한 place 시도는 거부 (`409 LEGAL_HOLD_RECENTLY_RELEASED`). UI는 토스트 + "재지정 가능 일자: YYYY-MM-DD" 표시.
+
+회피 방법:
+- 의도적 즉시 재지정 = `app.legal-hold.replace-cooldown-days=0`으로 환경별 설정
+- 또는 다른 reason/target으로 새 hold 생성
+
+### 10.4 만료 cron
+
+`app.legal-hold.expiration.{enabled, cron, batch-size, zone}` properties (default `enabled=false`).
+
+`expires_at <= NOW()` row 자동 release + `admin.legal_hold.expired` audit (`actor_id=NULL`, `metadata.trigger='system.expiration'`). share-expired-cron / permission-expired-cron 동형 운영.
+
+운영 권장:
+- staging/prod에서 expiration 활용 시 `enabled=true` + `cron='0 */5 * * * *'` (5분 주기)
+- 만료 임박 hold는 admin 대시보드에서 별도 카드로 노출 (KPI §3.1 추가 후보)
+
+### 10.5 관리자 페이지 (`/admin/legal-holds`)
+
+#### 10.5.1 진입 권한
+
+`hasRole('ADMIN')` (보안 게이트) + sideNav 항목은 `ROLE=ADMIN`만 표시 (`AdminSideNav.tsx` 기존 placeholder 활성화). AUDITOR는 read-only로 active hold **목록 조회만** 가능 (별도 view 페이지, place/release 버튼 비활성).
+
+#### 10.5.2 목록 (`/admin/legal-holds`)
+
+| 컬럼 | 비고 |
+|---|---|
+| 대상 | type 아이콘 + path/displayName |
+| 사유 | truncate 80자, hover tooltip 전체 |
+| 지정자 / 지정일 | placedBy.displayName · placedAt |
+| 만료일 | expiresAt or "무기한", 임박(7일 이내)은 노란 배지 |
+| 상태 | active / pending(dual-approval) / released(필터로만) |
+| 액션 | 상세 / 해제(권한자) / 승인(pending이고 본인 승인 가능 시) |
+
+필터: 대상 유형, 지정자, reason 키워드, 만료 범위, 상태(active/pending/released).
+
+#### 10.5.3 상세 페이지 (`/admin/legal-holds/:holdId`)
+
+- hold 메타 (전체 필드)
+- cascade 영향 목록 (folders/files 트리 — 스크롤 가능, 200건 cap)
+- 관련 audit timeline (place, mutation_blocked 시도들, release 등)
+- 액션 버튼: 해제 / 승인 / 거부 (상태/권한별)
+
+### 10.6 운영 런북 진입 (Legal Hold 발동 절차)
+
+> **베타 운영 런북** (§15) 미반영 항목 — Legal Hold 활성화 시 §15에 sub-section 추가 권장.
+
+#### 10.6.1 외부 요청 도착 시 (e.g. 법무팀 요청)
+
+1. 사건번호/요청 출처 기록 (티켓 ID 또는 메일 archive)
+2. 대상 식별 — 사용자/폴더/파일 명확히 (모호 시 법무팀과 재확인)
+3. `/admin/legal-holds` → place — reason에 사건번호 + 요청 출처 명시
+4. `cascadeAffected` 확인 후 영향 사용자에게 사내 공지 (cascade가 활성 사용자 작업을 막을 경우)
+5. audit log export (CSV/JSON, docs/04 §7.2) — 법무팀 인계용
+
+#### 10.6.2 hold 활성 동안
+
+- 해당 자료에 대한 사용자 문의는 운영팀 → 법무팀으로 라우팅
+- 만료일 1주 전 자동 알림 (cron이 enable되어 있으면 expired audit으로 자동 처리, 그 외 admin 수동 release)
+- `admin.legal_hold.violation_blocked` audit 추적 — 빈도 높으면 추가 cascade가 필요한 신호일 수 있음
+
+#### 10.6.3 release
+
+- 법무팀 release 승인 문서 archive
+- dual-approval 모드면 primary/secondary admin 사전 합의 + 2단계 승인
+- release 후 30일 락 — 재지정 필요하면 `app.legal-hold.replace-cooldown-days=0`로 일시 조정 (config 변경 + audit log에 운영 노트)
+
+### 10.7 v2.x 진입 시 작업 분해
+
+→ `dev/active/legal-hold-design/` plan/tasks 참조. docs/03 §6.3.10 8단계와 동일.
 
 ---
 
