@@ -5,6 +5,71 @@
 
 ---
 
+## 2026-05-08 — 🏁 v1x-restore-conflict-dialog 트랙 종료 (M9 v1.x — 휴지통 복원 시 다른 이름으로 복원 다이얼로그)
+
+### 범위
+
+M9 휴지통 entry 의 v1.x backlog 중 첫 항목 closure. 사용자가 휴지통 항목을 복원할 때 원위치에 동일 이름의 활성 항목이 있으면 backend 가 `RESTORE_CONFLICT` 를 던지고 frontend 가 toast.error 한 줄로 끝나던 것을, **다른 이름으로 복원 다이얼로그** 흐름으로 교체.
+
+### 변경 핵심
+
+**Backend** (`POST /api/files/{id}/restore`, `POST /api/folders/{id}/restore` 양쪽):
+- `common/dto/RestoreRequest` record 신규 (file/folder 공유, optional `name`).
+- `FileMutationService.restore(id, actorId, newName?)` overload 추가 — 기존 2-arg 시그니처 보존(AdminTrashService 등 호환).
+  - newName == null + 원본 이름 충돌 → `FileRestoreConflictException` (신규) → `RESTORE_CONFLICT` envelope.
+  - newName != null + 새 이름 충돌 → `FileNameConflictException` (기존) → `RENAME_CONFLICT` envelope.
+  - newName != null 시 `NormalizeUtil.normalizeFileName/normalizedNameForDedup` 재사용 (NFC + dedup).
+- `FolderMutationService.restore` 동일 패턴 — `FolderNameConflictException` (rename 에서 사용 중) 재사용.
+- `FileController.restore` / `FolderController.restore` body `@RequestBody(required = false) RestoreRequest` 바인딩.
+- `GlobalExceptionHandler` 에 `FileRestoreConflictException` → `RESTORE_CONFLICT` 핸들러 신규 (folder 와 envelope 통일).
+- audit_log metadata 에 `name` / `normalizedName` (renaming 시) before/after 추가, 기존 RESTORE 이벤트 enum 그대로.
+
+**Frontend**:
+- `lib/api.ts` `restoreFile/restoreFolder(id, opts?: { newName? })` 시그니처 확장 — body `{ name }` POST.
+- `hooks/useRestoreItem` Vars 에 `newName?: string` 추가.
+- `stores/restoreConflictUi.ts` 신규 zustand (`renameUi.ts` 미러).
+- `lib/restoreNameSuggest.ts` 신규 — `suggestRestoreName(name, type)`. file 은 마지막 `.` 분리해 base + ` (1)` + ext, folder 는 단순 ` (1)`. MVP 1회만(시퀀스 자동 증분 v1.x).
+- `components/trash/RestoreConflictDialog.tsx` 신규 — `RenameDialog` 패턴 미러: role=dialog/aria-modal, 자동 제안 입력 + inline alert + Esc/previousFocus.
+- `app/(explorer)/trash/ClientTrashPage.tsx` 에 다이얼로그 마운트.
+- `components/trash/TrashRowActions.tsx` `onError(RESTORE_CONFLICT)` → `restoreConflictUiStore.open(...)` (toast.error 폐기).
+- `components/files/BulkActionBar.tsx` undoDelete 의 RESTORE_CONFLICT 메시지를 "휴지통에서 행 단위로 다른 이름으로 복원" 가이드로 강화 (DeletedItem 에 name 부재 + 다건 다이얼로그 v1.x 후속).
+
+**Tests**:
+- `FileMutationServiceTest`: 기존 `restore_conflictAtOriginalFolder` expect 를 `FileRestoreConflictException` 으로 정정 + `restore_withNewName_renames`/`_conflict` 2건 신규.
+- `FolderMutationServiceTest`: `restore_withNewName_renames`/`_conflict` 2건 신규.
+- `FileControllerTest` / `FolderControllerTest`: 기존 `restore_returnsOk_andDelegates` 시그니처 갱신(3-arg mock + null body) + `restore_withNewName_delegatesNewName` 신규.
+- `lib/restoreNameSuggest.test.ts` 신규 (5 cases — file 확장자/multi-dot/dotfile/no-ext + folder).
+- `components/trash/RestoreConflictDialog.test.tsx` 신규 (6 cases — 닫힘/자동 제안/submit success/RENAME_CONFLICT inline/unknown error toast/Esc).
+
+**Docs**:
+- `docs/02 §7.5/§7.6` restore 행 — body `{ name? }` + 두 envelope 코드 명시.
+- `docs/01 §13.2` 휴지통 UX — RestoreConflictDialog 동작 + suggestRestoreName 로직 + BulkActionBar 안내.
+
+### 검증
+
+- Backend: `./gradlew test --tests "com.ibizdrive.file.*" --tests "com.ibizdrive.folder.*"` BUILD SUCCESSFUL.
+- Frontend: `pnpm typecheck && pnpm lint` PASS, 신규 11/11 PASS (suggestRestoreName 5 + Dialog 6).
+
+### 결정/편차
+
+- **에러 envelope 통일**: 사용자 컨펌 §1 추천대로 file restore 의 원본 이름 충돌을 `RENAME_CONFLICT`(이전) → `RESTORE_CONFLICT`(통일) 로 변경. frontend 가 이미 RESTORE_CONFLICT 만 분기하던 상태라 정합 향상. backend behavior change 이지만 외부 클라이언트 영향 미미(internal use).
+- **자동 제안**: ` (1)` 1회 MVP. 시퀀스(`(2)`,`(3)`...) 자동 증분은 v1.x.
+- **다건 Undo 다이얼로그 미적용**: DeletedItem 에 name 부재 + 다건 다이얼로그 UX 자체가 v1.x 영역. BulkActionBar 메시지만 사용자가 휴지통 페이지로 유도하도록 강화.
+- **focus trap 미적용**: SortChip/RenameDialog 패턴 따라 outside click(없음) + Esc 만. trap 은 v1.x.
+- **2-arg overload 보존**: `restore(id, actorId)` 호출자(AdminTrashService.bulk) 모두 호환 유지 — 별도 변경 없이 새 시그니처가 위임.
+
+### 다음 세션 컨텍스트
+
+- v1.x 후속: 자동 증분 시퀀스 / 다건 Undo 다이얼로그 / focus trap / 다른 destination 으로 복원(현재는 원위치 한정).
+- audit_log RESTORE 이벤트 enum 그대로 — `RESTORE_AS` 같은 별도 이벤트 도입은 v1.x 검토.
+- docs/02 §8 에러 코드 표 본문 갱신은 follow-up (현재 §7.5/§7.6 표 + §13.2 만 갱신).
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 audit-export-cap-metadata 트랙 종료 (cap 값 audit metadata 노출)
 
 ### 범위

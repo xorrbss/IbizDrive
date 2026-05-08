@@ -1042,7 +1042,7 @@ POST /api/auth/password/change                     (A1.5, ADR #43)
 | PATCH | `/api/folders/:id` | `hasPermission(#id, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + sibling | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `(#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))` (ADR #30) | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
 | DELETE | `/api/folders/:id` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW()` (재귀: 후손 폴더/파일 cascade — root 1회 audit) | 404 |
-| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | — | `SET deleted_at = NULL` + UNIQUE 재검사 (자기 자신만 복원, 후손 잔존) | 404, 409 RESTORE_CONFLICT |
+| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | optional `name → normalized_name` (v1.x) | `SET deleted_at = NULL` + UNIQUE 재검사 (자기 자신만 복원, 후손 잔존) | 404, 409 RESTORE_CONFLICT (원본 이름), 409 RENAME_CONFLICT (새 이름) |
 
 ```text
 POST /api/folders
@@ -1101,7 +1101,7 @@ GET /api/folders/:id/items
 | PATCH | `/api/files/:id` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/files/:id/move` | `hasPermission(#id, 'file', 'MOVE')` AND `hasPermission(#req.targetFolderId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + targetFolder | — | `WHERE deleted_at IS NULL` | 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
 | DELETE | `/api/files/:id` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW(), purge_after = NOW()+30d` | 404 |
-| POST | `/api/files/:id/restore` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
+| POST | `/api/files/:id/restore` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | optional `name → normalized_name` (v1.x) | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT (원본 이름), 409 RENAME_CONFLICT (새 이름) |
 | POST | `/api/files/:id/versions` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE on file row | — | `WHERE deleted_at IS NULL` | 409 VERSION_CONFLICT, 413 QUOTA_EXCEEDED, 415 |
 | GET | `/api/files/:id/download` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | GET | `/api/files/:id/preview` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
