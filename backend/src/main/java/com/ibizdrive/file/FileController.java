@@ -1,5 +1,6 @@
 package com.ibizdrive.file;
 
+import com.ibizdrive.common.dto.RestoreRequest;
 import com.ibizdrive.file.dto.FileDto;
 import com.ibizdrive.file.dto.MoveFileRequest;
 import com.ibizdrive.file.dto.RenameFileRequest;
@@ -149,9 +150,11 @@ public class FileController {
     @PreAuthorize("hasPermission(#id, 'file', 'DELETE')")
     public ResponseEntity<Map<String, FileDto>> restore(
         @PathVariable("id") UUID id,
+        @RequestBody(required = false) RestoreRequest body,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        FileItem restored = fileMutationService.restore(id, principal.getUser().getId());
+        String newName = body != null ? body.name() : null;
+        FileItem restored = fileMutationService.restore(id, principal.getUser().getId(), newName);
         return ResponseEntity.ok(Map.of("file", FileDto.from(restored)));
     }
 }

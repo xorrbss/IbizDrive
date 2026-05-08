@@ -10,6 +10,7 @@ import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
+import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -231,15 +232,29 @@ public class FileMutationService {
     // ──────────────────────────────────────────────────────────────────
 
     /**
-     * 휴지통 파일을 {@code original_folder_id}로 복원한다. tombstone 컬럼 3종을 모두 NULL로 클리어.
+     * 휴지통 파일을 {@code original_folder_id} 로 복원한다. tombstone 컬럼 3종을 모두 NULL 로 클리어.
      *
-     * <p>복원 destination이 활성 폴더가 아니면(원래 폴더가 그 사이 삭제됨) 복원 실패 — 명시적
-     * destination 변경은 본 endpoint 범위 외 (frontend가 별도 폴더 선택 후 move를 결합하는 흐름).
+     * <p>복원 destination 이 활성 폴더가 아니면(원래 폴더가 그 사이 삭제됨) 복원 실패 — 명시적
+     * destination 변경은 본 endpoint 범위 외 (frontend 가 별도 폴더 선택 후 move 를 결합하는 흐름).
      *
-     * @throws FileNotFoundException     fileId가 휴지통 파일이 아님 (이미 활성 또는 미존재 또는 originalFolder 부재)
-     * @throws FileNameConflictException 복원 대상 폴더에 동일 normalized_name 활성 파일 존재
+     * <p>{@code newName} 처리 (v1.x RestoreConflictDialog 트랙):
+     * <ul>
+     *   <li>{@code newName == null} — 기존 이름 그대로 복원. 충돌 시 {@link FileRestoreConflictException}
+     *       (envelope {@code RESTORE_CONFLICT}) — frontend 가 RestoreConflictDialog 띄움.</li>
+     *   <li>{@code newName != null} — NFC 정규화 + UNIQUE 재검사 후 새 이름으로 복원. 충돌 시
+     *       {@link FileNameConflictException} (envelope {@code RENAME_CONFLICT}) — frontend 가
+     *       다이얼로그의 inline alert 로 분기.</li>
+     * </ul>
+     *
+     * @throws FileNotFoundException        fileId 가 휴지통 파일이 아님 (이미 활성 또는 미존재 또는 originalFolder 부재)
+     * @throws FileRestoreConflictException newName 미지정 + 원본 이름이 원위치에서 충돌
+     * @throws FileNameConflictException    newName 지정 + 새 이름이 원위치에서 충돌
      */
     public FileItem restore(UUID fileId, UUID actorId) {
+        return restore(fileId, actorId, null);
+    }
+
+    public FileItem restore(UUID fileId, UUID actorId, @Nullable String newName) {
         if (fileId == null) throw new IllegalArgumentException("fileId is required");
 
         FileItem target = fileRepository.lockByIdAndDeletedAtIsNotNull(fileId)
@@ -256,14 +271,36 @@ public class FileMutationService {
             .orElseThrow(() -> new FileNotFoundException(
                 "original folder is not active: " + originalFolderId));
 
+        // newName 정규화 (지정 시) — rename 패턴 미러.
+        String oldDisplay = target.getName();
+        String oldNormalized = target.getNormalizedName();
+        String resolvedDisplay;
+        String resolvedNormalized;
+        boolean renaming = newName != null;
+        if (renaming) {
+            resolvedDisplay = NormalizeUtil.normalizeFileName(newName);
+            resolvedNormalized = NormalizeUtil.normalizedNameForDedup(newName);
+        } else {
+            resolvedDisplay = oldDisplay;
+            resolvedNormalized = oldNormalized;
+        }
+
         if (fileRepository.existsActiveByFolderAndNormalizedNameExcludingId(
-                originalFolderId, target.getNormalizedName(), target.getId())) {
-            throw new FileNameConflictException(
-                "file name already exists under original folder: " + target.getNormalizedName());
+                originalFolderId, resolvedNormalized, target.getId())) {
+            if (renaming) {
+                throw new FileNameConflictException(
+                    "file name already exists under original folder: " + resolvedNormalized);
+            }
+            throw new FileRestoreConflictException(
+                "file name already exists under original folder: " + resolvedNormalized);
         }
 
         Instant deletedAtBefore = target.getDeletedAt();
         target.setFolderId(originalFolderId);
+        if (renaming) {
+            target.setName(resolvedDisplay);
+            target.setNormalizedName(resolvedNormalized);
+        }
         target.setDeletedAt(null);
         target.setPurgeAfter(null);
         target.setOriginalFolderId(null);
@@ -277,16 +314,28 @@ public class FileMutationService {
         } catch (DataIntegrityViolationException ex) {
             // partial unique index가 deleted_at IS NULL인 행에만 적용되므로 NULL로 클리어하는
             // UPDATE 시점에 race로 충돌 가능 — 사전 검사 이중 가드.
-            throw new FileNameConflictException(
-                "file name conflict at restore: " + target.getNormalizedName(), ex);
+            if (renaming) {
+                throw new FileNameConflictException(
+                    "file name conflict at restore: " + resolvedNormalized, ex);
+            }
+            throw new FileRestoreConflictException(
+                "file name conflict at restore: " + resolvedNormalized, ex);
         }
 
         Map<String, Object> beforeState = new LinkedHashMap<>();
         beforeState.put("deletedAt", deletedAtBefore == null ? null : deletedAtBefore.toString());
         beforeState.put("originalFolderId", originalFolderId);
+        if (renaming) {
+            beforeState.put("name", oldDisplay);
+            beforeState.put("normalizedName", oldNormalized);
+        }
         Map<String, Object> afterState = new LinkedHashMap<>();
         afterState.put("folderId", originalFolderId);
         afterState.put("deletedAt", null);
+        if (renaming) {
+            afterState.put("name", resolvedDisplay);
+            afterState.put("normalizedName", resolvedNormalized);
+        }
         emitAudit(AuditEventType.FILE_RESTORED, saved.getId(), actorId, beforeState, afterState);
         return saved;
     }

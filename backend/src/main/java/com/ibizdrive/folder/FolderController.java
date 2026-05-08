@@ -1,5 +1,6 @@
 package com.ibizdrive.folder;
 
+import com.ibizdrive.common.dto.RestoreRequest;
 import com.ibizdrive.folder.dto.CreateFolderRequest;
 import com.ibizdrive.folder.dto.FolderDetailResponse;
 import com.ibizdrive.folder.dto.FolderDto;
@@ -238,9 +239,11 @@ public class FolderController {
     @PreAuthorize("hasPermission(#id, 'folder', 'DELETE')")
     public ResponseEntity<Map<String, FolderDto>> restore(
         @PathVariable("id") UUID id,
+        @RequestBody(required = false) RestoreRequest body,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        Folder restored = folderMutationService.restore(id, principal.getUser().getId());
+        String newName = body != null ? body.name() : null;
+        Folder restored = folderMutationService.restore(id, principal.getUser().getId(), newName);
         return ResponseEntity.ok(Map.of("folder", FolderDto.from(restored)));
     }
 }
