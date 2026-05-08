@@ -5,6 +5,57 @@
 
 ---
 
+## 2026-05-08 — 🏁 design-variants-tweaks 트랙 종료 (M13.1 — Variant 시스템 + TweaksPanel)
+
+### 범위
+
+`design-reference/styles.css` 핸드오프 번들의 미적용 갭 closure: 누락 토큰 2종(`--accent-text`, `--success-soft`) + Variant 시스템 4종(default/notion/dropbox/terminal) + 사용자 런타임 토글 UI(TweaksPanel). M13(2026-04-25 디자인 토큰 적용) 후속.
+
+### 변경 핵심
+
+**Frontend**:
+- `frontend/src/app/globals.css`: `--accent-text` / `--success-soft` 추가 (light/dark + `@theme inline` 매핑) + `[data-variant="notion|dropbox|terminal"]` 블록 + `[data-variant="terminal"] body { letter-spacing: -0.01em }`.
+- `frontend/src/lib/variant.ts` (NEW): `Variant` 타입 + `getStored/getInitial/apply/persist` 5함수 (`theme.ts` 미러). localStorage 키 `'variant'`.
+- `frontend/src/hooks/useVariant.ts` (NEW): `{ variant, setVariant }` (`useTheme` 패턴).
+- `frontend/src/app/layout.tsx`: `variantInitScript` 추가 (FOUC 방지 — `themeInitScript` 패턴 미러).
+- `frontend/src/components/topbar/TweaksPanel.tsx` (NEW): `<SlidersHorizontal>` trigger + popover (`role=dialog`) 안에 ThemeToggle 임베드 + variant 4종 라디오 그룹 (`role=radiogroup`). outside click + Esc 닫기.
+- `frontend/src/components/topbar/TopBar.tsx`: ThemeToggle 직접 마운트 → TweaksPanel 로 교체.
+
+**Tests**:
+- `frontend/src/lib/variant.test.ts` (NEW, 10 tests) — 5함수 단위 + invalid stored value + localStorage swallow.
+- `frontend/src/components/topbar/TweaksPanel.test.tsx` (NEW, 8 tests) — trigger ARIA + 4 라디오 + data-variant 적용/제거 + ThemeToggle 임베드 + Esc/outside click.
+- 기존 `ThemeToggle.test.tsx` 무변경 — 컴포넌트 자체 변경 0건.
+
+**Docs**:
+- `docs/design-system.md` §10 "Variant 지원 범위" → "M13.1 에서 해소" stub + 신규 §11 "Variant 시스템" (4종 비교 표 + 영속 + 옵션 B 설명 + TweaksPanel 사용법 + 관련 파일 표).
+- `docs/01-frontend-design.md` §18 로드맵에 M13.1 행 신설.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run` 125 files / **944 passed** (직전 baseline 대비 +18 신규).
+
+### 결정/편차
+
+- **옵션 B (KISS) 채택**: terminal variant 17 selector 폰트 override 대신 `:root --font-sans` 토글 + body letter-spacing 두 줄로 흡수. 이유: master frontend 가 Tailwind 유틸리티 기반이라 className 별 override 가 어색. 미세 차이 발생 시 v1.x 에서 옵션 A 로 재이식 가능.
+- **dark theme `--accent-text: #0F0F0E`** (terminal `--bg` 와 동일). design-reference 미정의 항목 — accent 명도 위 가독성 검증 통과 가정.
+- **density slider 미포함**: variant 가 `--row-h` 를 결정하므로 중복. v1.x.
+- **focus trap 미적용**: SortChip/RenameDialog 패턴 따라 outside click + Esc 만. trap 은 v1.x.
+- **TweaksPanel 내부에 ThemeToggle 임베드**: TopBar 에 토글 2개 노출 회피. ThemeToggle 컴포넌트는 보존, 부모만 변경.
+
+### 다음 세션 컨텍스트
+
+- variant 4종 다른 화면(FileTable / 휴지통 / admin)에서 시각 검증 필요 — 본 트랙은 토큰/store/UI 까지만, 시각 회귀(Playwright 또는 Storybook visual diff)는 v1.x.
+- `lib/variant.ts` 가 system default 함수 미보유 — theme 의 `prefers-color-scheme` 같은 OS 시그널이 variant 에는 없음. localStorage 미지정 → `'default'` 폴백으로 충분.
+- TweaksPanel popover 가 focus trap 부재 — 키보드 접근성 강화 필요 시 v1.x.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 audit-format-enum 트랙 종료 (Wave 1 T2 follow-up — audit export `format` 강타입화)
 
 ### 범위

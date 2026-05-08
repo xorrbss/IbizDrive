@@ -1494,6 +1494,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 11 | **검색** (debounce, abort, normalize 일치) | 2자 이상, 타이핑 중 placeholderData |
 | 12 | **감사 로그 UI** (도메인에 따라) | `/admin/audit-logs` 필터/export |
 | 13 | **디자인 토큰 적용** (M13, 완료 2026-04-25) | `:root` 토큰 + `@theme inline` + 모든 className 토큰화. 기준: `design-reference/IbizDrive.html` |
+| 13.1 | **Variant 시스템 + Tweaks** (M13.1, 완료 2026-05-08) | `[data-variant]` 4종(default/notion/dropbox/terminal) + `lib/variant.ts` 5함수 + `useVariant` 훅 + `layout.tsx` FOUC init script + `TweaksPanel` (TopBar settings → popover, ThemeToggle 임베드 + variant 라디오 4종). 누락 토큰 보충 (`--accent-text`, `--success-soft`). 옵션 B (KISS): terminal 17 selector 폰트 override 는 `:root --font-sans` 토글 + body letter-spacing 두 줄로 흡수. 자세한 내용은 `docs/design-system.md` §11. |
 | 14 | **Visual Identity** | TopBar(검색/테마 토글/아바타) + Lucide 아이콘 도입 + FileRow 밀도 재조정 + StatusBar 하단. M13 토큰 위에서 JSX 추가 |
 | 15 | **Layout Extras** | SortChip(정렬 드롭다운) + ViewSwitch(List/Grid 토글) + StorageBar(사이드바 하단) + RightPanel 탭(세부정보/버전/활동/권한) |
 | 16 | **Grid View** | FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글. 본체 closed 2026-04-29 (PR #16). 가상화 closed 2026-05-01 (M16V follow-up: `useGridColumns` + row 단위 `useVirtualizer` + 키보드 scrollToIndex `Math.floor(idx/columns)` 매핑). v1.x 잔여: 2D 키보드 wrap / DnD / 썸네일 / 가변 높이. |

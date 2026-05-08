@@ -24,9 +24,11 @@
   --accent: oklch(55% 0.14 250);
   --accent-hover: oklch(50% 0.14 250);
   --accent-soft: oklch(95% 0.03 250);
+  --accent-text: white;
   --danger: oklch(55% 0.16 25);
   --warn: oklch(65% 0.13 70);
   --success: oklch(55% 0.11 150);
+  --success-soft: oklch(94% 0.03 150);
 
   /* Radius */
   --radius-sm: 4px;
@@ -60,6 +62,8 @@
   --accent: oklch(72% 0.14 250);
   --accent-hover: oklch(78% 0.14 250);
   --accent-soft: oklch(30% 0.08 250);
+  --accent-text: #0F0F0E;
+  --success-soft: oklch(28% 0.06 150);
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
   --shadow-lg: 0 12px 40px rgba(0, 0, 0, 0.5);
@@ -82,9 +86,11 @@
   --color-accent: var(--accent);
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
+  --color-accent-text: var(--accent-text);
   --color-danger: var(--danger);
   --color-warn: var(--warn);
   --color-success: var(--success);
+  --color-success-soft: var(--success-soft);
 
   --radius-sm: var(--radius-sm);
   --radius: var(--radius);
@@ -96,6 +102,52 @@
 
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
+}
+
+/* ==============================================================
+   Variant 시스템 (data-variant)
+   원본: design-reference/styles.css L57~113
+   옵션 B (KISS): terminal 의 17 selector 폰트 override 는
+   :root --font-sans 토글 + body letter-spacing 두 줄로 흡수
+   ============================================================== */
+
+[data-variant="notion"] {
+  --row-h: 40px;
+  --radius: 4px;
+  --accent: oklch(50% 0.09 260);
+  --bg: #FCFCFB;
+  --surface-2: #F3F2EE;
+}
+[data-variant="notion"][data-theme="dark"] {
+  --bg: #191918;
+  --surface-1: #202020;
+  --surface-2: #2A2A28;
+}
+
+[data-variant="dropbox"] {
+  --accent: oklch(58% 0.17 250);
+  --accent-soft: oklch(96% 0.03 250);
+  --row-h: 38px;
+}
+
+[data-variant="terminal"] {
+  --bg: #0F0F0E;
+  --surface-1: #171716;
+  --surface-2: #1F1F1D;
+  --surface-3: #2A2A27;
+  --border: rgba(255, 255, 255, 0.08);
+  --fg: #D5D3C7;
+  --fg-2: #B0AE9F;
+  --fg-muted: #76746A;
+  --fg-subtle: #4E4C44;
+  --accent: oklch(78% 0.17 140);
+  --accent-hover: oklch(85% 0.17 140);
+  --accent-soft: oklch(24% 0.08 140);
+  --row-h: 28px;
+  --font-sans: var(--font-mono);
+}
+[data-variant="terminal"] body {
+  letter-spacing: -0.01em;
 }
 
 /* ============ 전역 리셋 / 바디 ============ */
