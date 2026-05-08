@@ -68,4 +68,26 @@ class AuditExportListenerTest {
             .contains("\"rowCount\":7")
             .contains("\"truncated\":true");
     }
+
+    @Test
+    void ndjsonFormatEventEmitsMetadataFormatNdjson() throws Exception {
+        AuditExportListener listener = new AuditExportListener(auditService);
+        AuditExportEvent event = new AuditExportEvent(
+            UUID.randomUUID(),
+            InetAddress.getByName("10.0.0.1"),
+            "TestAgent/1.0",
+            "{}",
+            3,
+            false,
+            AuditExportFormat.NDJSON
+        );
+
+        listener.onExport(event);
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        assertThat(captor.getValue().metadata())
+            .contains("\"format\":\"ndjson\"")
+            .contains("\"rowCount\":3");
+    }
 }
