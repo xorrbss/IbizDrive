@@ -1494,6 +1494,7 @@ GET /api/me/effective-permissions[?nodeId={uuid}]
 |---|---|---|---|---|---|---|
 | GET | `/api/trash` | `isAuthenticated()` (결과는 사용자가 DELETE 권한 가진 항목만 — A8 결과 후처리, ADR #32) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
 | GET | `/api/admin/trash` (Wave 2 T9) | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→LIKE escape (case-insensitive) | **`WHERE deleted_at IS NOT NULL`** | 400 VALIDATION_ERROR(invalid type/ownerId/q>200/deletedFrom·deletedTo 형식 또는 from≥to), 401, 403 |
+| POST | `/api/admin/trash/bulk` (Wave 2 T9 follow-up) | `hasRole('ADMIN')` | — (per-item 단건 service 트랜잭션, fan-out) | — | per-item: 단건 endpoint와 동일 (restore: SET NULL+UNIQUE 재검사 / purge: row+versions cascade) | 200(부분 실패 허용 — `failed[]`로 표현), 400 VALIDATION_ERROR(invalid action / items.size ∉ [1,200]), 401, 403 |
 | POST | `/api/files/:id/restore` (A6) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
 | POST | `/api/folders/:id/restore` (A6) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade | 404, 409 RESTORE_CONFLICT |
 | DELETE | `/api/trash/:type/:id` (A8, ADR #32) | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + file_versions cascade. S3 객체는 ADR #31 deferred) | 400 VALIDATION_ERROR(invalid type), 403, 404 |
@@ -1552,9 +1553,40 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
               `hasRole('ADMIN')` 가드 통과). audit emit은 그쪽 endpoint에서 발행
               (FILE_RESTORED / FOLDER_RESTORED / FILE_PURGED / FOLDER_PURGED).
             - 날짜 범위 필터(deletedFrom/deletedTo): T9 follow-up으로 추가 (date-only 와이어,
-              UTC 경계). 그 외 bulk restore·purge / 2인 승인 / full path resolve /
-              folder subtree size / `deletedBy` 컬럼: v1.x deferred (cross-owner 복원 추적은
-              `audit_log.actor_id` 차선).
+              UTC 경계). bulk restore·purge: T9 follow-up으로 추가 (`POST /api/admin/trash/bulk`,
+              하단 #7.11.0 참조). 그 외 2인 승인 / full path resolve / folder subtree size:
+              v1.x deferred. `deletedBy` 컬럼은 V10(2026-05-08)으로 closure (cross-owner 추적은
+              `deletedById`/`deletedByEmail`로 노출).
+
+POST /api/admin/trash/bulk                       (Wave 2 T9 follow-up, 2026-05-08)
+  Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Guard:    @PreAuthorize("hasRole('ADMIN')")
+  Body:     {
+              action: 'restore' | 'purge',     // 그 외 → 400 VALIDATION_ERROR
+              items: Array<{                    // 1..200, 0 또는 201+ → 400
+                type: 'file' | 'folder',
+                id:   string (UUID)
+              }>
+            }
+  Response: 200 {                                // 항상 200 — 부분 실패 허용
+              succeeded: Array<{ type, id }>,
+              failed:    Array<{ type, id, error: string }>
+            }
+            error 문자열: 'NOT_FOUND' | 'NAME_CONFLICT' | 'INVALID_TYPE' | 'INVALID_ITEM'
+            (단건 endpoint 도메인 예외 매핑 — docs/02 §8 정합)
+  TX:       per-item 단건 service의 자기 트랜잭션 (REQUIRED + FOR UPDATE) 200개 직렬 처리.
+            bulk endpoint 자체는 트랜잭션을 열지 않음 — 한 항목 실패가 다른 항목 처리를 막지 않음.
+  Audit:    per-item 기존 emit 그대로 (FILE_RESTORED / FOLDER_RESTORED / FILE_PURGED /
+            FOLDER_PURGED). bulk 자체 새 enum 0 — 동일 actor + 근접 timestamp로 묶음 식별 가능.
+  Errors:
+    400 VALIDATION_ERROR  { details: { field: 'action'|'items', rule: '...' } }
+    401 UNAUTHORIZED      (미인증)
+    403                   (MEMBER/AUDITOR — `@PreAuthorize` 차단)
+  Note:     - 부분 실패 모델 — 30일 만료 직전 일괄 정리 / 사용자 대량 오삭제 후 일괄 복원
+              시나리오에서 한 항목의 NAME_CONFLICT가 다른 199개를 막지 않도록 설계.
+            - 200 cap은 q 길이 cap과 정합. 클라이언트는 페이지당 max 100을 따라가게 두면
+              자연스럽게 cap 안.
+            - 단건 endpoint 무변경 — bulk는 service layer fan-out만.
 
 POST /api/files/:id/restore                     (A6)
 POST /api/folders/:id/restore                   (A6)

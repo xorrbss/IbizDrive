@@ -5,9 +5,12 @@ import {
   useQueryClient,
   keepPreviousData,
 } from '@tanstack/react-query'
-import { adminListTrash, api } from '@/lib/api'
+import { adminBulkTrash, adminListTrash, api } from '@/lib/api'
 import { invalidations, qk } from '@/lib/queryKeys'
 import type {
+  AdminTrashBulkAction,
+  AdminTrashBulkItem,
+  AdminTrashBulkResponse,
   AdminTrashFilters,
   AdminTrashPage,
   TrashItemType,
@@ -61,6 +64,30 @@ export function useAdminPurgeTrashItem() {
 
   return useMutation<void, Error, AdminTrashTarget>({
     mutationFn: ({ id, type }) => api.purgeTrashItem(type, id),
+    onSuccess: () => invalidations.afterAdminTrashChanged(qc),
+  })
+}
+
+/**
+ * Wave 2 T9 follow-up — admin bulk restore/purge (spec §3).
+ *
+ * <p>변수 입력: `{ action, items }`. 응답은 항상 200(부분 실패 허용); cap/action 검증
+ * 실패만 4xx → mutation onError. 성공 응답은 `{ succeeded, failed }` 그대로 호출자에
+ * 전달 — 호출자가 toast에 "복원 N개 성공, M개 실패"를 렌더 (spec §3.6.3).
+ *
+ * <p>`onSuccess`에서 `qk.adminTrash()` prefix 무효화. 부분 실패도 succeeded 항목은 trash
+ * 목록에서 빠지므로 동일하게 invalidate (spec §3.6.4).
+ */
+export interface UseAdminBulkTrashVars {
+  action: AdminTrashBulkAction
+  items: AdminTrashBulkItem[]
+}
+
+export function useAdminBulkTrash() {
+  const qc = useQueryClient()
+
+  return useMutation<AdminTrashBulkResponse, Error, UseAdminBulkTrashVars>({
+    mutationFn: ({ action, items }) => adminBulkTrash(action, items),
     onSuccess: () => invalidations.afterAdminTrashChanged(qc),
   })
 }

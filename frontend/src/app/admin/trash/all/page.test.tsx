@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen, fireEvent, waitFor } from '@testing-library/react'
+import { render, screen, fireEvent, waitFor, within } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import React from 'react'
 import AdminTrashAllPage from './page'
@@ -102,5 +102,142 @@ describe('/admin/trash/all', () => {
 
     // sample.deletedByEmail === null → em dash 표기
     expect(await screen.findByText('—')).toBeTruthy()
+  })
+
+  // ── Wave 2 T9 follow-up: bulk restore/purge (spec §3) ────────────────────
+
+  const second: AdminTrashItem = {
+    ...sample,
+    id: 'f-2',
+    name: 'plan.docx',
+  }
+
+  it('체크박스 다중 선택 시 BulkActionBar 노출', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({
+      items: [sample, second],
+      nextCursor: null,
+    })
+    renderPage()
+
+    // 초기에는 BulkActionBar 미노출
+    expect(screen.queryByRole('toolbar', { name: '일괄 작업' })).toBeNull()
+
+    // 행 1개 선택
+    const cb = await screen.findByRole('checkbox', { name: 'spec.pdf 선택' })
+    fireEvent.click(cb)
+    expect(await screen.findByRole('toolbar', { name: '일괄 작업' })).toBeTruthy()
+    expect(screen.getByTestId('admin-trash-bulk-count').textContent).toContain('1개')
+
+    // 또 1개 선택
+    fireEvent.click(screen.getByRole('checkbox', { name: 'plan.docx 선택' }))
+    expect(screen.getByTestId('admin-trash-bulk-count').textContent).toContain('2개')
+  })
+
+  it('전체 선택 → 모든 행 체크 + BulkActionBar 카운트 = items.length', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({
+      items: [sample, second],
+      nextCursor: null,
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: '전체 선택' }))
+    expect(screen.getByTestId('admin-trash-bulk-count').textContent).toContain('2개')
+
+    // 다시 클릭 → 전체 해제
+    fireEvent.click(screen.getByRole('checkbox', { name: '전체 선택' }))
+    expect(screen.queryByRole('toolbar', { name: '일괄 작업' })).toBeNull()
+  })
+
+  it('일괄 복원 → bulk api 호출(restore) + 결과 banner 노출', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({
+      items: [sample, second],
+      nextCursor: null,
+    })
+    const bulkSpy = vi.spyOn(apiModule, 'adminBulkTrash').mockResolvedValue({
+      succeeded: [{ type: 'file', id: 'f-1' }, { type: 'file', id: 'f-2' }],
+      failed: [],
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: '전체 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '일괄 복원' }))
+
+    await waitFor(() => expect(bulkSpy).toHaveBeenCalledOnce())
+    const [action, items] = bulkSpy.mock.calls[0]
+    expect(action).toBe('restore')
+    expect(items).toEqual(expect.arrayContaining([
+      { type: 'file', id: 'f-1' },
+      { type: 'file', id: 'f-2' },
+    ]))
+    expect(await screen.findByTestId('admin-trash-bulk-result')).toBeTruthy()
+    expect(screen.getByTestId('admin-trash-bulk-result').textContent).toContain('성공 2개, 실패 0개')
+  })
+
+  it('일괄 영구삭제 → ConfirmDialog 후 bulk api 호출(purge)', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({
+      items: [sample],
+      nextCursor: null,
+    })
+    const bulkSpy = vi.spyOn(apiModule, 'adminBulkTrash').mockResolvedValue({
+      succeeded: [{ type: 'file', id: 'f-1' }],
+      failed: [],
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'spec.pdf 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '일괄 영구삭제' }))
+
+    // ConfirmDialog 노출
+    expect(await screen.findByText(/선택한 1개를 영구 삭제/)).toBeTruthy()
+    expect(bulkSpy).not.toHaveBeenCalled()
+
+    // 다이얼로그 내 "영구 삭제" 확인 버튼 클릭 (행의 단건 버튼과 구분)
+    const dialog = screen.getByRole('dialog')
+    fireEvent.click(within(dialog).getByRole('button', { name: '영구 삭제' }))
+
+    await waitFor(() => expect(bulkSpy).toHaveBeenCalledOnce())
+    expect(bulkSpy.mock.calls[0][0]).toBe('purge')
+  })
+
+  it('부분 실패 응답 → 자세히 펼치면 failed 항목 노출', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({
+      items: [sample, second],
+      nextCursor: null,
+    })
+    vi.spyOn(apiModule, 'adminBulkTrash').mockResolvedValue({
+      succeeded: [{ type: 'file', id: 'f-1' }],
+      failed: [{ type: 'file', id: 'f-2', error: 'NAME_CONFLICT' }],
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: '전체 선택' }))
+    fireEvent.click(screen.getByRole('button', { name: '일괄 복원' }))
+
+    const banner = await screen.findByTestId('admin-trash-bulk-result')
+    expect(banner.textContent).toContain('성공 1개, 실패 1개')
+
+    // 자세히 펼치기
+    fireEvent.click(screen.getByRole('button', { name: '자세히' }))
+    expect(banner.textContent).toContain('NAME_CONFLICT')
+    expect(banner.textContent).toContain('f-2')
+  })
+
+  it('필터 변경 시 선택 초기화', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({
+      items: [sample],
+      nextCursor: null,
+    })
+    renderPage()
+
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'spec.pdf 선택' }))
+    expect(await screen.findByRole('toolbar', { name: '일괄 작업' })).toBeTruthy()
+
+    // 필터 변경
+    fireEvent.change(screen.getByLabelText('이름 검색'), { target: { value: 'spec' } })
+
+    // 선택 초기화 → BulkActionBar 사라짐
+    await waitFor(() =>
+      expect(screen.queryByRole('toolbar', { name: '일괄 작업' })).toBeNull(),
+    )
   })
 })

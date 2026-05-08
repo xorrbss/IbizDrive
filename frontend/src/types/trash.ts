@@ -69,3 +69,31 @@ export interface AdminTrashPage {
   items: AdminTrashItem[]
   nextCursor: string | null
 }
+
+// Wave 2 T9 follow-up — bulk restore/purge (spec §3)
+
+/** wire 상수 — backend `BulkAction.from`이 정확 일치 검증. */
+export type AdminTrashBulkAction = 'restore' | 'purge'
+
+/** request item — `type` wire는 lower-case (`TrashItemType` 동일). */
+export interface AdminTrashBulkItem {
+  type: TrashItemType
+  id: string
+}
+
+export interface AdminTrashBulkRequest {
+  action: AdminTrashBulkAction
+  /** 1..200개. 0 또는 201+은 backend가 400으로 거부. */
+  items: AdminTrashBulkItem[]
+}
+
+/**
+ * 응답은 항상 200 (부분 실패 허용). cap/action 검증 실패만 4xx.
+ *
+ * `failed[].error`는 안정적 enum-like 문자열: `"NOT_FOUND"`, `"NAME_CONFLICT"`,
+ * `"INVALID_ITEM"`, `"INVALID_TYPE"` 등. UI는 toast에 그대로 노출.
+ */
+export interface AdminTrashBulkResponse {
+  succeeded: AdminTrashBulkItem[]
+  failed: Array<AdminTrashBulkItem & { error: string }>
+}
