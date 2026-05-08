@@ -132,15 +132,23 @@ public class AdminTrashService {
         // file은 자기 size_bytes 그대로 사용. 빈 폴더는 0 (CTE의 COALESCE).
         Map<UUID, Long> folderSubtreeSizes = subtreeSizesFor(folders);
 
+        // originalParentPath — 부모(originalFolderId/originalParentId)들에 대해 root까지의 경로
+        // 일괄 조회 (full-path-resolve follow-up). 부모가 root인 폴더는 "/<name>", 깊으면
+        // "/<g1>/.../<parent>". chain 종착 못한(데이터 corruption) 부모는 결과 누락 → 호출자가
+        // originalParentName 단일 segment를 fallback으로 가질 수 있게 함.
+        Map<UUID, String> parentPathById = parentPathsFor(parentIds);
+
         List<AdminTrashItemDto> merged = new ArrayList<>(files.size() + folders.size());
         for (FileItem f : files) {
             UUID deletedBy = f.getDeletedBy();
+            UUID parentId = f.getOriginalFolderId();
             merged.add(new AdminTrashItemDto(
                 f.getId(), f.getName(), TrashItemType.FILE,
                 f.getDeletedAt(), f.getPurgeAfter(),
                 f.getOwnerId(), userEmailById.get(f.getOwnerId()),
-                f.getOriginalFolderId(),
-                f.getOriginalFolderId() != null ? parentNameById.get(f.getOriginalFolderId()) : null,
+                parentId,
+                parentId != null ? parentNameById.get(parentId) : null,
+                parentId != null ? parentPathById.get(parentId) : null,
                 f.getSizeBytes(),
                 deletedBy,
                 deletedBy != null ? userEmailById.get(deletedBy) : null
@@ -148,12 +156,14 @@ public class AdminTrashService {
         }
         for (Folder fd : folders) {
             UUID deletedBy = fd.getDeletedBy();
+            UUID parentId = fd.getOriginalParentId();
             merged.add(new AdminTrashItemDto(
                 fd.getId(), fd.getName(), TrashItemType.FOLDER,
                 fd.getDeletedAt(), fd.getPurgeAfter(),
                 fd.getOwnerId(), userEmailById.get(fd.getOwnerId()),
-                fd.getOriginalParentId(),
-                fd.getOriginalParentId() != null ? parentNameById.get(fd.getOriginalParentId()) : null,
+                parentId,
+                parentId != null ? parentNameById.get(parentId) : null,
+                parentId != null ? parentPathById.get(parentId) : null,
                 folderSubtreeSizes.get(fd.getId()),
                 deletedBy,
                 deletedBy != null ? userEmailById.get(deletedBy) : null
@@ -206,6 +216,21 @@ public class AdminTrashService {
             sizes.put((UUID) row[0], ((Number) row[1]).longValue());
         }
         return sizes;
+    }
+
+    /**
+     * originalParentPath batch lookup — full-path-resolve follow-up.
+     * 빈 입력은 short-circuit. 결과 누락(부모 chain 종착 실패 — 데이터 corruption 또는 depth
+     * 100 초과) 시 해당 parent는 map에 없으며 호출자가 fallback({@code originalParentName})으로
+     * 처리한다.
+     */
+    private Map<UUID, String> parentPathsFor(Set<UUID> parentIds) {
+        if (parentIds.isEmpty()) return Map.of();
+        Map<UUID, String> paths = new HashMap<>(parentIds.size());
+        for (Object[] row : adminRepo.findFolderAncestorPaths(parentIds)) {
+            paths.put((UUID) row[0], (String) row[1]);
+        }
+        return paths;
     }
 
     // ──────────────────────────────────────────────────────────────────

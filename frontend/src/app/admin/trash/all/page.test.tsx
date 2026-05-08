@@ -31,6 +31,7 @@ const sample: AdminTrashItem = {
   ownerEmail: 'alice@x',
   originalParentId: 'fd-1',
   originalParentName: 'Reports',
+  originalParentPath: '/Workspace/Reports',
   sizeBytes: 12345,
   deletedById: null,
   deletedByEmail: null,
@@ -39,13 +40,38 @@ const sample: AdminTrashItem = {
 describe('/admin/trash/all', () => {
   beforeEach(() => vi.restoreAllMocks())
 
-  it('renders rows with name, ownerEmail, originalParentName', async () => {
+  it('renders rows with name, ownerEmail, originalParentPath', async () => {
     vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [sample], nextCursor: null })
     renderPage()
 
     expect(await screen.findByText('spec.pdf')).toBeTruthy()
     expect(screen.getByText('alice@x')).toBeTruthy()
-    expect(screen.getByText('Reports')).toBeTruthy()
+    // path가 있으면 단일 segment name이 아니라 절대 경로가 표시되어야 한다.
+    expect(screen.getByText('/Workspace/Reports')).toBeTruthy()
+    expect(screen.queryByText('Reports')).toBeNull()
+  })
+
+  it('falls back to originalParentName when originalParentPath is null', async () => {
+    // 데이터 corruption / depth 초과 등으로 backend가 path를 채우지 못한 경우.
+    const noPath: AdminTrashItem = { ...sample, originalParentPath: null }
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [noPath], nextCursor: null })
+    renderPage()
+
+    expect(await screen.findByText('Reports')).toBeTruthy()
+    expect(screen.queryByText('/Workspace/Reports')).toBeNull()
+  })
+
+  it('renders (루트) marker when item has no parent', async () => {
+    const root: AdminTrashItem = {
+      ...sample,
+      originalParentId: null,
+      originalParentName: null,
+      originalParentPath: null,
+    }
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [root], nextCursor: null })
+    renderPage()
+
+    expect(await screen.findByText('(루트)')).toBeTruthy()
   })
 
   it('renders sizeBytes formatted via formatBytes (not raw bytes)', async () => {

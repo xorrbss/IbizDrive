@@ -198,7 +198,7 @@ class AdminTrashControllerTest {
             itemId, "doc.pdf", TrashItemType.FILE,
             deletedAt, deletedAt.plusSeconds(30L * 86400),
             ownerId, "owner@example.com",
-            null, null,
+            null, null, null,
             12345L,
             deleterId, "admin@example.com"
         );
@@ -221,17 +221,18 @@ class AdminTrashControllerTest {
             itemId, "legacy.pdf", TrashItemType.FILE,
             deletedAt, deletedAt.plusSeconds(30L * 86400),
             ownerId, "owner@example.com",
-            null, null,
+            null, null, null,
             1L,
             null, null
         );
         when(service.list(any(), any(), any())).thenReturn(new AdminTrashPage(List.of(dto), null));
 
         // AdminTrashItemDto는 @JsonInclude(NON_NULL) 미사용 — 명시적 null로 직렬화 (frontend는
-        // nullable 키를 기대, originalParentId/originalParentName 패턴과 동일).
+        // nullable 키를 기대, originalParentId/originalParentName/originalParentPath 동일 패턴).
         mockMvc.perform(get("/api/admin/trash").contentType(MediaType.APPLICATION_JSON))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.items[0].deletedById").value(Matchers.nullValue()))
-            .andExpect(jsonPath("$.items[0].deletedByEmail").value(Matchers.nullValue()));
+            .andExpect(jsonPath("$.items[0].deletedByEmail").value(Matchers.nullValue()))
+            .andExpect(jsonPath("$.items[0].originalParentPath").value(Matchers.nullValue()));
     }
 }

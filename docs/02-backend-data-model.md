@@ -1621,7 +1621,8 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
               ownerId:            string (UUID),           // files.uploaded_by 또는 folders.created_by
               ownerEmail:         string,                  // users.email (batch lookup)
               originalParentId:   string (UUID) | null,    // null = root
-              originalParentName: string | null,           // 활성 부모 폴더명, 부모 soft-deleted 시 null
+              originalParentName: string | null,           // 부모 폴더의 단일 segment name (path 계산 실패 시 fallback), 부모 row 미존재 시 null
+              originalParentPath: string | null,           // full-path-resolve follow-up. 부모 폴더의 절대 경로(leading '/', trailing slash 없음 — 예: '/회사/팀A/문서'). 부모가 root면 '/<parentName>'. originalParentId == null이면 null. 데이터 corruption / depth 100 초과 등으로 chain 종착 실패 시 null (UI는 originalParentName fallback).
               sizeBytes:          number                   // file: 자기 size_bytes. folder: subtree size — 자기 자신 + 모든 하위 폴더의 file size 합 (Wave 2 T9 follow-up folder-subtree-size, 빈 폴더는 0). always not-null.
             }
   Side-effects: 없음 (read-only — audit emit 0건. mutation은 기존 endpoint 재사용)
@@ -1639,9 +1640,11 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
               KST(`Asia/Seoul`) 경계 — 사내 단일 지역 운영, 운영자 wall-clock 일치). bulk
               restore·purge: T9 follow-up으로 추가 (`POST /api/admin/trash/bulk`, 하단 #7.11.0
               참조). folder subtree size: T9 follow-up으로 closure (`AdminTrashItemDto.sizeBytes`가
-              folder에서도 not-null — 단일 재귀 CTE batch lookup, 빈 폴더는 0). 그 외 2인 승인 /
-              full path resolve: v1.x deferred. `deletedBy` 컬럼은 V10(2026-05-08)으로 closure
-              (cross-owner 추적은 `deletedById`/`deletedByEmail`로 노출).
+              folder에서도 not-null — 단일 재귀 CTE batch lookup, 빈 폴더는 0). full path resolve:
+              T9 follow-up으로 closure (`originalParentPath` — 단일 재귀 CTE batch lookup,
+              살아있는/삭제된 부모 모두 chain 추적, depth 100 cap). 2인 승인: v1.x deferred.
+              `deletedBy` 컬럼은 V10(2026-05-08)으로 closure (cross-owner 추적은
+              `deletedById`/`deletedByEmail`로 노출).
 
 POST /api/admin/trash/bulk                       (Wave 2 T9 follow-up, 2026-05-08)
   Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)

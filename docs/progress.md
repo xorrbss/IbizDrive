@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-05-09 — 🏁 wave2-trash-original-path 트랙 종료 (Wave 2 T9 follow-up — admin trash 항목의 원위치 절대 경로 노출)
+
+### 범위
+
+PR #114 (wave2-trash-policy-viewer) 후속. 운영자가 휴지통 항목의 "원위치"를 단일 segment name이 아닌 절대 경로(예: `/회사/팀A/문서`)로 즉시 식별할 수 있게 한다. 같은 이름 폴더가 여러 위치에 존재하는 환경에서 식별 공수 ↓.
+
+### 변경 핵심
+
+**Backend**:
+- `AdminTrashItemDto` — `originalParentPath: String` 필드 추가. leading `/`, trailing slash 없음. 부모 row 미존재 또는 chain 종착 실패 시 null. `originalParentName`은 fallback 용도로 유지.
+- `AdminTrashRepository.findFolderAncestorPaths(Collection<UUID>)` — 단일 재귀 CTE로 leaf id별 절대 경로 일괄 조회. anchor에서 `parent_id`를 따라 root까지 누적, 종착 row(`current_id IS NULL`)만 SELECT. depth 100 cap (cycle 방지). subtree-size 동일 패턴.
+- `AdminTrashService.list(...)` — 기존 owner email + parent name batch lookup에 `parentPathsFor(parentIds)` 추가 (빈 set short-circuit). file/folder 양쪽 DTO 생성 시 path 채움.
+- `AdminTrashServiceTest` — `list_attachesOwnerEmailAndParentName`에 path stub + assertion 추가, 신규 `list_populatesOriginalParentPath_deepHierarchy` (다중 segment 검증) + `list_skipsAncestorPathQuery_whenNoParents` (빈 부모 short-circuit) 2종.
+- `AdminTrashControllerTest` — 기존 NULL 직렬화 테스트에 `$.items[0].originalParentPath` null assertion 추가 + DTO 호출부 새 필드 정합.
+
+**Frontend**:
+- `types/trash.ts` — `AdminTrashItem.originalParentPath: string | null` 추가.
+- `app/admin/trash/all/page.tsx` "원위치" cell — path 우선 + name fallback + `(루트)` 마커. `max-w-[320px] truncate` + `title` tooltip으로 긴 경로 처리.
+- `app/admin/trash/all/page.test.tsx` — 기존 sample에 path 추가 + 기존 테스트 assertion을 path로 update + 신규 path-null fallback / root marker 2종 추가.
+- `lib/api.adminTrash.test.ts` — fixture에 path 보강.
+
+**Docs**:
+- `docs/02 §7.11` `AdminTrashItemDto` 와이어 스키마에 `originalParentPath` row + Note에서 "full path resolve" deferred 표기를 closure로 전환.
+- `docs/04 §8.3` 새 closure 항목 + JSON 예시에 path 필드.
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "...AdminTrashServiceTest" --tests "...AdminTrashControllerTest"` BUILD SUCCESSFUL.
+- `cd frontend && pnpm typecheck` exit 0, `pnpm lint` exit 0.
+- `pnpm test --run page.test.tsx api.adminTrash.test.ts` — 24 tests passed (page 16 + api 8).
+
+### 결정/편차
+
+- **단일 재귀 CTE 1회 호출** — frontend가 path 매번 계산하는 대신 backend에서 batch query. subtree-size와 동일 패턴이라 운영자가 동작 모델 1개로 이해. depth cap 100도 동일.
+- **fallback 유지** — `originalParentName`을 wire에서 제거하지 않음. 부모 chain 종착 실패(데이터 corruption / depth 초과) 시 운영자가 단일 segment라도 볼 수 있어야 함. wire dead weight는 small, robustness 우선.
+- **부모 row 보존 정책 활용** — 휴지통의 부모 폴더도 hard purge 전까지 row 유지되므로 path는 살아있는/삭제된 부모 모두 동일 join으로 추적. 별도 history 테이블 미도입.
+- **path 표기 = leading `/`, trailing 없음** — 일관성. UI는 `title` tooltip으로 truncate된 긴 경로 hover 노출.
+- **`List.of(Object[]...)` 함정 회피** — element 1개 stub 시 varargs가 `List<Object>`로 추론되어 cast 깨짐. `Collections.singletonList`로 명시 (test 안에 한 줄 코멘트 추가).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여(보존 정책 mutation UI / 2인 승인 / 권한 grant/revoke direct CRUD / quota / progress streaming SSE/WS)는 별도 트랙.
+- 본 트랙으로 docs/02 §7.11 Note의 "full path resolve" deferred 표기는 closure로 전환됨. 추후 admin DTO 추가 필드 검토 시 동일 batch lookup 패턴 재사용.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-09 — 🔥 fix-create-folder-csrf hotfix (ADMIN role도 폴더 생성 403 회귀)
 
 ### 범위

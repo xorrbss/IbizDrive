@@ -40,6 +40,13 @@ export interface AdminTrashItem {
   ownerEmail: string
   originalParentId: string | null
   originalParentName: string | null
+  /**
+   * full-path-resolve follow-up — 삭제 직전 부모 폴더의 절대 경로. leading `/`,
+   * trailing slash 없음 (예: `/회사/팀A/문서`). 부모가 root였으면 `/<parentName>`.
+   * `originalParentId`가 null이면 path도 null. 데이터 corruption 또는 cycle 등으로 path 계산
+   * 실패 시 null이며, 이때 UI는 `originalParentName` 단일 segment를 fallback으로 표시.
+   */
+  originalParentPath: string | null
   sizeBytes: number | null
   /**
    * V10 — 삭제 actor user id. NULL 의미: V10 적용 이전 row(backfill 미실시),
