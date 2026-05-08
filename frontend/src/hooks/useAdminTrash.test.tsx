@@ -6,13 +6,19 @@ import {
   useAdminTrashList,
   useAdminRestoreTrashItem,
   useAdminPurgeTrashItem,
+  useAdminBulkTrash,
 } from './useAdminTrash'
-import { api, adminListTrash } from '@/lib/api'
+import { api, adminListTrash, adminBulkTrash } from '@/lib/api'
 import { qk } from '@/lib/queryKeys'
-import type { AdminTrashFilters, AdminTrashPage } from '@/types/trash'
+import type {
+  AdminTrashBulkResponse,
+  AdminTrashFilters,
+  AdminTrashPage,
+} from '@/types/trash'
 
 vi.mock('@/lib/api', () => ({
   adminListTrash: vi.fn(),
+  adminBulkTrash: vi.fn(),
   api: {
     restoreFile: vi.fn(),
     restoreFolder: vi.fn(),
@@ -115,5 +121,53 @@ describe('useAdminPurgeTrashItem', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(api.purgeTrashItem).toHaveBeenCalledWith('file', 'f1')
     expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: qk.adminTrash() })
+  })
+})
+
+describe('useAdminBulkTrash', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('성공 → adminBulkTrash(action, items) 호출 + qk.adminTrash() 무효화 + 응답 echo', async () => {
+    const response: AdminTrashBulkResponse = {
+      succeeded: [{ type: 'file', id: 'f1' }],
+      failed: [{ type: 'folder', id: 'd1', error: 'NAME_CONFLICT' }],
+    }
+    ;(adminBulkTrash as ReturnType<typeof vi.fn>).mockResolvedValue(response)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useAdminBulkTrash(), { wrapper: wrap(qc) })
+
+    act(() => {
+      result.current.mutate({
+        action: 'restore',
+        items: [
+          { type: 'file', id: 'f1' },
+          { type: 'folder', id: 'd1' },
+        ],
+      })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(adminBulkTrash).toHaveBeenCalledWith('restore', [
+      { type: 'file', id: 'f1' },
+      { type: 'folder', id: 'd1' },
+    ])
+    expect(result.current.data).toEqual(response)
+    expect(invalidateSpy).toHaveBeenCalledWith({ queryKey: qk.adminTrash() })
+  })
+
+  it('purge action 전달', async () => {
+    ;(adminBulkTrash as ReturnType<typeof vi.fn>).mockResolvedValue({ succeeded: [], failed: [] })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const { result } = renderHook(() => useAdminBulkTrash(), { wrapper: wrap(qc) })
+
+    act(() => {
+      result.current.mutate({ action: 'purge', items: [{ type: 'file', id: 'f1' }] })
+    })
+
+    await waitFor(() => expect(result.current.isSuccess).toBe(true))
+    expect(adminBulkTrash).toHaveBeenCalledWith('purge', [{ type: 'file', id: 'f1' }])
   })
 })

@@ -1641,6 +1641,10 @@ export type {
   AdminTrashItem,
   AdminTrashFilters,
   AdminTrashPage,
+  AdminTrashBulkAction,
+  AdminTrashBulkItem,
+  AdminTrashBulkRequest,
+  AdminTrashBulkResponse,
 } from '@/types/trash'
 
 /**
@@ -1669,6 +1673,29 @@ export async function adminListTrash(
     throw await buildApiError(res, `adminListTrash failed: ${res.status}`)
   }
   return (await res.json()) as AdminTrashPage
+}
+
+/**
+ * Wave 2 T9 follow-up — admin bulk restore/purge (spec §3).
+ *
+ * <p>{@code action}은 `restore` 또는 `purge`. {@code items}는 1..200개. 응답은 항상 200
+ * (부분 실패 허용); cap/action 검증 실패만 400. 401/403/400 envelope을 {@link buildApiError}로
+ * throw — 호출자는 200일 때만 receive하고 `failed[]` 배열을 토스트로 노출한다.
+ */
+export async function adminBulkTrash(
+  action: import('@/types/trash').AdminTrashBulkAction,
+  items: import('@/types/trash').AdminTrashBulkItem[],
+): Promise<import('@/types/trash').AdminTrashBulkResponse> {
+  const res = await fetch('/api/admin/trash/bulk', {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ action, items }),
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `adminBulkTrash failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/trash').AdminTrashBulkResponse
 }
 
 /**
