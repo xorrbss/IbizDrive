@@ -55,17 +55,20 @@ public class AuditQueryController {
     private final AuditQueryService queryService;
     private final AuditCsvWriter csvWriter;
     private final AuditJsonWriter jsonWriter;
+    private final AuditNdjsonWriter ndjsonWriter;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
     public AuditQueryController(AuditQueryService queryService,
                                 AuditCsvWriter csvWriter,
                                 AuditJsonWriter jsonWriter,
+                                AuditNdjsonWriter ndjsonWriter,
                                 ApplicationEventPublisher eventPublisher,
                                 ObjectMapper objectMapper) {
         this.queryService = queryService;
         this.csvWriter = csvWriter;
         this.jsonWriter = jsonWriter;
+        this.ndjsonWriter = ndjsonWriter;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
     }
@@ -150,14 +153,13 @@ public class AuditQueryController {
         java.net.InetAddress actorIp = WebRequestContextHolder.currentIp();
         String userAgent = WebRequestContextHolder.currentUserAgent();
         String filtersJson = serializeFilters(filters);
-        boolean isJson = parsedFormat == AuditExportFormat.JSON;
 
         StreamingResponseBody body = out -> {
             try {
-                if (isJson) {
-                    jsonWriter.write(out, result.entries());
-                } else {
-                    csvWriter.write(out, result.entries());
+                switch (parsedFormat) {
+                    case CSV    -> csvWriter.write(out, result.entries());
+                    case JSON   -> jsonWriter.write(out, result.entries());
+                    case NDJSON -> ndjsonWriter.write(out, result.entries());
                 }
             } catch (IOException e) {
                 // 클라이언트 disconnect 등 — 응답은 깨졌지만 서버 측 상태 변경 없음. 로그만.
@@ -171,11 +173,7 @@ public class AuditQueryController {
         };
 
         HttpHeaders headers = new HttpHeaders();
-        if (isJson) {
-            headers.setContentType(new MediaType("application", "json", java.nio.charset.StandardCharsets.UTF_8));
-        } else {
-            headers.setContentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8));
-        }
+        headers.setContentType(contentTypeFor(parsedFormat));
         String extension = parsedFormat.wire();
         headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment()
             .filename("audit_logs_" + LocalDate.now().format(FILENAME_DATE) + "." + extension)
@@ -208,5 +206,17 @@ public class AuditQueryController {
 
     private static String blankToNull(String s) {
         return (s == null || s.isBlank()) ? null : s;
+    }
+
+    /**
+     * 형식별 응답 Content-Type. NDJSON은 사실상 표준인 {@code application/x-ndjson} 채택
+     * (RFC 7464의 {@code application/json-seq}와는 다른 포맷).
+     */
+    private static MediaType contentTypeFor(AuditExportFormat format) {
+        return switch (format) {
+            case CSV    -> new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8);
+            case JSON   -> new MediaType("application", "json", java.nio.charset.StandardCharsets.UTF_8);
+            case NDJSON -> new MediaType("application", "x-ndjson", java.nio.charset.StandardCharsets.UTF_8);
+        };
     }
 }

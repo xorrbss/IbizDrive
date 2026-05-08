@@ -56,6 +56,49 @@
 
 ---
 
+## 2026-05-08 — 🏁 audit-ndjson 트랙 종료 (Wave 1 T2 follow-up — audit export NDJSON 형식)
+
+### 범위
+
+`audit-export-json` 트랙(PR #85) "다음 세션 컨텍스트"의 v1.x 항목. `format=ndjson` 추가 — line-oriented 도구(`jq`/`grep`/`split`)·SIEM ingest 친화. 직전 `audit-format-enum` 트랙(PR #91)의 enum 패턴 재사용.
+
+### 변경 핵심
+
+**Backend:**
+- `AuditExportFormat`에 `NDJSON` 멤버 + `from(...)` 분기.
+- `AuditNdjsonWriter` (NEW) — row-per-line 직렬화. `objectMapper.writeValueAsBytes` + `out.write` 패턴 (Jackson `writeValue(OutputStream, ...)`은 AUTO_CLOSE_TARGET이 기본 enabled라 stream을 닫는 이슈 회피). 마지막 row 뒤에도 `\n` (POSIX text file 관행).
+- `AuditQueryController.export` switch 정리 (CSV / JSON / NDJSON). `contentTypeFor` 헬퍼 추가 — NDJSON은 `application/x-ndjson; charset=UTF-8`.
+
+**Frontend:**
+- `getAuditLogsExportUrl` `format` 타입 확장 (`'csv' \| 'json' \| 'ndjson'`). 기존 호출자 영향 0.
+
+**Tests:**
+- `AuditNdjsonWriterTest` (NEW, 4 tests): 빈 결과 0 byte, 단일 row trailing LF, 다중 row LF 구분, BOM 미부착.
+- `AuditExportListenerTest` +1: NDJSON metadata 케이스.
+- `AuditQueryControllerTest`: ndjsonWriter mock 추가 (호출 안 함).
+- `api.getAuditLogsExportUrl.test.ts` +1: ndjson URL 송신.
+
+### 검증
+
+- backend `./gradlew test --tests "com.ibizdrive.audit.*"` BUILD SUCCESSFUL (1m54s).
+- frontend `pnpm typecheck` exit 0 + `pnpm test api.getAuditLogsExportUrl` 6/6 PASS.
+
+### 결정
+
+- **Content-Type `application/x-ndjson`** — 사실상 표준. RFC 7464 `application/json-seq`와는 다른 포맷.
+- **Trailing newline 발행** — POSIX text file 관행, 빈 결과 vs 단일 row 구분 결정적.
+- **frontend UI 미추가** — wire만 노출. 직접 URL 호출 시나리오 한정. `/admin/audit/logs`에 "NDJSON 내보내기" 버튼은 v1.x++.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / folder subtree size / KST 경계 날짜 필터 / 권한 grant/revoke direct CRUD / quota / audit SQL→JSON streaming.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 audit-format-enum 트랙 종료 (Wave 1 T2 follow-up — audit export `format` 강타입화)
 
 ### 범위

@@ -889,12 +889,13 @@ export const api = {
    * `<a href>`에 그대로 넣고 click한다.
    *
    * <p>backend `GET /api/admin/audit/export` 가드: `@PreAuthorize(AUDITOR or ADMIN)` — MEMBER는 403.
-   * `format`은 `'csv'` 또는 `'json'`. backend에서 그 외 값은 400 BAD_REQUEST.
-   * 본 함수는 URL만 빌드하므로 권한 가드는 backend가 단독 책임 (UX는 호출 측 페이지가 분기).
+   * `format`은 `'csv'`, `'json'`, 또는 `'ndjson'` (audit-ndjson 트랙으로 추가). backend에서 그 외
+   * 값은 400 BAD_REQUEST. 본 함수는 URL만 빌드하므로 권한 가드는 backend가 단독 책임
+   * (UX는 호출 측 페이지가 분기).
    */
   getAuditLogsExportUrl(
     filters: AuditLogFilters = {},
-    format: 'csv' | 'json' = 'csv'
+    format: 'csv' | 'json' | 'ndjson' = 'csv'
   ): string {
     const params = new URLSearchParams()
     if (filters.fromDate) params.set('fromDate', filters.fromDate)

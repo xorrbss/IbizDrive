@@ -32,4 +32,9 @@ describe('api.getAuditLogsExportUrl', () => {
     expect(url).toContain('actorQuery=kim')
     expect(url).toContain('format=json')
   })
+
+  it('format=ndjson은 query에 format=ndjson 포함 (audit-ndjson 트랙)', () => {
+    const url = api.getAuditLogsExportUrl({}, 'ndjson')
+    expect(url).toBe('/api/admin/audit/export?format=ndjson')
+  })
 })
