@@ -7,9 +7,10 @@ export const metadata: Metadata = {
   description: '사내 문서관리 시스템',
 }
 
-// FOUC 방지: hydration 전 동기 실행으로 [data-theme] 적용.
-// localStorage 우선, 없으면 prefers-color-scheme. lib/theme.ts와 동일 규칙.
+// FOUC 방지: hydration 전 동기 실행으로 [data-theme] / [data-variant] 적용.
+// localStorage 우선, 없으면 prefers-color-scheme. lib/theme.ts / lib/variant.ts 와 동일 규칙.
 const themeInitScript = `(function(){try{var k='theme';var s=localStorage.getItem(k);var t=(s==='dark'||s==='light')?s:(window.matchMedia&&window.matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');if(t==='dark')document.documentElement.setAttribute('data-theme','dark');}catch(e){}})();`
+const variantInitScript = `(function(){try{var v=localStorage.getItem('variant');if(v==='notion'||v==='dropbox'||v==='terminal')document.documentElement.setAttribute('data-variant',v);}catch(e){}})();`
 
 export default function RootLayout({
   children,
@@ -22,6 +23,7 @@ export default function RootLayout({
     <html lang="ko" className="h-full" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+        <script dangerouslySetInnerHTML={{ __html: variantInitScript }} />
       </head>
       <body className="h-full" suppressHydrationWarning>
         <Providers>{children}</Providers>
