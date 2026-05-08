@@ -6,12 +6,11 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  * Storage orphan cleanup 잡 설정 (application.yml {@code app.storage.orphan-cleanup.*}).
  *
  * <p>A15 closure에서 명시한 storage orphan(트랜잭션 실패·hard purge 잔존 객체)을 일일 cron으로
- * 정리하는 {@link StorageOrphanCleanupJob}의 설정. 운영 기본값은 비활성({@code enabled=false}) —
- * 명시적 활성화 후 운영 투입.
+ * 정리하는 {@link StorageOrphanCleanupJob}의 설정. schedule/zone/batchSize/maxPerRun/graceHours만
+ * 정의. enabled 토글은 admin-cron-toggle 트랙(2026-05-08)에서 {@code cron_policy} DB 테이블로 이관.
  *
  * <p>{@link HardPurgeProperties}와 동일하게 {@code @ConfigurationProperties} record 패턴.
  *
- * @param enabled     job + scheduling 활성 여부. {@code false}면 {@link StorageOrphanCleanupJob} 빈 미등록.
  * @param cron        Spring cron 표현식 (6필드: 초 분 시 일 월 요일). 운영 기본 매일 새벽 1시(A7 hard purge 자정 직후).
  * @param zone        cron 평가 시간대 (java.time.ZoneId 호환).
  * @param maxPerRun   단일 run에서 삭제할 orphan 객체 최대 수. 초과 시 result.truncated=true.
@@ -20,7 +19,6 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
  */
 @ConfigurationProperties(prefix = "app.storage.orphan-cleanup")
 public record StorageOrphanCleanupProperties(
-    boolean enabled,
     String cron,
     String zone,
     int maxPerRun,

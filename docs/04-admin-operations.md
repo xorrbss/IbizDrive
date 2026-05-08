@@ -701,16 +701,16 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 
 **schedule / zone / batchSize / maxPerRun / graceHours 변경**: `application-prod.yml` 편집 + 재기동 (기존 절차).
 
-**운영 cron 4종** (`backend/src/main/resources/application.yml` line 60~95):
+**운영 cron 4종** (`backend/src/main/resources/application.yml`):
 
-| 키 | 기본값 | 역할 |
+| 키 | 정의 | 역할 |
 |---|---|---|
-| `app.purge` | `enabled:false`, `cron:"0 0 0 * * *"` (매일 자정) | A7 hard purge — `deleted_at` 만료 file/folder 영구삭제 |
-| `app.share.expiration` | `enabled:false`, `cron:"0 */5 * * * *"` (매 5분) | SHARE_EXPIRED — 만료 share row 자동 정리 + audit |
-| `app.permission.expiration` | `enabled:false`, `cron:"0 */5 * * * *"` (매 5분) | PERMISSION_EXPIRED — 만료 permission row hard delete + audit |
-| `app.storage.orphan-cleanup` | `enabled:false`, `cron:"0 0 1 * * *"` (매일 새벽 1시) | A15 backlog — 고아 객체 정리 |
+| `app.purge` | `cron:"0 0 0 * * *"` (매일 자정) | A7 hard purge — `deleted_at` 만료 file/folder 영구삭제 |
+| `app.share.expiration` | `cron:"0 */5 * * * *"` (매 5분) | SHARE_EXPIRED — 만료 share row 자동 정리 + audit |
+| `app.permission.expiration` | `cron:"0 */5 * * * *"` (매 5분) | PERMISSION_EXPIRED — 만료 permission row hard delete + audit |
+| `app.storage.orphan-cleanup` | `cron:"0 0 1 * * *"` (매일 새벽 1시) | A15 backlog — 고아 객체 정리 |
 
-> `app.*.enabled` yml 필드는 V11 시드 이후 dead config(읽지 않음, 잡-개별 가드는 `cron_policy` 테이블 row를 참조). yml cleanup은 v1.x 후속.
+> enabled 토글은 yml이 아닌 `cron_policy` DB 테이블 단일 source(admin-cron-toggle, 2026-05-08; yml-enabled-cleanup, 2026-05-09에서 yml `app.*.enabled` 필드 + 4 `*Properties.enabled` record param 제거 완료). yml은 schedule/zone/batchSize/maxPerRun/graceHours 정의만 보유 — 변경 시 재기동 필요.
 
 **조회 / 권한**:
 

@@ -43,8 +43,8 @@ class ShareExpirationJobTest {
         cronPolicyRepository = mock(CronPolicyRepository.class);
         // 기본은 활성 — P4 가드 통과시켜 기존 테스트 의미 보존.
         when(cronPolicyRepository.isEnabled("share.expire")).thenReturn(true);
-        // batchSize=200 (default); enabled/cron/zone은 빈 등록 게이트라 unit test에서는 무관.
-        ShareExpirationProperties props = new ShareExpirationProperties(true, 200, null, null);
+        // batchSize=200 (default); cron/zone은 본 unit test와 무관.
+        ShareExpirationProperties props = new ShareExpirationProperties(200, null, null);
         job = new ShareExpirationJob(shareCommandService, shareRepository, props, cronPolicyRepository);
     }
 
@@ -121,7 +121,7 @@ class ShareExpirationJobTest {
     @Test
     void run_passesBatchSizeToRepository() {
         // batchSize=50으로 새 job 생성해 PageRequest 한도가 properties와 일치하는지 검증.
-        ShareExpirationProperties props = new ShareExpirationProperties(true, 50, null, null);
+        ShareExpirationProperties props = new ShareExpirationProperties(50, null, null);
         ShareExpirationJob customJob =
             new ShareExpirationJob(shareCommandService, shareRepository, props, cronPolicyRepository);
         when(shareRepository.findExpiredActiveIds(any(Instant.class), any(Pageable.class)))

@@ -33,6 +33,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -58,6 +59,9 @@ class AdminSystemControllerTest {
 
     @MockBean
     private AdminSystemService adminSystemService;
+
+    @MockBean
+    private CronPolicyRepository cronPolicyRepository;
 
     @MockBean
     private LoginAttemptTracker tracker;
@@ -89,6 +93,10 @@ class AdminSystemControllerTest {
         User auditor = new User(UUID.randomUUID(), "a@example.com", "Auditor",
             "{bcrypt}$2a$12$dummy", Role.AUDITOR, true, false, OffsetDateTime.now());
         auditorPrincipal = new IbizDriveUserDetails(auditor);
+
+        // viewer enabled source는 cron_policy DB(yml-enabled-cleanup 후) — 기존 테스트가 share만
+        // true로 기대하므로 그 분기 stub. 그 외 키는 Mockito default(false)로 충분.
+        when(cronPolicyRepository.isEnabled("share.expire")).thenReturn(true);
     }
 
     @Test
@@ -154,6 +162,23 @@ class AdminSystemControllerTest {
             .andExpect(jsonPath("$.jobs[3].zone").value("Asia/Seoul"))
             .andExpect(jsonPath("$.jobs[3].maxPerRun").value(10000))
             .andExpect(jsonPath("$.jobs[3].graceHours").value(24));
+    }
+
+    @Test
+    void getCronStatus_enabledSourceFromCronPolicyRepository() throws Exception {
+        // yml-enabled-cleanup 회귀 보호: viewer enabled가 yml이 아닌 cron_policy DB에서 결정됨을 검증.
+        // @BeforeEach에서 share만 true로 stub되어 있는 상태에서, purge를 추가로 true로 바꾸면
+        // 응답이 즉시 반영되어야 한다 (yml은 source가 아님).
+        when(cronPolicyRepository.isEnabled("purge.expired")).thenReturn(true);
+
+        mvc.perform(get("/api/admin/system/cron").with(user(adminPrincipal)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.jobs[0].key").value("purge.expired"))
+            .andExpect(jsonPath("$.jobs[0].enabled").value(true))
+            .andExpect(jsonPath("$.jobs[1].key").value("share.expire"))
+            .andExpect(jsonPath("$.jobs[1].enabled").value(true))
+            .andExpect(jsonPath("$.jobs[2].enabled").value(false))
+            .andExpect(jsonPath("$.jobs[3].enabled").value(false));
     }
 
     @Test
@@ -233,29 +258,29 @@ class AdminSystemControllerTest {
 
     /**
      * sliced WebMvcTest는 {@code @ConfigurationProperties} 빈을 자동 생성하지 않으므로
-     * 본 트랙 테스트가 의존하는 4 properties를 명시 instantiation으로 주입.
-     * 값은 {@code application.yml} 기본값과 동형 (purge/perm/storage는 enabled=false, share만 true로
-     * 설정 toggle 노출이 의미 있다는 신호로 차별화).
+     * 본 트랙 테스트가 의존하는 4 properties를 명시 instantiation으로 주입. 값은 schedule/zone/batch
+     * 기본값과 동형. enabled 토글은 yml-enabled-cleanup 후 record에서 빠졌으며 viewer는 mock된
+     * {@link CronPolicyRepository#isEnabled}로 결정된다.
      */
     static class PropertiesConfig {
         @org.springframework.context.annotation.Bean
         HardPurgeProperties hardPurgeProperties() {
-            return new HardPurgeProperties(false, 10000, "0 0 0 * * *", "Asia/Seoul");
+            return new HardPurgeProperties(10000, "0 0 0 * * *", "Asia/Seoul");
         }
 
         @org.springframework.context.annotation.Bean
         ShareExpirationProperties shareExpirationProperties() {
-            return new ShareExpirationProperties(true, 200, "0 */5 * * * *", "Asia/Seoul");
+            return new ShareExpirationProperties(200, "0 */5 * * * *", "Asia/Seoul");
         }
 
         @org.springframework.context.annotation.Bean
         PermissionExpirationProperties permissionExpirationProperties() {
-            return new PermissionExpirationProperties(false, 200, "0 */5 * * * *", "Asia/Seoul");
+            return new PermissionExpirationProperties(200, "0 */5 * * * *", "Asia/Seoul");
         }
 
         @org.springframework.context.annotation.Bean
         StorageOrphanCleanupProperties storageOrphanCleanupProperties() {
-            return new StorageOrphanCleanupProperties(false, "0 0 1 * * *", "Asia/Seoul",
+            return new StorageOrphanCleanupProperties("0 0 1 * * *", "Asia/Seoul",
                 10000, 24, 200);
         }
     }

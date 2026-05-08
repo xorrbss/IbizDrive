@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-05-09 — 🏁 yml-enabled-cleanup 트랙 종료 (admin-cron-toggle 직접 후속)
+
+### 범위
+
+admin-cron-toggle (PR #102, 2026-05-08) 후 dead config가 된 yml `app.*.enabled` + 4 `*Properties.enabled` 필드 제거. `AdminSystemController.getCronStatus()` viewer를 DB source(`cron_policy` 테이블)로 전환 — 토글 직후 viewer 즉시 갱신.
+
+### 변경 핵심
+
+**Backend:**
+- `application.yml` + `application-prod.yml` — 4 cron의 `enabled` 키 제거 + 관련 stale 주석 정리.
+- 4 `*Properties` record (`HardPurgeProperties` / `ShareExpirationProperties` / `PermissionExpirationProperties` / `StorageOrphanCleanupProperties`) — `boolean enabled` param 제거, Javadoc 정정.
+- `AdminSystemController` — `CronPolicyRepository` 의존성 주입. `getCronStatus()` 4 응답이 `cronPolicyRepository.isEnabled(KEY)`로 DB source 노출 (viewer 토글 즉시 갱신).
+- 테스트: `AdminSystemControllerTest`에 `@MockBean CronPolicyRepository` + `@BeforeEach` share=true stub. DB source 회귀 보호 케이스 1 추가. 2 cron job test(`ShareExpirationJobTest` / `PermissionExpirationJobTest`)의 `new XxxProperties(...)` 호출 갱신.
+
+**Docs:**
+- `docs/04 §15.4` — yml `app.*.enabled` 표/주석에서 dead `enabled` 언급 제거. 본 트랙 closure 명시.
+
+### 검증
+
+- `cd backend && ./gradlew test` BUILD SUCCESSFUL.
+- 신규 audit enum 0, 새 에러 코드 0, schema 변경 0.
+- frontend wire format 동일(`CronJobStatusResponse.enabled` 필드 그대로) → frontend 변경 0.
+
+### 다음 세션 컨텍스트
+
+- 4 cron의 schedule/zone/batchSize 등 정의는 yml 그대로 유지. UI 편집은 v1.x 후속.
+- 2인 승인 워크플로는 별도 트랙 (Wave 2 closure backlog).
+
+---
+
 ## 2026-05-09 — 📚 docs-csrf-token-notation 트랙 종료 (X-CSRF-Token 표기 + frontend 패턴 분기 명시)
 
 ### 범위
