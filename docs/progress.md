@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-09 — 🔥 fix-create-folder-csrf hotfix (ADMIN role도 폴더 생성 403 회귀)
+
+### 범위
+
+운영자가 ADMIN role임에도 `/files` 하위 폴더 생성 시 "폴더를 만들 권한이 없습니다"로 거부되던 회귀 수정. 원인: `api.createFolder`의 fetch 호출에 `X-CSRF-TOKEN` 헤더가 누락되어 Spring CSRF filter가 PermissionEvaluator 도달 전 403 차단. 다른 mutation(rename/move/share 등) 7개 이상은 이미 CSRF 헤더 정상 송신.
+
+### 변경 핵심
+
+- `frontend/src/lib/api.ts` `createFolder`: `readCookie('XSRF-TOKEN')` + `'X-CSRF-TOKEN': csrf` 헤더 추가 (다른 mutation 패턴 정합).
+- `frontend/src/lib/api.createFolder.test.ts` (NEW, 4 tests): CSRF 헤더 회귀 가드 + parentId 'root'→null + name trim + 403 envelope.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm test --run api.createFolder` 4/4 PASS.
+- backend 무변경 — wire 호환 0, 권한 정책 변경 0.
+
+### 결정/편차
+
+- 헤더 이름 `X-CSRF-TOKEN` (uppercase) — 다른 mutation들과 동형. HTTP 헤더는 case-insensitive라 backend `X-CSRF-Token` 매핑과 호환.
+- 회귀 가드 단위 테스트 1건만 — `api.createFolder.test.ts`. CreateFolderDialog 통합은 기존 `CreateFolderDialog.test.tsx`가 mock된 `api.createFolder`를 호출하므로 본 fix 직접 영향 없음.
+
+### 다음 세션 컨텍스트
+
+- 다른 mutation에도 동일 회귀 가능성 — `git grep "fetch.*method.*POST" frontend/src/lib/api.ts | grep -v csrf` 같은 sweep으로 추후 검증 권장. 현재까지 발견된 누락은 `createFolder` 1건.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-09 — 🏁 wave2-trash-policy-viewer 트랙 종료 (Wave 2 T9 follow-up — `/admin/trash/policy` read-only viewer)
 
 ### 범위
