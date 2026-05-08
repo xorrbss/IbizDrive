@@ -1732,6 +1732,25 @@ export async function adminBulkTrash(
 }
 
 /**
+ * `/admin/trash/policy` — 휴지통 보존 정책 read-only viewer (Wave 2 T9 follow-up,
+ * wave2-trash-policy-viewer). ADMIN role 전용. 401/403/200 외 에러 코드 없음.
+ *
+ * <p>현재 `retentionDays` 단일 필드. cron 운영 상태는 `/admin/system` 별도. mutation은
+ * v1.x deferred (`@ConfigurationProperties` 부팅 바인딩).
+ */
+export async function getAdminTrashPolicy(): Promise<import('@/types/admin-trash-policy').AdminTrashPolicy> {
+  const res = await fetch('/api/admin/trash/policy', {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `getAdminTrashPolicy failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-trash-policy').AdminTrashPolicy
+}
+
+/**
  * 시스템 전체 스토리지 overview — ADMIN role 전용. 401/403/200 외 에러 코드 없음 (read-only).
  *
  * <p>응답 envelope: `{ overview: { totalFiles, totalVersions, totalBytes, trashedFiles,

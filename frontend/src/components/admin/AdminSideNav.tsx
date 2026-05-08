@@ -45,11 +45,11 @@ const ACTIVE_ITEMS: ReadonlyArray<{
   { label: '시스템', href: '/admin/system', match: 'prefix', scope: 'AUDITOR-OK' },
   { label: '스토리지', href: '/admin/storage', match: 'prefix', scope: 'ADMIN' },
   { label: '휴지통', href: '/admin/trash/all', match: 'prefix', scope: 'ADMIN' },
+  { label: '휴지통 정책', href: '/admin/trash/policy', match: 'exact', scope: 'ADMIN' },
 ]
 
 const DEFERRED_ITEMS = [
   'Legal Hold',
-  '정책',
 ]
 
 /**
