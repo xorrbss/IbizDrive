@@ -302,6 +302,10 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
   - 결과: "성공 N개, 실패 M개" banner + 부분 실패 시 자세히 펼치기(failed 항목 type/id/error 노출).
   - 부분 실패 모델: 한 항목 NAME_CONFLICT가 다른 199개를 막지 않음 — 30일 만료 직전 일괄 정리, 대량 오삭제 일괄 복원 시나리오 정상 흡수.
   - audit 영향 0 — per-item 기존 emit 그대로 (FILE_RESTORED / FOLDER_RESTORED / FILE_PURGED / FOLDER_PURGED). 동일 actor + 근접 timestamp로 묶음 식별 가능.
+- [x] 삭제일 범위 필터 (Wave 2 T9 follow-up, 2026-05-08 — `deletedFrom`/`deletedTo`)
+  - wire: `?deletedFrom=YYYY-MM-DD&deletedTo=YYYY-MM-DD` (date-only)
+  - 경계: KST(`Asia/Seoul`) 기준 — `deletedFrom`은 해당일 KST 0시(inclusive), `deletedTo`는 입력일+1의 KST 0시(exclusive, 즉 입력일 KST 종일 포함). 운영자 wall-clock과 일치.
+  - 양쪽 모두 적용 시 `deletedFrom < deletedTo`여야 함 — 위반 시 400.
 - [x] `deletedBy` 컬럼 (Wave 2 T9 follow-up, 2026-05-08, V10)
   - 응답 예시:
     ```json

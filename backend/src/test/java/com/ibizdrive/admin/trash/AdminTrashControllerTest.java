@@ -136,11 +136,35 @@ class AdminTrashControllerTest {
                 .param("deletedTo", "2026-05-07"))
             .andExpect(status().isOk());
 
-        // 하한 inclusive: 2026-05-01T00:00:00Z
-        // 상한 exclusive: 2026-05-08T00:00:00Z (입력 5/7의 다음 날 시작)
+        // KST 경계 — Asia/Seoul = UTC+9. PR #83 follow-up.
+        // 하한 inclusive: KST 2026-05-01 00:00 = UTC 2026-04-30 15:00:00Z
+        // 상한 exclusive: KST 2026-05-08 00:00 = UTC 2026-05-07 15:00:00Z (입력 5/7의 다음 KST 0시)
         verify(service).list(
-            argThat(f -> Instant.parse("2026-05-01T00:00:00Z").equals(f.deletedFromMin())
-                && Instant.parse("2026-05-08T00:00:00Z").equals(f.deletedToMax())),
+            argThat(f -> Instant.parse("2026-04-30T15:00:00Z").equals(f.deletedFromMin())
+                && Instant.parse("2026-05-07T15:00:00Z").equals(f.deletedToMax())),
+            any(),
+            any()
+        );
+    }
+
+    /**
+     * KST 경계 단일 날짜 — 운영자가 {@code 2026-05-08} 단독 입력 시
+     * KST 5/8 0시 ~ KST 5/9 0시 윈도우(= UTC 5/7 15:00 ~ UTC 5/8 15:00)가 되는지 확인.
+     * UTC 변환이라면 5/8T00:00 ~ 5/9T00:00이 되어 9시간 시프트되던 PR #83 회귀 방지.
+     */
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void list_singleDayBoundaryUsesKstNotUtc() throws Exception {
+        when(service.list(any(), any(), any())).thenReturn(new AdminTrashPage(List.of(), null));
+
+        mockMvc.perform(get("/api/admin/trash")
+                .param("deletedFrom", "2026-05-08")
+                .param("deletedTo", "2026-05-08"))
+            .andExpect(status().isOk());
+
+        verify(service).list(
+            argThat(f -> Instant.parse("2026-05-07T15:00:00Z").equals(f.deletedFromMin())
+                && Instant.parse("2026-05-08T15:00:00Z").equals(f.deletedToMax())),
             any(),
             any()
         );

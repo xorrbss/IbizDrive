@@ -1517,10 +1517,10 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
                          `LOWER(...) LIKE LOWER(?) ESCAPE '\\'` — admin-user-search-update와 동일 정책)
             type        (선택; 'file' | 'folder' | (생략 = 양쪽). 그 외 → 400 VALIDATION_ERROR)
             ownerId     (선택; UUID. 형식 오류 → 400 VALIDATION_ERROR)
-            deletedFrom (선택; `YYYY-MM-DD` date-only — UTC 00:00:00Z inclusive 하한.
-                         형식 오류 → 400 VALIDATION_ERROR)
-            deletedTo   (선택; `YYYY-MM-DD` date-only — backend가 입력일+1의 UTC 00:00:00Z로
-                         변환(exclusive 상한, 즉 입력일 종일 포함). 형식 오류 → 400.
+            deletedFrom (선택; `YYYY-MM-DD` date-only — KST(`Asia/Seoul`) 00:00 inclusive 하한.
+                         형식 오류 → 400 VALIDATION_ERROR. 운영자 입력 wall-clock과 일치)
+            deletedTo   (선택; `YYYY-MM-DD` date-only — backend가 입력일+1의 KST 00:00로
+                         변환(exclusive 상한, 즉 입력일 KST 종일 포함). 형식 오류 → 400.
                          양쪽 모두 적용 시 deletedFrom < deletedTo여야 함 — 위반 시 400)
             cursor      (선택; opaque base64 — user-facing `GET /api/trash`와 동일 `TrashCursor` 포맷
                          재사용 — Wave 2 T9에서 visibility를 public으로 승격)
@@ -1553,8 +1553,9 @@ GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
               `hasRole('ADMIN')` 가드 통과). audit emit은 그쪽 endpoint에서 발행
               (FILE_RESTORED / FOLDER_RESTORED / FILE_PURGED / FOLDER_PURGED).
             - 날짜 범위 필터(deletedFrom/deletedTo): T9 follow-up으로 추가 (date-only 와이어,
-              UTC 경계). bulk restore·purge: T9 follow-up으로 추가 (`POST /api/admin/trash/bulk`,
-              하단 #7.11.0 참조). 그 외 2인 승인 / full path resolve / folder subtree size:
+              KST(`Asia/Seoul`) 경계 — 사내 단일 지역 운영, 운영자 wall-clock 일치). bulk
+              restore·purge: T9 follow-up으로 추가 (`POST /api/admin/trash/bulk`, 하단 #7.11.0
+              참조). 그 외 2인 승인 / full path resolve / folder subtree size:
               v1.x deferred. `deletedBy` 컬럼은 V10(2026-05-08)으로 closure (cross-owner 추적은
               `deletedById`/`deletedByEmail`로 노출).
 
