@@ -197,7 +197,9 @@ async function undoDelete(
   } catch (err) {
     const code = (err as Error & { code?: string })?.code
     if (code === 'RESTORE_CONFLICT') {
-      toast.error('같은 이름의 항목이 이미 존재합니다')
+      // v1.x: 다건 Undo 는 다이얼로그 미적용 (DeletedItem 에 name 부재 + 다건 다이얼로그는 v1.x 후속).
+      // 사용자가 휴지통 페이지에서 행 단위로 복원 시 RestoreConflictDialog 가 트리거됨.
+      toast.error('원위치에 같은 이름의 항목이 있어 복원에 실패했습니다 — 휴지통에서 다른 이름으로 복원할 수 있습니다')
     } else {
       toast.error('복원에 실패했습니다')
     }

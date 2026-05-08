@@ -825,10 +825,12 @@ files.purge_after      : 영구 삭제 예정 (deleted_at + 30일)
 - `/trash` 전용 페이지, Sidebar 하단 `<TrashLink />`
 - 행 액션: **원위치로 복원**, **영구 삭제**
 - 삭제 직후 토스트의 **"되돌리기"** 버튼 (5초)
+- **RESTORE_CONFLICT 다이얼로그** (v1.x M9 후속): 행 복원 시 원위치에 동일 이름 활성 항목이 있어 backend 가 409 `RESTORE_CONFLICT` 를 반환하면 `<RestoreConflictDialog />` 가 열려 사용자에게 새 이름을 입력받는다. 기본 제안은 `suggestRestoreName(name, type)` (file 은 `report.pdf` → `report (1).pdf`, folder 는 `Reports` → `Reports (1)`). 사용자 입력 후 `useRestoreItem.mutate({ ..., newName })` 가 backend `POST /api/{files|folders}/{id}/restore` body `{ name }` 로 재요청. 새 이름이 또 충돌하면 `RENAME_CONFLICT` envelope → 다이얼로그 inline alert 로 표시 (다이얼로그 유지). 다른 코드는 toast.error + 닫기.
+- BulkActionBar Undo 의 다건 복원 충돌은 다이얼로그 미적용 (v1.x 후속) — toast.error 메시지가 휴지통 페이지에서 행 단위 복원으로 안내.
 
 > **Backend endpoints** (docs/02 §7.11):
 > - `GET /api/trash?cursor=&type=` — list. queryKey `qk.trash()` (§6.1).
-> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6).
+> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6). v1.x 부터 optional body `{ name?: string }` — `name` 미지정 시 원본 이름 그대로 복원, 충돌 envelope `RESTORE_CONFLICT`. `name` 지정 시 NFC 정규화 + UNIQUE 재검사, 충돌 envelope `RENAME_CONFLICT`.
 > - `DELETE /api/trash/:type/:id` — manual purge, ADMIN only (A8, ADR #32).
 > - bulk `DELETE /api/trash`는 미구현 — `purge.expired` 배치(A7) 자동 처리.
 

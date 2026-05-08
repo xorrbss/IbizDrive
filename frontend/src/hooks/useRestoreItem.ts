@@ -12,11 +12,17 @@ type Vars = {
    * 미지정 시 `qk.files()` 보수 무효화 (전체 파일 목록 prefix).
    */
   sourceFolderId?: string
+  /**
+   * 새 이름으로 복원 (v1.x RestoreConflictDialog). 미지정 시 원본 이름 그대로.
+   * 지정 시 backend 가 NFC 정규화 + UNIQUE 재검사, 충돌 시 'RENAME_CONFLICT' envelope.
+   */
+  newName?: string
 }
 
 /**
- * 휴지통 항목 복원 mutation (M9.2). 409 RESTORE_CONFLICT 시 onError로 surface
- * (api.restore* 에서 envelope 파싱하여 err.code='RESTORE_CONFLICT'). UX layer가 분기.
+ * 휴지통 항목 복원 mutation (M9.2 + v1.x newName 지원). onError 분기 코드:
+ * - 'RESTORE_CONFLICT' — 원본 이름 충돌 (newName 미지정), UX 가 RestoreConflictDialog 띄움.
+ * - 'RENAME_CONFLICT'  — 새 이름 충돌 (newName 지정), 다이얼로그 inline alert.
  *
  * 무효화 매트릭스 (docs/01 §6.2):
  * - trash + search + folderTree (afterRestore 공통)
@@ -26,8 +32,16 @@ export function useRestoreItem() {
   const qc = useQueryClient()
 
   return useMutation<void, Error, Vars>({
-    mutationFn: ({ type, id }) =>
-      type === 'folder' ? api.restoreFolder(id) : api.restoreFile(id),
+    mutationFn: ({ type, id, newName }) => {
+      if (type === 'folder') {
+        return newName !== undefined
+          ? api.restoreFolder(id, { newName })
+          : api.restoreFolder(id)
+      }
+      return newName !== undefined
+        ? api.restoreFile(id, { newName })
+        : api.restoreFile(id)
+    },
 
     onSuccess: async (_data, vars) => {
       await invalidations.afterRestore(qc, {

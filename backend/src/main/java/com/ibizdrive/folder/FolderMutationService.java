@@ -9,6 +9,7 @@ import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.file.FileRepository;
+import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -355,6 +356,10 @@ public class FolderMutationService {
      * @throws FolderRestoreConflictException 원위치에 동일 normalized_name 활성 폴더 존재
      */
     public Folder restore(UUID folderId, UUID actorId) {
+        return restore(folderId, actorId, null);
+    }
+
+    public Folder restore(UUID folderId, UUID actorId, @Nullable String newName) {
         if (folderId == null) throw new IllegalArgumentException("folderId is required");
 
         Folder target = folderRepository.lockByIdAndDeletedAtIsNotNull(folderId)
@@ -372,15 +377,37 @@ public class FolderMutationService {
                     "original parent is not active: " + restoreParentId));
         }
 
+        // newName 정규화 (지정 시) — rename 패턴 미러.
+        String oldDisplay = target.getName();
+        String oldNormalized = target.getNormalizedName();
+        String resolvedDisplay;
+        String resolvedNormalized;
+        boolean renaming = newName != null;
+        if (renaming) {
+            resolvedDisplay = NormalizeUtil.normalizeFileName(newName);
+            resolvedNormalized = NormalizeUtil.normalizedNameForDedup(newName);
+        } else {
+            resolvedDisplay = oldDisplay;
+            resolvedNormalized = oldNormalized;
+        }
+
         if (folderRepository.existsActiveByParentAndNormalizedNameExcludingId(
-                restoreParentId, target.getNormalizedName(), target.getId())) {
+                restoreParentId, resolvedNormalized, target.getId())) {
+            if (renaming) {
+                throw new FolderNameConflictException(
+                    "folder name already exists at restore destination: " + resolvedNormalized);
+            }
             throw new FolderRestoreConflictException(
-                "folder name already exists at restore destination: " + target.getNormalizedName());
+                "folder name already exists at restore destination: " + resolvedNormalized);
         }
 
         Instant deletedAtBefore = target.getDeletedAt();
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         target.setParentId(restoreParentId);
+        if (renaming) {
+            target.setName(resolvedDisplay);
+            target.setNormalizedName(resolvedNormalized);
+        }
         target.setDeletedAt(null);
         target.setPurgeAfter(null);
         target.setOriginalParentId(null);
@@ -394,17 +421,29 @@ public class FolderMutationService {
         } catch (DataIntegrityViolationException ex) {
             // partial unique index가 deleted_at IS NULL인 행에만 적용되므로 NULL로 클리어하는
             // UPDATE 시점에 race로 충돌 가능 — 사전 검사 이중 가드 (CLAUDE.md §3 원칙 6).
+            if (renaming) {
+                throw new FolderNameConflictException(
+                    "folder name conflict at restore: " + resolvedNormalized, ex);
+            }
             throw new FolderRestoreConflictException(
-                "folder name conflict at restore: " + target.getNormalizedName(), ex);
+                "folder name conflict at restore: " + resolvedNormalized, ex);
         }
 
         Map<String, Object> beforeState = new LinkedHashMap<>();
         beforeState.put("deletedAt", deletedAtBefore == null ? null : deletedAtBefore.toString());
         beforeState.put("originalParentId", originalParentSnapshot);
         beforeState.put("restoreParentId", restoreParentId);
+        if (renaming) {
+            beforeState.put("name", oldDisplay);
+            beforeState.put("normalizedName", oldNormalized);
+        }
         Map<String, Object> afterState = new LinkedHashMap<>();
         afterState.put("parentId", restoreParentId);
         afterState.put("deletedAt", null);
+        if (renaming) {
+            afterState.put("name", resolvedDisplay);
+            afterState.put("normalizedName", resolvedNormalized);
+        }
         emitAudit(AuditEventType.FOLDER_RESTORED, saved.getId(), actorId, beforeState, afterState);
         return saved;
     }

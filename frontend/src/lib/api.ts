@@ -958,13 +958,20 @@ export const api = {
   },
 
   /**
-   * 휴지통 파일 복원. 409 RESTORE_CONFLICT는 backend envelope { error: { code, message, details } }
-   * 를 파싱해 err.code='RESTORE_CONFLICT'로 surface — UX layer가 RenameDialog 분기 가능.
+   * 휴지통 파일 복원. opts.newName 미지정 시 원본 이름 그대로 복원, 충돌 시 envelope code
+   * 'RESTORE_CONFLICT' (UX layer 가 RestoreConflictDialog 분기). opts.newName 지정 시 정규화 후
+   * 새 이름으로 복원, 충돌 시 'RENAME_CONFLICT' (다이얼로그 inline alert).
    */
-  async restoreFile(id: string): Promise<void> {
+  async restoreFile(id: string, opts?: { newName?: string }): Promise<void> {
     const res = await fetch(`/api/files/${encodeURIComponent(id)}/restore`, {
       method: 'POST',
       credentials: 'include',
+      ...(opts?.newName !== undefined
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: opts.newName }),
+          }
+        : {}),
     })
     if (!res.ok) {
       throw await buildApiError(res, `restoreFile failed: ${res.status}`)
@@ -972,12 +979,18 @@ export const api = {
   },
 
   /**
-   * 휴지통 폴더 복원. 409 시 envelope code 동일하게 'RESTORE_CONFLICT'로 throw.
+   * 휴지통 폴더 복원. opts.newName 동일 시맨틱 (RESTORE_CONFLICT vs RENAME_CONFLICT 분기는 file 과 동일).
    */
-  async restoreFolder(id: string): Promise<void> {
+  async restoreFolder(id: string, opts?: { newName?: string }): Promise<void> {
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}/restore`, {
       method: 'POST',
       credentials: 'include',
+      ...(opts?.newName !== undefined
+        ? {
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: opts.newName }),
+          }
+        : {}),
     })
     if (!res.ok) {
       throw await buildApiError(res, `restoreFolder failed: ${res.status}`)
