@@ -41,7 +41,13 @@ describe('useAdminTrashList', () => {
   it('성공 → adminListTrash(filters, cursor) 호출 + queryKey 일치', async () => {
     ;(adminListTrash as ReturnType<typeof vi.fn>).mockResolvedValue(samplePage)
     const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
-    const filters: AdminTrashFilters = { q: 'rep', type: 'file', ownerId: null }
+    const filters: AdminTrashFilters = {
+      q: 'rep',
+      type: 'file',
+      ownerId: null,
+      deletedFrom: null,
+      deletedTo: null,
+    }
     const { result } = renderHook(
       () => useAdminTrashList(filters, null),
       { wrapper: wrap(qc) },

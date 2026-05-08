@@ -57,6 +57,13 @@ public class AdminTrashService {
         if (filters.q() != null && filters.q().length() > MAX_Q_LENGTH) {
             throw new IllegalArgumentException("q too long");
         }
+        // 날짜 범위 정합 — 양쪽 모두 적용된 경우만 검사. 동일하면 빈 결과 보장이 아니라
+        // 의미가 모호하므로(상한 exclusive 정책), 잘못된 입력으로 거부.
+        if (filters.deletedFromMin() != null
+            && filters.deletedToMax() != null
+            && !filters.deletedFromMin().isBefore(filters.deletedToMax())) {
+            throw new IllegalArgumentException("deletedFrom must be before deletedTo");
+        }
 
         TrashCursor cursor = TrashCursor.decode(cursorWire);
         Instant cursorAt = cursor != null ? cursor.deletedAt() : null;
@@ -67,12 +74,16 @@ public class AdminTrashService {
         String qPattern = normalizeQ(filters.q());
         UUID ownerId = filters.ownerId();
         TrashItemType type = filters.type();
+        Instant deletedFromMin = filters.deletedFromMin();
+        Instant deletedToMax = filters.deletedToMax();
 
         List<FileItem> files = (type == null || type == TrashItemType.FILE)
-            ? adminRepo.findTrashedFilesAdminPage(qPattern, ownerId, cursorAt, cursorId, fetchSize)
+            ? adminRepo.findTrashedFilesAdminPage(
+                qPattern, ownerId, deletedFromMin, deletedToMax, cursorAt, cursorId, fetchSize)
             : List.of();
         List<Folder> folders = (type == null || type == TrashItemType.FOLDER)
-            ? adminRepo.findTrashedFoldersAdminPage(qPattern, ownerId, cursorAt, cursorId, fetchSize)
+            ? adminRepo.findTrashedFoldersAdminPage(
+                qPattern, ownerId, deletedFromMin, deletedToMax, cursorAt, cursorId, fetchSize)
             : List.of();
 
         Set<UUID> userIds = new HashSet<>();

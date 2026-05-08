@@ -5,6 +5,54 @@
 
 ---
 
+## 2026-05-07 — 🏁 wave2-t9-followup-trash-date-filter 트랙 종료 (Wave 2 T9 후속 — admin global trash 날짜 범위 필터)
+
+### 범위
+
+PR #79 (Wave 2 T9 admin global trash) closure에서 v1.x backlog로 명시되었던 "날짜 범위 필터" 항목을 admin 전용으로 구현. `/admin/trash/all`에서 deletedAt 범위로 필터링 가능. 사용자 트랙(`/api/trash`)은 본 트랙 외.
+
+### 변경 핵심
+
+**Backend:**
+- `AdminTrashFilters` (record) — `Instant deletedFromMin`, `Instant deletedToMax` 추가 (3 → 5 필드).
+- `AdminTrashController` — `@RequestParam(required=false) String deletedFrom, deletedTo` 수신. `LocalDate.parse` → UTC 경계 `Instant`. 하한은 inclusive(`00:00:00Z`), 상한은 exclusive(`+1d 00:00:00Z`, 즉 입력일 종일 포함). `DateTimeParseException`은 `IllegalArgumentException`으로 wrap → 글로벌 핸들러 400.
+- `AdminTrashRepository` — 양쪽 native @Query에 `(:deletedFromMin IS NULL OR deleted_at >= ...)` + `(:deletedToMax IS NULL OR deleted_at < ...)` 추가. 시그니처 7-arg.
+- `AdminTrashService` — repo 호출에 두 값 pass-through. 정합 검증: `deletedFromMin >= deletedToMax`(역전/동일) → IllegalArgumentException → 400.
+
+**Frontend:**
+- `types/trash.ts` `AdminTrashFilters` — `deletedFrom`/`deletedTo: string | null` (YYYY-MM-DD date-only) 추가.
+- `lib/queryKeys.ts` `adminTrashList` — 두 필드를 키 컴포넌트로 추가 (mutation 후 `qk.adminTrash()` prefix 무효화는 그대로).
+- `lib/api.ts` `adminListTrash` — `URLSearchParams`에 빈 값 skip 후 추가.
+- `app/admin/trash/all/page.tsx` — 필터 영역에 `<input type="date">` 2개 + `~` 구분자 + 한글 aria-label. 초기 상태에 `deletedFrom: null, deletedTo: null` 추가. `updateFilter`가 cursor 리셋 보장.
+
+**Tests:**
+- backend `AdminTrashServiceTest` — pass-through, 역전 거부, 동일값 거부 3건 추가. 기존 케이스는 ctor/시그니처 마이그레이션.
+- backend `AdminTrashControllerTest` — date 경계 변환(하한 = 당일 00Z, 상한 = +1일 00Z), 400 (deletedFrom/deletedTo 형식) 3건 추가.
+- frontend `api.adminTrash.test.ts` — 두 필드 송신 + 단독 적용 2건 추가. EMPTY_FILTERS 확장.
+- frontend `useAdminTrash.test.tsx` — `AdminTrashFilters` 확장 필드 반영.
+
+### 검증
+
+- `./gradlew test --tests "com.ibizdrive.admin.trash.*"` BUILD SUCCESSFUL.
+- `cd frontend && pnpm test --run` 121 files / **903 passed**.
+- `pnpm typecheck` exit 0 / `pnpm lint` exit 0 / `pnpm build` Next.js 컴파일 성공.
+
+### 결정/편차
+
+- 와이어는 `YYYY-MM-DD` date-only 채택 — `<input type="date">` UI와 audit-log `fromDate/toDate` 패턴 정합. ISO-8601 instant 직접 수신 미지원(KISS).
+- 시간대: UTC 경계로 단순화. 사용자가 KST 종일을 의도해도 UTC 자정 기준으로 동작 — 일별 휴지통 분포가 9시간(KST→UTC) 시프트되는 효과는 admin tool 한정 사용성 차원에서 v1.x deferred 항목으로 남김.
+- `deletedFromMin == deletedToMax`도 거부(빈 결과 보장 모호 — 상한 exclusive 정책 충돌). 실수 방지.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: `deletedBy` 컬럼(V10) / 휴지통 정책 UI(/admin/trash/policy) / bulk restore·purge / 2인 승인 워크플로 / full path resolve / folder subtree size / 시간대 인지(KST 경계) 날짜 필터.
+
+### 블로커
+
+- 없음
+
+---
+
 ## 2026-05-07 — 🏁 Wave 2 종료 (admin frontend 6 트랙 + 사내 베타 운영 런북)
 
 ### 범위

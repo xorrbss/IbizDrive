@@ -9,6 +9,7 @@ import com.ibizdrive.config.SecurityConfig;
 import com.ibizdrive.trash.TrashItemType;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.UserRepository;
+import java.time.Instant;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -120,6 +121,40 @@ class AdminTrashControllerTest {
     @WithMockUser(roles = "ADMIN")
     void list_400_whenInvalidOwnerId() throws Exception {
         mockMvc.perform(get("/api/admin/trash").param("ownerId", "not-a-uuid"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void list_passesDeletedDateRangeBoundaries() throws Exception {
+        when(service.list(any(), any(), any())).thenReturn(new AdminTrashPage(List.of(), null));
+
+        mockMvc.perform(get("/api/admin/trash")
+                .param("deletedFrom", "2026-05-01")
+                .param("deletedTo", "2026-05-07"))
+            .andExpect(status().isOk());
+
+        // 하한 inclusive: 2026-05-01T00:00:00Z
+        // 상한 exclusive: 2026-05-08T00:00:00Z (입력 5/7의 다음 날 시작)
+        verify(service).list(
+            argThat(f -> Instant.parse("2026-05-01T00:00:00Z").equals(f.deletedFromMin())
+                && Instant.parse("2026-05-08T00:00:00Z").equals(f.deletedToMax())),
+            any(),
+            any()
+        );
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void list_400_whenInvalidDeletedFrom() throws Exception {
+        mockMvc.perform(get("/api/admin/trash").param("deletedFrom", "2026/05/01"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void list_400_whenInvalidDeletedTo() throws Exception {
+        mockMvc.perform(get("/api/admin/trash").param("deletedTo", "not-a-date"))
             .andExpect(status().isBadRequest());
     }
 }

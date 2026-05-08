@@ -180,6 +180,8 @@ export const qk = {
       filters.q ?? '',
       filters.type ?? null,
       filters.ownerId ?? null,
+      filters.deletedFrom ?? null,
+      filters.deletedTo ?? null,
       cursor ?? null,
     ] as const,
 

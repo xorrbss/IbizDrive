@@ -64,13 +64,13 @@ class AdminTrashServiceTest {
 
     @Test
     void list_returnsEmptyPage_whenBothSourcesEmpty() {
-        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
 
         AdminTrashPage page = service.list(
-            new AdminTrashFilters(null, null, null), null, null);
+            new AdminTrashFilters(null, null, null, null, null), null, null);
 
         assertThat(page.items()).isEmpty();
         assertThat(page.nextCursor()).isNull();
@@ -80,16 +80,16 @@ class AdminTrashServiceTest {
 
     @Test
     void list_appliesQEscapeAndWildcardWrap() {
-        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
 
-        service.list(new AdminTrashFilters("  10%  ", null, null), null, null);
+        service.list(new AdminTrashFilters("  10%  ", null, null, null, null), null, null);
 
         ArgumentCaptor<String> qCaptor = ArgumentCaptor.forClass(String.class);
         verify(adminRepo).findTrashedFilesAdminPage(
-            qCaptor.capture(), any(), any(), any(), anyInt());
+            qCaptor.capture(), any(), any(), any(), any(), any(), anyInt());
         // trim → "10%"; lowercase → "10%"; escape % → "10\%"; wrap → "%10\%%"
         assertThat(qCaptor.getValue()).isEqualTo("%10\\%%");
     }
@@ -98,16 +98,16 @@ class AdminTrashServiceTest {
 
     @Test
     void list_clampsLimitTo100() {
-        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
 
-        service.list(new AdminTrashFilters(null, null, null), null, 500);
+        service.list(new AdminTrashFilters(null, null, null, null, null), null, 500);
 
         ArgumentCaptor<Integer> limitCaptor = ArgumentCaptor.forClass(Integer.class);
         verify(adminRepo).findTrashedFilesAdminPage(
-            any(), any(), any(), any(), limitCaptor.capture());
+            any(), any(), any(), any(), any(), any(), limitCaptor.capture());
         // clamped to 100, fetchSize = limit + 1 = 101
         assertThat(limitCaptor.getValue()).isEqualTo(101);
     }
@@ -118,7 +118,7 @@ class AdminTrashServiceTest {
     void list_rejectsQTooLong() {
         String tooLong = "a".repeat(201);
         assertThatThrownBy(() -> service.list(
-            new AdminTrashFilters(tooLong, null, null), null, null))
+            new AdminTrashFilters(tooLong, null, null, null, null), null, null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("q");
     }
@@ -138,9 +138,9 @@ class AdminTrashServiceTest {
         FileItem file = mockFile(fileId, "a.txt", earlier, ownerA, null, 100L);
         Folder folder = mockFolder(folderId, "B", later, ownerB, null);
 
-        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(file));
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(folder));
         when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
             new User(ownerA, "a@x", "A", null, Role.MEMBER, true, false, OffsetDateTime.now()),
@@ -149,7 +149,7 @@ class AdminTrashServiceTest {
         when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
 
         AdminTrashPage page = service.list(
-            new AdminTrashFilters(null, null, null), null, null);
+            new AdminTrashFilters(null, null, null, null, null), null, null);
 
         assertThat(page.items()).hasSize(2);
         // later deletedAt first (DESC)
@@ -169,9 +169,9 @@ class AdminTrashServiceTest {
         FileItem f2 = mockFile(UUID.randomUUID(), "f2", Instant.parse("2026-05-02T00:00:00Z"), owner, null, 2L);
         FileItem f3 = mockFile(UUID.randomUUID(), "f3", Instant.parse("2026-05-01T00:00:00Z"), owner, null, 3L);
 
-        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(f1, f2, f3));
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
         when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
             new User(owner, "o@x", "O", null, Role.MEMBER, true, false, OffsetDateTime.now())
@@ -179,7 +179,7 @@ class AdminTrashServiceTest {
         when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
 
         AdminTrashPage page = service.list(
-            new AdminTrashFilters(null, null, null), null, 2);
+            new AdminTrashFilters(null, null, null, null, null), null, 2);
 
         assertThat(page.items()).hasSize(2);
         assertThat(page.nextCursor()).isNotNull().isNotBlank();
@@ -189,16 +189,16 @@ class AdminTrashServiceTest {
 
     @Test
     void list_skipsFiles_whenTypeIsFolder() {
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
 
         service.list(
-            new AdminTrashFilters(null, TrashItemType.FOLDER, null), null, null);
+            new AdminTrashFilters(null, TrashItemType.FOLDER, null, null, null), null, null);
 
         verify(adminRepo, never()).findTrashedFilesAdminPage(
-            any(), any(), any(), any(), anyInt());
+            any(), any(), any(), any(), any(), any(), anyInt());
         verify(adminRepo).findTrashedFoldersAdminPage(
-            any(), any(), any(), any(), anyInt());
+            any(), any(), any(), any(), any(), any(), anyInt());
     }
 
     // ===== 8. owner email + parent name attached =====
@@ -212,9 +212,9 @@ class AdminTrashServiceTest {
 
         FileItem file = mockFile(fileId, "report.pdf", deletedAt, owner, parent, 12345L);
 
-        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(file));
-        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), anyInt()))
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
             .thenReturn(List.of());
         when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
             new User(owner, "owner@example.com", "Owner Name", null,
@@ -226,7 +226,7 @@ class AdminTrashServiceTest {
         when(folderRepository.findAllById(anyIterable())).thenReturn(List.of(parentFolder));
 
         AdminTrashPage page = service.list(
-            new AdminTrashFilters(null, null, null), null, null);
+            new AdminTrashFilters(null, null, null, null, null), null, null);
 
         assertThat(page.items()).hasSize(1);
         AdminTrashItemDto dto = page.items().get(0);
@@ -237,6 +237,47 @@ class AdminTrashServiceTest {
         assertThat(dto.originalParentName()).isEqualTo("Reports");
         assertThat(dto.sizeBytes()).isEqualTo(12345L);
         assertThat(dto.type()).isEqualTo(TrashItemType.FILE);
+    }
+
+    // ===== 9. 날짜 범위 pass-through =====
+
+    @Test
+    void list_passesDeletedRangeBoundsToRepo() {
+        Instant from = Instant.parse("2026-05-01T00:00:00Z");
+        Instant to = Instant.parse("2026-05-08T00:00:00Z");
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+
+        service.list(new AdminTrashFilters(null, null, null, from, to), null, null);
+
+        ArgumentCaptor<Instant> fromCaptor = ArgumentCaptor.forClass(Instant.class);
+        ArgumentCaptor<Instant> toCaptor = ArgumentCaptor.forClass(Instant.class);
+        verify(adminRepo).findTrashedFilesAdminPage(
+            any(), any(), fromCaptor.capture(), toCaptor.capture(), any(), any(), anyInt());
+        assertThat(fromCaptor.getValue()).isEqualTo(from);
+        assertThat(toCaptor.getValue()).isEqualTo(to);
+    }
+
+    // ===== 10. 거꾸로/동일 날짜 범위 거부 =====
+
+    @Test
+    void list_rejectsInvertedDeletedRange() {
+        Instant from = Instant.parse("2026-05-08T00:00:00Z");
+        Instant to = Instant.parse("2026-05-01T00:00:00Z");
+        assertThatThrownBy(() -> service.list(
+            new AdminTrashFilters(null, null, null, from, to), null, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("deletedFrom");
+    }
+
+    @Test
+    void list_rejectsEqualDeletedRange() {
+        Instant same = Instant.parse("2026-05-01T00:00:00Z");
+        assertThatThrownBy(() -> service.list(
+            new AdminTrashFilters(null, null, null, same, same), null, null))
+            .isInstanceOf(IllegalArgumentException.class);
     }
 
     // ===== helpers =====

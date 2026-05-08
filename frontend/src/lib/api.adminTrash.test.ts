@@ -16,7 +16,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   })
 }
 
-const EMPTY_FILTERS: AdminTrashFilters = { q: '', type: null, ownerId: null }
+const EMPTY_FILTERS: AdminTrashFilters = {
+  q: '',
+  type: null,
+  ownerId: null,
+  deletedFrom: null,
+  deletedTo: null,
+}
 
 const PAGE_FIXTURE: AdminTrashPage = {
   items: [
@@ -64,6 +70,8 @@ describe('adminListTrash', () => {
         q: '  alice  ',
         type: 'file',
         ownerId: 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+        deletedFrom: null,
+        deletedTo: null,
       },
       'opaque-cursor-base64',
     )
@@ -76,9 +84,49 @@ describe('adminListTrash', () => {
 
   it('빈/whitespace q + null filter는 query에서 제외', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
-    await adminListTrash({ q: '   ', type: null, ownerId: null }, null)
+    await adminListTrash(
+      { q: '   ', type: null, ownerId: null, deletedFrom: null, deletedTo: null },
+      null,
+    )
     const url = fetchMock.mock.calls[0][0] as string
     expect(url).toBe('/api/admin/trash')
+  })
+
+  it('deletedFrom/deletedTo 송신 (date-only YYYY-MM-DD)', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await adminListTrash(
+      {
+        q: '',
+        type: null,
+        ownerId: null,
+        deletedFrom: '2026-05-01',
+        deletedTo: '2026-05-07',
+      },
+      null,
+    )
+    const url = fetchMock.mock.calls[0][0] as string
+    expect(url).toContain('deletedFrom=2026-05-01')
+    expect(url).toContain('deletedTo=2026-05-07')
+  })
+
+  it('deletedFrom만 / deletedTo만 단독 적용', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await adminListTrash(
+      { q: '', type: null, ownerId: null, deletedFrom: '2026-05-01', deletedTo: null },
+      null,
+    )
+    const url1 = fetchMock.mock.calls[0][0] as string
+    expect(url1).toContain('deletedFrom=2026-05-01')
+    expect(url1).not.toContain('deletedTo=')
+
+    fetchMock.mockResolvedValueOnce(jsonResponse(PAGE_FIXTURE, 200))
+    await adminListTrash(
+      { q: '', type: null, ownerId: null, deletedFrom: null, deletedTo: '2026-05-07' },
+      null,
+    )
+    const url2 = fetchMock.mock.calls[1][0] as string
+    expect(url2).toContain('deletedTo=2026-05-07')
+    expect(url2).not.toContain('deletedFrom=')
   })
 
   it('401 → ApiError status=401', async () => {
