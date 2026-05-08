@@ -32,10 +32,16 @@ export function useRestoreItem() {
   const qc = useQueryClient()
 
   return useMutation<void, Error, Vars>({
-    mutationFn: ({ type, id, newName }) =>
-      type === 'folder'
-        ? api.restoreFolder(id, newName !== undefined ? { newName } : undefined)
-        : api.restoreFile(id, newName !== undefined ? { newName } : undefined),
+    mutationFn: ({ type, id, newName }) => {
+      if (type === 'folder') {
+        return newName !== undefined
+          ? api.restoreFolder(id, { newName })
+          : api.restoreFolder(id)
+      }
+      return newName !== undefined
+        ? api.restoreFile(id, { newName })
+        : api.restoreFile(id)
+    },
 
     onSuccess: async (_data, vars) => {
       await invalidations.afterRestore(qc, {
