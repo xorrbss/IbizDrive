@@ -5,6 +5,54 @@
 
 ---
 
+## 2026-05-08 — 🏁 wave2-folder-subtree-size 트랙 종료 (Wave 2 T9 follow-up — admin trash folder DTO subtree size)
+
+### 범위
+
+`/admin/trash` 의 folder DTO `sizeBytes`는 기존 항상 null (spec §4.4 v1.x deferred 명시). 운영자가 휴지통에서 큰 폴더를 식별하지 못해 우선 처리 결정 불가. **DTO 시그니처 무변경** + 단일 재귀 CTE batch lookup으로 채워준다.
+
+### 변경 핵심
+
+**Backend** (backend-only, frontend 0 변경):
+- `AdminTrashRepository.findFolderSubtreeSizes(Collection<UUID>)` (NEW) — 단일 재귀 CTE: 자기 자신 + 모든 하위 폴더의 `files.size_bytes` 합. depth cap 100 (cycle 방지). 빈 폴더는 `COALESCE(SUM, 0)`로 0 보장.
+- `AdminTrashService` — page의 trashed folder ids 배치 lookup `subtreeSizesFor(folders)` private 메서드 신설. folder DTO 생성 시 `null` 자리에 `Map.get(folderId)` 사용. 빈 입력은 short-circuit (Postgres `IN ()` 문법 오류 방지).
+- `AdminTrashItemDto` javadoc 갱신 — `sizeBytes` 항상 not-null 명시 (file=자기 size / folder=subtree size).
+
+**Tests**:
+- `AdminTrashServiceTest.list_populatesFolderSubtreeSize` (NEW) — 2개 folder의 subtree size가 DTO에 정확히 매핑되는지 검증 (빈 폴더 0 포함).
+- `AdminTrashServiceTest.list_skipsSubtreeQuery_whenNoFolders` (NEW) — 빈 입력 short-circuit (Postgres IN () 회피).
+
+**Docs**:
+- `docs/02 §7.11` — `AdminTrashItemDto.sizeBytes` 표기를 `number` always not-null + folder 의미 명시. Note에서 folder subtree size를 closure로 표시.
+- `docs/04 §8.3` — "폴더 subtree size" `[x]` 항목 신설 (단일 CTE + 운영 가치).
+
+**Frontend (변경 0)**: `types/trash.ts`는 `sizeBytes: number | null` 그대로 유지(wire 안전), `page.tsx`는 이미 `item.sizeBytes != null ? ... : '-'` 처리 → folder도 자동으로 size 노출.
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.admin.trash.*"` BUILD SUCCESSFUL.
+- `cd backend && ./gradlew compileJava compileTestJava` BUILD SUCCESSFUL — repo signature 변경의 cross-module 영향 0.
+- 기존 admin.trash service test 회귀 0 (Mockito default empty list가 unstubbed `findFolderSubtreeSizes` 안전 처리).
+
+### 결정/편차
+
+- **단일 재귀 CTE per page** — 페이지 단위(max 100 root) 처리, admin 사용 빈도 ↓이라 size cache 미도입(YAGNI). 진정한 대규모 트리 최적화는 v1.x++.
+- **Live size, not snapshot** — folder가 trash에 들어온 후 일부 file이 hard-purge되면 줄어듦. "지금 폴더가 가진 size"가 admin 의도에 더 자연스러움.
+- **빈 폴더 = 0 (not null)** — 명시적 측정 결과. wire는 `number | null` 타입 유지(backward-compat) + 모든 row에서 number를 송신.
+- **depth cap 100** — 정상 폴더 트리는 그보다 훨씬 얕음. 비정상 cycle 데이터에도 무한 루프 차단.
+- **Repository 메서드 분리** — listing 2종 query와 별개 메서드. cursor/필터와 무관한 batch lookup이라 시그니처 합치면 가독성 ↓.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI(`/admin/trash/policy`) / 2인 승인 / full path resolve / 권한 grant/revoke direct CRUD / quota / progress streaming(SSE/WS) / chunked client.
+- size cache table / live folder의 subtree size 기능은 v1.x++.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 wave2-trash-date-filter-kst 트랙 종료 (Wave 2 T9 follow-up — admin trash 날짜 필터 KST 경계화)
 
 ### 범위
