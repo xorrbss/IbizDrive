@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { useAdminPermissions } from '@/hooks/useAdminPermissions'
+import { useAdminRevokePermission } from '@/hooks/useAdminRevokePermission'
 import {
   ADMIN_PRESETS,
   ADMIN_RESOURCE_TYPES,
@@ -15,19 +16,22 @@ import { AdminGuard } from '@/components/auth/AdminGuard'
 /**
  * /admin/permissions — 관리자 권한 매트릭스 (admin-permission-matrix, Wave 2 T5, docs/04 §9).
  *
- * <p>read-only viewer — 본 페이지는 mutation 없음. invalidate는 다른 트랙(grant/revoke 직접 CRUD,
- * Wave 3+) 도입 시 동시 구현. 만료된 grant 도 결과에 포함되어 "만료됨" 빨간 배지로 표시 (cron
- * 정리 전 가시화).
+ * <p>viewer + 단일 row revoke (admin-permission-revoke follow-up). grant는 subject/resource
+ * picker가 별도 트랙(v1.x backlog)이므로 본 페이지는 revoke만 지원 — 운영자가 만료 임박
+ * 또는 잘못 부여된 권한을 즉시 정리할 수 있게 한다. 만료된 grant도 결과에 포함되어 "만료됨"
+ * 빨간 배지로 표시되고 동일 "철회" 버튼으로 정리 가능 (cron 정리 전 즉시 회수).
  *
  * <p>구성:
  * <ol>
  *   <li>FilterBar — subjectType / subjectId / resourceType / preset / q (300ms debounce).</li>
- *   <li>Table — id, subjectType+subjectName, resourceType+resourceName, preset, grantedByName, grantedAt, expiresAt+isExpired.</li>
+ *   <li>Table — id, subjectType+subjectName, resourceType+resourceName, preset, grantedByName, grantedAt, expiresAt+isExpired, action(철회).</li>
  *   <li>Pagination — prev/next + "page X / Y".</li>
+ *   <li>ConfirmDialog — 철회 클릭 시 노출, 확인 후 backend `DELETE /api/permissions/{id}` 호출 + 캐시 invalidate.</li>
  * </ol>
  *
- * <p>가드: read-only viewer지만 권한 도메인 자체가 ADMIN 운영 영역이므로 ADMIN-only.
- * default `<AdminGuard>`로 좁힌다 (wave1.5-auditor-admin-ui-access).
+ * <p>가드: 권한 도메인 자체가 ADMIN 운영 영역이므로 ADMIN-only. default `<AdminGuard>`로
+ * 좁힌다 (wave1.5-auditor-admin-ui-access). backend는 `@permissionService.canRevokePermission`이
+ * 진실 — ROLE.ADMIN은 통과한다.
  */
 export default function AdminPermissionsPage() {
   return (
@@ -56,6 +60,8 @@ function PermissionsView() {
   const [q, setQ] = useState('')
   const [debouncedQ, setDebouncedQ] = useState('')
   const [page, setPage] = useState(0)
+  const [confirmTarget, setConfirmTarget] = useState<AdminPermissionRow | null>(null)
+  const revoke = useAdminRevokePermission()
 
   // 300ms debounce on q (T4 패턴 답습)
   useEffect(() => {
@@ -119,15 +125,21 @@ function PermissionsView() {
                   <th className="text-left px-3 py-2">부여자</th>
                   <th className="text-left px-3 py-2">부여 시각</th>
                   <th className="text-left px-3 py-2">만료</th>
+                  <th className="text-left px-3 py-2">작업</th>
                 </tr>
               </thead>
               <tbody>
                 {result.data.content.map((row) => (
-                  <PermissionRow key={row.id} row={row} />
+                  <PermissionRow
+                    key={row.id}
+                    row={row}
+                    onRevokeRequest={() => setConfirmTarget(row)}
+                    revokePending={revoke.isPending}
+                  />
                 ))}
                 {result.data.content.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-fg-2">
+                    <td colSpan={7} className="px-3 py-6 text-center text-fg-2">
                       조건에 맞는 권한이 없습니다.
                     </td>
                   </tr>
@@ -142,6 +154,17 @@ function PermissionsView() {
             onChange={setPage}
           />
         </>
+      )}
+
+      {confirmTarget && (
+        <ConfirmRevokeDialog
+          row={confirmTarget}
+          onCancel={() => setConfirmTarget(null)}
+          onConfirm={() => {
+            revoke.mutate(confirmTarget.id)
+            setConfirmTarget(null)
+          }}
+        />
       )}
     </section>
   )
@@ -255,7 +278,17 @@ const RESOURCE_LABEL: Record<AdminResourceType, string> = {
 
 // ── Row ──────────────────────────────────────────────────────────────────
 
-function PermissionRow({ row }: { row: AdminPermissionRow }) {
+function PermissionRow({
+  row,
+  onRevokeRequest,
+  revokePending,
+}: {
+  row: AdminPermissionRow
+  onRevokeRequest: () => void
+  revokePending: boolean
+}) {
+  const subjectLabel = row.subjectName ?? '(이름 없음)'
+  const resourceLabel = row.resourceName ?? '(이름 없음)'
   return (
     <tr className="border-t border-border">
       <td className="px-3 py-2">
@@ -293,7 +326,73 @@ function PermissionRow({ row }: { row: AdminPermissionRow }) {
           <span className="text-fg-muted">무기한</span>
         )}
       </td>
+      <td className="px-3 py-2">
+        <button
+          type="button"
+          disabled={revokePending}
+          onClick={onRevokeRequest}
+          aria-label={`${subjectLabel}에 부여된 ${resourceLabel}의 ${row.preset} 권한 철회`}
+          className="px-2 py-0.5 border border-border rounded text-red-600 disabled:opacity-50"
+        >
+          철회
+        </button>
+      </td>
     </tr>
+  )
+}
+
+// ── ConfirmDialog ──────────────────────────────────────────────────────────
+// 별도 ConfirmDialog 컴포넌트가 프로젝트 표준으로 분리되지 않은 상태(AdminTrash 페이지도
+// 도메인별 인라인 구현). KISS — 본 페이지 한정 인라인 modal로 유지하고, 향후 공통화 시점에
+// 함께 추출.
+
+function ConfirmRevokeDialog({
+  row,
+  onCancel,
+  onConfirm,
+}: {
+  row: AdminPermissionRow
+  onCancel: () => void
+  onConfirm: () => void
+}) {
+  const subjectLabel = row.subjectName ?? '(이름 없음)'
+  const resourceLabel = row.resourceName ?? '(이름 없음)'
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="revoke-confirm-title"
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        if (e.key === 'Escape') onCancel()
+      }}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+    >
+      <div className="bg-surface-1 border border-border rounded-md w-[420px] flex flex-col p-4 gap-3 shadow-2xl">
+        <h2 id="revoke-confirm-title" className="text-[14px] font-semibold text-fg">
+          권한을 철회하시겠습니까?
+        </h2>
+        <p className="text-[12.5px] text-fg-muted">
+          [{SUBJECT_LABEL[row.subjectType]}] {subjectLabel}에 부여된 [{RESOURCE_LABEL[row.resourceType]}] {resourceLabel}의 {row.preset} 권한을 즉시 회수합니다.
+        </p>
+        <div className="flex justify-end gap-2 mt-1">
+          <button
+            type="button"
+            onClick={onCancel}
+            className="h-8 px-3 rounded text-fg-2 text-[12.5px] hover:bg-surface-2"
+          >
+            취소
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            className="h-8 px-3 rounded bg-red-600 text-white text-[12.5px] font-medium hover:opacity-90"
+          >
+            철회
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
 

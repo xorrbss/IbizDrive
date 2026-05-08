@@ -49,7 +49,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
 > - `/admin/users` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 (Wave 1 T1 closure)
 > - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
-> - `/admin/permissions` — 권한 매트릭스 read-only viewer (subject/resource/preset/q 필터 + 만료 배지, Wave 2 T5)
+> - `/admin/permissions` — 권한 매트릭스 viewer + 단일 row 철회 (subject/resource/preset/q 필터 + 만료 배지 + 행별 "철회" 버튼, Wave 2 T5 + admin-permission-revoke follow-up 2026-05-09; grant 다이얼로그는 v1.x deferred)
 > - `/admin/system` — 운영 cron 4종 read-only 노출 (Wave 1 T3, 변경은 application.yml + 재기동)
 > - `/admin/storage` — 시스템 합계 + 정리 기록 overview (admin-storage-overview, Wave 2 T8, 2026-05-07)
 > - `/admin/trash/all` — 전역 휴지통 viewer (q/type/ownerId 필터 + cursor pagination + 단건 복원/영구삭제, Wave 2 T9, 2026-05-07)
@@ -64,7 +64,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 ├─ /departments              부서 CRUD (생성/검색/rename/(de)activate)     (활성, Wave 2 T4)
 │  ├─ /tree                조직도 트리 편집                                 (v1.x deferred)
 │  └─ /:id                 부서 상세                                       (v1.x deferred)
-├─ /permissions              권한 매트릭스 read-only viewer (필터+만료배지) (활성, Wave 2 T5)
+├─ /permissions              권한 매트릭스 viewer + 단일 row 철회 (필터+만료배지+철회) (활성, Wave 2 T5 + admin-permission-revoke 2026-05-09; grant UI는 v1.x deferred)
 │  ├─ /bulk                권한 일괄 변경                                  (v1.x deferred)
 │  └─ /templates           권한 프리셋 템플릿                              (v1.x deferred)
 ├─ /storage
@@ -679,12 +679,12 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 
 ### 15.3 권한 만료 모니터링
 
-`/admin/permissions` (T5) 는 read-only viewer + 만료 배지를 제공. 만료된 권한 자체는 `permissions-expired-cron` 이 평가에서 무시 + DB 정리하지만 (docs/02 §7.10), **운영 알림은 자동화되지 않았다**.
+`/admin/permissions` (T5) 는 viewer + 만료 배지 + 단일 row 철회를 제공한다. 만료된 권한 자체는 `permissions-expired-cron` 이 평가에서 무시 + DB 정리하지만 (docs/02 §7.10), **운영 알림은 자동화되지 않았다**.
 
 **일일 점검** (사내 베타):
 
 1. `/admin/permissions?preset=expiring` (만료 임박 필터, 7일 이내) → 갱신 필요 항목 list-up.
-2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리.
+2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리. 잘못 부여되었거나 만료 임박 이전 즉시 회수가 필요한 경우 viewer 행의 "철회" 버튼으로 처리(admin-permission-revoke, Wave 2 T5 follow-up, 2026-05-09 — 기존 `DELETE /api/permissions/{id}` 재사용, ROLE.ADMIN 통과). grant 다이얼로그(subject/resource picker)는 v1.x deferred.
 3. cron 동작 검증:
 
    ```sql

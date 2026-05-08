@@ -1485,6 +1485,31 @@ export const api = {
     }
     return (await res.json()) as AdminPermissionPage
   },
+
+  /**
+   * `DELETE /api/permissions/{permissionId}` — 단일 grant 철회 (admin-permission-revoke,
+   * Wave 2 T5 follow-up).
+   *
+   * <p>backend는 기존 resource-level endpoint(`PermissionController#revoke`)가
+   * `@permissionService.canRevokePermission`로 가드 — ROLE.ADMIN은 통과한다. 본 호출은
+   * `/admin/permissions` viewer에서 운영자가 직접 row 단위로 삭제하는 경로이며 별도 admin
+   * 전용 endpoint를 만들지 않는다 (KISS). audit emit(`PERMISSION_REVOKED`)은 backend가 발행.
+   *
+   * <p>CSRF 헤더 필수 (다른 mutation 동형). 응답 204(No Content). 4xx envelope은
+   * {@link buildApiError}가 status/code 매핑 후 throw — 401(미인증), 403(non-ADMIN),
+   * 404(row 미존재 — 이미 삭제된 race도 동일).
+   */
+  async adminRevokePermission(permissionId: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/permissions/${encodeURIComponent(permissionId)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminRevokePermission failed: ${res.status}`)
+    }
+  },
 }
 
 /**

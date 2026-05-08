@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type {
@@ -7,6 +7,8 @@ import type {
   AdminPermissionPage,
   AdminPermissionRow,
 } from '@/types/permission'
+
+const { revokeMutate } = vi.hoisted(() => ({ revokeMutate: vi.fn() }))
 
 /**
  * /admin/permissions — 권한 매트릭스 (admin-permission-matrix, Wave 2 T5).
@@ -27,6 +29,10 @@ vi.mock('@/hooks/useAdminPermissions', () => ({
     lastFilters = filters
     return queryState
   },
+}))
+
+vi.mock('@/hooks/useAdminRevokePermission', () => ({
+  useAdminRevokePermission: () => ({ mutate: revokeMutate, isPending: false }),
 }))
 
 // AdminGuard 격리 — wave1.5-auditor-admin-ui-access로 페이지가 default
@@ -99,6 +105,7 @@ describe('AdminPermissionsPage — 렌더 + 필터', () => {
     vi.useRealTimers()
     queryState = { isLoading: false, isError: false, data: PAGE_DATA }
     lastFilters = {}
+    revokeMutate.mockReset()
   })
 
   it('초기 렌더 — 5개 필터 + 테이블 헤더', () => {
@@ -197,5 +204,59 @@ describe('AdminPermissionsPage — 렌더 + 필터', () => {
     wrap(<AdminPermissionsPage />)
     // "(이름 없음)" 텍스트가 최소 1회 이상 등장
     expect(screen.getAllByText('(이름 없음)').length).toBeGreaterThanOrEqual(2)
+  })
+
+  // ── admin-permission-revoke (Wave 2 T5 follow-up) ───────────────────────
+
+  it('각 행에 "철회" 버튼 노출', () => {
+    wrap(<AdminPermissionsPage />)
+    // PAGE_DATA에 2 row → 각 행마다 "철회" 버튼 1개씩.
+    expect(screen.getAllByRole('button', { name: /철회$/ })).toHaveLength(2)
+  })
+
+  it('철회 버튼 → ConfirmDialog 노출 + 확인 시 mutate(rowId) + 다이얼로그 닫힘', () => {
+    wrap(<AdminPermissionsPage />)
+
+    const liveRowButton = screen.getByRole('button', {
+      name: /Alice.*Reports.*read.*철회/,
+    })
+    fireEvent.click(liveRowButton)
+
+    const dialog = screen.getByRole('dialog', { name: /권한을 철회/ })
+    expect(dialog).toBeTruthy()
+    expect(within(dialog).getByText(/즉시 회수합니다/)).toBeTruthy()
+
+    fireEvent.click(within(dialog).getByRole('button', { name: '철회' }))
+
+    expect(revokeMutate).toHaveBeenCalledWith(ROW_LIVE.id)
+    // 확인 후 다이얼로그가 즉시 닫힌다(mutation pending 동안 banner 등 별도 UX 없음).
+    expect(screen.queryByRole('dialog', { name: /권한을 철회/ })).toBeNull()
+  })
+
+  it('취소 클릭 시 mutate 호출 없음 + 다이얼로그 닫힘', () => {
+    wrap(<AdminPermissionsPage />)
+
+    fireEvent.click(
+      screen.getByRole('button', { name: /Alice.*Reports.*read.*철회/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: /권한을 철회/ })
+    fireEvent.click(within(dialog).getByRole('button', { name: '취소' }))
+
+    expect(revokeMutate).not.toHaveBeenCalled()
+    expect(screen.queryByRole('dialog', { name: /권한을 철회/ })).toBeNull()
+  })
+
+  it('만료된 grant도 동일한 "철회" 버튼으로 정리 가능', () => {
+    wrap(<AdminPermissionsPage />)
+
+    const expiredButton = screen.getByRole('button', {
+      name: /Sales.*Budget\.xlsx.*edit.*철회/,
+    })
+    fireEvent.click(expiredButton)
+
+    const dialog = screen.getByRole('dialog', { name: /권한을 철회/ })
+    fireEvent.click(within(dialog).getByRole('button', { name: '철회' }))
+
+    expect(revokeMutate).toHaveBeenCalledWith(ROW_EXPIRED.id)
   })
 })
