@@ -32,6 +32,8 @@ const sample: AdminTrashItem = {
   originalParentId: 'fd-1',
   originalParentName: 'Reports',
   sizeBytes: 12345,
+  deletedById: null,
+  deletedByEmail: null,
 }
 
 describe('/admin/trash/all', () => {
@@ -72,5 +74,33 @@ describe('/admin/trash/all', () => {
     fireEvent.click(await screen.findByRole('button', { name: '복원' }))
 
     await waitFor(() => expect(restoreSpy).toHaveBeenCalledWith('f-1'))
+  })
+
+  // V10 — "삭제자" 컬럼 (cross-owner 추적)
+  it('shows "삭제자" header column', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [sample], nextCursor: null })
+    renderPage()
+
+    expect(await screen.findByRole('columnheader', { name: '삭제자' })).toBeTruthy()
+  })
+
+  it('renders deletedByEmail when present', async () => {
+    const withDeleter: AdminTrashItem = {
+      ...sample,
+      deletedById: 'u-2',
+      deletedByEmail: 'admin@x',
+    }
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [withDeleter], nextCursor: null })
+    renderPage()
+
+    expect(await screen.findByText('admin@x')).toBeTruthy()
+  })
+
+  it('renders em dash when deletedByEmail is null', async () => {
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [sample], nextCursor: null })
+    renderPage()
+
+    // sample.deletedByEmail === null → em dash 표기
+    expect(await screen.findByText('—')).toBeTruthy()
   })
 })

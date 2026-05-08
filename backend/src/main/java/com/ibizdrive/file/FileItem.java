@@ -63,6 +63,18 @@ public class FileItem {
     @Column(name = "purge_after")
     private Instant purgeAfter;
 
+    /**
+     * V10 — soft-delete를 수행한 actor user id (cross-owner 복원 추적).
+     *
+     * <p>NULL 의미: (a) 활성 row, (b) V10 적용 이전에 삭제된 trash row(backfill 안 함),
+     * (c) FK ON DELETE SET NULL로 deleter 계정이 hard-delete된 trash row.
+     *
+     * <p>DB CHECK ({@code files_deleted_by_check}): {@code deleted_at IS NOT NULL OR deleted_by IS NULL}
+     * — 활성 row에 set되는 것은 단방향 차단. restore 흐름에서 NULL로 클리어해야 한다.
+     */
+    @Column(name = "deleted_by")
+    private UUID deletedBy;
+
     /** 휴지통 복원용 — 삭제 시점의 부모 폴더 id 보존 (docs/02 §2.4). */
     @Column(name = "original_folder_id")
     private UUID originalFolderId;
@@ -155,6 +167,14 @@ public class FileItem {
 
     public void setPurgeAfter(Instant purgeAfter) {
         this.purgeAfter = purgeAfter;
+    }
+
+    public UUID getDeletedBy() {
+        return deletedBy;
+    }
+
+    public void setDeletedBy(UUID deletedBy) {
+        this.deletedBy = deletedBy;
     }
 
     public UUID getOriginalFolderId() {

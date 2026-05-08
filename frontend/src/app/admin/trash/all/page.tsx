@@ -133,6 +133,7 @@ export default function AdminTrashAllPage() {
                 <th className="text-left px-3 py-2">소유자</th>
                 <th className="text-left px-3 py-2">원위치</th>
                 <th className="text-left px-3 py-2">크기</th>
+                <th className="text-left px-3 py-2">삭제자</th>
                 <th className="text-left px-3 py-2">삭제일</th>
                 <th className="text-left px-3 py-2">영구삭제 예정</th>
                 <th className="text-left px-3 py-2">작업</th>
@@ -201,6 +202,9 @@ function TrashRow({
       </td>
       <td className="px-3 py-2">
         {item.sizeBytes != null ? `${item.sizeBytes} B` : '-'}
+      </td>
+      <td className="px-3 py-2">
+        {item.deletedByEmail ?? <span className="text-fg-muted">—</span>}
       </td>
       <td className="px-3 py-2 text-fg-2">{formatDate(item.deletedAt)}</td>
       <td className="px-3 py-2 text-fg-2">{formatDate(item.purgeAfter)}</td>

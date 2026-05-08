@@ -298,8 +298,9 @@ public class FolderMutationService {
         Instant purgeAfter = now.plus(PURGE_DAYS, ChronoUnit.DAYS);
 
         // 후손 폴더 batch UPDATE — 비어 있으면 skip (Hibernate가 빈 IN(...)을 거부하는 환경 보호).
+        // V10: actorId 전파 — cascade 후손도 root와 동일한 deleter로 기록.
         if (!descendantIds.isEmpty()) {
-            folderRepository.softDeleteByIds(descendantIds, now, purgeAfter);
+            folderRepository.softDeleteByIds(descendantIds, actorId, now, purgeAfter);
         }
 
         // root + 후손 모두를 포함한 folder id 집합 — 파일 cascade 대상.
@@ -307,7 +308,7 @@ public class FolderMutationService {
         allFolderIds.add(root.getId());
         allFolderIds.addAll(descendantIds);
 
-        int descendantFiles = fileRepository.softDeleteByFolderIds(allFolderIds, now, purgeAfter);
+        int descendantFiles = fileRepository.softDeleteByFolderIds(allFolderIds, actorId, now, purgeAfter);
 
         // root entity — originalParentId 스냅샷 + tombstone 컬럼 set + flush. lock된 entity이므로
         // dirty checking으로도 가능하지만 명시적 saveAndFlush로 audit 발행 직전 상태 확정.
@@ -315,6 +316,8 @@ public class FolderMutationService {
         root.setOriginalParentId(parentSnapshot);
         root.setDeletedAt(now);
         root.setPurgeAfter(purgeAfter);
+        // V10 — root는 entity-level set, 후손은 softDeleteByIds JPQL이 동일 actorId로 set.
+        root.setDeletedBy(actorId);
         root.setUpdatedAt(now);
         Folder saved = folderRepository.saveAndFlush(root);
 
@@ -381,6 +384,8 @@ public class FolderMutationService {
         target.setDeletedAt(null);
         target.setPurgeAfter(null);
         target.setOriginalParentId(null);
+        // V10 — restore 시 deleter 정보도 클리어 (CHECK 단방향: 활성 row는 deleted_by IS NULL).
+        target.setDeletedBy(null);
         target.setUpdatedAt(now);
 
         Folder saved;

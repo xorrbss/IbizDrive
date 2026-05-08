@@ -116,12 +116,16 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
      *
      * <p>WHERE {@code deleted_at IS NULL}는 race 가드 — 다른 트랜잭션이 이미 soft-delete한 row를
      * 다시 갱신해 audit 일관성이 깨지는 것을 방지.
+     *
+     * <p>V10 — {@code deleted_by = :actorId}를 동시에 set: cascade 후손 폴더도 root와 동일한 actor가
+     * 삭제한 것으로 기록 ({@link com.ibizdrive.file.FileRepository#softDeleteByFolderIds}와 동일 정책).
      */
     @Modifying
     @Query("UPDATE Folder f SET f.deletedAt = :deletedAt, f.purgeAfter = :purgeAfter, "
-         + "f.originalParentId = f.parentId, f.updatedAt = :deletedAt "
+         + "f.originalParentId = f.parentId, f.deletedBy = :actorId, f.updatedAt = :deletedAt "
          + "WHERE f.id IN :ids AND f.deletedAt IS NULL")
     int softDeleteByIds(@Param("ids") Collection<UUID> ids,
+                        @Param("actorId") UUID actorId,
                         @Param("deletedAt") Instant deletedAt,
                         @Param("purgeAfter") Instant purgeAfter);
 

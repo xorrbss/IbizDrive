@@ -733,7 +733,8 @@ BEGIN;
 UPDATE files
   SET deleted_at = NOW(),
       purge_after = NOW() + INTERVAL '30 days',
-      original_folder_id = folder_id
+      original_folder_id = folder_id,
+      deleted_by = :actor_id
   WHERE id = ANY(:ids);
 INSERT INTO audit_log ...;
 COMMIT;
@@ -753,10 +754,36 @@ UPDATE files
   SET deleted_at = NULL,
       purge_after = NULL,
       folder_id = original_folder_id,
-      original_folder_id = NULL
+      original_folder_id = NULL,
+      deleted_by = NULL
   WHERE id = ANY(:ids);
 COMMIT;
 ```
+
+#### 6.5.1 `deleted_by` 컬럼 (V10, Wave 2 T9 follow-up — 2026-05-08)
+
+**스키마**:
+
+```sql
+ALTER TABLE files
+  ADD COLUMN deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  ADD CONSTRAINT files_deleted_by_check
+      CHECK (deleted_at IS NOT NULL OR deleted_by IS NULL);
+
+ALTER TABLE folders
+  ADD COLUMN deleted_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  ADD CONSTRAINT folders_deleted_by_check
+      CHECK (deleted_at IS NOT NULL OR deleted_by IS NULL);
+```
+
+**계약**:
+
+- **단방향 CHECK**: `deleted_at IS NOT NULL OR deleted_by IS NULL` — 활성 row(`deleted_at IS NULL`)에 deleter가 set되는 것만 차단. trash row의 NULL은 허용 (V10 이전 row의 backfill 미실시 + ON DELETE SET NULL fallback 수용).
+- **ON DELETE SET NULL**: deleter 계정이 hard-delete돼도 trash row는 보존, deleter 정보만 NULL로 클리어.
+- **Backfill 미실시**: V10 이전에 휴지통에 들어간 row는 `deleted_by IS NULL`로 그대로. audit_log derivation은 fragile/expensive — UI는 컷오프 이전을 "—"로 렌더한다 (docs/04 §8.3).
+- **Folder cascade**: `softDeleteByIds` JPQL이 `:actor_id`를 받아 root + 모든 자손에 동시 set. `FileMutationService.softDelete` / `FolderMutationService.softDelete`가 actor 전달, restore에서 NULL로 클리어.
+- **인덱스 미추가**: `deleted_by` 필터링은 v1.x++. admin 쿼리는 `deleted_at DESC` 키 사용.
+- **Audit 정합성**: 새 audit emit 0. 기존 `FILE_DELETED` / `FOLDER_DELETED` actor_id가 영구 보존(V4 REVOKE 정책)되므로 cross-check 가능.
 
 ### 6.6 새 버전 업로드 시 optimistic concurrency
 

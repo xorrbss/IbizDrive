@@ -41,6 +41,12 @@ export interface AdminTrashItem {
   originalParentId: string | null
   originalParentName: string | null
   sizeBytes: number | null
+  /**
+   * V10 — 삭제 actor user id. NULL 의미: V10 적용 이전 row(backfill 미실시),
+   * deleter 계정 hard-delete(FK ON DELETE SET NULL), unknown. UI는 "—" 렌더.
+   */
+  deletedById: string | null
+  deletedByEmail: string | null
 }
 
 export interface AdminTrashFilters {

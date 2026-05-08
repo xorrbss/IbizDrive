@@ -69,6 +69,13 @@ public class Folder {
     @Column(name = "purge_after")
     private Instant purgeAfter;
 
+    /**
+     * V10 — soft-delete를 수행한 actor user id (cross-owner 복원 추적). FileItem.deletedBy와
+     * 동일 정책 (단방향 CHECK, ON DELETE SET NULL, backfill 미실시).
+     */
+    @Column(name = "deleted_by")
+    private UUID deletedBy;
+
     /** 휴지통 복원용 — 삭제 시점의 부모 폴더 id 보존 (docs/02 §2.3). */
     @Column(name = "original_parent_id")
     private UUID originalParentId;
@@ -153,6 +160,14 @@ public class Folder {
 
     public void setPurgeAfter(Instant purgeAfter) {
         this.purgeAfter = purgeAfter;
+    }
+
+    public UUID getDeletedBy() {
+        return deletedBy;
+    }
+
+    public void setDeletedBy(UUID deletedBy) {
+        this.deletedBy = deletedBy;
     }
 
     public UUID getOriginalParentId() {

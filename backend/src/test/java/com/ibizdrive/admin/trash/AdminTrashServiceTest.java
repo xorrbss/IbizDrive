@@ -24,7 +24,6 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyIterable;
-import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -280,10 +279,100 @@ class AdminTrashServiceTest {
             .isInstanceOf(IllegalArgumentException.class);
     }
 
+    // ===== 11. V10 — deletedBy enrichment (cross-owner) =====
+
+    @Test
+    void list_attachesDeletedByEmail_whenDeleterDifferentFromOwner() {
+        UUID fileId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID deleter = UUID.randomUUID();
+        Instant deletedAt = Instant.parse("2026-05-04T00:00:00Z");
+
+        FileItem file = mockFile(fileId, "doc.pdf", deletedAt, owner, null, 100L, deleter);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(file));
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
+            new User(owner, "owner@x", "Owner", null, Role.MEMBER, true, false, OffsetDateTime.now()),
+            new User(deleter, "admin@x", "Admin", null, Role.ADMIN, true, false, OffsetDateTime.now())
+        ));
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
+
+        AdminTrashPage page = service.list(
+            new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        assertThat(page.items()).hasSize(1);
+        AdminTrashItemDto dto = page.items().get(0);
+        assertThat(dto.ownerId()).isEqualTo(owner);
+        assertThat(dto.ownerEmail()).isEqualTo("owner@x");
+        assertThat(dto.deletedById()).isEqualTo(deleter);
+        assertThat(dto.deletedByEmail()).isEqualTo("admin@x");
+    }
+
+    // ===== 12. V10 — NULL deletedBy (V10 이전 row 또는 hard-delete된 deleter) =====
+
+    @Test
+    void list_deletedByNull_yieldsNullEmail() {
+        UUID fileId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        Instant deletedAt = Instant.parse("2026-05-04T00:00:00Z");
+
+        FileItem file = mockFile(fileId, "legacy.pdf", deletedAt, owner, null, 1L, null);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(file));
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
+            new User(owner, "owner@x", "Owner", null, Role.MEMBER, true, false, OffsetDateTime.now())
+        ));
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
+
+        AdminTrashPage page = service.list(
+            new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        AdminTrashItemDto dto = page.items().get(0);
+        assertThat(dto.deletedById()).isNull();
+        assertThat(dto.deletedByEmail()).isNull();
+    }
+
+    // ===== 13. V10 — owner+deleter 합류해도 single batch lookup =====
+
+    @Test
+    void list_unionsOwnerAndDeleterIdsIntoSingleBatchLookup() {
+        UUID fileId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID deleter = UUID.randomUUID();
+        FileItem file = mockFile(fileId, "x", Instant.parse("2026-05-04T00:00:00Z"),
+            owner, null, 1L, deleter);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(file));
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of());
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
+
+        service.list(new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        // userRepository.findAllById는 owner+deleter를 합친 단일 호출이어야 한다 (N+1 회피).
+        ArgumentCaptor<Iterable<UUID>> idsCaptor = ArgumentCaptor.forClass(Iterable.class);
+        verify(userRepository).findAllById(idsCaptor.capture());
+        assertThat(idsCaptor.getValue()).containsExactlyInAnyOrder(owner, deleter);
+    }
+
     // ===== helpers =====
 
     private static FileItem mockFile(UUID id, String name, Instant deletedAt,
                                      UUID ownerId, UUID originalFolderId, long sizeBytes) {
+        return mockFile(id, name, deletedAt, ownerId, originalFolderId, sizeBytes, null);
+    }
+
+    private static FileItem mockFile(UUID id, String name, Instant deletedAt,
+                                     UUID ownerId, UUID originalFolderId, long sizeBytes,
+                                     UUID deletedBy) {
         FileItem f = org.mockito.Mockito.mock(FileItem.class);
         lenient().when(f.getId()).thenReturn(id);
         lenient().when(f.getName()).thenReturn(name);
@@ -292,6 +381,7 @@ class AdminTrashServiceTest {
         lenient().when(f.getOwnerId()).thenReturn(ownerId);
         lenient().when(f.getOriginalFolderId()).thenReturn(originalFolderId);
         lenient().when(f.getSizeBytes()).thenReturn(sizeBytes);
+        lenient().when(f.getDeletedBy()).thenReturn(deletedBy);
         return f;
     }
 

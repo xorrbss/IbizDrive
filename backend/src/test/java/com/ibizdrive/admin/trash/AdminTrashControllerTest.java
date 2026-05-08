@@ -10,6 +10,7 @@ import com.ibizdrive.trash.TrashItemType;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.UserRepository;
 import java.time.Instant;
+import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -20,6 +21,7 @@ import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.security.test.context.support.WithMockUser;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -156,5 +158,56 @@ class AdminTrashControllerTest {
     void list_400_whenInvalidDeletedTo() throws Exception {
         mockMvc.perform(get("/api/admin/trash").param("deletedTo", "not-a-date"))
             .andExpect(status().isBadRequest());
+    }
+
+    // ===== V10 — deletedById/deletedByEmail 응답 필드 =====
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void list_serializesDeletedByFields() throws Exception {
+        UUID itemId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        UUID deleterId = UUID.randomUUID();
+        Instant deletedAt = Instant.parse("2026-05-04T00:00:00Z");
+
+        AdminTrashItemDto dto = new AdminTrashItemDto(
+            itemId, "doc.pdf", TrashItemType.FILE,
+            deletedAt, deletedAt.plusSeconds(30L * 86400),
+            ownerId, "owner@example.com",
+            null, null,
+            12345L,
+            deleterId, "admin@example.com"
+        );
+        when(service.list(any(), any(), any())).thenReturn(new AdminTrashPage(List.of(dto), null));
+
+        mockMvc.perform(get("/api/admin/trash").contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].deletedById").value(deleterId.toString()))
+            .andExpect(jsonPath("$.items[0].deletedByEmail").value("admin@example.com"));
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void list_serializesNullDeletedBy_asJsonNull() throws Exception {
+        UUID itemId = UUID.randomUUID();
+        UUID ownerId = UUID.randomUUID();
+        Instant deletedAt = Instant.parse("2026-05-04T00:00:00Z");
+
+        AdminTrashItemDto dto = new AdminTrashItemDto(
+            itemId, "legacy.pdf", TrashItemType.FILE,
+            deletedAt, deletedAt.plusSeconds(30L * 86400),
+            ownerId, "owner@example.com",
+            null, null,
+            1L,
+            null, null
+        );
+        when(service.list(any(), any(), any())).thenReturn(new AdminTrashPage(List.of(dto), null));
+
+        // AdminTrashItemDto는 @JsonInclude(NON_NULL) 미사용 — 명시적 null로 직렬화 (frontend는
+        // nullable 키를 기대, originalParentId/originalParentName 패턴과 동일).
+        mockMvc.perform(get("/api/admin/trash").contentType(MediaType.APPLICATION_JSON))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.items[0].deletedById").value(Matchers.nullValue()))
+            .andExpect(jsonPath("$.items[0].deletedByEmail").value(Matchers.nullValue()));
     }
 }
