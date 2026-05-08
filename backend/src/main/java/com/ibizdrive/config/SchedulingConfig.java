@@ -12,15 +12,18 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Spring scheduling + 스케줄 잡들의 properties record 등록 지점 (A7.3, SHARE_EXPIRED cron,
  * permissions-expired-cron).
  *
- * <p>{@code @EnableScheduling}은 무조건 활성 — 개별 잡({@link com.ibizdrive.purge.HardPurgeJob},
+ * <p>{@code @EnableScheduling}은 무조건 활성 — 4 cron job({@link com.ibizdrive.purge.HardPurgeJob},
  * {@link com.ibizdrive.share.ShareExpirationJob},
- * {@link com.ibizdrive.permission.PermissionExpirationJob})은 각자 {@code @ConditionalOnProperty}로
- * enabled 게이트. 잡 빈이 하나도 등록되지 않으면 single-thread scheduler는 idle 상태로 비용 무시 가능.
+ * {@link com.ibizdrive.permission.PermissionExpirationJob},
+ * {@link com.ibizdrive.storage.StorageOrphanCleanupJob}) 빈은 항상 등록되며 매 tick마다 진입한다.
  *
- * <p>이전(A7) 구현은 본 config 자체에 {@code @ConditionalOnProperty(app.purge.enabled)}를 두었으나,
- * SHARE_EXPIRED 도입으로 다중 잡 지원이 필요해 활성화 조건을 잡-개별 가드로 위임 (ADR #34 backlog closure).
+ * <p>잡-개별 enabled 게이트는 {@link com.ibizdrive.admin.CronPolicyRepository#isEnabled} (DB
+ * 단일 row lookup, V11 admin-cron-policy-toggle 트랙)로 위임 — 각 잡의 {@code run()} 첫 줄에서
+ * 호출해 false면 즉시 return. yml의 {@code app.*.enabled} 필드는 V11 시드 이후 dead config
+ * (cleanup v1.x). 토글은 ADMIN UI(`/admin/system`) → `PUT /api/admin/system/cron/{key}`로
+ * 재기동 없이 즉시 반영.
  *
- * <p>스케줄러는 단일 thread로 충분 (현재 잡 3개, 모두 짧은 batch). 다중 잡이 동시에 무거워지면 별도
+ * <p>스케줄러는 단일 thread로 충분 (현재 잡 4개, 모두 짧은 batch). 다중 잡이 동시에 무거워지면 별도
  * {@code TaskScheduler} pool 빈 도입 검토.
  */
 @Configuration
