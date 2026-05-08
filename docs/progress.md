@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-05-08 — 🏁 wave2-trash-retention-config 트랙 종료 (휴지통 보존 기간 외부화)
+
+### 범위
+
+`FileMutationService.PURGE_DAYS = 30` / `FolderMutationService.PURGE_DAYS = 30` 두 곳에 중복 하드코딩되었던 보존 기간을 `@ConfigurationProperties`로 외부화. `audit-export-cap-config` (PR #97) 패턴 동형 — 운영자가 application.yml 수정 + 재기동만으로 보존 기간 조정 가능. wire/DTO/default 동작 모두 무변경 (default 30일 유지).
+
+### 변경 핵심
+
+**Backend (backend-only, frontend 0 변경)**:
+- `com.ibizdrive.trash.TrashRetentionProperties` (NEW) — `record(int days)` + 0/음수 입력 → default 30 보정. 운영자 실수 시 즉시 hard purge 후보가 되는 사고 방지(보안 가드).
+- `com.ibizdrive.trash.TrashConfig` (NEW) — `@EnableConfigurationProperties(TrashRetentionProperties.class)` 등록 (`AuditConfig`/`StorageConfig` 패턴 동형).
+- `application.yml`: `app.trash.retention.days: 30` 추가 (default).
+- `FileMutationService`: `PURGE_DAYS=30` 상수 제거 → 생성자에 `TrashRetentionProperties retention` 주입, `retention.days()` 사용.
+- `FolderMutationService`: 동일 패턴.
+
+**Tests**:
+- `TrashRetentionPropertiesTest` (NEW, 3 tests) — 양수/0/음수 보정.
+- `FileMutationServiceTest.TestConfig` / `FolderMutationServiceTest.TestConfig` — manual constructor 호출 5번째 인자(`new TrashRetentionProperties(30)`) 추가.
+
+**Docs**:
+- `docs/02 §6.5` — 보존 기간이 `app.trash.retention.days`에서 외부화됨 + 0/음수 보정 + 무중단 변경 deferred 명시.
+- `docs/04 §9.2` — 운영자 가이드 갱신 (코드 변경 없이 yml + 재기동만으로 일수 조정).
+
+### 검증
+
+- `cd backend && ./gradlew compileJava compileTestJava` BUILD SUCCESSFUL — cross-module DI 시그니처 영향 0 (manual constructor 호출 2곳만 존재, 테스트 TestConfig 둘 다 갱신).
+- `cd backend && ./gradlew test --tests "com.ibizdrive.trash.TrashRetentionPropertiesTest"` BUILD SUCCESSFUL.
+- FileMutationServiceTest/FolderMutationServiceTest는 Testcontainers + Docker 필요 — CI에서 회귀 검증.
+
+### 결정/편차
+
+- `audit-export-cap-config` 패턴 그대로 미러링 — 동일한 anchor/네이밍/검증 룰 유지로 일관성.
+- 두 서비스 모두 외부화 — duplicated source of truth 제거 (KISS).
+- 무중단 변경 deferred (`@ConfigurationProperties`는 부팅 바인딩) — 사내 베타 운영 단계라 재기동 1회로 충분, 무중단 도입은 v1.x++.
+- 운영자 UI(`/admin/trash/policy`) — 별도 트랙으로 v1.x deferred 유지.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / 권한 grant/revoke direct CRUD / quota / progress streaming(SSE/WS) / chunked client.
+- 보존 기간을 폴더/파일별로 다르게 하는 fine-grained 정책은 v1.x++.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 v1x-restore-conflict-dialog 트랙 종료 (M9 v1.x — 휴지통 복원 시 다른 이름으로 복원 다이얼로그)
 
 ### 범위

@@ -9,6 +9,7 @@ import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.trash.TrashRetentionProperties;
 import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -68,22 +69,23 @@ public class FolderMutationService {
     /** cascade BFS 안전 한도 — 비정상 트리 폭에 대한 트랜잭션 timeout/OOM 방어 (A6.1). */
     private static final int MAX_CASCADE_NODES = 100_000;
 
-    /** 휴지통 보존 기간 — 30일 (docs/02 §6.5, FileMutationService와 동일). */
-    private static final int PURGE_DAYS = 30;
-
     private final FolderRepository folderRepository;
     private final FileRepository fileRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (FileMutationService와 동일 source). */
+    private final TrashRetentionProperties retention;
 
     public FolderMutationService(FolderRepository folderRepository,
                                  FileRepository fileRepository,
                                  AuditService auditService,
-                                 ObjectMapper objectMapper) {
+                                 ObjectMapper objectMapper,
+                                 TrashRetentionProperties retention) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.retention = retention;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -296,7 +298,7 @@ public class FolderMutationService {
         List<UUID> descendantIds = collectDescendantFolderIds(root.getId());
 
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
-        Instant purgeAfter = now.plus(PURGE_DAYS, ChronoUnit.DAYS);
+        Instant purgeAfter = now.plus(retention.days(), ChronoUnit.DAYS);
 
         // 후손 폴더 batch UPDATE — 비어 있으면 skip (Hibernate가 빈 IN(...)을 거부하는 환경 보호).
         // V10: actorId 전파 — cascade 후손도 root와 동일한 deleter로 기록.

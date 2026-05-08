@@ -61,6 +61,13 @@ server:
 # 스케줄 잡 — 운영 기본 비활성, staging/prod에서 명시적 활성화 후 투입.
 # SchedulingConfig가 @EnableScheduling을 무조건 활성화하고 개별 잡이 enabled 게이트(이중 가드).
 app:
+  # 휴지통 보존 기간 (docs/02 §6.5, docs/04 §9.2). FileMutationService/FolderMutationService가
+  # soft-delete 시점에 purge_after = deleted_at + days 로 설정. 이 기간이 지난 row는
+  # 아래 `purge.expired` cron의 hard delete 후보. 0 이하 입력은 default 30 보정.
+  # 변경은 yml 수정 + 재기동 (Spring @ConfigurationProperties 바인딩은 부팅 시점, 무중단 변경은 v1.x++).
+  trash:
+    retention:
+      days: 30
   # A7 hard purge (docs/04 §13 purge.expired, ADR #31).
   purge:
     enabled: false

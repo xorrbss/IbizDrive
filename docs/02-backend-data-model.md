@@ -727,8 +727,10 @@ COMMIT;
 
 ### 6.5 휴지통 이동 / 복원
 
+> **보존 기간**: `application.yml`의 `app.trash.retention.days` (default 30)에서 외부화 — `FileMutationService`/`FolderMutationService`가 `TrashRetentionProperties`를 주입받아 `purge_after = deleted_at + days`로 설정. 0/음수 입력은 default 30으로 보정 (실수로 즉시 hard purge 후보가 되는 사고 방지). 무중단 변경은 v1.x++ (Spring `@ConfigurationProperties`는 부팅 시 바인딩).
+
 ```sql
--- 이동
+-- 이동 (보존 기간은 app.trash.retention-days, default 30일)
 BEGIN;
 UPDATE files
   SET deleted_at = NOW(),

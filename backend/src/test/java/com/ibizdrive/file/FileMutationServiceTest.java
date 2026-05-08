@@ -77,7 +77,8 @@ class FileMutationServiceTest {
                                                       FolderRepository folderRepo,
                                                       AuditService audit,
                                                       ObjectMapper mapper) {
-            return new FileMutationService(fileRepo, folderRepo, audit, mapper);
+            return new FileMutationService(fileRepo, folderRepo, audit, mapper,
+                new com.ibizdrive.trash.TrashRetentionProperties(30));
         }
     }
 

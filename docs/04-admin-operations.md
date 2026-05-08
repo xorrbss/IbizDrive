@@ -348,8 +348,10 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 > **MVP 부분 구현**: 휴지통 보존은 A7 cron + `app.purge.*` config로 운영자 제어. 버전 보존은 v1.x.
 
 ```text
-삭제된 파일 보존: 30일 default — A7 `app.purge.cron`, `app.purge.max-per-run`
-              ↳ 운영자가 application.yml에서 cron 변경 가능
+삭제된 파일 보존: 30일 default — `app.trash.retention.days` (외부화, wave2-trash-retention-config)
+              ↳ 운영자가 application.yml에서 일수 변경 + 재기동 (무중단은 v1.x++)
+              ↳ 0/음수 입력은 30일로 보정 (즉시 hard purge 사고 방지)
+              ↳ hard delete는 별개 cron — A7 `app.purge.cron`, `app.purge.max-per-run`
 버전 보존: v1.x deferred (현재 모든 버전 영구 보관, A5 closure)
 감사 로그 보존: 영구 — DB-level append-only (`V4__audit_log_revoke.sql`).
               ↳ 파티션/아카이빙은 v1.x (ADR #9)
