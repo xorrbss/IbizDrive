@@ -226,7 +226,7 @@ Last Updated: 2026-05-08
 - [x] `docs/progress.md` 최상단에 closure entry (V10 cutoff 시점 명시)
 - [ ] (선택) `docs/00-overview.md §5 ADR` 인덱스에 트랙명 1줄 추가 — skip (본 트랙은 ADR 신설 안 함, plan §ADR 명시)
 - [x] 게이트: drift check — spec ↔ plan ↔ 코드 ↔ docs 정합 확인
-- [ ] commit: `docs(wave2-t9-deleted-by): docs/02 §6.5 + docs/04 §8.3 + BETA + progress`
+- [x] commit: `docs(wave2-t9-deleted-by): docs/02 §6.5.1 + docs/04 §8.3 + BETA + progress` (rebase 후 commit d431e91)
 
 ### 작업 전 필독
 
@@ -252,10 +252,10 @@ Last Updated: 2026-05-08
 
 ### 체크리스트
 
-- [ ] 모든 phase 게이트 통과
-- [ ] `git fetch origin && git rebase origin/master` (필요 시)
-- [ ] PR open: base=master, body에 spec/plan backlink + 게이트 결과 + acceptance 체크
-- [ ] code review (superpowers:requesting-code-review skill)
+- [x] 모든 phase 게이트 통과
+- [x] `git fetch origin && git rebase origin/master` (master에 PR #83/#84 머지 — 충돌 3건 해결, rebase 후 게이트 재검증 GREEN)
+- [x] PR open: base=master, body에 spec/plan backlink + 게이트 결과 — **PR #87** (https://github.com/xorrbss/IbizDrive/pull/87)
+- [ ] code review
 - [ ] CI 통과 → merge
 - [ ] 머지 후 `dev/active/wave2-t9-deleted-by/` → `dev/completed/`로 archive (별도 PR)
 - [ ] 워크트리 + 브랜치 정리: `git worktree remove`, `git branch -D feat/wave2-t9-deleted-by`
