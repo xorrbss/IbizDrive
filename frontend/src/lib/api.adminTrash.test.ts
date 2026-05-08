@@ -37,6 +37,8 @@ const PAGE_FIXTURE: AdminTrashPage = {
       originalParentId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
       originalParentName: 'Reports',
       sizeBytes: 1024,
+      deletedById: null,
+      deletedByEmail: null,
     },
   ],
   nextCursor: null,

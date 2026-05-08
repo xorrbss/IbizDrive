@@ -32,6 +32,8 @@ const sample: AdminTrashItem = {
   originalParentId: 'fd-1',
   originalParentName: 'Reports',
   sizeBytes: 12345,
+  deletedById: null,
+  deletedByEmail: null,
 }
 
 describe('/admin/trash/all', () => {

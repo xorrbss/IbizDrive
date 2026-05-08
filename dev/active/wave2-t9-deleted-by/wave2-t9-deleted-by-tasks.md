@@ -10,8 +10,8 @@ Last Updated: 2026-05-08
 |---|---|---|
 | P1 backend schema | ✅ 완료 (commit 624f395) | `./gradlew test` 영향 범위 GREEN |
 | P2 backend write path | ✅ 완료 (P1과 합쳐 commit 624f395) | Mutation services 단위 테스트 GREEN |
-| P3 backend admin DTO/Service | ✅ 완료 | AdminTrashService/Controller 테스트 GREEN |
-| P4 frontend types | 🟡 대기 | `pnpm typecheck` exit 0 |
+| P3 backend admin DTO/Service | ✅ 완료 (commit adef4fd) | AdminTrashService/Controller 테스트 GREEN |
+| P4 frontend types | ✅ 완료 | `pnpm typecheck` exit 0 |
 | P5 frontend UI | ⏸️ blocked-by-P4 | page test + `pnpm test --run` skipped=0 |
 | P6 docs | ⏸️ blocked-by-P5 | drift check + 4 문서 업데이트 |
 
@@ -154,9 +154,10 @@ Last Updated: 2026-05-08
 
 ### 체크리스트
 
-- [ ] `frontend/src/types/trash.ts` `AdminTrashItem`에 `deletedById?: string`, `deletedByEmail?: string`
-- [ ] `frontend/src/lib/api.ts` `adminListTrash` adapter — 타입만 자동 확장 (코드 변경 0 또는 최소)
-- [ ] 게이트: `cd frontend && pnpm typecheck` exit 0
+- [x] `frontend/src/types/trash.ts` `AdminTrashItem`에 `deletedById: string | null`, `deletedByEmail: string | null` (originalParentId 패턴 일치 — wire가 명시 null이라 nullable로 정의)
+- [x] `frontend/src/lib/api.ts` `adminListTrash`는 `as AdminTrashPage` cast — 타입만 자동 확장 (코드 변경 0)
+- [x] page.test.tsx / api.adminTrash.test.ts fixture 새 필드 추가 (typecheck 통과용)
+- [x] 게이트: `cd frontend && pnpm typecheck` exit 0
 - [ ] commit: `feat(wave2-t9-deleted-by): P4 frontend AdminTrashItem 확장`
 
 ### 작업 전 필독
