@@ -21,7 +21,8 @@ import java.util.UUID;
  * @param filtersJson  적용된 필터의 JSON 문자열 (audit metadata에 그대로 들어감)
  * @param rowCount     실제로 export된 행 수 (cap 적용 후)
  * @param truncated    cap 초과로 잘렸는지 여부
- * @param format       응답 직렬화 형식 ({@code "csv"} 또는 {@code "json"}). controller에서 검증된 값
+ * @param format       응답 직렬화 형식. controller가 wire 문자열을 {@link AuditExportFormat#from}으로
+ *                     검증·변환한 값 — listener는 컴파일러가 보증하는 enum만 받는다.
  */
 public record AuditExportEvent(
     UUID actorId,
@@ -30,6 +31,6 @@ public record AuditExportEvent(
     String filtersJson,
     int rowCount,
     boolean truncated,
-    String format
+    AuditExportFormat format
 ) {
 }

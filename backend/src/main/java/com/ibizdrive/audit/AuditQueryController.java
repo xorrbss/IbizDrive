@@ -132,9 +132,8 @@ public class AuditQueryController {
         @RequestParam(name = "format", required = false, defaultValue = "csv") String format,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        if (!"csv".equals(format) && !"json".equals(format)) {
-            throw new IllegalArgumentException("audit export format must be csv or json");
-        }
+        // wire 문자열 검증 → enum. 잘못된 값은 IAE → 글로벌 핸들러 400.
+        AuditExportFormat parsedFormat = AuditExportFormat.from(format);
         AuditQueryFilters filters = new AuditQueryFilters(
             fromDate,
             toDate,
@@ -151,7 +150,7 @@ public class AuditQueryController {
         java.net.InetAddress actorIp = WebRequestContextHolder.currentIp();
         String userAgent = WebRequestContextHolder.currentUserAgent();
         String filtersJson = serializeFilters(filters);
-        boolean isJson = "json".equals(format);
+        boolean isJson = parsedFormat == AuditExportFormat.JSON;
 
         StreamingResponseBody body = out -> {
             try {
@@ -167,7 +166,7 @@ public class AuditQueryController {
             // 본문 작성 성공 후에만 audit emit — 실패한 export는 기록하지 않는다.
             eventPublisher.publishEvent(new AuditExportEvent(
                 actorId, actorIp, userAgent, filtersJson,
-                result.entries().size(), result.truncated(), format
+                result.entries().size(), result.truncated(), parsedFormat
             ));
         };
 
@@ -177,7 +176,7 @@ public class AuditQueryController {
         } else {
             headers.setContentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8));
         }
-        String extension = isJson ? "json" : "csv";
+        String extension = parsedFormat.wire();
         headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment()
             .filename("audit_logs_" + LocalDate.now().format(FILENAME_DATE) + "." + extension)
             .build());

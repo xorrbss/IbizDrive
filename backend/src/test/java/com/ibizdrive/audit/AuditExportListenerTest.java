@@ -14,7 +14,11 @@ import static org.mockito.Mockito.verify;
 
 /**
  * AuditExportListener — AUDIT_EXPORTED metadata의 {@code format} 필드가
- * AuditExportEvent.format() 값을 그대로 반영하는지 검증 (audit-export-json 트랙).
+ * AuditExportEvent.format() 값을 그대로 반영하는지 검증.
+ *
+ * <p>audit-format-enum 트랙(2026-05-08)으로 String → {@link AuditExportFormat} enum 마이그.
+ * 이전 String 시절의 {@code unknownFormatFallsBackToCsv} 테스트는 enum 도입으로 컴파일 단계에서
+ * invalid 값이 차단되어 삭제 (spec §5.1).
  */
 @ExtendWith(MockitoExtension.class)
 class AuditExportListenerTest {
@@ -32,7 +36,7 @@ class AuditExportListenerTest {
             "{\"eventType\":\"user.login.failed\"}",
             42,
             false,
-            "csv"
+            AuditExportFormat.CSV
         );
 
         listener.onExport(event);
@@ -52,7 +56,7 @@ class AuditExportListenerTest {
             "{}",
             7,
             true,
-            "json"
+            AuditExportFormat.JSON
         );
 
         listener.onExport(event);
@@ -63,26 +67,5 @@ class AuditExportListenerTest {
             .contains("\"format\":\"json\"")
             .contains("\"rowCount\":7")
             .contains("\"truncated\":true");
-    }
-
-    @Test
-    void unknownFormatFallsBackToCsv() throws Exception {
-        AuditExportListener listener = new AuditExportListener(auditService);
-        AuditExportEvent event = new AuditExportEvent(
-            UUID.randomUUID(),
-            InetAddress.getByName("10.0.0.1"),
-            "TestAgent/1.0",
-            "{}",
-            0,
-            false,
-            "xml"   // controller 가드를 우회한 가상의 잘못된 값
-        );
-
-        listener.onExport(event);
-
-        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
-        verify(auditService).record(captor.capture());
-        // listener의 defensive fallback: 지원하지 않는 format은 "csv"로 안전 기록
-        assertThat(captor.getValue().metadata()).contains("\"format\":\"csv\"");
     }
 }
