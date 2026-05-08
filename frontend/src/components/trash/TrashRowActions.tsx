@@ -2,6 +2,7 @@
 import { useRestoreItem } from '@/hooks/useRestoreItem'
 import { usePurgeTrashItem } from '@/hooks/usePurgeTrashItem'
 import { usePermission } from '@/hooks/usePermission'
+import { useRestoreConflictUiStore } from '@/stores/restoreConflictUi'
 import { toast } from 'sonner'
 import type { TrashItem } from '@/types/trash'
 
@@ -9,11 +10,13 @@ import type { TrashItem } from '@/types/trash'
  * 휴지통 행 액션 — 복원 + (ADMIN-only) 영구 삭제.
  * - 영구 삭제 가시성: `usePermission().PURGE` (M14 권한 hook, docs/03 §3.2 PURGE는 ADMIN role 전용)
  * - 보안은 backend가 책임 (403 폴백 → toast)
+ * - RESTORE_CONFLICT (v1.x M9 후속): toast.error 대신 RestoreConflictDialog 트리거.
  */
 export function TrashRowActions({ item }: { item: TrashItem }) {
   const restore = useRestoreItem()
   const purge = usePurgeTrashItem()
   const { PURGE } = usePermission()
+  const openRestoreConflict = useRestoreConflictUiStore((s) => s.open)
 
   const handleRestore = () => {
     restore.mutate(
@@ -27,7 +30,13 @@ export function TrashRowActions({ item }: { item: TrashItem }) {
         onError: (err) => {
           const code = (err as Error & { code?: string })?.code
           if (code === 'RESTORE_CONFLICT') {
-            toast.error(`'${item.name}' 복원 실패 — 같은 이름 항목이 이미 존재합니다`)
+            // v1.x: 다른 이름으로 복원 다이얼로그 트리거.
+            openRestoreConflict({
+              type: item.type,
+              id: item.id,
+              originalName: item.name,
+              sourceFolderId: item.originalParentId ?? null,
+            })
           } else {
             toast.error(`'${item.name}' 복원 실패`)
           }
