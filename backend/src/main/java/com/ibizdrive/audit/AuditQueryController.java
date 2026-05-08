@@ -32,7 +32,7 @@ import java.util.UUID;
  *   <li>{@code GET /api/admin/audit} — JSON 페이지네이션 조회 ({@link #list}). 가드:
  *       {@code SecurityConfig.anyRequest().authenticated()} + service 단계 ROLE 분기 (ADMIN/AUDITOR
  *       전체, MEMBER {@code actor_id=self}, RP-2 file 활동 타임라인 우회).</li>
- *   <li>{@code GET /api/admin/audit/export} — CSV 다운로드 ({@link #exportCsv}). 가드:
+ *   <li>{@code GET /api/admin/audit/export} — CSV 또는 JSON 다운로드 ({@link #export}). 가드:
  *       {@code @PreAuthorize("hasRole('AUDITOR') or hasRole('ADMIN')")} — MEMBER 차단 (403). 응답
  *       완료 후 {@link AuditExportEvent} publish → {@link AuditExportListener}가
  *       {@code audit.exported} audit_log 1건 기록 (REQUIRES_NEW).</li>
@@ -54,15 +54,18 @@ public class AuditQueryController {
 
     private final AuditQueryService queryService;
     private final AuditCsvWriter csvWriter;
+    private final AuditJsonWriter jsonWriter;
     private final ApplicationEventPublisher eventPublisher;
     private final ObjectMapper objectMapper;
 
     public AuditQueryController(AuditQueryService queryService,
                                 AuditCsvWriter csvWriter,
+                                AuditJsonWriter jsonWriter,
                                 ApplicationEventPublisher eventPublisher,
                                 ObjectMapper objectMapper) {
         this.queryService = queryService;
         this.csvWriter = csvWriter;
+        this.jsonWriter = jsonWriter;
         this.eventPublisher = eventPublisher;
         this.objectMapper = objectMapper;
     }
@@ -99,7 +102,14 @@ public class AuditQueryController {
     }
 
     /**
-     * CSV 다운로드. 응답 본문은 {@link StreamingResponseBody}로 작성하지만, 본 v1 구현은 service에서
+     * 감사 로그 다운로드 — CSV(default) 또는 JSON 배열.
+     *
+     * <p>{@code format} 쿼리 파라미터가 미지정이거나 {@code "csv"}이면 BOM + RFC 4180 CSV,
+     * {@code "json"}이면 plain JSON 배열을 반환한다. 그 외 값은
+     * {@link IllegalArgumentException}을 던져 {@code GlobalExceptionHandler}가 400
+     * {@code BAD_REQUEST}로 변환한다.
+     *
+     * <p>응답 본문은 {@link StreamingResponseBody}로 작성하지만, 본 v1 구현은 service에서
      * 결과를 한 번에 페치(cap 적용)하여 메모리에 보관 후 stream에 기록한다 — 진정한 SQL streaming은
      * v1.x deferred (KISS).
      *
@@ -110,7 +120,7 @@ public class AuditQueryController {
      */
     @PreAuthorize("hasRole('AUDITOR') or hasRole('ADMIN')")
     @GetMapping("/export")
-    public ResponseEntity<StreamingResponseBody> exportCsv(
+    public ResponseEntity<StreamingResponseBody> export(
         @RequestParam(name = "fromDate", required = false)
             @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fromDate,
         @RequestParam(name = "toDate", required = false)
@@ -119,8 +129,12 @@ public class AuditQueryController {
         @RequestParam(name = "eventType", required = false) String eventType,
         @RequestParam(name = "targetType", required = false) String targetType,
         @RequestParam(name = "targetId", required = false) UUID targetId,
+        @RequestParam(name = "format", required = false, defaultValue = "csv") String format,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
+        if (!"csv".equals(format) && !"json".equals(format)) {
+            throw new IllegalArgumentException("audit export format must be csv or json");
+        }
         AuditQueryFilters filters = new AuditQueryFilters(
             fromDate,
             toDate,
@@ -137,10 +151,15 @@ public class AuditQueryController {
         java.net.InetAddress actorIp = WebRequestContextHolder.currentIp();
         String userAgent = WebRequestContextHolder.currentUserAgent();
         String filtersJson = serializeFilters(filters);
+        boolean isJson = "json".equals(format);
 
         StreamingResponseBody body = out -> {
             try {
-                csvWriter.write(out, result.entries());
+                if (isJson) {
+                    jsonWriter.write(out, result.entries());
+                } else {
+                    csvWriter.write(out, result.entries());
+                }
             } catch (IOException e) {
                 // 클라이언트 disconnect 등 — 응답은 깨졌지만 서버 측 상태 변경 없음. 로그만.
                 throw new RuntimeException(e);
@@ -148,14 +167,19 @@ public class AuditQueryController {
             // 본문 작성 성공 후에만 audit emit — 실패한 export는 기록하지 않는다.
             eventPublisher.publishEvent(new AuditExportEvent(
                 actorId, actorIp, userAgent, filtersJson,
-                result.entries().size(), result.truncated()
+                result.entries().size(), result.truncated(), format
             ));
         };
 
         HttpHeaders headers = new HttpHeaders();
-        headers.setContentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8));
+        if (isJson) {
+            headers.setContentType(new MediaType("application", "json", java.nio.charset.StandardCharsets.UTF_8));
+        } else {
+            headers.setContentType(new MediaType("text", "csv", java.nio.charset.StandardCharsets.UTF_8));
+        }
+        String extension = isJson ? "json" : "csv";
         headers.setContentDisposition(org.springframework.http.ContentDisposition.attachment()
-            .filename("audit_logs_" + LocalDate.now().format(FILENAME_DATE) + ".csv")
+            .filename("audit_logs_" + LocalDate.now().format(FILENAME_DATE) + "." + extension)
             .build());
         if (result.truncated()) {
             headers.add(HEADER_TRUNCATED, "true");
