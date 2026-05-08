@@ -1154,7 +1154,26 @@ GET /api/auth/csrf
             Set-Cookie: XSRF-TOKEN=<token>; SameSite=Lax; Path=/  (HttpOnly **아님** — JS 읽기 가능)
   Note:     Spring Security CookieCsrfTokenRepository.withHttpOnlyFalse() 기본 동작.
             mutation 요청 전 클라가 1회 호출 → XSRF-TOKEN 쿠키 → JS가 읽어
-            X-CSRF-Token 헤더로 전송 (double-submit).
+            X-CSRF-Token 헤더로 전송 (double-submit). HTTP 헤더 case-insensitive
+            라 frontend는 'X-CSRF-TOKEN'(uppercase) 송신해도 backend `X-CSRF-Token`
+            매핑과 호환.
+
+  Frontend 패턴 분기 (회귀 가드 — docs/03 §2.2 callout 동기화):
+    - 인증 후 mutation: readCookie('XSRF-TOKEN') 동기 — 쿠키가 이미 있다고 가정,
+      이 endpoint 사전 호출 불필요. createFolder/moveItem/renameFile/
+      softDeleteFile|Folder/restoreFile|Folder|Version/purgeTrashItem/revokeShare/
+      adminToggleCron/postShareCreate/adminBulkTrash/adminRevokePermission 등
+      이 패턴 채택.
+    - 비인증 첫 호출 (login/passwordChange/admin*): ensureCsrfToken() 비동기 —
+      cookie 부재 시 본 endpoint 사전 호출 후 송신.
+    - 면제 endpoint (/api/auth/signup, /api/auth/password/forgot, .../reset):
+      SecurityConfig.ignoringRequestMatchers로 backend가 검증 면제. frontend는
+      헤더 미송신 OK.
+
+  회귀 가드:
+    frontend/src/lib/api.csrfMutations.test.ts (sweep PR #121, 13 케이스)
+    + api.createFolder.test.ts (hotfix PR #115, 4 케이스)
+    + api.adminRevokePermission.test.ts (PR #123, 4 케이스).
 
 POST /api/auth/password/forgot                     (A1.5, ADR #42·#43, #44)
   Headers:  (CSRF 불필요 — SecurityConfig ignoringRequestMatchers)
