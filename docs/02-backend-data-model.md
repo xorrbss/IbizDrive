@@ -1583,7 +1583,7 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
 | GET | `/api/admin/audit` | `isAuthenticated()` (ADMIN/AUDITOR 전체, MEMBER `actor_id=self` — A2.3 트랙결정 #4) | — | — | (audit_log 자체에 deleted_at 없음) | 401 |
-| GET | `/api/admin/audit/export` | `hasRole('AUDITOR') OR hasRole('ADMIN')` (`@PreAuthorize`, Wave 1 T2) | — (SELECT only — `AUDIT_EXPORTED` emit은 별도 REQUIRES_NEW) | — | — | 401, 403 |
+| GET | `/api/admin/audit/export` | `hasRole('AUDITOR') OR hasRole('ADMIN')` (`@PreAuthorize`, Wave 1 T2 + audit-export-json 트랙 `format=csv\|json` 분기) | — (SELECT only — `AUDIT_EXPORTED` emit은 별도 REQUIRES_NEW) | — | — | 400 BAD_REQUEST(unknown format), 401, 403 |
 | GET | `/api/admin/download-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/permission-logs` | `hasRole('AUDITOR') OR hasRole('ADMIN')` | — | — | — | 403 |
 | GET | `/api/admin/storage-usage` | `hasRole('ADMIN')` | — | — | — | 403 |
@@ -1625,6 +1625,26 @@ GET /api/admin/dashboard/summary                     (admin-dashboard 트랙 clo
 - `File.countByDeletedAtIsNull()` / `countByDeletedAtIsNotNull()`
 - `FileVersion.sumAllSizeBytes()` — `SELECT COALESCE(SUM(v.sizeBytes), 0)`
 - audit_log: `JdbcTemplate "SELECT COUNT(*) FROM audit_log WHERE occurred_at >= ?"` (Clock 주입으로 결정성 확보)
+
+```text
+GET /api/admin/audit/export                          (Wave 1 T2 + audit-export-json, 2026-05-08)
+  Query:    fromDate, toDate, actorQuery, eventType, targetType, targetId  (모두 선택)
+            format=csv|json   (default csv. unknown → 400 BAD_REQUEST)
+  Headers:  Cookie: SESSION=<id>             (AUDITOR/ADMIN 인증 필요)
+  Response: 200 (StreamingResponseBody)
+            Content-Type:
+              format=csv  → text/csv;charset=UTF-8 + UTF-8 BOM + RFC 4180 (10 cols, metadata는 JSON 문자열 cell)
+              format=json → application/json;charset=UTF-8 (BOM 없음, plain array [{...}, {...}], metadata는 nested object)
+            Content-Disposition: attachment; filename=audit_logs_<YYYY-MM-DD>.<csv|json>
+            X-Audit-Export-Truncated: true (cap 10,000 초과 시)
+  Side-effects:
+            audit.exported audit_log row 1건 (REQUIRES_NEW, 별도 트랜잭션)
+              metadata = { filters, rowCount, truncated, format("csv"|"json") }
+  Errors:
+    400 BAD_REQUEST    ({code:"BAD_REQUEST"} — format이 csv/json 외 값일 때 IllegalArgumentException 매핑)
+    401 UNAUTHORIZED   (미인증)
+    403                (AUDITOR/ADMIN 아님 — `@PreAuthorize` 차단)
+```
 
 ```text
 POST /api/admin/users                                (m-admin-entry-rewrite, ADR #21 closure, 2026-05-03)
