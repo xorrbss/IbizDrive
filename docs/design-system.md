@@ -314,10 +314,7 @@ TopBar는 본 리스타일 단계에서 skeleton만 (간단한 브랜드 마크 
 
 ### Variant 지원 범위
 
-styles.css에는 default / notion / dropbox / terminal 4종 variant가 있음. M13에서는 default(warm gray + indigo accent)만 적용. 나머지는:
-
-- **결정 대기**: 다중 variant를 사용자 커스터마이징으로 노출할지, 또는 단일 테마로 고정할지
-- 현재 방향: 단일 테마(default) + 다크 모드 온/오프만. Variant는 디자인 탐색용으로만 보존.
+→ **M13.1 (2026-05-08) 에서 해소**: 4종 variant 모두 활성화 + TweaksPanel 에서 사용자 토글 가능. 자세한 내용은 §11.
 
 ### 폰트 로딩
 
@@ -332,3 +329,58 @@ styles.css에는 default / notion / dropbox / terminal 4종 variant가 있음. M
 ### 체크박스 / 액션 컬럼 (FileTable 6열)
 
 design-reference는 6열 (check / name / owner / modified / size / actions). 현재 5열 (icon / name / size / modified / updater). BulkActionBar는 이미 선택 모델이 존재하므로 체크박스 컬럼 도입 준비 완료. M7에서 FileTable 재설계 때 함께 정리.
+
+---
+
+## 11. Variant 시스템 (M13.1)
+
+### 11.1 개요
+
+`[data-variant]` HTML 속성으로 4종 디자인 변형을 토글한다. 토큰 override 방식이라 컴포넌트 코드 변경 0건. `[data-theme="dark"]` 와 직교 — 두 axis 가 독립적으로 결합 가능 (`[data-variant="notion"][data-theme="dark"]` 등).
+
+### 11.2 4종 비교
+
+| Variant | 적용 방식 | bg | accent | row-h | font | 특징 |
+|---|---|---|---|---|---|---|
+| default | 속성 미설정 | warm gray (#FAFAF9) | indigo (oklch 55% 0.14 250) | 34px | Inter | 베이스 |
+| notion | `[data-variant="notion"]` | warmer (#FCFCFB) | violet (oklch 50% 0.09 260) | 40px | Inter | radius 4px, comfy |
+| dropbox | `[data-variant="dropbox"]` | warm gray | blue (oklch 58% 0.17 250) | 38px | Inter | accent + row-h 변경만 |
+| terminal | `[data-variant="terminal"]` | dark (#0F0F0E) | green (oklch 78% 0.17 140) | 28px | JetBrains Mono | letter-spacing -0.01em, dense |
+
+### 11.3 영속
+
+- localStorage 키 `'variant'` (값: `'default'` | `'notion'` | `'dropbox'` | `'terminal'`).
+- `'default'` 는 속성 자체를 제거 — base `:root` 토큰만 적용 (CSS 우선순위 단순).
+- FOUC 방지: `app/layout.tsx` 의 inline `variantInitScript` 가 hydration 전 동기 실행 (themeInitScript 패턴 미러).
+
+### 11.4 옵션 B (KISS) — terminal variant 폰트 처리
+
+design-reference `styles.css` L94~113 의 terminal variant 17 selector 폰트 override (`.topbar`/`.sidebar`/`.btn` 등) 는 master frontend 의 Tailwind 유틸리티 환경에 그대로 이식 불가. 다음 두 줄로 흡수:
+
+```css
+[data-variant="terminal"] {
+  --font-sans: var(--font-mono);
+}
+[data-variant="terminal"] body {
+  letter-spacing: -0.01em;
+}
+```
+
+`:root` 변수 토글이 모든 element 의 `font-sans` 유틸리티를 자동 전파. 옵션 A (의미적 className 노출 + per-element override) 는 v1.x.
+
+### 11.5 사용 (TweaksPanel)
+
+- TopBar 의 `<SlidersHorizontal>` 아이콘 → popover (`role="dialog"`) 안에 두 섹션:
+  - "테마": ThemeToggle 임베드 (light/dark).
+  - "변형": variant 4종 라디오 그룹 (`role="radiogroup"`).
+- outside click / Esc 닫기. focus trap 미적용 (v1.x).
+
+### 11.6 관련 파일
+
+| 파일 | 역할 |
+|---|---|
+| `frontend/src/lib/variant.ts` | `Variant` 타입 + 5함수 (`theme.ts` 미러) |
+| `frontend/src/hooks/useVariant.ts` | `{ variant, setVariant }` |
+| `frontend/src/components/topbar/TweaksPanel.tsx` | popover UI |
+| `frontend/src/app/globals.css` | variant 4종 CSS 블록 + terminal letter-spacing |
+| `frontend/src/app/layout.tsx` | `variantInitScript` (FOUC) |
