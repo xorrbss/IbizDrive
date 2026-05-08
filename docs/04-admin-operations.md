@@ -765,3 +765,140 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 5. ~~§11 백업~~ — *운영 (인프라 책임, `BETA-RELEASE.md` 게이트)*
 6. ~~§10 Legal Hold~~ — **v2.x deferred** (docs/00 §4.3)
 7. 나머지 (§3·§5·§9·§12·§14) — **v1.x 또는 운영** 마커 완료
+
+---
+
+## 16. Dual-Approval 운영 (관리자 파괴적 액션 보호)
+
+> **Status: v1.x deferred** (docs/00 §5 ADR #47, docs/03 §6.4). 본 절은 **운영 명세 — 활성화 = v1.x 진입**. 보안/컴플라이언스 명세는 docs/03 §6.4, 데이터 모델은 docs/02 §2.11.
+
+### 16.1 Tier 0 적용 액션 (1차)
+
+| action_type | 진입점 | 위험 | 게이트 properties |
+|---|---|---|---|
+| `role_change` | `PATCH /api/admin/users/:id` (role 필드 변경) | ADMIN 권한 부여 = 보안 critical | `app.dual-approval.role-change.enabled` |
+| `trash_purge` | `DELETE /api/admin/trash/:type/:id`, `POST /api/admin/trash/bulk` (action='purge') | 회복 불가 영구 삭제 | `app.dual-approval.trash-purge.enabled` |
+| `retention_change` | `PUT /api/admin/trash/policy` (deferred — wave2-trash-policy-viewer mutation 후속) | 일수 감소 시 hard purge 폭증 | `app.dual-approval.retention-change.enabled` |
+
+> Tier 1 (cron_toggle, user_deactivate)는 v1.x 후속. Legal Hold release는 ADR #46 본 framework 이관 (v1.x V_ 마이그레이션 + payload_json='legal_hold_release').
+
+### 16.2 활성화 정책
+
+게이트는 **per-action**, default `false`. 환경별 점진 활성화 권장:
+
+| 환경 | 권장 |
+|---|---|
+| dev | 모두 false (테스트 시점 개별 활성화) |
+| staging | `role-change` 우선 활성화 (보안 critical) |
+| prod | Tier 0 3종 모두 활성화. `ttl-days=7` (default) 권장 |
+
+회피 (긴급 운영): 게이트를 일시 false 복귀 + 운영 노트에 사유 기록 + audit_log에 변경 이력.
+
+### 16.3 운영 흐름 (게이트 활성 시)
+
+```text
+[ requested_by admin ]                         [ secondary admin ]
+        │                                              │
+        │ 1. 기존 admin 페이지에서 액션 시도                │
+        │    (e.g. /admin/users/:id role 변경)         │
+        │                                              │
+        │ 2. 백엔드: 게이트 ON → framework INSERT       │
+        │    202 Accepted + APPROVAL_REQUIRED          │
+        │                                              │
+        │ 3. Frontend: toast + /admin/approvals redirect │
+        │                                              │
+        │ 4. EmailService.send(secondary 후보 ADMIN)   │
+        │    제목: "[승인 요청] role_change …"           │
+        │                                              │
+        │                                              │ 5. 이메일 또는 /admin/approvals
+        │                                              │    pending 배지 → 상세 페이지
+        │                                              │
+        │                                              │ 6. payload + reason 검토
+        │                                              │
+        │                                              │ 7a. POST /approve {decisionReason?}
+        │                                              │     → action 실행 + status=APPROVED
+        │                                              │
+        │                                              │ 7b. POST /reject {decisionReason}
+        │                                              │     → action 미실행 + status=REJECTED
+        │                                              │
+        │ 8. 결과 알림 이메일 (granted/rejected)         │
+        │                                              │
+        ▼                                              ▼
+    [ /admin/approvals 결과 row ]              [ /admin/approvals 결정 history ]
+```
+
+**취소 (requested_by 본인)**: `DELETE /api/admin/approvals/:id` → status=CANCELLED, audit row 미발행 (KISS, §6.4.6).
+
+**만료 (system)**: `expires_at <= NOW()` 자동 EXPIRED + `admin.approval.expired` audit. requested_by에게 알림.
+
+### 16.4 `/admin/approvals` 페이지
+
+#### 16.4.1 진입 권한
+
+`hasRole('ADMIN')` (보안 게이트). AUDITOR는 read-only로 목록 조회 가능 (Legal Hold 일관 — `/admin/legal-holds` AUDITOR 정책).
+
+#### 16.4.2 목록 (`/admin/approvals`)
+
+| 컬럼 | 비고 |
+|---|---|
+| 액션 | action_type 라벨 (`사용자 권한 변경` / `휴지통 영구 삭제` / `보존 기간 변경` 등) |
+| 요약 | payload_json에서 추출 (e.g. `userId → toRole`, `N개 항목 영구삭제`, `30일 → 14일`) |
+| 요청자 / 요청일 | requested_by.displayName · requested_at |
+| 만료 | expires_at, 임박(1일 이내) 노란 배지 |
+| 상태 | REQUESTED / APPROVED / REJECTED / CANCELLED / EXPIRED 필터 |
+| 액션 | 상세 / 승인 (secondary 가능) / 거부 / 취소 (requested_by 본인) |
+
+필터: action_type, 요청자, 상태, 만료 임박.
+
+#### 16.4.3 상세 페이지 (`/admin/approvals/:id`)
+
+- 메타 (전체 필드)
+- payload_json 풀이 (action_type별 친화적 표시)
+- decision_reason 입력 textarea (승인/거부)
+- 결정 버튼: 승인 / 거부 / 취소 (상태/권한별)
+- 관련 audit timeline (request → expired/granted/rejected)
+
+#### 16.4.4 알림 (EmailService 재사용)
+
+| 트리거 | 수신자 | 내용 |
+|---|---|---|
+| status=REQUESTED 진입 | 모든 ADMIN (requested_by 제외) | "[승인 요청] {action_type}" + payload 요약 + 만료일 |
+| status=APPROVED | requested_by | "[승인됨] {action_type}" + secondary + decision_reason |
+| status=REJECTED | requested_by | "[거부됨] {action_type}" + secondary + decision_reason (필수) |
+| status=EXPIRED | requested_by | "[만료] {action_type}" + 재요청 안내 |
+
+EmailService 재사용 — ADR #42/45 패턴, async fire-and-forget. SMTP 실패는 ERROR 로그만 (audit_log에 발송 실패 기록 안 함, 별도 운영 모니터링 영역).
+
+### 16.5 운영 런북 진입 (긴급 액션 절차)
+
+> **베타 운영 런북** (§15) 미반영 항목 — Dual-approval 활성화 시 §15에 sub-section 추가 권장.
+
+#### 16.5.1 일반 흐름
+
+1. 운영 액션 요청 발생 (e.g. 사용자 `xxx`를 ADMIN으로 승격)
+2. 운영자 A가 `/admin/users/:id`에서 role 변경 시도 → 202 + 토스트 → `/admin/approvals` redirect
+3. 운영자 A가 사내 채널/메일로 운영자 B에게 검토 요청 (자동 알림 외 명시 communication 권장)
+4. 운영자 B가 payload + reason 검증 (티켓 ID 또는 사내 정책 부합 여부) → 승인 또는 거부
+5. APPROVED → 즉시 action 실행 + 양쪽에 알림 → 종료
+
+#### 16.5.2 긴급 우회 (게이트 일시 OFF)
+
+운영 책임자 결정 하에:
+1. `application-prod.yml`에서 해당 action_type 게이트 false로 변경
+2. 운영 노트에 사유 + 시점 기록 (사내 위키 또는 운영 채널 archive)
+3. action 즉시 실행 (기존 흐름)
+4. 게이트 true로 복원
+5. audit_log에 game-changer 이벤트 흔적 (운영 cleanup 정책 변경 audit — 별도 enum 미존재, application 시작 시 `app.dual-approval.*` 값을 INFO 로그로 출력하므로 그것이 운영 trail 시작점)
+
+> 빈번한 우회는 게이트 자체의 정책 적합성 재검토 신호.
+
+#### 16.5.3 만료 누적 모니터링
+
+`/admin/approvals?status=EXPIRED` 정기 점검. 만료가 빈번하면:
+- TTL이 너무 짧음 → `app.dual-approval.ttl-days` 조정
+- secondary 알림이 누락됨 → EmailService 헬스체크
+- 운영자 N명이 너무 적음 → ADMIN 운영자 추가
+
+### 16.6 v1.x 진입 시 작업 분해
+
+→ `dev/active/v1x-confirm-2admin-design/` plan/tasks 참조. docs/03 §6.4.9 14단계와 동일.

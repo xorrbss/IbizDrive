@@ -393,10 +393,13 @@
 | `PERMISSION_ADMIN` | 권한 부여/회수 | POST/DELETE `/api/:resource/:id/permissions` |
 | **`PURGE`** | **영구 삭제 (소프트 → 완전 제거)** | **DELETE `/api/trash/:id`, DELETE `/api/trash`** |
 | **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* | **Legal Hold 지정/해제** | **POST/DELETE `/api/admin/legal-holds/...`** *(v2.x deferred)* |
+| **`APPROVE_ADMIN_ACTION`** *(v1.x — ADR #47)* | **Pending admin approval secondary 결정** | **POST `/api/admin/approvals/:id/approve`, POST `/api/admin/approvals/:id/reject`** *(v1.x deferred)* |
 
 > `PURGE`는 회복 불가 액션이므로 별도 권한으로 분리. **시스템 ROLE `ADMIN`만 보유** (§3.2.5 참조). `DELETE` 권한이 있어도 `PURGE`는 자동 부여되지 않음.
 >
-> `MANAGE_LEGAL_HOLD`는 **시스템 ROLE `ADMIN`만 보유** (PURGE 일관). active hold **조회**는 `AUDITOR`도 가능(read-only). dual-approval 게이트(§6.3) 활성 환경에서는 release 시 secondary admin 별도 승인 필요.
+> `MANAGE_LEGAL_HOLD`는 **시스템 ROLE `ADMIN`만 보유** (PURGE 일관). active hold **조회**는 `AUDITOR`도 가능(read-only). dual-approval 게이트(§6.4 framework, ADR #46/#47) 활성 환경에서는 release 시 secondary admin 별도 승인 필요.
+>
+> `APPROVE_ADMIN_ACTION`은 **시스템 ROLE `ADMIN`만 보유**. self-approval 차단(§6.4.4): secondary ≠ requested_by, role_change 시 secondary ≠ payload.userId. 자기 요청의 list/cancel은 권한 없이 가능, secondary 결정만 본 enum 보유자.
 
 ### 3.2 Preset × 권한 매트릭스
 
@@ -417,7 +420,7 @@
 |---|---|
 | `MEMBER` | 노드별 preset만 적용 (별도 가산 없음) |
 | `AUDITOR` | 모든 노드에 `READ` (감사 페이지 한정 — `/api/admin/*` 일부) + audit_log 조회 |
-| `ADMIN` | 전 노드 admin preset + **`PURGE`** + 사용자 관리 (`PATCH /api/admin/users/:id`) + **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* |
+| `ADMIN` | 전 노드 admin preset + **`PURGE`** + 사용자 관리 (`PATCH /api/admin/users/:id`) + **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* + **`APPROVE_ADMIN_ACTION`** *(v1.x — ADR #47)* |
 
 ### 3.3 Subject 유형
 
@@ -532,6 +535,10 @@ type AuditEventType =
   | 'admin.legal_hold.released'       // v2.x — ADR #46 (placeholder enum 활성화)
   | 'admin.legal_hold.expired'        // v2.x — ADR #46 신규 (expiration cron, actor_id=NULL)
   | 'admin.legal_hold.violation_blocked' // v2.x — ADR #46 신규 (차단된 mutation 시도, actor=시도자)
+  | 'admin.approval.requested'        // v1.x — ADR #47 신규 (dual-approval 1단계, actor=requested_by, target=admin_approval, metadata={action_type, payload})
+  | 'admin.approval.granted'          // v1.x — ADR #47 신규 (secondary 승인 + action 실행, actor=secondary, metadata={primaryApproverId, action_type, decision_reason})
+  | 'admin.approval.rejected'         // v1.x — ADR #47 신규 (secondary 거부, action 미실행, actor=secondary, metadata.decision_reason 필수)
+  | 'admin.approval.expired'          // v1.x — ADR #47 신규 (TTL 초과 자동 expire, actor_id=NULL, metadata.trigger='system.expiration')
   | 'admin.department.created'      // Wave 2 T4 활성화 (admin-department-crud, 2026-05-06) — POST /api/admin/departments
   | 'admin.department.updated'      // Wave 2 T4 활성화 — PATCH (rename + reactivate 흡수, before/after JSON)
   | 'admin.department.deactivated'  // Wave 2 T4 활성화 — PATCH isActive=false (제재 분기)
@@ -813,6 +820,159 @@ properties: `app.legal-hold.dual-approval.enabled` (default=false).
 6. `LegalHoldController`/`LegalHoldService` + dual-approval 분기 + expiration cron
 7. Frontend: `/admin/legal-holds` 페이지 (목록/상세/place/release/approve), file/folder detail에 "Legal Hold" 배지 + 차단 토스트, RightPanel에 active hold 메타 카드
 8. CLAUDE.md §3 핵심 원칙 6 (DB 제약이 진실의 출처) 정합 — cache flag 동기화 invariant를 트랜잭션으로 강제, mutation 가드 service-level (DB CHECK 미사용 — folders.legal_hold가 boolean이라 CHECK로 cascade 의미 표현 불가, 코드 가드 + 트랜잭션이 진실)
+
+### 6.4 Dual-Approval Framework (관리자 파괴적 액션 보호)
+
+> **Status: v1.x deferred** (docs/00 §5 ADR #47). 본 절은 **설계 명세 — 코드 0줄**. v1.x 진입 시 `dev/active/v1x-confirm-2admin-design/` plan 그대로 실행. Legal Hold dual-approval(§6.3.9)은 본 framework 도입 시 이전(ADR #46 supersede 부분).
+
+#### 6.4.1 정책 개요
+
+Dual-approval = **파괴적 admin 액션의 의도 검증 게이트**. 단일 admin 실수 또는 단독 악의로 인한 데이터/권한 사고를 방지하기 위해 secondary admin 동의를 강제하는 워크플로.
+
+- **단일 admin 액션** (default, 게이트 OFF): 기존 controller 즉시 실행 — 일반 운영 흐름
+- **Dual-approval 활성** (게이트 ON): controller가 framework에 INSERT → 1단계 응답 (202 `APPROVAL_REQUIRED`) → secondary 알림 → 2단계 결정(승인/거부) → action 실행 또는 미실행
+
+설계 원칙:
+
+1. **단일 framework, N개 액션** — 각 액션마다 ad-hoc 컬럼 분산 회피 (ADR #47 generic 결정)
+2. **Per-action config 게이트** — 환경별 점진 활성화 (`app.dual-approval.{role-change|trash-purge|retention-change}.enabled`)
+3. **Self-approval 차단** — 단일 admin 우회 봉쇄
+4. **TTL + 만료 cron** — pending 누적 회피 (default 7일, share-expired/permission-expired/legal-hold-expiration cron 동형)
+5. **Audit append-only** — 4종 enum (requested/granted/rejected/expired)으로 1차 적용 액션의 의사결정 trail 보존
+
+#### 6.4.2 데이터 모델 (요약)
+
+→ docs/02 §2.11 `pending_admin_approvals` 테이블 + 인덱스 4종 + state machine + payload_json 스키마 (ADR #47).
+
+state machine 요약:
+
+```text
+REQUESTED → APPROVED  (secondary 승인 + action 실행)
+         → REJECTED  (secondary 거부)
+         → CANCELLED (requested_by 본인 취소)
+         → EXPIRED   (TTL 초과, system)
+```
+
+#### 6.4.3 Tier 0 적용 액션 매트릭스 (1차)
+
+| action_type | 위험도 | 진입점 (기존 controller) | payload_json |
+|---|---|---|---|
+| `role_change` | 보안 critical (ADMIN 부여 = 시스템 게이트 우회) | `PATCH /api/admin/users/:id` (role 필드 변경 요청) | `{userId, fromRole, toRole, reason}` |
+| `trash_purge` | 회복 불가 | `DELETE /api/admin/trash/:type/:id`, `POST /api/admin/trash/bulk` (action='purge') | `{type, ids[], reason?}` |
+| `retention_change` | 데이터 손실 (감소 시 hard purge 폭증) | `PUT /api/admin/trash/policy` (deferred — wave2-trash-policy-viewer mutation 후속) | `{fromDays, toDays, reason}` |
+
+> **Tier 1 (v1.x 후속)**: `cron_toggle` (admin-cron-toggle #102 backlog "파괴적 토글 보호"), `user_deactivate`. 추가 액션은 framework 호환 — controller 진입점에서 `pendingAdminApprovalService.enqueue(action_type, payload)` 호출만 추가.
+>
+> **N/A (이관)**: `legal_hold_release` — ADR #46이 이미 자기 dual-approval을 정의했으나, v1.x ADR #47 활성화 시 framework로 이관 (legal_holds.dual_approval_* 컬럼 deprecated, payload_json='legal_hold_release'로 재작성).
+
+#### 6.4.4 Self-approval 차단
+
+코드 가드 (DB CHECK는 NULL/non-NULL 조합만 표현 가능):
+
+- 모든 action_type 공통: `secondary_approver_id ≠ requested_by`
+- `role_change`: secondary ≠ `payload.userId` (target 사용자가 자기 role 변경 승인 차단). 특히 누군가 자기 자신을 ADMIN으로 만드려는 시도 봉쇄
+- `trash_purge`/`retention_change`: 추가 체크 없음 (target은 시스템 자료/정책)
+- 위반 시 403 `APPROVAL_SELF`
+
+#### 6.4.5 API 계약 (v1.x — wire format)
+
+> **활성화 = v1.x**. 본 절은 endpoint 설계 reserve.
+
+```text
+GET    /api/admin/approvals?status=REQUESTED&actionType=role_change  # 목록 + 필터
+GET    /api/admin/approvals/:id                                      # 단건 상세 (payload_json 포함)
+POST   /api/admin/approvals/:id/approve  {decisionReason?}           # secondary 승인 → action 실행
+POST   /api/admin/approvals/:id/reject   {decisionReason}            # secondary 거부 (reason 필수)
+DELETE /api/admin/approvals/:id                                      # requested_by 본인 cancel
+```
+
+**기존 controller 진입점 변형** (게이트 활성 시):
+
+```text
+PATCH /api/admin/users/:id (role 필드 변경)
+  ├─ app.dual-approval.role-change.enabled=false → 즉시 실행 (기존 흐름)
+  └─ app.dual-approval.role-change.enabled=true:
+      ├─ pendingAdminApprovalService.enqueue('role_change', {userId, fromRole, toRole, reason})
+      ├─ 202 Accepted + `APPROVAL_REQUIRED` envelope, details: {approvalId, expiresAt}
+      └─ secondary 후보 ADMIN 들에게 EmailService.send (ADR #42/45 재사용)
+
+POST /api/admin/approvals/:id/approve (secondary)
+  ├─ self-approval 차단 검사 → 403 APPROVAL_SELF
+  ├─ status 검증 → 409 APPROVAL_ALREADY_DECIDED
+  ├─ 트랜잭션 진입 + SELECT FOR UPDATE
+  ├─ payload_json deserialize → action 실행 (기존 service 호출)
+  ├─ status=APPROVED, decided_at=NOW(), secondary_approver_id 기록
+  └─ audit emit: admin.approval.granted (+ action 자체 audit는 기존 listener가 발행)
+```
+
+**거부 응답**:
+- 400 VALIDATION_ERROR (decisionReason 길이 초과 등)
+- 403 PERMISSION_DENIED (`APPROVE_ADMIN_ACTION` 미보유)
+- 403 `APPROVAL_SELF` (self-approval)
+- 404 `APPROVAL_NOT_FOUND`
+- 409 `APPROVAL_ALREADY_DECIDED`
+
+#### 6.4.6 Audit 이벤트 매핑
+
+| 이벤트 | actor_id | target_type | target_id | metadata |
+|---|---|---|---|---|
+| `admin.approval.requested` | requested_by | `admin_approval` (신규 audit target_type) | approvalId | `{action_type, payload}` |
+| `admin.approval.granted` | secondary_approver_id | `admin_approval` | approvalId | `{primaryApproverId, action_type, decision_reason}` |
+| `admin.approval.rejected` | secondary_approver_id | `admin_approval` | approvalId | `{primaryApproverId, action_type, decision_reason}` (reason 필수) |
+| `admin.approval.expired` | NULL (system) | `admin_approval` | approvalId | `{trigger: 'system.expiration', primaryApproverId, action_type, originalExpiresAt}` |
+
+> **`admin.approval.cancelled` enum 미도입** (KISS): requested_by 본인 cancel은 audit row 없이 metadata로만 기록. 자가 취소는 보안 이벤트가 아니라 운영 이벤트, audit_log 폭증 회피. 운영자가 history 추적 필요시 `pending_admin_approvals` 테이블 직접 조회 (CANCELLED status 필터).
+>
+> **action 자체의 audit emit은 별도** — `role_change`가 APPROVED 시 실행되면 기존 `ADMIN_ROLE_CHANGED` audit이 listener로 emit됨. 본 framework는 governance trail만 담당.
+
+#### 6.4.7 Per-action config 게이트
+
+```yaml
+app.dual-approval:
+  role-change.enabled: false        # default
+  trash-purge.enabled: false
+  retention-change.enabled: false
+  ttl-days: 7                       # pending 만료 기간
+
+# v1.x 후속 (Tier 1)
+# app.dual-approval.cron-toggle.enabled: false
+# app.dual-approval.user-deactivate.enabled: false
+# app.dual-approval.legal-hold-release.enabled: false  # ADR #46 이관 시
+```
+
+환경별 활용:
+- **dev/staging**: 기본 false, 테스트 시점에 개별 활성화
+- **prod (외부 출시 전)**: `role-change` 우선 활성화 (보안 critical), 그 다음 `trash-purge` / `retention-change`
+- **회피 (긴급 운영)**: 게이트 OFF로 일시 복귀 + audit 운영 노트 (운영 책임자 결정)
+
+#### 6.4.8 Approval expiration cron
+
+`app.dual-approval.expiration.{enabled, cron, batch-size, zone}` properties (default `enabled=false`).
+
+`expires_at <= NOW() AND status='REQUESTED'` row 자동 EXPIRED transition + `admin.approval.expired` audit (`actor_id=NULL`, `metadata.trigger='system.expiration'`). share-expired-cron / permission-expired-cron / legal-hold-expiration-cron 동형 운영.
+
+운영 권장:
+- staging/prod에서 `enabled=true` + `cron='0 */15 * * * *'` (15분 주기)
+- 만료 임박 approval은 admin 대시보드에서 별도 카드로 노출 (KPI 추가 후보)
+
+#### 6.4.9 v1.x 진입 시 작업 분해
+
+→ `dev/active/v1x-confirm-2admin-design/v1x-confirm-2admin-design-tasks.md` 참조. 핵심 단계:
+
+1. V_ 마이그레이션: `pending_admin_approvals` + 인덱스 4개 (docs/02 §2.11)
+2. `Permission.APPROVE_ADMIN_ACTION` enum 추가 + `IbizDrivePermissionEvaluator` ROLE=ADMIN 매핑
+3. `frontend/src/types/permission.ts` mirror 갱신
+4. `AuditEventType` 신규 4종 추가 (`admin.approval.requested/granted/rejected/expired`)
+5. `frontend/src/types/audit.ts` mirror 갱신
+6. `PendingAdminApproval` entity + repository (`findByActionTypeAndStatus`, `findExpiredRequested`, `lockById`)
+7. `PendingAdminApprovalService` (enqueue/approve/reject/cancel/expire) + payload_json deserializer per action_type
+8. `PendingAdminApprovalController` + email listener (secondary 알림 + 거부 알림 + 만료 알림)
+9. 기존 controller 진입점 변형: `AdminUserController.updateUser` (role_change 분기), `AdminTrashController` (purge 분기), `AdminTrashPolicyController` PUT (retention_change 분기)
+10. `PendingAdminApprovalExpirationJob` (`@Scheduled`, share-expired-cron 동형)
+11. ADR #46 보강: `legal_holds.dual_approval_*` 컬럼 deprecation V_ 마이그레이션 + Legal Hold release를 framework로 이관 (payload_json='legal_hold_release')
+12. Frontend: `/admin/approvals` 페이지 (목록/상세/approve/reject/cancel), 기존 admin 페이지에 pending 알림 배지, 202 응답 처리 (toast + redirect)
+13. 단위/통합/e2e 테스트
+14. 운영 런북 sub-section (docs/04 §15)
 
 ---
 

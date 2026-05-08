@@ -393,7 +393,106 @@ CREATE INDEX idx_folders_legal_hold ON folders(legal_hold) WHERE legal_hold = TR
 - `LEGAL_HOLD_VIOLATION` 에러 코드 추가 (docs/02 §8)
 - `AuditEventType` placeholder 2종(`ADMIN_LEGAL_HOLD_PLACED`/`RELEASED`)을 emission 활성화 + 신규 2종(`ADMIN_LEGAL_HOLD_EXPIRED`, `ADMIN_LEGAL_HOLD_VIOLATION_BLOCKED`) 추가
 
-### 2.11 ER 요약
+### 2.11 pending_admin_approvals (v1.x reserved — ADR #47)
+
+> **Status: v1.x deferred** (docs/00 §5 ADR #47, docs/03 §6.4 일반 명세, docs/04 §16 운영 명세). 실제 V_ 마이그레이션 미작성. 본 절은 설계 reserve — v1.x 진입 시 그대로 적용.
+
+**메타 테이블 — Generic dual-approval framework** (Tier 0 = role 변경 / trash purge / retention 변경):
+
+```sql
+CREATE TABLE pending_admin_approvals (
+  id                    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  action_type           VARCHAR(40) NOT NULL,   -- 'role_change' | 'trash_purge' | 'retention_change' | (v1.x+ 'cron_toggle' | 'user_deactivate' | 'legal_hold_release')
+  payload_json          JSONB NOT NULL,         -- action-specific args, schema는 application-level validation
+  requested_by          UUID NOT NULL REFERENCES users(id),
+  requested_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  status                VARCHAR(20) NOT NULL DEFAULT 'REQUESTED',
+  secondary_approver_id UUID REFERENCES users(id),
+  decided_at            TIMESTAMPTZ,
+  decision_reason       TEXT,
+  expires_at            TIMESTAMPTZ NOT NULL,   -- requested_at + app.dual-approval.ttl-days
+
+  CHECK (status IN ('REQUESTED', 'APPROVED', 'REJECTED', 'CANCELLED', 'EXPIRED')),
+  -- terminal status면 decided_at NOT NULL, REQUESTED면 NULL
+  CHECK ((decided_at IS NULL) = (status = 'REQUESTED')),
+  -- secondary는 APPROVED/REJECTED일 때만 set (CANCELLED는 requested_by 본인, EXPIRED는 system)
+  CHECK ((secondary_approver_id IS NOT NULL) = (status IN ('APPROVED', 'REJECTED')))
+);
+
+-- pending 목록 (admin 알림 페이지)
+CREATE INDEX idx_pending_approvals_requested
+  ON pending_admin_approvals(action_type, status)
+  WHERE status = 'REQUESTED';
+
+-- 요청자 이력 (취소 가능 항목 조회)
+CREATE INDEX idx_pending_approvals_by_requester
+  ON pending_admin_approvals(requested_by, requested_at DESC);
+
+-- expiration cron 후보 스캔
+CREATE INDEX idx_pending_approvals_expires
+  ON pending_admin_approvals(expires_at)
+  WHERE status = 'REQUESTED';
+
+-- audit join 헬퍼 (decided 항목 history)
+CREATE INDEX idx_pending_approvals_decided
+  ON pending_admin_approvals(decided_at DESC)
+  WHERE status IN ('APPROVED', 'REJECTED');
+```
+
+**State machine**:
+
+```text
+                        ┌──────────────► CANCELLED  (requested_by 본인 취소)
+                        │                [terminal]
+                        │
+[ controller 진입 ]      │     ┌──────► APPROVED   (secondary 승인 + action 실행)
+        │              │     │        [terminal]
+        │              │     │
+        ▼              │     │
+   REQUESTED ──────────┼─────┤
+   (status=default)   │     │
+        │              │     └──────► REJECTED   (secondary 거부 + action 미실행)
+        │              │              [terminal]
+        │              │
+        └──────────────┴──────► EXPIRED    (expiration cron, expires_at <= NOW)
+                                          [terminal, actor_id=NULL]
+```
+
+**Transition 규칙** (애플리케이션 레벨 보증, 트랜잭션 + `SELECT FOR UPDATE`):
+
+- `REQUESTED → APPROVED`: secondary 승인 → 트랜잭션 내 `pending_admin_approvals` UPDATE + payload_json deserialize → action 실행(role 변경/purge/retention 등) + audit emit. 실패 시 rollback → status=REQUESTED 복귀.
+- `REQUESTED → REJECTED`: secondary 거부 + decision_reason set. action 미실행.
+- `REQUESTED → CANCELLED`: requested_by 본인이 DELETE. action 미실행.
+- `REQUESTED → EXPIRED`: expiration cron이 `expires_at <= NOW()` row UPDATE. action 미실행. actor_id=NULL.
+- 기타 transition은 모두 거부 (`APPROVAL_ALREADY_DECIDED` 409).
+
+**Self-approval 차단 invariant** (코드 가드, DB CHECK 부족 — secondary는 NULL/non-NULL 조합만 표현):
+
+- `secondary_approver_id ≠ requested_by` (모든 action_type 공통)
+- `action_type='role_change'` 추가 체크: `secondary_approver_id ≠ payload.userId` (target 사용자가 자기 role 변경 승인 차단)
+- `action_type='trash_purge'/'retention_change'`: 추가 체크 없음 (target은 시스템 자료/정책이라 self 정의 불가)
+
+**Action_type별 payload 스키마**:
+
+| action_type | payload_json 필드 |
+|---|---|
+| `role_change` | `{userId, fromRole, toRole, reason}` |
+| `trash_purge` | `{type: 'file'\|'folder', ids: [UUID, ...], reason?}` (single은 ids.length=1, bulk는 N) |
+| `retention_change` | `{fromDays, toDays, reason}` |
+| `legal_hold_release` (ADR #46 이관) | `{holdId, releaseReason}` |
+| (v1.x+) `cron_toggle` | `{cronKey, fromEnabled, toEnabled, reason?}` |
+| (v1.x+) `user_deactivate` | `{userId, reason}` |
+
+**TTL** (`app.dual-approval.ttl-days`, default 7일): `expires_at = requested_at + INTERVAL '7 days'`. 만료 cron이 자동 EXPIRED transition.
+
+**v1.x 진입 시 추가 작업** (dev/active/v1x-confirm-2admin-design/ 참조):
+- ADR #46 `legal_holds.dual_approval_*` 컬럼 deprecation 계획 (V_ 마이그레이션 — column drop 또는 NULL 강제, payload_json='legal_hold_release'로 이관)
+- `Permission.APPROVE_ADMIN_ACTION` enum 추가 (docs/03 §3.1)
+- 신규 audit enum 4종 (docs/03 §4.1)
+- 신규 에러 코드 4종 (docs/02 §8)
+- `pending_admin_approvals` entity + repository + service + controller + expiration cron + email listener
+
+### 2.12 ER 요약
 
 ```text
 users ──┬── departments
@@ -408,8 +507,11 @@ users ──┬── departments
         │
         ├── audit_log (actor)
         │
-        └── legal_holds (placed_by, target=user) ─── files/folders (target, cache flag)
-            *v2.x reserved — ADR #46*
+        ├── legal_holds (placed_by, target=user) ─── files/folders (target, cache flag)
+        │   *v2.x reserved — ADR #46*
+        │
+        └── pending_admin_approvals (requested_by, secondary_approver_id)
+            *v1.x reserved — ADR #47*
 ```
 
 ---
@@ -2221,6 +2323,10 @@ GET /api/departments/search?q=eng&limit=20
 | 423 | FILE_LOCKED | 파일 잠김 (v1.x, pessimistic) | 잠금 해제 안내 |
 | 423 | LEGAL_HOLD_VIOLATION | Legal Hold 활성 — mutation 차단 (v2.x, ADR #46) | "법적 보존으로 인해 작업할 수 없습니다" 토스트 + hold 사유/지정자/지정일 details 노출 (관리자 권한자 한정) |
 | 409 | LEGAL_HOLD_RECENTLY_RELEASED | 30일 이내 release된 target 재지정 시도 (v2.x, ADR #46) | "최근 해제된 hold가 있어 30일간 재지정 불가" 토스트 + 재지정 가능 일자 표시 |
+| 202 | APPROVAL_REQUIRED | dual-approval 게이트 활성 — 1단계 응답, secondary 결정 대기 (v1.x, ADR #47) | "승인 요청을 등록했습니다. secondary admin 결정을 대기 중입니다" 토스트 + `/admin/approvals` redirect, details: `{approvalId, expiresAt}` |
+| 403 | APPROVAL_SELF | secondary가 self (requested_by 또는 action target) (v1.x, ADR #47) | "본인 요청은 승인할 수 없습니다" 인라인 에러 |
+| 404 | APPROVAL_NOT_FOUND | approval row 미존재 또는 다른 사용자 cancel 시도 (v1.x, ADR #47) | 토스트 + 목록 재조회 |
+| 409 | APPROVAL_ALREADY_DECIDED | terminal status(APPROVED/REJECTED/CANCELLED/EXPIRED)에 재결정 시도 (v1.x, ADR #47) | "이미 결정된 요청입니다" 토스트 + 목록 재조회 |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |
