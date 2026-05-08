@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-08 — 🏁 wave2-admin-trash-format-size 트랙 종료 (admin trash 페이지 size 표시 formatBytes 적용)
+
+### 범위
+
+`/admin/trash/all` 페이지가 `${item.sizeBytes} B`로 raw 바이트를 렌더 — 5GB 폴더가 "5234567890 B"로 보여 운영자 가독성 ↓. 기존 `formatBytes` 유틸 재사용으로 KB/MB/GB로 정규화 표시. PR #103 (folder subtree size) closure 후 자연 따라오는 UX 마무리.
+
+### 변경 핵심
+
+- `app/admin/trash/all/page.tsx`: `formatBytes` import + 렌더를 `formatBytes(item.sizeBytes)`로 교체. 셀에 `tabular-nums` 클래스 추가 (숫자 정렬 시각적 안정).
+- `app/admin/trash/all/page.test.tsx`: 신규 케이스 1개 — `12345 B` → `12 KB` 렌더 검증 + raw "12345 B" 미노출 회귀 가드.
+
+### 검증
+
+- `pnpm typecheck` exit 0, `pnpm lint` exit 0.
+- `pnpm test --run src/app/admin/trash/all/page.test.tsx` 14 tests passed.
+- backend 영향 0, wire 무변경.
+
+### 결정/편차
+
+- 기존 `formatBytes` 그대로 재사용 (DRY) — admin-storage-overview / admin-dashboard와 동일 헬퍼.
+- `tabular-nums` 추가 — 행 별 size 자릿수 정렬 안정 (소소한 polish).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / 권한 grant/revoke direct CRUD / quota / progress streaming(SSE/WS) / chunked client.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 wave2-trash-retention-config 트랙 종료 (휴지통 보존 기간 외부화)
 
 ### 범위
