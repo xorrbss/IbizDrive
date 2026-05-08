@@ -326,8 +326,13 @@ function TrashRow({
       <td className="px-3 py-2">{item.name}</td>
       <td className="px-3 py-2">{item.type === 'file' ? '파일' : '폴더'}</td>
       <td className="px-3 py-2">{item.ownerEmail}</td>
-      <td className="px-3 py-2">
-        {item.originalParentName ?? <span className="text-fg-muted">(루트)</span>}
+      <td
+        className="px-3 py-2 max-w-[320px] truncate"
+        title={item.originalParentPath ?? undefined}
+      >
+        {item.originalParentPath ?? item.originalParentName ?? (
+          <span className="text-fg-muted">(루트)</span>
+        )}
       </td>
       <td className="px-3 py-2 tabular-nums">
         {item.sizeBytes != null ? formatBytes(item.sizeBytes) : '-'}

@@ -307,6 +307,11 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
   - `AdminTrashItemDto.sizeBytes`가 folder에서도 not-null로 채워진다 — 자기 자신 + 모든 하위 폴더의 file size 합. 빈 폴더는 0.
   - 단일 재귀 CTE batch lookup (`AdminTrashRepository.findFolderSubtreeSizes`) — 페이지의 trashed folder ids 전체를 한 번에 처리. depth cap 100 (cycle 방지).
   - 운영 가치: 휴지통에서 큰 폴더를 식별해 우선 복원/영구삭제 결정 가능.
+- [x] 원위치 절대 경로 (Wave 2 T9 follow-up, 2026-05-09 — full-path-resolve)
+  - `AdminTrashItemDto.originalParentPath`가 부모 폴더의 절대 경로(leading `/`, trailing slash 없음 — 예: `/회사/팀A/문서`)로 채워진다. 부모 row가 없으면 null이며, UI는 `originalParentName` 단일 segment를 fallback으로 표시.
+  - 단일 재귀 CTE batch lookup (`AdminTrashRepository.findFolderAncestorPaths`) — 페이지에 노출된 모든 부모 ids를 한 번에 처리. 살아있는/삭제된 부모 모두 chain 추적(휴지통 부모 row 보존 정책 활용). depth cap 100.
+  - UI: 행의 "원위치" cell이 path를 우선 표시하고 `title` tooltip으로 hover 전체 경로 노출. column max-w + truncate로 긴 경로 처리.
+  - 운영 가치: 같은 이름의 폴더가 여러 위치에 존재하는 환경에서 운영자가 항목 식별을 즉시 할 수 있다 (이전에는 단일 segment name만 노출).
 - [x] 삭제일 범위 필터 (Wave 2 T9 follow-up, 2026-05-08 — `deletedFrom`/`deletedTo`)
   - wire: `?deletedFrom=YYYY-MM-DD&deletedTo=YYYY-MM-DD` (date-only)
   - 경계: KST(`Asia/Seoul`) 기준 — `deletedFrom`은 해당일 KST 0시(inclusive), `deletedTo`는 입력일+1의 KST 0시(exclusive, 즉 입력일 KST 종일 포함). 운영자 wall-clock과 일치.
@@ -318,7 +323,7 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
       "id": "11111111-...", "name": "report.pdf", "type": "file",
       "deletedAt": "2026-05-08T03:14:00Z", "purgeAfter": "2026-06-07T03:14:00Z",
       "ownerId": "aaaa-...", "ownerEmail": "alice@example.com",
-      "originalParentId": "ffff-...", "originalParentName": "Reports",
+      "originalParentId": "ffff-...", "originalParentName": "Reports", "originalParentPath": "/회사/팀A/Reports",
       "sizeBytes": 12345,
       "deletedById": "bbbb-...", "deletedByEmail": "admin@example.com"
     }

@@ -109,4 +109,39 @@ public interface AdminTrashRepository extends JpaRepository<FileItem, UUID> {
         GROUP BY ft.root_id
         """, nativeQuery = true)
     List<Object[]> findFolderSubtreeSizes(@Param("rootIds") Collection<UUID> rootIds);
+
+    /**
+     * 주어진 leaf 폴더들의 절대 경로 일괄 조회 — full-path-resolve follow-up.
+     *
+     * <p>각 leaf id에 대해 {@code parent_id}를 따라 root까지 거슬러 올라가며 폴더 이름을 누적하여
+     * 한 번의 recursive CTE로 경로를 계산한다. 결과 형태: leading {@code /} 포함, trailing slash
+     * 없음 — 예: leaf가 root였던 폴더 X(name='회사')이면 {@code /회사}, leaf가 X 아래
+     * Y(name='팀A')이면 {@code /회사/팀A}.
+     *
+     * <p>부모 chain의 폴더 일부가 {@code deleted_at IS NOT NULL}이어도 row가 보존되는 한 그대로
+     * join 가능하다 (휴지통 항목의 부모도 hard purge 전까지 row 유지). cycle/유실 방지로 depth
+     * 100 상한. {@code Object[]}는 {@code [UUID leafId, String path]} 순서.
+     *
+     * <p>{@code leafIds}가 비어있으면 호출자가 short-circuit 해야 한다 (Postgres {@code IN ()}는
+     * 문법 오류). page 단위(max 100 row) 호출이라 cap은 페이지에 의해 자연스럽게 제한된다.
+     *
+     * <p>chain 종착: anchor에서 시작해 부모를 따라가다 {@code parent_id IS NULL}을 만난 row만
+     * SELECT한다. 부모 row가 끊겨 종착에 도달하지 못한 leaf는 결과에 포함되지 않으며 호출자가
+     * fallback({@code originalParentName} 단일 segment)으로 처리한다.
+     */
+    @Query(value = """
+        WITH RECURSIVE chain(leaf_id, current_id, name_acc, depth) AS (
+          SELECT f.id, f.parent_id, '/' || f.name, 0
+          FROM folders f WHERE f.id IN (:leafIds)
+          UNION ALL
+          SELECT c.leaf_id, p.parent_id, '/' || p.name || c.name_acc, c.depth + 1
+          FROM chain c
+          JOIN folders p ON p.id = c.current_id
+          WHERE c.depth < 100
+        )
+        SELECT leaf_id, name_acc
+        FROM chain
+        WHERE current_id IS NULL
+        """, nativeQuery = true)
+    List<Object[]> findFolderAncestorPaths(@Param("leafIds") Collection<UUID> leafIds);
 }

@@ -36,6 +36,7 @@ const PAGE_FIXTURE: AdminTrashPage = {
       ownerEmail: 'alice@example.com',
       originalParentId: 'ffffffff-ffff-ffff-ffff-ffffffffffff',
       originalParentName: 'Reports',
+      originalParentPath: '/Reports',
       sizeBytes: 1024,
       deletedById: null,
       deletedByEmail: null,

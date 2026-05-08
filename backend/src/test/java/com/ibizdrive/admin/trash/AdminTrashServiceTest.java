@@ -15,6 +15,7 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.Collection;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -232,6 +233,11 @@ class AdminTrashServiceTest {
         lenient().when(parentFolder.getId()).thenReturn(parent);
         lenient().when(parentFolder.getName()).thenReturn("Reports");
         when(folderRepository.findAllById(anyIterable())).thenReturn(List.of(parentFolder));
+        // root 부모 → CTE는 single segment "/Reports"를 반환.
+        // singletonList — `List.of(Object[]...)`는 varargs로 풀려 `List<Object>`로 추론되어
+        // 호출부에서 `Object[]` cast가 깨진다. element 1개일 때만 발생하는 함정.
+        when(adminRepo.findFolderAncestorPaths(any(Collection.class))).thenReturn(
+            Collections.singletonList(new Object[]{parent, "/Reports"}));
 
         AdminTrashPage page = service.list(
             new AdminTrashFilters(null, null, null, null, null), null, null);
@@ -243,6 +249,7 @@ class AdminTrashServiceTest {
         assertThat(dto.ownerEmail()).isEqualTo("owner@example.com");
         assertThat(dto.originalParentId()).isEqualTo(parent);
         assertThat(dto.originalParentName()).isEqualTo("Reports");
+        assertThat(dto.originalParentPath()).isEqualTo("/Reports");
         assertThat(dto.sizeBytes()).isEqualTo(12345L);
         assertThat(dto.type()).isEqualTo(TrashItemType.FILE);
     }
@@ -407,6 +414,65 @@ class AdminTrashServiceTest {
         for (AdminTrashItemDto dto : page.items()) sizesById.put(dto.id(), dto.sizeBytes());
         assertThat(sizesById).containsEntry(folderId1, 1500L);
         assertThat(sizesById).containsEntry(folderId2, 0L);
+    }
+
+    // ===== 15. originalParentPath — full-path-resolve follow-up =====
+
+    @Test
+    void list_populatesOriginalParentPath_deepHierarchy() {
+        UUID fileId = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID parent = UUID.randomUUID();
+        Instant deletedAt = Instant.parse("2026-05-04T00:00:00Z");
+
+        FileItem file = mockFile(fileId, "spec.pdf", deletedAt, owner, parent, 100L);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(file));
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
+            new User(owner, "o@x", "O", null, Role.MEMBER, true, false, OffsetDateTime.now())
+        ));
+        Folder parentFolder = org.mockito.Mockito.mock(Folder.class);
+        lenient().when(parentFolder.getId()).thenReturn(parent);
+        lenient().when(parentFolder.getName()).thenReturn("문서");
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of(parentFolder));
+        // CTE가 root까지 거슬러 누적한 다중 segment 경로를 반환.
+        when(adminRepo.findFolderAncestorPaths(any(Collection.class))).thenReturn(
+            Collections.singletonList(new Object[]{parent, "/회사/팀A/문서"}));
+
+        AdminTrashPage page = service.list(
+            new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        AdminTrashItemDto dto = page.items().get(0);
+        assertThat(dto.originalParentPath()).isEqualTo("/회사/팀A/문서");
+        // path 계산이 실패해도 fallback 가능하도록 single-segment name은 별도 유지.
+        assertThat(dto.originalParentName()).isEqualTo("문서");
+    }
+
+    @Test
+    void list_skipsAncestorPathQuery_whenNoParents() {
+        // 모든 항목이 root였던 경우 — parent set이 비어 있어 CTE 호출 자체가 없어야 한다
+        // (Postgres IN ()는 문법 오류이며, subtree-size 동일 short-circuit 정합).
+        UUID owner = UUID.randomUUID();
+        FileItem rootFile = mockFile(UUID.randomUUID(), "f", Instant.parse("2026-05-01T00:00:00Z"),
+            owner, null, 1L);
+
+        when(adminRepo.findTrashedFilesAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(rootFile));
+        when(adminRepo.findTrashedFoldersAdminPage(any(), any(), any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(userRepository.findAllById(anyIterable())).thenReturn(List.of(
+            new User(owner, "o@x", "O", null, Role.MEMBER, true, false, OffsetDateTime.now())
+        ));
+        when(folderRepository.findAllById(anyIterable())).thenReturn(List.of());
+
+        AdminTrashPage page = service.list(
+            new AdminTrashFilters(null, null, null, null, null), null, null);
+
+        verify(adminRepo, never()).findFolderAncestorPaths(any());
+        assertThat(page.items().get(0).originalParentPath()).isNull();
     }
 
     @Test
