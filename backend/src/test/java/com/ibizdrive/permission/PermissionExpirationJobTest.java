@@ -43,8 +43,8 @@ class PermissionExpirationJobTest {
         cronPolicyRepository = mock(CronPolicyRepository.class);
         // 기본은 활성 — P4 가드 통과시켜 기존 테스트 의미 보존.
         when(cronPolicyRepository.isEnabled("permission.expire")).thenReturn(true);
-        // batchSize=200 (default); enabled/cron/zone은 빈 등록 게이트라 unit test에서는 무관.
-        PermissionExpirationProperties props = new PermissionExpirationProperties(true, 200, null, null);
+        // batchSize=200 (default); cron/zone은 본 unit test와 무관.
+        PermissionExpirationProperties props = new PermissionExpirationProperties(200, null, null);
         job = new PermissionExpirationJob(permissionService, permissionRepository, props, cronPolicyRepository);
     }
 
@@ -121,7 +121,7 @@ class PermissionExpirationJobTest {
     @Test
     void run_passesBatchSizeToRepository() {
         // batchSize=50으로 새 job 생성해 PageRequest 한도가 properties와 일치하는지 검증.
-        PermissionExpirationProperties props = new PermissionExpirationProperties(true, 50, null, null);
+        PermissionExpirationProperties props = new PermissionExpirationProperties(50, null, null);
         PermissionExpirationJob customJob =
             new PermissionExpirationJob(permissionService, permissionRepository, props, cronPolicyRepository);
         when(permissionRepository.findExpiredActiveIds(any(Instant.class), any(Pageable.class)))

@@ -5,20 +5,18 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 /**
  * A7 hard purge 설정 (application.yml {@code app.purge.*}).
  *
- * <p>운영 기본값은 비활성({@code enabled=false}) — 명시적 활성화 후 운영 투입.
- * 테스트는 {@code @TestPropertySource("app.purge.enabled=...")}로 override.
+ * <p>schedule/zone/maxPerRun만 정의. enabled 토글은 admin-cron-toggle 트랙(2026-05-08)에서
+ * {@code cron_policy} DB 테이블로 이관 — {@link HardPurgeJob}이 매 tick {@code CronPolicyRepository}
+ * 를 lookup해 skip 여부를 결정한다.
  *
- * <p>{@link CorsProperties}와 동일하게 {@code @ConfigurationProperties} record 패턴 — placeholder
- * resolver 없이 Binder API로 안전 바인딩.
+ * <p>{@code @ConfigurationProperties} record 패턴 — placeholder resolver 없이 Binder API로 안전 바인딩.
  *
- * @param enabled    job + scheduling 활성 여부. {@code false}면 {@link HardPurgeJob} 빈 미등록.
  * @param maxPerRun  단일 run에서 처리할 files+folders 합산 한도. 초과 시 {@link PurgeResult#truncated()}=true.
  * @param cron       Spring cron 표현식 (6필드: 초 분 시 일 월 요일). 운영 기본 매일 자정.
  * @param zone       cron 평가 시간대 (java.time.ZoneId 호환).
  */
 @ConfigurationProperties(prefix = "app.purge")
 public record HardPurgeProperties(
-    boolean enabled,
     int maxPerRun,
     String cron,
     String zone
