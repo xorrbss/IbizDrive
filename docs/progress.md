@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-05-08 — 🏁 audit-export-cap-config 트랙 종료 (audit export cap 외부화)
+
+### 범위
+
+`AuditQueryService.EXPORT_ROW_CAP` 하드코딩 상수(10_000) → `@ConfigurationProperties(prefix="app.audit.export") AuditExportProperties` 외부화. 운영자가 application.yml 수정 + 재기동만으로 cap 조정. 진정한 SQL → JSON streaming(메모리 cap 제거)은 v1.x++ 그대로.
+
+### 변경 핵심
+
+- `com.ibizdrive.audit.AuditExportProperties` (NEW) — `record(int rowCap)` + 0/음수 입력 → default 10000 보정.
+- `com.ibizdrive.audit.AuditConfig` (NEW) — `@EnableConfigurationProperties` 등록 (StorageConfig 패턴 동형, audit 후속 properties 추가용 anchor).
+- `AuditQueryService`: `static final EXPORT_ROW_CAP` 제거 → 생성자에 `AuditExportProperties` 주입, instance 필드로 사용.
+- `application.yml`: `app.audit.export.row-cap: 10000` 추가.
+- 테스트:
+  - `AuditExportPropertiesTest` (NEW, 3 tests) — 양수/0/음수 보정.
+  - `AuditQueryServiceTest.TestConfig`: 생성자 호출 4-arg로 마이그.
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.audit.*"` BUILD SUCCESSFUL (3m23s).
+- wire 호환 0: cap default 10000 동일, 응답 형태 변경 0, audit metadata 변경 0.
+- frontend 영향 0.
+
+### 결정/편차
+
+- `AuditConfig` 별도 신설 — `SchedulingConfig`에 합치는 대신 audit 패키지 내부에 위치. audit 후속 properties(예: SQL streaming 임계값)도 같은 anchor에서 등록 가능하도록.
+- `EXPORT_ROW_CAP` 상수 완전 제거 — 외부 참조 0건 확인 후 안전하게 삭제 (테스트만 4-arg로 마이그).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / folder subtree size / 권한 grant/revoke direct CRUD / quota / audit SQL→JSON streaming. KST 경계 날짜 필터는 다른 세션(`feat/wave2-trash-date-filter-kst`) 진행 중.
+- audit SQL→JSON streaming 도입 시 본 트랙의 `AuditExportProperties`에 `streaming-fetch-size` 등을 추가하는 패턴.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 design-variants-tweaks 트랙 종료 (M13.1 — Variant 시스템 + TweaksPanel)
 
 ### 범위
