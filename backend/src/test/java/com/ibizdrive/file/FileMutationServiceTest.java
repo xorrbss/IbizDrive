@@ -282,6 +282,22 @@ class FileMutationServiceTest {
     }
 
     @Test
+    void delete_setsDeletedBy_actorMayDifferFromOwner() {
+        // V10 — cross-owner 시나리오 핵심 가드: admin(actor)이 owner와 다른 사용자가 소유한 파일을
+        // 삭제할 때 deleted_by에 actor가 기록되어야 admin trash UI에서 deleter를 식별할 수 있다.
+        UUID owner = insertUser("fdb1@test", "fdb1-owner");
+        UUID admin = insertUser("fdb1-admin@test", "fdb1-admin");
+        UUID folder = insertFolder(owner, "FolderFDB1");
+        FileItem f = insertFile(folder, owner, "FDB1.txt");
+        reset(auditService);
+
+        FileItem deleted = service.delete(f.getId(), admin);
+
+        assertThat(deleted.getDeletedBy()).isEqualTo(admin);
+        assertThat(deleted.getOwnerId()).isEqualTo(owner);
+    }
+
+    @Test
     void delete_freesNameForReuse() {
         UUID owner = insertUser("fd4@test", "fd4");
         UUID folder = insertFolder(owner, "FolderFD4");
@@ -313,6 +329,22 @@ class FileMutationServiceTest {
         assertThat(restored.getOriginalFolderId()).isNull();
         assertThat(restored.getFolderId()).isEqualTo(folder);
         verifyAuditEmitted(AuditEventType.FILE_RESTORED, f.getId(), owner);
+    }
+
+    @Test
+    void restore_clearsDeletedBy() {
+        // V10 — restore 시 deleted_by NULL 클리어 (CHECK 단방향: 활성 row는 deleted_by IS NULL).
+        UUID owner = insertUser("fsb1@test", "fsb1-owner");
+        UUID admin = insertUser("fsb1-admin@test", "fsb1-admin");
+        UUID folder = insertFolder(owner, "FolderFSB1");
+        FileItem f = insertFile(folder, owner, "FSB1.txt");
+        FileItem deleted = service.delete(f.getId(), admin);
+        assertThat(deleted.getDeletedBy()).isEqualTo(admin);
+        reset(auditService);
+
+        FileItem restored = service.restore(f.getId(), owner);
+
+        assertThat(restored.getDeletedBy()).isNull();
     }
 
     @Test

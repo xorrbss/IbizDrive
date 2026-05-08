@@ -384,6 +384,33 @@ class FolderMutationServiceTest {
     }
 
     @Test
+    void delete_setsDeletedBy_root_and_cascadeDescendants() {
+        // V10 — cross-owner 시나리오 핵심 가드:
+        //   * root entity (entity-level set)
+        //   * cascade 후손 폴더 (softDeleteByIds JPQL)
+        //   * cascade 후손 파일 (softDeleteByFolderIds JPQL)
+        // 모두 동일 actorId가 deleted_by에 기록되어야 한다.
+        UUID owner = insertUser("dby1-owner@test", "dby1-owner");
+        UUID admin = insertUser("dby1-admin@test", "dby1-admin");
+        Folder parent = service.create(null, "ParentDby1", owner, "standard", owner);
+        Folder child = service.create(parent.getId(), "ChildDby1", owner, "standard", owner);
+        // 후손 파일도 cascade 대상이 되도록 추가 (id만 사용; insert는 jdbc raw로 충분).
+        UUID grandFile = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
+            "VALUES (?, ?, ?, ?, ?, ?)",
+            grandFile, child.getId(), "F.txt", "f.txt", owner, 0L
+        );
+        reset(auditService);
+
+        service.delete(parent.getId(), admin);
+
+        assertThat(deletedBy(parent.getId(), "folders")).isEqualTo(admin);
+        assertThat(deletedBy(child.getId(), "folders")).isEqualTo(admin);
+        assertThat(deletedBy(grandFile, "files")).isEqualTo(admin);
+    }
+
+    @Test
     void delete_missingFolder_throwsNotFound() {
         UUID owner = insertUser("d2@test", "d2");
         reset(auditService);
@@ -406,6 +433,22 @@ class FolderMutationServiceTest {
         assertThat(folderRepository.findByIdAndDeletedAtIsNull(folder.getId())).isPresent();
         assertThat(countDeleted(folder.getId())).isZero();
         verifyAuditEmitted(AuditEventType.FOLDER_RESTORED, folder.getId(), owner);
+    }
+
+    @Test
+    void restore_clearsDeletedBy() {
+        // V10 — restore 시 deleted_by NULL 클리어 (CHECK 단방향: 활성 row는 deleted_by IS NULL).
+        UUID owner = insertUser("rsby1-owner@test", "rsby1-owner");
+        UUID admin = insertUser("rsby1-admin@test", "rsby1-admin");
+        Folder folder = service.create(null, "RestoreRsby1", owner, "standard", owner);
+        service.delete(folder.getId(), admin);
+        assertThat(deletedBy(folder.getId(), "folders")).isEqualTo(admin);
+        reset(auditService);
+
+        Folder restored = service.restore(folder.getId(), owner);
+
+        assertThat(restored.getDeletedBy()).isNull();
+        assertThat(deletedBy(folder.getId(), "folders")).isNull();
     }
 
     @Test
@@ -472,6 +515,18 @@ class FolderMutationServiceTest {
             "SELECT original_parent_id FROM folders WHERE id = ?",
             (rs, rowNum) -> (UUID) rs.getObject(1),
             folderId
+        );
+    }
+
+    /**
+     * V10 — files/folders의 {@code deleted_by} 컬럼을 raw로 읽는다. cascade JPQL UPDATE는
+     * persistence context의 entity instance를 refresh하지 않으므로 entity getter 대신 jdbc로 검증.
+     */
+    private UUID deletedBy(UUID id, String table) {
+        return jdbc.queryForObject(
+            "SELECT deleted_by FROM " + table + " WHERE id = ?",
+            (rs, rowNum) -> (UUID) rs.getObject(1),
+            id
         );
     }
 

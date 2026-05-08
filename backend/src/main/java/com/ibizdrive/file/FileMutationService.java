@@ -209,6 +209,8 @@ public class FileMutationService {
         target.setDeletedAt(now);
         target.setPurgeAfter(now.plus(PURGE_DAYS, ChronoUnit.DAYS));
         target.setOriginalFolderId(target.getFolderId());
+        // V10 — admin global trash UI에서 cross-owner 복원 시 deleter 식별용 (audit_log 별도 lookup 우회).
+        target.setDeletedBy(actorId);
         target.setUpdatedAt(now);
 
         FileItem saved = fileRepository.saveAndFlush(target);
@@ -265,6 +267,8 @@ public class FileMutationService {
         target.setDeletedAt(null);
         target.setPurgeAfter(null);
         target.setOriginalFolderId(null);
+        // V10 — restore 시 deleter 정보도 클리어 (CHECK 단방향: 활성 row는 deleted_by IS NULL).
+        target.setDeletedBy(null);
         target.setUpdatedAt(Instant.now().truncatedTo(ChronoUnit.MICROS));
 
         FileItem saved;

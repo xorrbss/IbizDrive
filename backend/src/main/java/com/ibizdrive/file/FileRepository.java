@@ -112,12 +112,17 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
      * <p>{@code original_folder_id = folder_id}를 동시에 set — 본 트랙은 후손 일괄 복원 endpoint를
      * 도입하지 않지만, 향후 file restore 흐름이 호출될 때 destination 스냅샷이 보존되도록 함
      * (FileMutationService.restore의 originalFolderId NOT NULL 가드와 호환).
+     *
+     * <p>V10 — {@code deleted_by = :actorId}를 동시에 set: cascade로 함께 휴지통에 들어간 후손 파일도
+     * root와 동일한 actor가 삭제한 것으로 기록. admin global trash UI가 cross-owner 복원 시 deleter
+     * 식별에 사용 (audit_log 별도 lookup 우회). actorId는 호출자가 SecurityContext에서 추출해 전달.
      */
     @Modifying
     @Query("UPDATE FileItem f SET f.deletedAt = :deletedAt, f.purgeAfter = :purgeAfter, "
-         + "f.originalFolderId = f.folderId, f.updatedAt = :deletedAt "
+         + "f.originalFolderId = f.folderId, f.deletedBy = :actorId, f.updatedAt = :deletedAt "
          + "WHERE f.folderId IN :folderIds AND f.deletedAt IS NULL")
     int softDeleteByFolderIds(@Param("folderIds") Collection<UUID> folderIds,
+                              @Param("actorId") UUID actorId,
                               @Param("deletedAt") Instant deletedAt,
                               @Param("purgeAfter") Instant purgeAfter);
 
