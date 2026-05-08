@@ -316,7 +316,84 @@ CREATE TABLE upload_sessions (
 CREATE INDEX idx_upload_sessions_expires ON upload_sessions(expires_at) WHERE status = 'active';
 ```
 
-### 2.10 ER 요약
+### 2.10 legal_holds (v2.x reserved — ADR #46)
+
+> **Status: v2.x deferred** (docs/00 §4.3, docs/03 §6.3, docs/04 §10). 실제 V_ 마이그레이션 미작성. 본 절은 설계 reserve — v2.x 진입 시 그대로 적용.
+
+**메타 테이블 — 사유/만료/승인자/해제자 추적**:
+
+```sql
+CREATE TABLE legal_holds (
+  id                       UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  target_type              VARCHAR(10) NOT NULL,           -- 'file' | 'folder' | 'user'
+  target_id                UUID NOT NULL,                  -- 다형 FK (CHECK 제약 + 코드 가드)
+  reason                   TEXT NOT NULL,                  -- 지정 사유 (필수)
+  placed_by                UUID NOT NULL REFERENCES users(id),
+  placed_at                TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  released_by              UUID REFERENCES users(id),
+  released_at              TIMESTAMPTZ,
+  release_reason           TEXT,                            -- 해제 사유
+  expires_at               TIMESTAMPTZ,                     -- NULL = 무기한
+  -- dual-approval (config 게이트, app.legal-hold.dual-approval.enabled)
+  dual_approval_status     VARCHAR(20),                    -- NULL | 'pending' | 'approved' | 'released'
+  secondary_approver_id    UUID REFERENCES users(id),
+  secondary_approved_at    TIMESTAMPTZ,
+
+  CHECK (target_type IN ('file', 'folder', 'user')),
+  CHECK (
+    dual_approval_status IS NULL
+    OR dual_approval_status IN ('pending', 'approved', 'released')
+  ),
+  -- released_* 동시성 (둘 다 NULL 또는 둘 다 NOT NULL)
+  CHECK ((released_by IS NULL) = (released_at IS NULL))
+);
+
+-- active hold 조회 (place 시 중복 검사, mutation 가드 fast lookup)
+CREATE INDEX idx_legal_holds_active
+  ON legal_holds(target_type, target_id)
+  WHERE released_at IS NULL;
+
+-- expiration cron 후보 스캔
+CREATE INDEX idx_legal_holds_expires
+  ON legal_holds(expires_at)
+  WHERE released_at IS NULL AND expires_at IS NOT NULL;
+
+-- 30일 재지정 락 검사 (release 후 30일 내 동일 target에 새 hold 거부)
+CREATE INDEX idx_legal_holds_recently_released
+  ON legal_holds(target_type, target_id, released_at)
+  WHERE released_at IS NOT NULL;
+```
+
+**Cache flag — hot path mutation 가드** (ADR #31 forward-reference):
+
+```sql
+ALTER TABLE files
+  ADD COLUMN legal_hold BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE folders
+  ADD COLUMN legal_hold BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- purge cron skip / mutation 가드 fast WHERE 절
+CREATE INDEX idx_files_legal_hold ON files(legal_hold) WHERE legal_hold = TRUE;
+CREATE INDEX idx_folders_legal_hold ON folders(legal_hold) WHERE legal_hold = TRUE;
+```
+
+**동기화 invariant** (애플리케이션 레벨 보증, 트랜잭션 + `SELECT FOR UPDATE`):
+
+- `legal_holds` insert (place) → 동일 트랜잭션에서 target 및 후손 cache flag = TRUE
+- `legal_holds` update (release) → 동일 트랜잭션에서 target 및 후손이 다른 active hold로 cover되지 않을 때만 cache flag = FALSE
+- folder hold place/release → 모든 후손 file/folder cache flag 일괄 갱신 (LTREE/CTE)
+- user hold place/release → 해당 user 소유 file/folder cache flag 일괄 갱신
+- 신규 file 업로드 시 ancestor folder 중 active hold가 있으면 신규 file `legal_hold = TRUE`로 INSERT
+
+**v2.x 진입 시 추가 작업** (dev/active/legal-hold-design/ 참조):
+- ADR #31 `HardPurgeService` WHERE 절에 `AND legal_hold IS NOT TRUE` 1줄 추가
+- `FileMutationService`/`FolderMutationService`/`TrashService`/`FileVersionMutationService`/`ShareCommandService`/`PermissionService` mutation entry에 `LegalHoldGuard` 적용 (cache flag 검사 → 423)
+- `Permission.MANAGE_LEGAL_HOLD` enum 추가 (docs/03 §3)
+- `LEGAL_HOLD_VIOLATION` 에러 코드 추가 (docs/02 §8)
+- `AuditEventType` placeholder 2종(`ADMIN_LEGAL_HOLD_PLACED`/`RELEASED`)을 emission 활성화 + 신규 2종(`ADMIN_LEGAL_HOLD_EXPIRED`, `ADMIN_LEGAL_HOLD_VIOLATION_BLOCKED`) 추가
+
+### 2.11 ER 요약
 
 ```text
 users ──┬── departments
@@ -329,7 +406,10 @@ users ──┬── departments
         │
         ├── shares ──── permissions
         │
-        └── audit_log (actor)
+        ├── audit_log (actor)
+        │
+        └── legal_holds (placed_by, target=user) ─── files/folders (target, cache flag)
+            *v2.x reserved — ADR #46*
 ```
 
 ---
@@ -1633,7 +1713,8 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
               actor_id=null, actor_role="SYSTEM"
               after_state = { runId, purgedFiles, purgedFolders,
                               orphanStorageKeys (cap=1000), durationMs, truncated }
-  Skip:       Legal Hold — 컬럼 미존재 시 deferred (legal_hold IS NOT TRUE 조건은 컬럼 도입 시 추가)
+  Skip:       Legal Hold — v2.x deferred (ADR #46). 활성화 시 `AND legal_hold IS NOT TRUE`
+              1줄 추가 (cache flag 출처 = §2.10 `files.legal_hold`/`folders.legal_hold`)
   Toggle:     app.purge.enabled (default true). false → bean 미등록.
   S3:         orphanStorageKeys는 audit에 기록만. 실 삭제 = ADR #31 (storage 모듈 milestone)
 ```
@@ -2135,6 +2216,8 @@ GET /api/departments/search?q=eng&limit=20
 | 415 | UNSUPPORTED_MEDIA_TYPE | 금지된 확장자 | 경고 |
 | 423 | ACCOUNT_LOCKED | 로그인 5회 실패 누적 → 15분 락 (docs/03 §2.6) | `retryAfterSec` 표시 + 시간 후 재시도 안내 |
 | 423 | FILE_LOCKED | 파일 잠김 (v1.x, pessimistic) | 잠금 해제 안내 |
+| 423 | LEGAL_HOLD_VIOLATION | Legal Hold 활성 — mutation 차단 (v2.x, ADR #46) | "법적 보존으로 인해 작업할 수 없습니다" 토스트 + hold 사유/지정자/지정일 details 노출 (관리자 권한자 한정) |
+| 409 | LEGAL_HOLD_RECENTLY_RELEASED | 30일 이내 release된 target 재지정 시도 (v2.x, ADR #46) | "최근 해제된 hold가 있어 30일간 재지정 불가" 토스트 + 재지정 가능 일자 표시 |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |

@@ -392,8 +392,11 @@
 | `SHARE` | 내부 공유 (subject = user/department/role/everyone, ADR #34) | POST `/api/files/:id/share`, POST `/api/folders/:id/share` (A12) |
 | `PERMISSION_ADMIN` | 권한 부여/회수 | POST/DELETE `/api/:resource/:id/permissions` |
 | **`PURGE`** | **영구 삭제 (소프트 → 완전 제거)** | **DELETE `/api/trash/:id`, DELETE `/api/trash`** |
+| **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* | **Legal Hold 지정/해제** | **POST/DELETE `/api/admin/legal-holds/...`** *(v2.x deferred)* |
 
 > `PURGE`는 회복 불가 액션이므로 별도 권한으로 분리. **시스템 ROLE `ADMIN`만 보유** (§3.2.5 참조). `DELETE` 권한이 있어도 `PURGE`는 자동 부여되지 않음.
+>
+> `MANAGE_LEGAL_HOLD`는 **시스템 ROLE `ADMIN`만 보유** (PURGE 일관). active hold **조회**는 `AUDITOR`도 가능(read-only). dual-approval 게이트(§6.3) 활성 환경에서는 release 시 secondary admin 별도 승인 필요.
 
 ### 3.2 Preset × 권한 매트릭스
 
@@ -414,7 +417,7 @@
 |---|---|
 | `MEMBER` | 노드별 preset만 적용 (별도 가산 없음) |
 | `AUDITOR` | 모든 노드에 `READ` (감사 페이지 한정 — `/api/admin/*` 일부) + audit_log 조회 |
-| `ADMIN` | 전 노드 admin preset + **`PURGE`** + 사용자 관리 (`PATCH /api/admin/users/:id`) + Legal Hold |
+| `ADMIN` | 전 노드 admin preset + **`PURGE`** + 사용자 관리 (`PATCH /api/admin/users/:id`) + **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* |
 
 ### 3.3 Subject 유형
 
@@ -525,8 +528,10 @@ type AuditEventType =
   | 'admin.user.deactivated'
   | 'admin.role.changed'
   | 'admin.quota.changed'
-  | 'admin.legal_hold.placed'
-  | 'admin.legal_hold.released'
+  | 'admin.legal_hold.placed'         // v2.x — ADR #46 (placeholder enum 활성화)
+  | 'admin.legal_hold.released'       // v2.x — ADR #46 (placeholder enum 활성화)
+  | 'admin.legal_hold.expired'        // v2.x — ADR #46 신규 (expiration cron, actor_id=NULL)
+  | 'admin.legal_hold.violation_blocked' // v2.x — ADR #46 신규 (차단된 mutation 시도, actor=시도자)
   | 'admin.department.created'      // Wave 2 T4 활성화 (admin-department-crud, 2026-05-06) — POST /api/admin/departments
   | 'admin.department.updated'      // Wave 2 T4 활성화 — PATCH (rename + reactivate 흡수, before/after JSON)
   | 'admin.department.deactivated'  // Wave 2 T4 활성화 — PATCH isActive=false (제재 분기)
@@ -620,14 +625,194 @@ folders.audit_level:
 
 ### 6.3 법적 보존 (Legal Hold)
 
-> **v1.x deferred** (docs/00 §4.3 v2.x 명시). 전체 §6.3은 외부 출시 + 컴플라이언스 도메인 도입 시점에 부활.
+> **Status: v2.x deferred** (docs/00 §4.3, ADR #46). 본 절은 **설계 명세 — 코드 0줄**. v2.x 진입 시 `dev/active/legal-hold-design/` plan 그대로 실행.
 
-- [ ] 관리자가 특정 파일/폴더/사용자에 Legal Hold 지정 — *v2.x deferred*
-- [ ] Legal Hold 상태에서는: — *v2.x deferred*
-  - 삭제 불가 (휴지통 이동도 차단)
-  - 영구 삭제 불가 (휴지통 purge 크론도 스킵)
-  - 버전 변경 불가
-- [ ] 해제는 관리자 2인 승인 (optional) — *v2.x deferred*
+#### 6.3.1 정책 개요
+
+Legal Hold = 법적 분쟁/감사/컴플라이언스 사유로 특정 자료의 변경·삭제를 차단하는 보존 락. 일반 권한/휴지통 정책 위에 얹는 **상위 게이트**:
+
+- 일반 권한: "누가 무엇을 할 수 있는가"
+- Legal Hold: "권한과 무관하게 무엇을 막는가"
+
+설계 원칙:
+
+1. **읽기/다운로드/조회는 허용** — 보존 목적상 access trail 자체는 정상 유지 (`READ`/`DOWNLOAD`/`VIEW` 모두 통과)
+2. **변경/삭제는 거부 + 423 LOCKED** — UI/API 양쪽 가드, 백엔드가 진실의 출처
+3. **메타 풍부 + cache flag** — ADR #46 하이브리드 모델 (사유/만료/승인자 + hot path 1줄 검사)
+4. **Audit append-only** — place/release/expire/violation_blocked 4종 신규 (placeholder 2종 활성화 + 신규 2종)
+
+#### 6.3.2 데이터 모델 (요약)
+
+→ docs/02 §2.10 `legal_holds` 테이블 + `files.legal_hold`/`folders.legal_hold` cache flag (ADR #46).
+
+cascade 의미:
+
+| target_type | cascade 범위 |
+|---|---|
+| `file` | 해당 file row만 |
+| `folder` | 해당 folder + 모든 후손 folder + 모든 후손 file (시점 스냅샷, 신규 업로드 file은 ancestor hold 검사 후 자동 set) |
+| `user` | 해당 user 소유의 모든 file/folder (owner_id 매칭) |
+
+#### 6.3.3 차단 액션 매트릭스
+
+`legal_hold = TRUE`인 file/folder가 대상이면 아래 mutation은 모두 **423 `LEGAL_HOLD_VIOLATION`**:
+
+| 액션 | endpoint | 차단 |
+|---|---|---|
+| 휴지통 이동 (soft delete) | `DELETE /api/files/:id`, `DELETE /api/folders/:id` | ✅ |
+| 복원 | `POST /api/{...}/restore` | ✅ (휴지통 잔존 row의 hold도 차단) |
+| 영구 삭제 (manual purge) | `DELETE /api/trash/:id` | ✅ |
+| 영구 삭제 (cron) | `HardPurgeService` | ✅ — `WHERE legal_hold IS NOT TRUE` 1줄 (ADR #31 forward-ref) |
+| 신규 버전 업로드 | `POST /api/files` (NEW_VERSION 분기), `POST /api/files/:id/versions` | ✅ |
+| 버전 복원 | `POST /api/files/:id/versions/:vid/restore` | ✅ |
+| 이름 변경 | `PATCH /api/folders/:id`, `PATCH /api/files/:id` | ✅ |
+| 이동 | `POST /api/{...}/move` | ✅ (양쪽 — hold 대상 자체 + target folder가 hold면 양쪽 모두) |
+| 공유 생성/해제 | `POST /api/{file\|folder}/:id/share`, `DELETE /api/shares/:shareId` | ✅ — 공유는 권한 변경 표면이므로 차단 |
+| 권한 부여/회수 | `POST/DELETE /api/:resource/:id/permissions` | ✅ |
+| **신규 파일 업로드 (folder 대상)** | `POST /api/files` to held folder | ✅ — 신규 child도 즉시 `legal_hold=TRUE`로 INSERT는 의미상 hold가 더 강해지는 것이므로 거부 (보수적 정책, KISS) |
+| 다운로드 | `GET /api/files/:id/download` | ❌ (허용) |
+| 조회 / preview / 메타 | `GET /api/files/:id`, tree, search | ❌ (허용) |
+
+> **권한 변경 차단 사유**: hold 중 권한이 바뀌면 hold target에 대한 access surface가 변동 → 보존 목적과 충돌. release 후 변경.
+>
+> **이동 양쪽 차단**: source가 held이면 거부 + target folder가 held이면 거부 (held folder에 새 자료가 들어가는 것도 차단 — 보존 범위 명확화).
+
+#### 6.3.4 API 계약 (v2.x — wire format)
+
+> **활성화 = v2.x**. 본 절은 endpoint 설계 reserve.
+
+```text
+POST   /api/admin/legal-holds                 # place
+DELETE /api/admin/legal-holds/:holdId         # release (single-admin) 또는 dual-approval 1단계
+POST   /api/admin/legal-holds/:holdId/approve # dual-approval 2단계 (게이트 활성 시)
+GET    /api/admin/legal-holds                 # 활성 hold 목록 (페이지·필터)
+GET    /api/admin/legal-holds/:holdId         # 단건 상세
+GET    /api/admin/legal-holds/by-target?type=file&id=<UUID>  # target에 걸린 active hold 조회
+```
+
+**place** (`MANAGE_LEGAL_HOLD` 권한 — ROLE=ADMIN):
+
+```json
+POST /api/admin/legal-holds
+{
+  "targetType": "file" | "folder" | "user",
+  "targetId": "<UUID>",
+  "reason": "법적 분쟁 — 사건번호 2026-XX-XXX",
+  "expiresAt": "2027-01-01T00:00:00Z"  // optional, NULL=무기한
+}
+
+→ 201 Created
+{
+  "holdId": "<UUID>",
+  "targetType": "...",
+  "targetId": "...",
+  "reason": "...",
+  "placedBy": { "id": "<UUID>", "displayName": "..." },
+  "placedAt": "...",
+  "expiresAt": "..." | null,
+  "cascadeAffected": { "files": 12, "folders": 3 }  // cascade 결과 — UI 토스트용
+}
+
+에러:
+- 400 VALIDATION_ERROR (reason 누락, targetType invalid, expiresAt 과거)
+- 404 (target 미존재)
+- 409 LEGAL_HOLD_RECENTLY_RELEASED (30일 재지정 락, ADR #46)
+- 409 (동일 target에 이미 active hold — 이중 hold 거부, KISS)
+```
+
+**release** (`MANAGE_LEGAL_HOLD` 권한):
+
+```json
+DELETE /api/admin/legal-holds/:holdId
+{
+  "releaseReason": "분쟁 종결 (2026-12-15 합의)"
+}
+
+→ 200 OK (단일 admin 모드)
+{ "holdId": "...", "releasedAt": "...", "releasedBy": {...}, "cacheFlagCleared": { "files": 12, "folders": 3 } }
+
+→ 202 Accepted (dual-approval 게이트 활성, primary 승인만 완료 — secondary 대기)
+{ "holdId": "...", "dualApprovalStatus": "pending", "secondaryApprover": null }
+
+에러:
+- 404 (holdId 미존재 또는 이미 released)
+- 403 PERMISSION_DENIED (secondary가 primary와 동일 인물 — 자기 승인 거부)
+```
+
+**dual-approval 2단계** (`MANAGE_LEGAL_HOLD` 권한):
+
+```json
+POST /api/admin/legal-holds/:holdId/approve
+{
+  "decision": "approve" | "reject",
+  "comment": "..."  // optional
+}
+
+→ 200 OK
+{ "holdId": "...", "dualApprovalStatus": "released" | "pending", ... }
+
+거부:
+- approve = primary와 다른 admin이어야 함, status=pending인 hold만 처리
+- reject = pending → null로 되돌리고 hold 유지
+```
+
+#### 6.3.5 Audit 이벤트 매핑
+
+| 이벤트 | actor_id | target_type | target_id | metadata |
+|---|---|---|---|---|
+| `admin.legal_hold.placed` | placedBy | `legal_hold` (신규 audit target_type) | holdId | `{targetType, targetId, reason, expiresAt, cascadeAffected}` |
+| `admin.legal_hold.released` | releasedBy | `legal_hold` | holdId | `{releaseReason, dualApproval: bool, secondaryApproverId?, durationDays}` |
+| `admin.legal_hold.expired` | NULL (system) | `legal_hold` | holdId | `{trigger:"system.expiration", originalExpiresAt}` — share-expired/permission-expired cron 동형 |
+| `admin.legal_hold.violation_blocked` | 시도자 | (mutation 대상의 type) | (대상 id) | `{action, holdId, reason, attemptedEndpoint}` — sample/throttle 정책 권장 (대량 봇 폭주 시 audit 폭증 방지) |
+
+> **violation_blocked sampling 정책** (선택, v2.x 진입 시 결정): 동일 (actor, target, action) 묶음에 대해 60s 윈도우 내 첫 시도만 audit 기록. 메모리 LRU(LoginAttemptTracker 패턴 mirror, ADR #23/44 일관) 또는 audit 미발행 후 WARN 로그만(KISS)으로 대체 가능. 본 결정은 dev-docs에 backlog로 명시.
+
+#### 6.3.6 권한
+
+→ §3.1 `MANAGE_LEGAL_HOLD` enum + §3.2.5 ROLE 매트릭스. 추가 권한 enum 없음.
+
+#### 6.3.7 30일 재지정 락
+
+release 후 30일 이내 동일 (target_type, target_id)에 대한 place 거부 (실수 방지 — release 직후 다시 hold가 정책 의도이면 admin이 의도적으로 cooldown 조정 필요):
+
+- 검사 SQL: `legal_holds`에서 `target_type=:t AND target_id=:id AND released_at >= NOW() - INTERVAL '30 days'` 존재 시 거부
+- 에러: 409 `LEGAL_HOLD_RECENTLY_RELEASED` (docs/02 §8)
+- 응답 details: `{previousReleasedAt, replaceableAt}` — UI 토스트에서 "재지정 가능 일자" 표시
+- 회피: `app.legal-hold.replace-cooldown-days` properties로 환경별 조정 (dev/staging=0 가능, prod=30 default)
+
+#### 6.3.8 Hold 만료 cron (선택)
+
+`expires_at <= NOW()`인 active hold 자동 release (share-expired/permission-expired cron 동형):
+
+- properties: `app.legal-hold.expiration.{enabled, cron, batch-size, zone}`
+- default `enabled=false` — 운영자 명시적 활성화 (A7/share/permission cron 패턴 일관)
+- cron 주기: 매 5분 (default), 운영 환경별 조정
+- 처리: 트랜잭션 내 `UPDATE legal_holds SET released_at=NOW(), released_by=NULL, release_reason='system.expiration'` + cache flag clear + `admin.legal_hold.expired` audit 1건/hold
+- 다중 인스턴스 안전성: row-level pessimistic lock (`SELECT ... FOR UPDATE`)으로 직렬화 — share-expired-cron 패턴 mirror
+
+#### 6.3.9 dual-approval 게이트
+
+properties: `app.legal-hold.dual-approval.enabled` (default=false).
+
+- false (default): release 1회 호출로 즉시 종료. `dual_approval_status = NULL`로 INSERT (게이트 미사용)
+- true: release 1단계(primary) → status=`pending` + secondary 후보 알림(이메일 — `EmailService`/ADR #45 재사용) → 2단계(secondary, primary 와 다른 ADMIN) → status=`released` + cache flag clear
+
+**Self-approval 방지**: secondary_approver_id ≠ placed_by **AND** ≠ release request actor.
+
+**Reject 처리**: `decision: "reject"` 시 status=NULL 복귀(release 자체 취소), hold는 active 유지. 별도 audit `admin.legal_hold.release_rejected`는 v2.x 추가 enum 후보 (현재 spec에서 reject는 audit 미발행으로 시작 — KISS, backlog).
+
+#### 6.3.10 v2.x 진입 시 작업 분해
+
+→ `dev/active/legal-hold-design/legal-hold-design-tasks.md` 참조. 핵심 단계:
+
+1. V_ 마이그레이션: `legal_holds` + cache flag 2개 + 인덱스 4개
+2. `Permission.MANAGE_LEGAL_HOLD` enum 추가, `IbizDrivePermissionEvaluator` 매핑
+3. `LegalHoldGuard` AOP 또는 service-level 가드 (mutation entry 9곳: trash move/restore/purge, version create/restore, rename, move, share create/revoke, permission grant/revoke)
+4. `HardPurgeService.findExpiredCandidates` SQL에 `AND legal_hold IS NOT TRUE` 1줄 추가 (ADR #31 close)
+5. `AuditEventType` placeholder 2종 emission 활성화 + 신규 2종 추가
+6. `LegalHoldController`/`LegalHoldService` + dual-approval 분기 + expiration cron
+7. Frontend: `/admin/legal-holds` 페이지 (목록/상세/place/release/approve), file/folder detail에 "Legal Hold" 배지 + 차단 토스트, RightPanel에 active hold 메타 카드
+8. CLAUDE.md §3 핵심 원칙 6 (DB 제약이 진실의 출처) 정합 — cache flag 동기화 invariant를 트랜잭션으로 강제, mutation 가드 service-level (DB CHECK 미사용 — folders.legal_hold가 boolean이라 CHECK로 cascade 의미 표현 불가, 코드 가드 + 트랜잭션이 진실)
 
 ---
 
