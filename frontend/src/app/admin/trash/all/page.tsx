@@ -14,6 +14,7 @@ import type {
   AdminTrashItem,
 } from '@/types/trash'
 import { AdminTrashBulkActionBar } from '@/components/admin/AdminTrashBulkActionBar'
+import { formatBytes } from '@/lib/formatBytes'
 
 /**
  * Wave 2 T9 — `/admin/trash/all` (admin-global-trash, spec §5.2, plan §P6.1).
@@ -328,8 +329,8 @@ function TrashRow({
       <td className="px-3 py-2">
         {item.originalParentName ?? <span className="text-fg-muted">(루트)</span>}
       </td>
-      <td className="px-3 py-2">
-        {item.sizeBytes != null ? `${item.sizeBytes} B` : '-'}
+      <td className="px-3 py-2 tabular-nums">
+        {item.sizeBytes != null ? formatBytes(item.sizeBytes) : '-'}
       </td>
       <td className="px-3 py-2">
         {item.deletedByEmail ?? <span className="text-fg-muted">—</span>}

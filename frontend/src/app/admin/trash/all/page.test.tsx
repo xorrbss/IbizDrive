@@ -48,6 +48,16 @@ describe('/admin/trash/all', () => {
     expect(screen.getByText('Reports')).toBeTruthy()
   })
 
+  it('renders sizeBytes formatted via formatBytes (not raw bytes)', async () => {
+    // 12345 B = 12 KB (formatBytes의 KB 정수 포맷). raw "12345 B"가 아니어야 한다.
+    vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [sample], nextCursor: null })
+    renderPage()
+
+    expect(await screen.findByText('spec.pdf')).toBeTruthy()
+    expect(screen.getByText('12 KB')).toBeTruthy()
+    expect(screen.queryByText('12345 B')).toBeNull()
+  })
+
   it('renders empty state when no items', async () => {
     vi.spyOn(apiModule, 'adminListTrash').mockResolvedValue({ items: [], nextCursor: null })
     renderPage()
