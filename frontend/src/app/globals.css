@@ -104,6 +104,52 @@
   --font-mono: var(--font-mono);
 }
 
+/* ==============================================================
+   Variant 시스템 (data-variant)
+   원본: design-reference/styles.css L57~113
+   옵션 B (KISS): terminal 의 17 selector 폰트 override 는
+   :root --font-sans 토글 + body letter-spacing 두 줄로 흡수
+   ============================================================== */
+
+[data-variant="notion"] {
+  --row-h: 40px;
+  --radius: 4px;
+  --accent: oklch(50% 0.09 260);
+  --bg: #FCFCFB;
+  --surface-2: #F3F2EE;
+}
+[data-variant="notion"][data-theme="dark"] {
+  --bg: #191918;
+  --surface-1: #202020;
+  --surface-2: #2A2A28;
+}
+
+[data-variant="dropbox"] {
+  --accent: oklch(58% 0.17 250);
+  --accent-soft: oklch(96% 0.03 250);
+  --row-h: 38px;
+}
+
+[data-variant="terminal"] {
+  --bg: #0F0F0E;
+  --surface-1: #171716;
+  --surface-2: #1F1F1D;
+  --surface-3: #2A2A27;
+  --border: rgba(255, 255, 255, 0.08);
+  --fg: #D5D3C7;
+  --fg-2: #B0AE9F;
+  --fg-muted: #76746A;
+  --fg-subtle: #4E4C44;
+  --accent: oklch(78% 0.17 140);
+  --accent-hover: oklch(85% 0.17 140);
+  --accent-soft: oklch(24% 0.08 140);
+  --row-h: 28px;
+  --font-sans: var(--font-mono);
+}
+[data-variant="terminal"] body {
+  letter-spacing: -0.01em;
+}
+
 /* ============ 전역 리셋 / 바디 ============ */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }
