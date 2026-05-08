@@ -126,7 +126,7 @@
 | 발급 | Spring Security 로그인 성공 시 `HttpServletRequest.changeSessionId()` |
 | 저장소 | **Postgres `SPRING_SESSION` 테이블** (Spring Session `JdbcIndexedSessionRepository`, Flyway V1이 schema 권위 — `initialize-schema: never`) |
 | 쿠키 | `SESSION=<id>; HttpOnly; Secure; SameSite=Lax; Path=/` |
-| CSRF | `XSRF-TOKEN` 쿠키 (HttpOnly **아님**, JS 읽기 가능) ↔ `X-CSRF-Token` 헤더 double-submit |
+| CSRF | `XSRF-TOKEN` 쿠키 (HttpOnly **아님**, JS 읽기 가능) ↔ `X-CSRF-Token` 헤더 double-submit (HTTP 헤더 case-insensitive — backend 매핑은 `X-CSRF-Token`, frontend 송신은 `X-CSRF-TOKEN` 모두 호환) |
 | 만료 | idle 30분 (sliding) + absolute 8시간 (issuedAt 검증) — ADR #20 |
 | 강제 로그아웃 | `SessionRegistry.expireNow(sessionId)` — `SPRING_SESSION` row 즉시 DELETE |
 
@@ -134,6 +134,26 @@
 - **세션 attribute 최소화**: `userId`, `roles`, `issuedAt`, `permissionsCacheKey`만. effectivePermissions는 DB·캐시 별도.
 - **다중 인스턴스**: Spring Session JDBC 백엔드로 sticky session 불필요 (모든 인스턴스가 동일 Postgres 참조).
 - **로그인 시 세션 ID 회전**: session fixation 방지 (`changeSessionId()` 호출).
+
+> **CSRF token frontend 송신 패턴 (회귀 가드)** — 모든 인증 후 mutation
+> (`POST/PATCH/PUT/DELETE`)은 `X-CSRF-TOKEN` 헤더를 반드시 송신해야 한다.
+> 누락 시 Spring CSRF filter가 PermissionEvaluator 도달 전 `403`을 반환하므로,
+> ADMIN 사용자도 "권한 없음"으로 오인되는 회귀가 발생할 수 있음.
+>
+> - **인증 후 mutation**: `readCookie('XSRF-TOKEN')` 동기 패턴.
+>   `frontend/src/lib/api.ts`의 `createFolder`/`moveItem`/`renameFile`/
+>   `softDeleteFile|Folder`/`restoreFile|Folder|Version`/`purgeTrashItem`/
+>   `revokeShare`/`adminToggleCron`/`postShareCreate`/`adminBulkTrash`/
+>   `adminRevokePermission` 등 모두 동일 패턴.
+> - **비인증 첫 호출** (login/logout/passwordChange/admin*): `ensureCsrfToken()`
+>   비동기 — cookie 부재 시 `GET /api/auth/csrf` 사전 발급 후 송신.
+> - **면제 endpoint** (`/api/auth/signup`, `/api/auth/password/forgot`,
+>   `/api/auth/password/reset`): `SecurityConfig.ignoringRequestMatchers`로
+>   backend가 CSRF 검증 자체를 면제 (ADR #41 self-signup, A1.5 비밀번호 분실).
+>   frontend는 헤더 미송신 OK.
+> - **회귀 가드**: `frontend/src/lib/api.csrfMutations.test.ts` (sweep, PR #121
+>   13 케이스) + `api.createFolder.test.ts` (hotfix, PR #115, 4 케이스) +
+>   `api.adminRevokePermission.test.ts` (PR #123, 4 케이스).
 
 ### 2.3 시퀀스 — 로그인 (자체 ID/PW)
 

@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-05-09 — 📚 docs-csrf-token-notation 트랙 종료 (X-CSRF-Token 표기 + frontend 패턴 분기 명시)
+
+### 범위
+
+PR #115 (createFolder hotfix) + PR #121 (sweep 11건) + PR #123 (admin-permission-revoke `adminRevokePermission`) 결과를 docs에 명시화. 코드 0줄. 미래 회귀 진단·새 mutation 추가 시 패턴 결정 단축이 목적.
+
+### 변경 핵심
+
+- `docs/03 §2.2` 세션 모델 표 CSRF 행 — case-insensitive 명시 (backend `X-CSRF-Token` ↔ frontend `X-CSRF-TOKEN` 양쪽 정답).
+- `docs/03 §2.2` 표 아래 callout 신규 — frontend 송신 패턴 분기(인증 후 mutation = `readCookie` 동기, 비인증 첫 호출 = `ensureCsrfToken` 비동기, 면제 endpoint = 헤더 미송신) + 회귀 가드 PR backlink (#115, #121, #123).
+- `docs/02 §7.1` `/api/auth/csrf` GET Note 확장 — case-insensitive 호환 + frontend 패턴 분기 + 회귀 가드 backlink.
+
+### 검증
+
+- 코드 0줄 — typecheck/lint/test 무관.
+- `git diff --stat` 결과: docs/02·docs/03·docs/progress.md + dev/active만.
+- backlink PR 번호(#115, #121, #123) 모두 master에 머지된 실제 PR 확인.
+
+### 결정/편차
+
+- **§2.2 표 + callout 한 곳에 집중** — 별도 sub-section 신설 대신 기존 §2.2 영역 내 확장. 큰 문서 라우팅(CLAUDE.md §2)에 기존 매핑 그대로 유지, KISS.
+- **§7.1 Note 확장만** — endpoint별 사용 패턴은 §7.1이 권위. §7.x 다른 mutation endpoint 모두에 같은 노트 반복하지 않음 (집약 백링크).
+- **ADR 신설 미수행** — ADR #41(self-signup CSRF 면제)이 이미 있으므로 신규 ADR 불필요. 본 보강은 기존 ADR 운영 가이드 정도.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / audit SQL→JSON streaming / 휴지통 보존 정책 mutation UI / 2인 승인 (v1x-confirm-2admin-design #124 머지됨, 실 구현 별도 트랙) / progress streaming(SSE/WS) / admin dashboard KPI 추가.
+- 본 트랙으로 CSRF 회귀 진단·새 mutation 추가 시 패턴 결정이 docs로 단축됨. 차후 신규 endpoint 추가 시 `docs/03 §2.2` callout만 보면 됨.
+
+---
+
 ## 2026-05-09 — 🛡️ csrf-mutation-sweep 트랙 종료 (X-CSRF-TOKEN 누락 11건 일괄 회귀 차단)
 
 ### 범위
