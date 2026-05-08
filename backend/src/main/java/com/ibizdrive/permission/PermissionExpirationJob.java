@@ -1,8 +1,8 @@
 package com.ibizdrive.permission;
 
+import com.ibizdrive.admin.CronPolicyRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -20,8 +20,9 @@ import java.util.UUID;
  * ERROR 로그 후 다음 row 진행 — race(다른 인스턴스/사용자 동시 revoke)는
  * {@link com.ibizdrive.common.error.ResourceNotFoundException}으로 보호되어 정합 안전.
  *
- * <p><b>활성화</b>: {@code app.permission.expiration.enabled=true}일 때만 빈 등록 —
- * {@link PermissionExpirationProperties}와 본 클래스 모두 동일 조건 (이중 가드, ShareExpirationJob 동형).
+ * <p><b>활성화</b>: {@link CronPolicyRepository#isEnabled} (DB 단일 row lookup) — 본 잡은 매 tick
+ * DB 조회 후 비활성이면 즉시 return. yml의 {@code app.permission.expiration.enabled}는 시드 후 효력 없음
+ * (admin-cron-policy-toggle 트랙, V11 이후).
  *
  * <p><b>다중 인스턴스 안전성</b>: V5 {@code permissions} row-level pessimistic lock이 두 인스턴스의 동시
  * {@code expirePermission(sameId)} 호출을 직렬화 — 한 쪽만 통과, 다른 쪽은 row 부재 → 404 swallow.
@@ -33,7 +34,6 @@ import java.util.UUID;
  * ({@code permission.expired} 기록 유지, ADR #24 append-only 정합).
  */
 @Component
-@ConditionalOnProperty(name = "app.permission.expiration.enabled", havingValue = "true")
 public class PermissionExpirationJob {
 
     private static final Logger log = LoggerFactory.getLogger(PermissionExpirationJob.class);
@@ -41,17 +41,24 @@ public class PermissionExpirationJob {
     private final PermissionService permissionService;
     private final PermissionRepository permissionRepository;
     private final PermissionExpirationProperties props;
+    private final CronPolicyRepository cronPolicyRepository;
 
     public PermissionExpirationJob(PermissionService permissionService,
                                     PermissionRepository permissionRepository,
-                                    PermissionExpirationProperties props) {
+                                    PermissionExpirationProperties props,
+                                    CronPolicyRepository cronPolicyRepository) {
         this.permissionService = permissionService;
         this.permissionRepository = permissionRepository;
         this.props = props;
+        this.cronPolicyRepository = cronPolicyRepository;
     }
 
     @Scheduled(cron = "${app.permission.expiration.cron}", zone = "${app.permission.expiration.zone}")
     public void run() {
+        if (!cronPolicyRepository.isEnabled("permission.expire")) {
+            log.debug("cron permission.expire disabled, skipping tick");
+            return;
+        }
         List<UUID> ids;
         try {
             ids = permissionRepository.findExpiredActiveIds(

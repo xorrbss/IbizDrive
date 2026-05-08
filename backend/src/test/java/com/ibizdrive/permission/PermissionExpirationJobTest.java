@@ -1,5 +1,6 @@
 package com.ibizdrive.permission;
 
+import com.ibizdrive.admin.CronPolicyRepository;
 import com.ibizdrive.common.error.ResourceNotFoundException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -32,15 +33,19 @@ class PermissionExpirationJobTest {
 
     private PermissionService permissionService;
     private PermissionRepository permissionRepository;
+    private CronPolicyRepository cronPolicyRepository;
     private PermissionExpirationJob job;
 
     @BeforeEach
     void setUp() {
         permissionService = mock(PermissionService.class);
         permissionRepository = mock(PermissionRepository.class);
+        cronPolicyRepository = mock(CronPolicyRepository.class);
+        // 기본은 활성 — P4 가드 통과시켜 기존 테스트 의미 보존.
+        when(cronPolicyRepository.isEnabled("permission.expire")).thenReturn(true);
         // batchSize=200 (default); enabled/cron/zone은 빈 등록 게이트라 unit test에서는 무관.
         PermissionExpirationProperties props = new PermissionExpirationProperties(true, 200, null, null);
-        job = new PermissionExpirationJob(permissionService, permissionRepository, props);
+        job = new PermissionExpirationJob(permissionService, permissionRepository, props, cronPolicyRepository);
     }
 
     @Test
@@ -118,7 +123,7 @@ class PermissionExpirationJobTest {
         // batchSize=50으로 새 job 생성해 PageRequest 한도가 properties와 일치하는지 검증.
         PermissionExpirationProperties props = new PermissionExpirationProperties(true, 50, null, null);
         PermissionExpirationJob customJob =
-            new PermissionExpirationJob(permissionService, permissionRepository, props);
+            new PermissionExpirationJob(permissionService, permissionRepository, props, cronPolicyRepository);
         when(permissionRepository.findExpiredActiveIds(any(Instant.class), any(Pageable.class)))
             .thenReturn(List.of());
 
