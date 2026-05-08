@@ -1411,6 +1411,25 @@ export const api = {
   },
 
   /**
+   * `PUT /api/admin/system/cron/{key}` — admin-cron-policy-toggle. ADMIN-only.
+   *
+   * <p>요청 body: `{ enabled: boolean }`. 응답 204 No Content. 400은 unknown key 또는
+   * body 형식 오류, 401/403는 인증/권한 실패. 보안 가드는 backend
+   * `@PreAuthorize("hasRole('ADMIN')")` (진실 출처) — 프론트 hook 가드는 UX용.
+   */
+  async adminToggleCron(key: string, enabled: boolean): Promise<void> {
+    const res = await fetch(`/api/admin/system/cron/${encodeURIComponent(key)}`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminToggleCron failed: ${res.status}`)
+    }
+  },
+
+  /**
    * `GET /api/admin/dashboard/summary` (admin-dashboard 트랙) — KPI envelope.
    *
    * <p>read-only — CSRF 헤더 없음. backend가 6 derived count + 1 SUM + 1 audit native COUNT를
