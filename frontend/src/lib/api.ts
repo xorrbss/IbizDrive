@@ -1653,6 +1653,8 @@ export async function adminListTrash(
   if (filters.q && filters.q.trim()) params.set('q', filters.q.trim())
   if (filters.type) params.set('type', filters.type)
   if (filters.ownerId) params.set('ownerId', filters.ownerId)
+  if (filters.deletedFrom) params.set('deletedFrom', filters.deletedFrom)
+  if (filters.deletedTo) params.set('deletedTo', filters.deletedTo)
   if (cursor) params.set('cursor', cursor)
 
   const qs = params.toString()

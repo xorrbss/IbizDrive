@@ -1466,7 +1466,7 @@ GET /api/me/effective-permissions[?nodeId={uuid}]
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
 | GET | `/api/trash` | `isAuthenticated()` (결과는 사용자가 DELETE 권한 가진 항목만 — A8 결과 후처리, ADR #32) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
-| GET | `/api/admin/trash` (Wave 2 T9) | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→LIKE escape (case-insensitive) | **`WHERE deleted_at IS NOT NULL`** | 400 VALIDATION_ERROR(invalid type/ownerId/q>200), 401, 403 |
+| GET | `/api/admin/trash` (Wave 2 T9) | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→LIKE escape (case-insensitive) | **`WHERE deleted_at IS NOT NULL`** | 400 VALIDATION_ERROR(invalid type/ownerId/q>200/deletedFrom·deletedTo 형식 또는 from≥to), 401, 403 |
 | POST | `/api/files/:id/restore` (A6) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
 | POST | `/api/folders/:id/restore` (A6) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade | 404, 409 RESTORE_CONFLICT |
 | DELETE | `/api/trash/:type/:id` (A8, ADR #32) | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + file_versions cascade. S3 객체는 ADR #31 deferred) | 400 VALIDATION_ERROR(invalid type), 403, 404 |
@@ -1481,16 +1481,22 @@ GET /api/trash?cursor=&type=                    (A8.1, ADR #32)
             (MVP 가정: 페이지 한도 < 권한 보유 row 수, 큰 dataset 시 별도 ADR)
   type 파라미터: 'file' | 'folder' | (생략 = 양쪽)
 
-GET /api/admin/trash?q=&type=&ownerId=&cursor=&limit=    (Wave 2 T9, 2026-05-07)
+GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
+                                              (Wave 2 T9, 2026-05-07; 날짜 범위 필터: T9 follow-up)
   Headers:  Cookie: SESSION=<id>             (ADMIN 인증 필요)
   Guard:    @PreAuthorize("hasRole('ADMIN')")  -- per-row DELETE 후처리 없음(ADMIN은 글로벌 viewer)
-  Query:    q       (선택; max 200 chars. files.name + folders.name LIKE wildcard escape 후
-                     `LOWER(...) LIKE LOWER(?) ESCAPE '\\'` — admin-user-search-update와 동일 정책)
-            type    (선택; 'file' | 'folder' | (생략 = 양쪽). 그 외 → 400 VALIDATION_ERROR)
-            ownerId (선택; UUID. 형식 오류 → 400 VALIDATION_ERROR)
-            cursor  (선택; opaque base64 — user-facing `GET /api/trash`와 동일 `TrashCursor` 포맷
-                     재사용 — Wave 2 T9에서 visibility를 public으로 승격)
-            limit   (선택; default 50, max 100 — 초과 시 clamp)
+  Query:    q           (선택; max 200 chars. files.name + folders.name LIKE wildcard escape 후
+                         `LOWER(...) LIKE LOWER(?) ESCAPE '\\'` — admin-user-search-update와 동일 정책)
+            type        (선택; 'file' | 'folder' | (생략 = 양쪽). 그 외 → 400 VALIDATION_ERROR)
+            ownerId     (선택; UUID. 형식 오류 → 400 VALIDATION_ERROR)
+            deletedFrom (선택; `YYYY-MM-DD` date-only — UTC 00:00:00Z inclusive 하한.
+                         형식 오류 → 400 VALIDATION_ERROR)
+            deletedTo   (선택; `YYYY-MM-DD` date-only — backend가 입력일+1의 UTC 00:00:00Z로
+                         변환(exclusive 상한, 즉 입력일 종일 포함). 형식 오류 → 400.
+                         양쪽 모두 적용 시 deletedFrom < deletedTo여야 함 — 위반 시 400)
+            cursor      (선택; opaque base64 — user-facing `GET /api/trash`와 동일 `TrashCursor` 포맷
+                         재사용 — Wave 2 T9에서 visibility를 public으로 승격)
+            limit       (선택; default 50, max 100 — 초과 시 clamp)
   Response: 200 {
               items: AdminTrashItemDto[],
               nextCursor: string | null
@@ -1509,7 +1515,7 @@ GET /api/admin/trash?q=&type=&ownerId=&cursor=&limit=    (Wave 2 T9, 2026-05-07)
             }
   Side-effects: 없음 (read-only — audit emit 0건. mutation은 기존 endpoint 재사용)
   Errors:
-    400 VALIDATION_ERROR  { details: { field: 'type'|'ownerId'|'q', rule: '...' } }
+    400 VALIDATION_ERROR  { details: { field: 'type'|'ownerId'|'q'|'deletedFrom'|'deletedTo', rule: '...' } }
     401 UNAUTHORIZED      (미인증)
     403                   (MEMBER/AUDITOR — `@PreAuthorize` 차단)
   Note:     - cursor는 `TrashCursor` 재사용으로 user-facing `/api/trash`와 wire-호환.
@@ -1518,8 +1524,10 @@ GET /api/admin/trash?q=&type=&ownerId=&cursor=&limit=    (Wave 2 T9, 2026-05-07)
               `DELETE /api/trash/{type}/{id}` 재사용 (ADMIN ROLE이 SpEL `hasPermission(...DELETE)` /
               `hasRole('ADMIN')` 가드 통과). audit emit은 그쪽 endpoint에서 발행
               (FILE_RESTORED / FOLDER_RESTORED / FILE_PURGED / FOLDER_PURGED).
-            - bulk restore·purge / 2인 승인 / 날짜 범위 필터 / full path resolve / folder subtree size /
-              `deletedBy` 컬럼: v1.x deferred (cross-owner 복원 추적은 `audit_log.actor_id` 차선).
+            - 날짜 범위 필터(deletedFrom/deletedTo): T9 follow-up으로 추가 (date-only 와이어,
+              UTC 경계). 그 외 bulk restore·purge / 2인 승인 / full path resolve /
+              folder subtree size / `deletedBy` 컬럼: v1.x deferred (cross-owner 복원 추적은
+              `audit_log.actor_id` 차선).
 
 POST /api/files/:id/restore                     (A6)
 POST /api/folders/:id/restore                   (A6)

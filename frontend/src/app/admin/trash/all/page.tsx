@@ -26,6 +26,8 @@ export default function AdminTrashAllPage() {
     q: '',
     type: null,
     ownerId: null,
+    deletedFrom: null,
+    deletedTo: null,
   })
   const [cursor, setCursor] = useState<string | null>(null)
   const [confirmTarget, setConfirmTarget] = useState<AdminTrashTarget | null>(null)
@@ -88,6 +90,24 @@ export default function AdminTrashAllPage() {
           onChange={(e) => updateFilter('ownerId', e.target.value || null)}
           className="px-2 py-1 border border-border rounded bg-bg w-[280px]"
         />
+        <label className="flex items-center gap-1 text-fg-2">
+          <span>삭제일</span>
+          <input
+            type="date"
+            aria-label="삭제일 시작"
+            value={filters.deletedFrom ?? ''}
+            onChange={(e) => updateFilter('deletedFrom', e.target.value || null)}
+            className="px-2 py-1 border border-border rounded bg-bg"
+          />
+          <span aria-hidden="true">~</span>
+          <input
+            type="date"
+            aria-label="삭제일 종료"
+            value={filters.deletedTo ?? ''}
+            onChange={(e) => updateFilter('deletedTo', e.target.value || null)}
+            className="px-2 py-1 border border-border rounded bg-bg"
+          />
+        </label>
       </div>
 
       {list.isLoading && <p className="text-sm text-fg-2">불러오는 중…</p>}

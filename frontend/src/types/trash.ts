@@ -47,6 +47,16 @@ export interface AdminTrashFilters {
   q: string
   type: 'file' | 'folder' | null
   ownerId: string | null
+  /**
+   * deletedAt 하한(inclusive). `YYYY-MM-DD`. 빈 문자열은 null과 동치 — UI는 항상
+   * `null`로 정규화 후 송신. backend가 UTC 00:00:00Z 경계로 변환.
+   */
+  deletedFrom: string | null
+  /**
+   * deletedAt 상한(exclusive — 입력일 종일 포함). `YYYY-MM-DD`. backend가 입력일+1의
+   * UTC 00:00:00Z 경계로 변환. 양쪽 모두 적용 시 deletedFrom < deletedTo여야 함.
+   */
+  deletedTo: string | null
 }
 
 export interface AdminTrashPage {
