@@ -11,7 +11,6 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.Instant;
-import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -57,10 +56,14 @@ class CronPolicyRepositoryTest {
         assertThat(repository.isEnabled("does.not.exist")).isFalse();
     }
 
+    // 두 update 케이스는 updated_by=null로 호출한다 — repository slice 테스트가
+    // users 테이블을 시드하지 않아 random UUID는 FK 위반을 일으키기 때문. 실제 service
+    // 호출에서는 인증된 ADMIN user id가 전달되어 FK를 만족한다.
+
     @Test
     void updateFlipsEnabled() {
         CronPolicy p = repository.findById("purge.expired").orElseThrow();
-        p.update(true, UUID.randomUUID());
+        p.update(true, null);
         repository.saveAndFlush(p);
         assertThat(repository.isEnabled("purge.expired")).isTrue();
     }
@@ -69,7 +72,7 @@ class CronPolicyRepositoryTest {
     void updatedAtAdvancesOnFlip() {
         CronPolicy p = repository.findById("share.expire").orElseThrow();
         Instant before = p.getUpdatedAt();
-        p.update(true, UUID.randomUUID());
+        p.update(true, null);
         repository.saveAndFlush(p);
         CronPolicy after = repository.findById("share.expire").orElseThrow();
         assertThat(after.getUpdatedAt()).isAfter(before);
