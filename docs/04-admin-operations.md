@@ -295,7 +295,8 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 - [x] 전체 사용자의 휴지통 파일 (관리자 전용) — `/admin/trash/all` (Wave 2 T9, 2026-05-07)
   - 목록: `GET /api/admin/trash` (admin DTO: owner/originalParent/size + V10 `deletedById`/`deletedByEmail` 노출 — docs/02 §7.11, §6.5.1)
   - 단건 복원/영구삭제: 기존 endpoint 재사용 (`POST /api/files|folders/{id}/restore` + `DELETE /api/trash/{type}/{id}` — ADMIN ROLE이 SpEL 가드 통과)
-  - 정책 조정 UI(`/admin/trash/policy`) / 2인 승인: v1.x deferred
+  - 정책 read-only viewer (`/admin/trash/policy`) — wave2-trash-policy-viewer (Wave 2 T9 follow-up, 2026-05-09): 현재 보존 일수 + 변경 절차 + cron cross-link. mutation은 v1.x deferred (`@ConfigurationProperties` 부팅 바인딩).
+  - 정책 mutation UI / 2인 승인: v1.x deferred
 - [x] 일괄 복원·영구삭제 (admin-trash-bulk, Wave 2 T9 follow-up, 2026-05-08)
   - endpoint: `POST /api/admin/trash/bulk` (`action: 'restore' | 'purge'` + `items: 1..200`, docs/02 §7.11)
   - UI: 행 좌측 체크박스 + 헤더 select-all (페이지 한정) + BulkActionBar (선택 N개 / 전체 해제 / 일괄 복원 / 일괄 영구삭제). 일괄 영구삭제는 ConfirmDialog 거침.

@@ -1497,6 +1497,7 @@ GET /api/me/effective-permissions[?nodeId={uuid}]
 | GET | `/api/trash` | `isAuthenticated()` (결과는 사용자가 DELETE 권한 가진 항목만 — A8 결과 후처리, ADR #32) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
 | GET | `/api/admin/trash` (Wave 2 T9) | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→LIKE escape (case-insensitive) | **`WHERE deleted_at IS NOT NULL`** | 400 VALIDATION_ERROR(invalid type/ownerId/q>200/deletedFrom·deletedTo 형식 또는 from≥to), 401, 403 |
 | POST | `/api/admin/trash/bulk` (Wave 2 T9 follow-up) | `hasRole('ADMIN')` | — (per-item 단건 service 트랜잭션, fan-out) | — | per-item: 단건 endpoint와 동일 (restore: SET NULL+UNIQUE 재검사 / purge: row+versions cascade) | 200(부분 실패 허용 — `failed[]`로 표현), 400 VALIDATION_ERROR(invalid action / items.size ∉ [1,200]), 401, 403 |
+| GET | `/api/admin/trash/policy` (Wave 2 T9 follow-up, wave2-trash-policy-viewer) | `hasRole('ADMIN')` | — | — | — (read-only) | 401, 403 |
 | POST | `/api/files/:id/restore` (A6) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
 | POST | `/api/folders/:id/restore` (A6) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade | 404, 409 RESTORE_CONFLICT |
 | DELETE | `/api/trash/:type/:id` (A8, ADR #32) | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + file_versions cascade. S3 객체는 ADR #31 deferred) | 400 VALIDATION_ERROR(invalid type), 403, 404 |

@@ -184,6 +184,11 @@ export const qk = {
       filters.deletedTo ?? null,
       cursor ?? null,
     ] as const,
+  /**
+   * 휴지통 보존 정책 read-only viewer (wave2-trash-policy-viewer, Wave 2 T9 follow-up).
+   * 단일 키 — 인자 없음. mutation 없음(현재는 read-only).
+   */
+  adminTrashPolicy: () => [...qk.adminTrash(), 'policy'] as const,
 
   // ── 관리자 대시보드 (admin-dashboard 트랙) ──
   adminDashboard: () => [...qk.all, 'admin', 'dashboard'] as const,

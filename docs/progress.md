@@ -5,6 +5,56 @@
 
 ---
 
+## 2026-05-09 — 🏁 wave2-trash-policy-viewer 트랙 종료 (Wave 2 T9 follow-up — `/admin/trash/policy` read-only viewer)
+
+### 범위
+
+PR #108 (wave2-trash-retention-config — `app.trash.retention.days` 외부화) 후속. 운영자가 yml 직접 열지 않고도 현재 보존 일수를 admin UI에서 확인할 수 있게 한다. `/admin/trash/policy` 페이지 + 신규 endpoint + AdminSideNav 링크. mutation은 v1.x deferred.
+
+### 변경 핵심
+
+**Backend (신규 파일 위주)**:
+- `AdminTrashPolicyDto` (NEW, record(int retentionDays)) — 단일 필드 read-only DTO.
+- `AdminTrashPolicyController` (NEW) — `GET /api/admin/trash/policy` `@PreAuthorize("hasRole('ADMIN')")`. `TrashRetentionProperties.days()` 그대로 노출.
+- `AdminTrashPolicyControllerTest` (NEW, 4 tests) — 200/401/403 매트릭스 + non-default 값(14) 회귀 가드. `@TestConfiguration`으로 properties 고정 주입 (audit-export-cap-config 패턴 동형).
+
+**Frontend (신규 파일 위주 + 작은 추가 수정)**:
+- `types/admin-trash-policy.ts` (NEW) — `AdminTrashPolicy { retentionDays: number }`.
+- `hooks/useAdminTrashPolicy.ts` (NEW) — `useQuery`, staleTime 60s, retry false. `useAdminStorageOverview` 패턴 동형.
+- `lib/api.ts` — `getAdminTrashPolicy()` 추가 (`getAdminStorageOverview` 직후, 패턴 동형).
+- `lib/queryKeys.ts` — `qk.adminTrashPolicy()` 추가 (`adminTrashList` 직후).
+- `app/admin/trash/policy/page.tsx` (NEW) — `<AdminGuard>` + 카드 3개: 보존 기간(숫자 강조), cron cross-link(`/admin/system`), 변경 절차 안내(yml + 재기동 + 0/음수 보정 안내).
+- `app/admin/trash/policy/page.test.tsx` (NEW, 6 tests) — loading/error/success/non-default/cross-link href/h1.
+- `components/admin/AdminSideNav.tsx` — `'휴지통 정책'` 링크 추가 (`scope: 'ADMIN'`, `match: 'exact'`). DEFERRED_ITEMS에서 `'정책'` 제거 (closure 마커).
+- `components/admin/AdminSideNav.test.tsx` — ADMIN test에 `'휴지통'`/`'휴지통 정책'` 검증 + AUDITOR 화면 hide 회귀 가드.
+
+**Docs**:
+- `docs/02 §7.11` 표 — `GET /api/admin/trash/policy` 신규 row.
+- `docs/04 §8.3` — viewer closure 마커 추가, mutation v1.x deferred 명시 유지.
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.admin.trash.AdminTrashPolicyControllerTest"` BUILD SUCCESSFUL.
+- `cd frontend && pnpm typecheck` exit 0, `pnpm lint` exit 0.
+- `pnpm test --run page.test.tsx + AdminSideNav.test.tsx` — 15 tests passed (page 6 + sidenav 9).
+
+### 결정/편차
+
+- **read-only 우선** — mutation API/UI는 v1.x. `@ConfigurationProperties` 부팅 바인딩이라 runtime 변경 자체가 어렵고, 즉시 변경 시 hard purge가 갑자기 일어나는 사고 위험을 운영자가 의도적으로 yml + 재기동 절차로 격리.
+- **cron 분리** — `enabled/cron/zone`은 `/admin/system` 책임 (Wave 1 T3 + admin-cron-toggle #102 closure). 본 페이지는 cross-link만 제공해 책임 경계 명확화.
+- **신규 controller 분리** — listing/bulk이 있는 `AdminTrashController`와 책임 분리 (1 endpoint·1 책임, KISS). 향후 mutation 도입 시 같은 controller에서 `PUT` 추가가 자연스러움.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 mutation UI / 2인 승인 / full path resolve / 권한 grant/revoke direct CRUD / quota / progress streaming(SSE/WS).
+- mutation 도입 시 `@RefreshScope` 또는 별도 `TrashRetentionPolicyEntity` (DB-backed) 검토 — admin-cron-toggle (#102)이 cron policy를 동일 패턴으로 진화시킨 결과 참고 가능.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 admin-cron-toggle 트랙 종료 (Wave 2 closure 후속 — cron 4종 runtime 토글)
 
 ### 범위

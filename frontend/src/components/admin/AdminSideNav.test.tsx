@@ -75,7 +75,7 @@ describe('AdminSideNav — role 분기 (wave1.5-auditor-admin-ui-access)', () =>
     mockPathname.mockReturnValue('/admin')
   })
 
-  it('roles=[ADMIN] → 7개 활성 항목 모두 노출', () => {
+  it('roles=[ADMIN] → 활성 항목 모두 노출 (휴지통 + 휴지통 정책 포함)', () => {
     useMeMock.mockReturnValue(session(['ADMIN']))
     wrap(<AdminSideNav />)
     expect(screen.getByRole('link', { name: '대시보드' })).toBeTruthy()
@@ -85,6 +85,9 @@ describe('AdminSideNav — role 분기 (wave1.5-auditor-admin-ui-access)', () =>
     expect(screen.getByRole('link', { name: '권한' })).toBeTruthy()
     expect(screen.getByRole('link', { name: '시스템' })).toBeTruthy()
     expect(screen.getByRole('link', { name: '스토리지' })).toBeTruthy()
+    expect(screen.getByRole('link', { name: '휴지통' })).toBeTruthy()
+    // wave2-trash-policy-viewer (ADMIN-only)
+    expect(screen.getByRole('link', { name: '휴지통 정책' })).toBeTruthy()
   })
 
   it('roles=[AUDITOR] → 감사 로그 + 시스템만 노출, 나머지 hide', () => {
@@ -104,6 +107,8 @@ describe('AdminSideNav — role 분기 (wave1.5-auditor-admin-ui-access)', () =>
     wrap(<AdminSideNav />)
     expect(screen.queryByText('예정')).toBeNull()
     expect(screen.queryByText('휴지통')).toBeNull()
+    // wave2-trash-policy-viewer — ADMIN-only, AUDITOR 화면에서 hide.
+    expect(screen.queryByRole('link', { name: '휴지통 정책' })).toBeNull()
     expect(screen.queryByText('Legal Hold')).toBeNull()
   })
 
