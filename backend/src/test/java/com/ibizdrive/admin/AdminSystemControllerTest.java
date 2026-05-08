@@ -21,14 +21,22 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.MediaType;
 import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -47,6 +55,9 @@ class AdminSystemControllerTest {
 
     @Autowired
     private MockMvc mvc;
+
+    @MockBean
+    private AdminSystemService adminSystemService;
 
     @MockBean
     private LoginAttemptTracker tracker;
@@ -168,6 +179,56 @@ class AdminSystemControllerTest {
             .andExpect(jsonPath("$.jobs[1].key").value("share.expire"))
             .andExpect(jsonPath("$.jobs[2].key").value("permission.expire"))
             .andExpect(jsonPath("$.jobs[3].key").value("storage.orphan.cleanup"));
+    }
+
+    // ---------------------------------------------------------------
+    // admin-cron-policy-toggle: PUT /api/admin/system/cron/{key} (ADMIN-only)
+    // ---------------------------------------------------------------
+
+    @Test
+    void putCron_admin_returns204AndCallsService() throws Exception {
+        mvc.perform(put("/api/admin/system/cron/permission.expire")
+                .with(user(adminPrincipal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"enabled\":true}"))
+            .andExpect(status().isNoContent());
+
+        verify(adminSystemService).toggleCron(
+            eq("permission.expire"), eq(true), any(), any(), any());
+    }
+
+    @Test
+    void putCron_auditor_returns403() throws Exception {
+        mvc.perform(put("/api/admin/system/cron/permission.expire")
+                .with(user(auditorPrincipal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"enabled\":true}"))
+            .andExpect(status().isForbidden());
+
+        verifyNoInteractions(adminSystemService);
+    }
+
+    @Test
+    void putCron_missingEnabled_returns400() throws Exception {
+        mvc.perform(put("/api/admin/system/cron/permission.expire")
+                .with(user(adminPrincipal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{}"))
+            .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void putCron_unknownKey_returns400() throws Exception {
+        doThrow(new IllegalArgumentException("unknown cron key: bogus"))
+            .when(adminSystemService).toggleCron(
+                eq("bogus"), any(Boolean.class), any(), any(), any());
+
+        mvc.perform(put("/api/admin/system/cron/bogus")
+                .with(user(adminPrincipal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"enabled\":true}"))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("BAD_REQUEST"));
     }
 
     /**
