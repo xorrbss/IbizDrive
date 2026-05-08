@@ -57,7 +57,8 @@ class AuditQueryServiceTest {
     static class TestConfig {
         @Bean
         AuditQueryService auditQueryService(JdbcTemplate jdbc, ObjectMapper om, PermissionResolver pr) {
-            return new AuditQueryService(jdbc, om, pr);
+            // 테스트는 default cap(10000)을 그대로 사용. row-cap 자체 검증은 별도 단위 테스트가 작은 cap으로 수행.
+            return new AuditQueryService(jdbc, om, pr, new AuditExportProperties(10_000));
         }
 
         @Bean

@@ -58,13 +58,16 @@ public class AuditQueryService {
     private final JdbcTemplate jdbc;
     private final ObjectMapper objectMapper;
     private final PermissionResolver permissionResolver;
+    private final AuditExportProperties exportProperties;
 
     public AuditQueryService(JdbcTemplate jdbc,
                              ObjectMapper objectMapper,
-                             PermissionResolver permissionResolver) {
+                             PermissionResolver permissionResolver,
+                             AuditExportProperties exportProperties) {
         this.jdbc = jdbc;
         this.objectMapper = objectMapper;
         this.permissionResolver = permissionResolver;
+        this.exportProperties = exportProperties;
     }
 
     /**
@@ -113,8 +116,10 @@ public class AuditQueryService {
      * 전체 결과 export — {@code GET /api/admin/audit/export} 전용.
      *
      * <p>{@link #search}와 동일한 필터·권한 정책을 재사용하지만 페이징 없이 전체 결과를 반환한다.
-     * 메모리·DoS 방어로 hard cap {@value #EXPORT_ROW_CAP}를 적용 — {@code LIMIT cap+1}로 페치하여
-     * cap 초과 여부를 판별하고, 초과 시 처음 cap개만 반환 + {@link AuditExportResult#truncated()} = true.
+     * 메모리·DoS 방어로 hard cap을 적용 — {@code LIMIT cap+1}로 페치하여 cap 초과 여부를
+     * 판별하고, 초과 시 처음 cap개만 반환 + {@link AuditExportResult#truncated()} = true.
+     * cap 값은 {@link AuditExportProperties#rowCap()} (application.yml {@code app.audit.export.row-cap},
+     * 기본 10000).
      *
      * <p>호출 측({@link AuditQueryController#exportCsv})은 {@code @PreAuthorize}로 ADMIN/AUDITOR만
      * 진입을 허용하지만, 본 메서드는 권한 가드를 service 진입점에서도 한 번 더 방어한다 — 우회 호출
@@ -131,8 +136,9 @@ public class AuditQueryService {
         StringBuilder where = new StringBuilder("WHERE 1=1");
         appendFilterClauses(where, args, filters, viewerId, viewerRole);
 
+        int rowCap = exportProperties.rowCap();
         List<Object> pageArgs = new ArrayList<>(args);
-        pageArgs.add(EXPORT_ROW_CAP + 1);   // cap 초과 감지를 위해 1건 더 페치
+        pageArgs.add(rowCap + 1);   // cap 초과 감지를 위해 1건 더 페치
         List<AuditLogEntryDto> rows = jdbc.query(
             "SELECT " + SELECT_COLUMNS + " " + FROM_JOIN + " " + where +
             " ORDER BY a.occurred_at DESC, a.id DESC LIMIT ?",
@@ -140,16 +146,13 @@ public class AuditQueryService {
             pageArgs.toArray()
         );
 
-        boolean truncated = rows.size() > EXPORT_ROW_CAP;
-        List<AuditLogEntryDto> capped = truncated ? rows.subList(0, EXPORT_ROW_CAP) : rows;
+        boolean truncated = rows.size() > rowCap;
+        List<AuditLogEntryDto> capped = truncated ? rows.subList(0, rowCap) : rows;
         return new AuditExportResult(List.copyOf(capped), truncated);
     }
 
     /** export 결과 — 행 목록 + cap 초과 여부. {@link AuditQueryController}가 헤더/audit metadata에 사용. */
     public record AuditExportResult(List<AuditLogEntryDto> entries, boolean truncated) {}
-
-    /** export 행 hard cap (DoS·OOM 방어). 초과 export는 v1.x 배치 작업으로 분리 (docs/04 §13). */
-    public static final int EXPORT_ROW_CAP = 10_000;
 
     /**
      * WHERE 절 + bind args 빌더 — {@link #search}와 {@link #exportAll}이 공유.
