@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-05-08 — 🏁 wave2-trash-date-filter-kst 트랙 종료 (Wave 2 T9 follow-up — admin trash 날짜 필터 KST 경계화)
+
+### 범위
+
+PR #83 (admin global trash `deletedFrom`/`deletedTo` 도입) 후속. 기존 변환은 `ZoneOffset.UTC` 기반이라 한국 운영자가 `2026-05-08`을 입력하면 백엔드는 UTC 5/8 0시 ~ UTC 5/9 0시 (= KST 5/8 09:00 ~ KST 5/9 09:00)를 검색해 의도한 KST 0~24시와 9시간 시프트되는 운영 신뢰도 버그.
+
+### 변경 핵심
+
+**Backend** (단일 메서드 ZoneId 변경):
+- `AdminTrashController.parseDateBoundary` — `ZoneOffset.UTC` → `ZoneId.of("Asia/Seoul")` (+ `KST` 상수 분리). javadoc에 KST 경계 + PR #83 follow-up 명시.
+- 사내 단일 지역 운영 + 기존 cron(`app.purge.zone: Asia/Seoul`) 패턴과 정합 → 하드코딩 (YAGNI; application.yml 주입 분기는 다중 리전 진입 시).
+
+**Tests**:
+- `AdminTrashControllerTest.list_passesDeletedDateRangeBoundaries` — expected instant을 KST 경계로 갱신 (5/1~5/7 → UTC `2026-04-30T15:00Z`/`2026-05-07T15:00Z`).
+- `AdminTrashControllerTest.list_singleDayBoundaryUsesKstNotUtc` (NEW) — 단일 날짜 입력 시 9시간 KST 시프트 회귀 방지.
+
+**Docs**:
+- `docs/02 §7.11` — `deletedFrom`/`deletedTo` 변환 설명을 KST(`Asia/Seoul`) 경계로 명시 + 운영자 wall-clock 일치 부연.
+- `docs/04 §8.3` — "삭제일 범위 필터" `[x]` 항목 신설 (KST 경계, exclusive 상한 의미 포함).
+- `frontend/src/types/trash.ts` `AdminTrashFilters` — stale "UTC 00:00:00Z" 주석을 KST로 갱신 (wire 시그니처 무변경).
+
+### 검증
+
+- `cd backend && ./gradlew test --tests "com.ibizdrive.admin.trash.*"` BUILD SUCCESSFUL.
+- `cd frontend && pnpm test --run` 125 files / **945 passed** (skipped 0).
+- `pnpm typecheck` exit 0 / `pnpm lint` exit 0.
+
+### 결정/편차
+
+- ZoneId 하드코딩 — 사내 단일 지역 + cron 정합 (KISS, YAGNI). `app.timezone` 환경변수화는 다중 리전 진입 시 cron까지 묶어 처리.
+- Repository SQL 무변경 — `timestamptz` 비교는 zone-agnostic, controller 측 변환만 진실의 출처.
+- Frontend wire 무변경 — `<input type="date">`는 운영자 wall-clock(KST)을 그대로 송신, backend가 KST로 해석.
+- 기존 KST 시프트 입력 의도(UTC 가정)로 사용 중이던 결과는 9시간 시프트됨 — PR #83이 5/8 직전 머지된 신규 기능이라 영향 운영자 ↓ + 운영자 의도 정합이 더 큼.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여 (KST 항목 closure 후): 휴지통 보존 정책 UI(`/admin/trash/policy`) / 2인 승인 / full path resolve / folder subtree size / 권한 grant/revoke direct CRUD / quota / progress streaming(SSE/WS) / chunked client.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-08 — 🏁 audit-export-cap-config 트랙 종료 (audit export cap 외부화)
 
 ### 범위
@@ -34,7 +78,7 @@
 
 ### 다음 세션 컨텍스트
 
-- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / folder subtree size / 권한 grant/revoke direct CRUD / quota / audit SQL→JSON streaming. KST 경계 날짜 필터는 다른 세션(`feat/wave2-trash-date-filter-kst`) 진행 중.
+- v1.x backlog 잔여: 휴지통 보존 정책 UI / 2인 승인 / full path resolve / folder subtree size / 권한 grant/revoke direct CRUD / quota / audit SQL→JSON streaming.
 - audit SQL→JSON streaming 도입 시 본 트랙의 `AuditExportProperties`에 `streaming-fetch-size` 등을 추가하는 패턴.
 
 ### 블로커

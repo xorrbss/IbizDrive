@@ -14,7 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneOffset;
+import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
 import java.util.UUID;
 
@@ -30,8 +30,13 @@ import java.util.UUID;
  * 명시적으로 catch 후 IAE로 변환.
  *
  * <p>날짜 범위 필터(Wave 2 T9 follow-up): {@code deletedFrom}/{@code deletedTo}는
- * {@code YYYY-MM-DD} (date-only)로 받는다. UTC 경계로 변환:
- * 하한은 해당일 00:00:00Z(inclusive), 상한은 다음 날 00:00:00Z(exclusive — 입력일 종일 포함).
+ * {@code YYYY-MM-DD} (date-only)로 받는다. KST({@code Asia/Seoul}) 경계로 변환:
+ * 하한은 해당일 KST 00:00:00 (= UTC 전날 15:00:00Z, inclusive), 상한은 다음 날 KST 00:00:00
+ * (= 입력일 KST 24시, exclusive — 입력일 KST 종일 포함).
+ *
+ * <p>운영자(한국 사내) 의도와 wall-clock 일치 — 운영자가 {@code 2026-05-08} 입력 시 KST 5/8
+ * 0~24시에 deleted된 row가 검색된다. PR #83 follow-up: 기존 UTC 변환은 9시간 시프트되어
+ * KST 9시 ~ 익일 9시를 검색하던 버그 수정.
  */
 @RestController
 @RequestMapping("/api/admin/trash")
@@ -86,18 +91,21 @@ public class AdminTrashController {
         return ResponseEntity.ok(result);
     }
 
+    /** 사내 단일 지역 운영 — 다중 리전 진입 시 application.yml 주입으로 일원화(YAGNI). */
+    private static final ZoneId KST = ZoneId.of("Asia/Seoul");
+
     /**
-     * {@code YYYY-MM-DD} → UTC instant 경계.
+     * {@code YYYY-MM-DD} → KST 경계 instant.
      *
-     * @param exclusiveUpperBound true면 다음 날 00:00:00Z(상한 exclusive),
-     *                            false면 당일 00:00:00Z(하한 inclusive).
+     * @param exclusiveUpperBound true면 다음 날 KST 00:00(상한 exclusive),
+     *                            false면 당일 KST 00:00(하한 inclusive).
      */
     private static Instant parseDateBoundary(String raw, String fieldName, boolean exclusiveUpperBound) {
         if (raw == null || raw.isBlank()) return null;
         try {
             LocalDate d = LocalDate.parse(raw);
             LocalDate boundary = exclusiveUpperBound ? d.plusDays(1) : d;
-            return boundary.atStartOfDay(ZoneOffset.UTC).toInstant();
+            return boundary.atStartOfDay(KST).toInstant();
         } catch (DateTimeParseException ex) {
             throw new IllegalArgumentException(
                 "invalid " + fieldName + " (expected YYYY-MM-DD)", ex);
