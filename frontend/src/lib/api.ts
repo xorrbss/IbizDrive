@@ -441,12 +441,17 @@ export const api = {
    * (v1.x ADR 미정 — 현재 호출부 미존재로 backend root UUID 정책 결정 시 재검토.)
    */
   async createFolder(parentId: string, name: string): Promise<{ id: string; name: string; parentId: string | null }> {
+    // CSRF double-submit — 누락 시 backend SecurityFilter가 PermissionEvaluator 도달 전 403.
+    // 다른 mutation들과 동일 패턴(rename/move/share 등). 운영자가 ADMIN role임에도
+    // "폴더를 만들 권한이 없습니다"로 표시되던 회귀 (UI는 403을 권한 메시지로 매핑).
+    const csrf = readCookie('XSRF-TOKEN')
     const res = await fetch('/api/folders', {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
+        ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
       },
       body: JSON.stringify({ parentId: parentId === 'root' ? null : parentId, name: name.trim() }),
     })
