@@ -6,7 +6,7 @@ import java.util.UUID;
 /**
  * 감사 로그 export 1회를 표현하는 도메인 이벤트.
  *
- * <p>{@link AuditQueryController#exportCsv}가 응답 stream을 모두 작성한 뒤 publish하면
+ * <p>{@link AuditQueryController#export}가 응답 stream을 모두 작성한 뒤 publish하면
  * {@link AuditExportListener}가 {@code AUDIT_EXPORTED} ({@code audit.exported}) audit_log row를
  * REQUIRES_NEW 트랜잭션으로 기록한다 (ADR #24).
  *
@@ -21,6 +21,7 @@ import java.util.UUID;
  * @param filtersJson  적용된 필터의 JSON 문자열 (audit metadata에 그대로 들어감)
  * @param rowCount     실제로 export된 행 수 (cap 적용 후)
  * @param truncated    cap 초과로 잘렸는지 여부
+ * @param format       응답 직렬화 형식 ({@code "csv"} 또는 {@code "json"}). controller에서 검증된 값
  */
 public record AuditExportEvent(
     UUID actorId,
@@ -28,6 +29,7 @@ public record AuditExportEvent(
     String userAgent,
     String filtersJson,
     int rowCount,
-    boolean truncated
+    boolean truncated,
+    String format
 ) {
 }
