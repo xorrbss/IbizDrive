@@ -468,6 +468,144 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 
 ---
 
+## 15. 사내 베타 운영 런북 (Wave 2 closure, 2026-05-07)
+
+> Wave 2 (T4~T9) closure 직후 사내 베타 출시를 위한 **운영 절차 매뉴얼**. 코드 변경 없이 admin frontend (`/admin/*`) + 운영 cron + audit_log 조회로 처리 가능한 5개 시나리오를 다룬다. 향후 v1.x에서 자동화/UI 개선 시 본 런북은 그 차선 경로의 fallback 으로 유지.
+>
+> 적용 시점: backend `application-prod.yml` cron 활성화 + ADMIN/AUDITOR 계정 프로비저닝 완료 후.
+
+### 15.1 ADMIN cross-owner 복원/영구삭제 추적
+
+`/admin/trash/all` (T9)은 ADMIN이 **타 사용자 소유** 휴지통 항목을 복원/영구삭제할 수 있게 한다. `deletedBy` 컬럼은 v1.x deferred (docs/02 §7.11) 이므로 "누가 누구의 항목을 처리했는가" 추적은 **`audit_log` 단일 진실의 출처**로 운영한다.
+
+**조회 절차** (사내 베타 운영자):
+
+1. `/admin/audit/logs` 접속 (M12 wired) — actor_role 필터는 v1.x deferred 라 SQL 직접 사용 권장.
+2. 또는 DB 직접 쿼리:
+
+   ```sql
+   -- 최근 24h 동안 ADMIN actor 가 수행한 휴지통 액션
+   SELECT
+     occurred_at,
+     actor_id,
+     event_type,        -- file.restored / file.purged / folder.restored / folder.purged
+     target_id,         -- 복원·영구삭제된 file/folder UUID
+     after_state->>'name' AS name,
+     metadata->>'ip'    AS ip
+   FROM audit_log
+   WHERE event_type IN ('file.restored','file.purged','folder.restored','folder.purged')
+     AND actor_id IS NOT NULL
+     AND occurred_at >= NOW() - INTERVAL '24 hours'
+   ORDER BY occurred_at DESC;
+   ```
+
+3. `actor_id` → `users` 테이블 join 으로 actor 식별, `target_id` → `files`/`folders` (soft-delete row 포함) join 으로 owner 식별. **owner ≠ actor** 인 row 가 cross-owner 액션.
+
+**제약**:
+
+- A6/A7 cron (`app.purge.expired`, `app.share.expiration`) 은 `actor_id=NULL` + `metadata.trigger='system.expiration'` 으로 emit (docs/02 §7.10.1, §1561) → 위 쿼리에서 자연 배제됨.
+- soft-delete 된 file/folder 도 row 자체는 보존되므로 `target_id` join 가능 (T9 design rationale).
+
+### 15.2 휴지통 일일 운영
+
+운영자가 `/admin/trash/all` 만으로 처리 가능한 일상 작업과 cron 분담:
+
+| 작업 | UI 경로 | 백엔드 처리 |
+|---|---|---|
+| 휴지통 전수 조회 | `/admin/trash/all` (T9, q/type/ownerId 필터) | `GET /api/admin/trash` |
+| 단건 복원 | `/admin/trash/all` 행 `복원` 버튼 | `POST /api/files\|folders/{id}/restore` |
+| 단건 영구삭제 | `/admin/trash/all` 행 `영구삭제` 버튼 + ConfirmDialog | `DELETE /api/trash/{type}/{id}` |
+| 자동 hard purge | (UI 없음, cron) | `app.purge` cron — `deleted_at + retention < NOW()` 일괄 hard delete |
+
+**운영 권장**:
+
+- 베타 초기 1주는 `app.purge.enabled: false` 유지하고 수동 영구삭제만 (ADMIN 검토 후) → audit trail 완전 확보.
+- 안정화 후 `enabled: true` 로 전환 (재기동 필요, §15.4 참조).
+- bulk restore/purge 는 v1.x deferred (T9 backlog) — 단건 처리만 가능.
+
+### 15.3 권한 만료 모니터링
+
+`/admin/permissions` (T5) 는 read-only viewer + 만료 배지를 제공. 만료된 권한 자체는 `permissions-expired-cron` 이 평가에서 무시 + DB 정리하지만 (docs/02 §7.10), **운영 알림은 자동화되지 않았다**.
+
+**일일 점검** (사내 베타):
+
+1. `/admin/permissions?preset=expiring` (만료 임박 필터, 7일 이내) → 갱신 필요 항목 list-up.
+2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리.
+3. cron 동작 검증:
+
+   ```sql
+   -- 최근 1h 동안 만료 처리된 permission/share
+   SELECT event_type, COUNT(*) FROM audit_log
+   WHERE event_type IN ('permission.expired','share.expired')
+     AND occurred_at >= NOW() - INTERVAL '1 hour'
+   GROUP BY event_type;
+   ```
+
+### 15.4 운영 cron 4종 변경 절차
+
+`/admin/system` (T3 wave1-t3) 은 `app.{purge,share.expiration,permission.expiration,storage.orphan-cleanup}` 4 cron 의 **read-only 노출**만 제공한다. 변경은 `application.yml` 직접 편집 + 재기동.
+
+**운영 cron 4종** (`backend/src/main/resources/application.yml` line 60~95):
+
+| 키 | 기본값 | 역할 |
+|---|---|---|
+| `app.purge` | `enabled:false`, `cron:"0 0 0 * * *"` (매일 자정) | A7 hard purge — `deleted_at` 만료 file/folder 영구삭제 |
+| `app.share.expiration` | `enabled:false`, `cron:"0 */5 * * * *"` (매 5분) | SHARE_EXPIRED — 만료 share row 자동 정리 + audit |
+| `app.permission.expiration` | `enabled:false`, `cron:"0 */5 * * * *"` (매 5분) | PERMISSION_EXPIRED — 만료 permission row hard delete + audit |
+| `app.storage.orphan-cleanup` | `enabled:false`, `cron:"0 0 1 * * *"` (매일 새벽 1시) | A15 backlog — 고아 객체 정리 |
+
+**변경 절차**:
+
+1. `application-prod.yml` 에서 해당 cron 의 `enabled: true` + 필요시 `cron`/`max-per-run` 수정 (overrides base `application.yml`).
+2. `git commit` + 배포 파이프라인 진행 (인프라 책임).
+3. 재기동 후 `/admin/system` 으로 4 cron 모두 활성 표시 검증.
+4. AUDITOR 계정으로도 `/admin/system` 접근 가능 (Wave 1.5 auditor-cron-readonly closure, 2026-05-07).
+
+**제약**:
+
+- 런타임 토글 미지원 — config 변경은 항상 재기동 동반.
+- cron schedule 변경시 audit_log 에 trace 안 남음 (config-driven). git commit 이 trace.
+
+### 15.5 스토리지 KPI 해석 가이드
+
+`/admin` (T7 admin-dashboard) 8 KPI + `/admin/storage` (T8 admin-storage-overview) 시스템 합계 + 정리 기록 overview 를 운영자가 일일 모니터링.
+
+**T7 대시보드 KPI 8종 (`GET /api/admin/dashboard/summary`)**:
+
+| KPI | 정의 | 베타 베이스라인 (예상) | 알림 임계 |
+|---|---|---|---|
+| 등록 사용자 | `users` count | 사내 인원 N | (변동 시 §15.1 audit 조회) |
+| 활성 사용자 | `users WHERE is_active=true` | ≈ 등록 ± 비활성 | 활성 < 등록 × 0.8 검토 |
+| 전체 부서 | `departments` count | 조직도 부서 수 | 변경시 audit `admin.dept.*` 추적 |
+| 활성 부서 | (현재 전체 동치 — `is_active` 컬럼 부재, T7 closure note) | = 전체 부서 | — |
+| 활성 폴더 | `folders WHERE deleted_at IS NULL` | 운영 중 폴더 수 | 급증 시 §15.2 휴지통 검토 |
+| 활성 파일 | `files WHERE deleted_at IS NULL` | 운영 중 파일 수 | — |
+| 휴지통 파일 | `files WHERE deleted_at IS NOT NULL` | A7 cron 동작 시 ≤ retention period 내 삭제 누적 | retention 초과 잔존 = cron 미동작 — §15.4 검토 |
+| 24h 감사 이벤트 | `audit_log WHERE occurred_at >= NOW() - 24h` | 활동량 비례 | 0 = audit emit pipeline 점검 |
+
+**T8 `/admin/storage` overview**:
+
+- 시스템 합계 (`SUM(file_versions.size_bytes)`) — 쿼터·과금 베이스 (v1.x quota 트랙 의존).
+- 정리 기록 (`storage.orphan.cleaned` audit 24h tail) — orphan-cleanup cron 동작 가시화.
+
+**일일 점검 권장**:
+
+1. T7 KPI 8종 스냅샷 — 전일 대비 ±20% 변동 시 §15.1~15.4 분기.
+2. T8 storage trend — 일주일 단위 sum 증가율 모니터링 (rapid growth = quota 트랙 우선순위 ↑).
+3. 24h audit count = 0 → audit emit/DB 연결 즉시 점검 (severity high).
+
+### 15.6 Wave 2 backlog → v1.x 전환
+
+본 런북이 차선 경로로 운영하는 동안 v1.x 트랙 후보 (T9 closure note 인용):
+
+- `deletedBy` 컬럼 V10 마이그레이션 → §15.1 SQL 의존 제거.
+- `/admin/trash/policy` UI → cron 런타임 토글 (§15.4 의 재기동 의존 해소).
+- 휴지통 bulk restore/purge → §15.2 단건 제약 해소.
+- 휴지통 날짜 범위 필터 + full path resolve → §15.1 운영자 식별 공수 축소.
+- T7 KPI 확장 (오늘 업로드/다운로드, 쿼터 알림, 비정상 패턴) → §15.5 일일 점검 자동화.
+
+---
+
 ## 작성 우선순위 (MVP closure 시점 갱신 — 2026-05-02)
 
 1. ~~§4 사용자 관리~~ — **v1.x deferred** (admin frontend 미구현, MVP는 DB 직접 프로비저닝)
