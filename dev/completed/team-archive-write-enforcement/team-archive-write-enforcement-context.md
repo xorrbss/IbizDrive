@@ -4,8 +4,12 @@ Last Updated: 2026-05-10
 
 ## SESSION PROGRESS
 
-- 2026-05-10 (현재): bootstrap. dev-docs 3파일 + dev/process 세션 파일 작성. worktree 신규 생성(`feat/team-centric-pivot-team-archive-write-enforcement`, origin/master 기반).
-- 다음: T1(TeamArchivedException + handler 매핑) 시작.
+- 2026-05-10 (bootstrap): dev-docs 3파일 + dev/process 세션 파일 작성. worktree 신규 생성(`feat/team-centric-pivot-team-archive-write-enforcement`, origin/master 기반). [commit f1a601e]
+- 2026-05-10 (T1+T2): TeamArchivedException + TeamArchiveGuard + GlobalExceptionHandler 423 매핑. spec+code review READY. [commit 18935d2]
+- 2026-05-10 (T3+T4+T5 병렬): 11 write 진입점 가드 + 22 test cases. subagent 3-stage 통합 review READY. [commits de99427 + 510caa7 + 0ee3fe8]
+- 2026-05-10 (origin/master merge): Plan B (PR #139) 머지 흡수. backend 영역 충돌 없음. [merge commit aa26ea9]
+- 2026-05-10 (T6 docs sync): docs/02 §8 "예약" 마커 제거 + progress.md 세션 기록 + dev-docs closure.
+- **CLOSED**: ERR_TEAM_ARCHIVED enforcement 완료. dev/active → dev/completed 이전.
 
 ## Current Execution Contract
 
