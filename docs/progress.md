@@ -5,6 +5,54 @@
 
 ---
 
+## 2026-05-10 — team-centric-pivot Plan C 종료 (share endpoint subject_type='team' + §4.2 멤버십 cap)
+
+### 범위
+
+Plan C — share grant matrix에 'team' 추가 + §4.2 cap (sharer 멤버권 ≥ 부여 preset) 백엔드 강제. Plan A의 V15 + WorkspaceMembershipResolver 위에 얹어 11+1 task로 구현. ADMIN cross-workspace 절대 금지는 Plan D로 이월.
+
+### 변경 핵심
+
+**Backend**:
+- `PermissionService.ALLOWED_SUBJECT_TYPES` ← 'team' 1줄 확장 + 에러 메시지 동기 (Task 1).
+- `ShareCommandService.resolveSubjectName` ← TeamRepository 주입 + 'team' 분기 (Task 2).
+- `ShareController` wire 회귀 가드 (file/folder 양쪽, Task 3).
+- `ShareExceedsMembershipException` 신규 도메인 예외 (Task 4).
+- `ShareGrantCapValidator` 신규 — `WorkspaceMembershipResolver` 위임. cap = "preset.permissions() ⊆ sharer 멤버권" 단순 부분집합 비교 (Task 5).
+- **Task 5b 발견**: Plan A Task 22의 `WorkspaceMembershipResolver` 멤버권 정의가 spec §3.2(preset 단위)와 어긋남(권한 enum 단위로 좁게 펼침). `Preset.X.permissions()` 호출로 정합화 — 단일 진실의 출처 보존.
+- `ShareCommandService.createShares/createFolderShares` cap helper 1회 호출 (자원 workspace 기준, Task 7).
+- `GlobalExceptionHandler` `SHARE_EXCEEDS_MEMBER` → 403 매핑 (Task 6).
+
+**Docs**:
+- `docs/02 §7.9` share endpoint subject 매트릭스 'team' 명시.
+- `docs/02 §8` `SHARE_EXCEEDS_MEMBER` 403 신규.
+- `frontend/src/lib/errors.ts` 상수 `SHARE_EXCEEDS_MEMBER` 신규 (Plan C 범위 안 1건만; KISS).
+
+### 검증
+
+- `cd backend && ./gradlew test`: BUILD SUCCESSFUL.
+- `cd frontend && pnpm typecheck`: exit 0.
+- 신규 backend test: PermissionServiceGrantRevokeTest +1, ShareCommandServiceTest +3 (team 분기 + cap 위반 file/folder), ShareControllerTest +2 (team wire file/folder), ShareGrantCapValidatorTest 신규 5, GlobalExceptionHandlerTest 신규 1, WorkspaceMembershipResolverTest 3 expected 정합화.
+
+### 결정·편차
+
+- envelope code 컨벤션은 bare SCREAMING_SNAKE_CASE (`SHARE_EXCEEDS_MEMBER`) — spec §5.4의 `ERR_SHARE_EXCEEDS_MEMBER` 표기는 spec 작성 표기일 뿐, 실제 wire/docs/frontend는 `ERR_` prefix 없음. 기존 `RENAME_CONFLICT`/`PERMISSION_DENIED`/`DEPARTMENT_CONFLICT` 동형.
+- cap 알고리즘 = "preset 펼침 ⊆ sharer 멤버권" 단순형. spec §4.2의 `min(member_default, SHARE_PRESET_MAX)` 의미를 코드로 옮길 때 단일 진실의 출처(`Preset.permissions()`)를 모든 곳에서 호출하는 형태로 정합화.
+- ADMIN preset cross-workspace 절대 금지(§4.2 강한 형태)는 Plan C 범위 외 — Plan D(cross-workspace move)에서 cross-scope 분기 추가 시 함께 도입.
+- Task 5b는 plan 작성 후 발견된 spec/impl 정합성 결함의 fix — Plan A Task 22가 멤버권을 좁게 정의했음을 Plan C cap 검증 도입 시 표면화. 본 plan에 sub-task로 추가, 다른 세션 PermissionResolver 통합과 충돌 회피(`PermissionResolverMembershipStepTest`는 mock 사용으로 무영향).
+
+### 다음 세션 컨텍스트
+
+- Plan D(cross-workspace move): 본 plan이 도입한 `ShareGrantCapValidator`에 ADMIN preset cross-workspace 절대 금지 분기 추가. preset=ADMIN + sharer.scope ≠ subject.scope 차단.
+- Plan B(frontend): share dialog에 team picker + `SHARE_EXCEEDS_MEMBER` 사용자 메시지. errors.ts에 다른 상수 필요해질 때 해당 트랙 PR에서 추가.
+- Plan E(휴지통 workspace 분리): scope 컬럼은 이미 도입됨, trash query 확장만 남음.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-09 — 🚀 team-centric-pivot Plan A Phase 3~8+10 (24/30 task, 80%)
 
 ### 범위
