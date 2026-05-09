@@ -1,24 +1,14 @@
 package com.ibizdrive.team;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.ibizdrive.audit.AuditEvent;
-import com.ibizdrive.audit.AuditEventType;
-import com.ibizdrive.audit.AuditService;
-import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.folder.Folder;
-import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.folder.FolderMutationService;
 import com.ibizdrive.folder.ScopeType;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Instant;
 import java.time.OffsetDateTime;
-import java.time.temporal.ChronoUnit;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -27,32 +17,29 @@ import java.util.UUID;
  * <p>spec docs/superpowers/specs/2026-05-09-team-centric-pivot-design.md §1, §2.
  * create는 Team + 초기 OWNER 멤버십 + root Folder를 단일 트랜잭션으로 생성.
  *
- * <p><b>audit emission</b>: {@link AuditService}는 {@code REQUIRES_NEW}로 outer tx와 독립.
- * 본 서비스 tx가 rollback되어도 audit row는 잔존하므로 audit emit 시점은 부수효과 commit 직전.
+ * <p><b>audit 위임</b>: 직접 {@code AuditService.record}를 호출하지 않는다. 도메인 이벤트
+ * ({@link TeamCreatedEvent} 등)를 publish하고 {@code TeamAuditListener} (Plan A Task 28)가
+ * {@code @TransactionalEventListener(AFTER_COMMIT)}으로 audit_log row를 작성한다.
+ * {@code TEAM_CREATED} audit이 "team + 초기 OWNER 생성"을 묶어 표현하므로 create는
+ * {@code TeamMemberAddedEvent}를 발행하지 않는다 (Task 17 invite만 발행).
  *
- * <p><b>YAGNI</b>: archive/role-change/last-OWNER guard는 Plan A2 이월. 본 클래스는 create만.
+ * <p><b>YAGNI</b>: archive/role-change/last-OWNER guard는 Plan A2 이월. 본 클래스는 create + invite + remove만.
  */
 @Service
 public class TeamService {
 
-    private static final String DEFAULT_AUDIT_LEVEL = "standard";
-
     private final TeamRepository teamRepo;
     private final TeamMembershipRepository memRepo;
-    private final FolderRepository folderRepo;
-    private final AuditService auditService;
+    private final FolderMutationService folderService;
     private final ApplicationEventPublisher events;
-    private final ObjectMapper objectMapper;
 
     public TeamService(TeamRepository teamRepo, TeamMembershipRepository memRepo,
-                       FolderRepository folderRepo, AuditService auditService,
-                       ApplicationEventPublisher events, ObjectMapper objectMapper) {
+                       FolderMutationService folderService,
+                       ApplicationEventPublisher events) {
         this.teamRepo = teamRepo;
         this.memRepo = memRepo;
-        this.folderRepo = folderRepo;
-        this.auditService = auditService;
+        this.folderService = folderService;
         this.events = events;
-        this.objectMapper = objectMapper;
     }
 
     /**
@@ -76,69 +63,22 @@ public class TeamService {
             .ifPresent(existing -> { throw new TeamNameConflictException(displayName); });
 
         OffsetDateTime now = OffsetDateTime.now();
-        Instant nowInstant = Instant.now().truncatedTo(ChronoUnit.MICROS);
         UUID teamId = UUID.randomUUID();
 
         Team t = new Team(teamId, displayName, normalizedName, description,
             visibility, creatorId, now);
         teamRepo.save(t);
 
-        // Root folder — same transaction
-        UUID rootFolderId = UUID.randomUUID();
-        Folder root = new Folder();
-        root.setId(rootFolderId);
-        root.setParentId(null);
-        root.setName(displayName);
-        root.setNormalizedName(normalizedName);
-        root.setSlug(normalizedName);
-        root.setOwnerId(creatorId);
-        root.setAuditLevel(DEFAULT_AUDIT_LEVEL);
-        root.assignScope(ScopeType.TEAM, teamId);
-        root.setCreatedAt(nowInstant);
-        root.setUpdatedAt(nowInstant);
-        folderRepo.save(root);
-
-        t.attachRootFolder(rootFolderId);
+        // Root folder via FolderMutationService — same outer transaction
+        Folder root = folderService.createRootForScope(ScopeType.TEAM, teamId, creatorId, displayName);
+        t.attachRootFolder(root.getId());
 
         // Initial OWNER membership
-        TeamMembership ownerMembership = new TeamMembership(teamId, creatorId,
-            TeamMembership.Role.OWNER, null, now);
-        memRepo.save(ownerMembership);
+        memRepo.save(new TeamMembership(teamId, creatorId,
+            TeamMembership.Role.OWNER, null, now));
 
-        // Audits — TEAM_CREATED + TEAM_MEMBER_ADDED
-        emitTeamCreated(teamId, creatorId, displayName, normalizedName, visibility, rootFolderId);
-        emitMemberAdded(teamId, creatorId, creatorId, TeamMembership.Role.OWNER);
-
+        // Audit delegated to TeamAuditListener via TeamCreatedEvent (Task 28)
         events.publishEvent(new TeamCreatedEvent(teamId, creatorId, displayName));
         return t;
-    }
-
-    private void emitTeamCreated(UUID teamId, UUID actor, String name, String normalizedName,
-                                  Team.Visibility visibility, UUID rootFolderId) {
-        Map<String, Object> after = new LinkedHashMap<>();
-        after.put("name", name);
-        after.put("normalizedName", normalizedName);
-        after.put("visibility", visibility.dbValue());
-        after.put("rootFolderId", rootFolderId.toString());
-        auditService.record(new AuditEvent(
-            AuditEventType.TEAM_CREATED, actor, null, null,
-            AuditTargetType.TEAM, teamId, null, toJson(after), null));
-    }
-
-    private void emitMemberAdded(UUID teamId, UUID memberUserId, UUID actor, TeamMembership.Role role) {
-        Map<String, Object> after = new LinkedHashMap<>();
-        after.put("userId", memberUserId.toString());
-        after.put("role", role.name());
-        auditService.record(new AuditEvent(
-            AuditEventType.TEAM_MEMBER_ADDED, actor, null, null,
-            AuditTargetType.TEAM, teamId, null, toJson(after), null));
-    }
-
-    private String toJson(Map<String, Object> map) {
-        try {
-            return objectMapper.writeValueAsString(map);
-        } catch (JsonProcessingException e) {
-            throw new IllegalStateException("audit afterState serialization failed", e);
-        }
     }
 }

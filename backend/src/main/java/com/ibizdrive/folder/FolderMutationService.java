@@ -164,6 +164,51 @@ public class FolderMutationService {
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // createRootForScope
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * Workspace root folder 생성 — Plan A Task 16+. parentId=null, scope explicit.
+     *
+     * <p>일반 {@link #create} 경로와 달리 (a) parent lookup/충돌검사 없음, (b)
+     * scope를 호출자가 명시 (예: {@link ScopeType#TEAM} + teamId), (c) {@code FOLDER_CREATED}
+     * audit 발행하지 않음 — workspace 생성 audit이 우선이고 root folder는 내부 artifact.
+     *
+     * <p>호출자(예: {@link com.ibizdrive.team.TeamService})는 자신의 트랜잭션 안에서 호출 — 이 메서드는
+     * 단독 트랜잭션을 만들지 않는다 ({@code @Transactional} 어노테이션 없음). save 실패 시 호출자
+     * 트랜잭션이 rollback.
+     *
+     * @param scopeType DEPARTMENT 또는 TEAM
+     * @param scopeId workspace의 id (department/team)
+     * @param ownerId root folder owner (보통 workspace creator)
+     * @param displayName workspace 이름과 동일
+     * @return 영속화된 root Folder
+     */
+    public Folder createRootForScope(ScopeType scopeType, UUID scopeId, UUID ownerId, String displayName) {
+        if (scopeType == null) throw new IllegalArgumentException("scopeType is required");
+        if (scopeId == null) throw new IllegalArgumentException("scopeId is required");
+        if (ownerId == null) throw new IllegalArgumentException("ownerId is required");
+        if (displayName == null) throw new IllegalArgumentException("displayName is required");
+
+        String normalizedName = NormalizeUtil.normalizedNameForDedup(displayName);
+
+        Folder folder = new Folder();
+        folder.setId(UUID.randomUUID());
+        folder.setParentId(null);
+        folder.setName(NormalizeUtil.normalizeFileName(displayName));
+        folder.setNormalizedName(normalizedName);
+        folder.setSlug(normalizedName);
+        folder.setOwnerId(ownerId);
+        folder.setAuditLevel("standard");
+        folder.assignScope(scopeType, scopeId);
+        Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
+        folder.setCreatedAt(now);
+        folder.setUpdatedAt(now);
+
+        return folderRepository.saveAndFlush(folder);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // rename
     // ──────────────────────────────────────────────────────────────────
 

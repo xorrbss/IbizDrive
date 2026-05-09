@@ -97,8 +97,8 @@ public class Folder {
     @Column(name = "updated_at", nullable = false)
     private Instant updatedAt;
 
-    public Folder() {
-        // JPA — public to allow construction from outside the package (e.g. TeamService).
+    protected Folder() {
+        // JPA — package-private construction. External callers use FolderMutationService.
     }
 
     public UUID getId() {
