@@ -1523,7 +1523,7 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
 ```text
 POST /api/files/:fileId/share                              (ADR #34)
   Guard:    hasPermission(#fileId, 'file', 'SHARE')
-  Request:  { subjects: [{ type: 'user'|'department'|'role'|'everyone', id?: UUID }],
+  Request:  { subjects: [{ type: 'user'|'department'|'role'|'team'|'everyone', id?: UUID }],
               preset:    'read'|'upload'|'edit'|'admin',
               expiresAt? : ISO8601 (미래),
               message?   : string (max 1000) }
@@ -1640,7 +1640,7 @@ GET /api/:resource/:id/permissions                  (M8.0)
             POST 응답의 PermissionDto 는 subjectName=null — 호출자가 필요 시 list 재조회로 표시명 획득.
 
 POST /api/:resource/:id/permissions
-  Request:  { subject: { type: 'user'|'department'|'role'|'everyone', id?: UUID }, preset: 'read'|'upload'|'edit'|'admin', expiresAt? }
+  Request:  { subject: { type: 'user'|'department'|'role'|'team'|'everyone', id?: UUID }, preset: 'read'|'upload'|'edit'|'admin', expiresAt? }
               # subject.id 는 type='everyone' 일 때만 NULL (V5 CHECK 와 일치)
               # preset 은 ADR #28 — 4값 (deny/share 제외, share 는 별도 shares 테이블)
   Response: 201 { permission: PermissionDto }   # PermissionDto.subjectName=null (M8.0)
@@ -2346,6 +2346,9 @@ GET /api/departments/search?q=eng&limit=20
 | 403 | APPROVAL_SELF | secondary가 self (requested_by 또는 action target) (v1.x, ADR #47) | "본인 요청은 승인할 수 없습니다" 인라인 에러 |
 | 404 | APPROVAL_NOT_FOUND | approval row 미존재 또는 다른 사용자 cancel 시도 (v1.x, ADR #47) | 토스트 + 목록 재조회 |
 | 409 | APPROVAL_ALREADY_DECIDED | terminal status(APPROVED/REJECTED/CANCELLED/EXPIRED)에 재결정 시도 (v1.x, ADR #47) | "이미 결정된 요청입니다" 토스트 + 목록 재조회 |
+| 400 | TEAM_OWNER_REQUIRED | 팀에는 최소 한 명의 OWNER가 필요 — 마지막 OWNER 탈퇴/제외 시도 차단 (spec `ERR_TEAM_OWNER_REQUIRED`) | "팀에 최소 한 명의 관리자가 필요합니다" 토스트 |
+| 423 | TEAM_ARCHIVED | archive된 팀에 쓰기 시도 (spec `ERR_TEAM_ARCHIVED`) — **예약**: FolderMutationService/FileUploadService의 archive 차단 미구현, 계약 선언만 (team-domain-hardening 이후 follow-on) | "archive된 팀의 콘텐츠는 수정할 수 없습니다" 토스트 |
+| 403 | SHARE_EXCEEDS_MEMBER | sharer 멤버권 < 부여 preset (§4.2 cap). spec `team-centric-pivot-design` §4.2. | "팀 권한 초과: 자신의 권한보다 높은 권한을 부여할 수 없습니다" 토스트 |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |
