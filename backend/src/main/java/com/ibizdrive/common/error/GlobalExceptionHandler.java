@@ -4,6 +4,7 @@ import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileRestoreConflictException;
 import com.ibizdrive.folder.CrossScopeMoveException;
+import com.ibizdrive.folder.DestWorkspaceDeniedException;
 import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.permission.Permission;
@@ -148,6 +149,15 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("ERR_CROSS_SCOPE_MOVE",
                 "다른 workspace로 이동하려면 컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요", null));
+    }
+
+    /**
+     * Plan D — cross-workspace move 권한 부족. source {@code EDIT+SHARE} 또는 destination {@code UPLOAD} 부재.
+     */
+    @ExceptionHandler(DestWorkspaceDeniedException.class)
+    public ResponseEntity<ApiError> handleDestWorkspaceDenied(DestWorkspaceDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiError.of("ERR_DEST_WORKSPACE_DENIED", "다른 workspace로 이동할 권한이 없습니다", null));
     }
 
     private static String[] toWireArray(Set<Permission> have) {
