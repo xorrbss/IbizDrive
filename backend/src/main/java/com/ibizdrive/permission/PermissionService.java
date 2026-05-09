@@ -363,7 +363,7 @@ public class PermissionService {
 
     private static final Set<String> ALLOWED_RESOURCE_TYPES = Set.of("folder", "file");
     private static final Set<String> ALLOWED_SUBJECT_TYPES =
-        Set.of("user", "department", "role", "everyone");
+        Set.of("user", "department", "role", "team", "everyone");
 
     private static void validateGrantInput(String resourceType,
                                            UUID resourceId,
@@ -378,7 +378,7 @@ public class PermissionService {
         if (resourceId == null) throw new IllegalArgumentException("resourceId must not be null");
         if (subjectType == null || !ALLOWED_SUBJECT_TYPES.contains(subjectType)) {
             throw new IllegalArgumentException(
-                "subjectType must be one of user|department|role|everyone");
+                "subjectType must be one of user|department|role|team|everyone");
         }
         boolean isEveryone = "everyone".equals(subjectType);
         if (isEveryone && subjectId != null) {
