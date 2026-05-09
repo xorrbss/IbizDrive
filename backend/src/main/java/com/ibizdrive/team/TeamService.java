@@ -108,4 +108,26 @@ public class TeamService {
             return m;
         });
     }
+
+    /**
+     * user를 team에서 제거 — idempotent, last-OWNER guard 없음 (Plan A2 이월).
+     *
+     * <p>해당 멤버십이 없으면 silent no-op (예외/event 없음). 존재하면 row 삭제 후
+     * {@link TeamMemberRemovedEvent} publish — Task 28 listener가 AFTER_COMMIT으로 audit.
+     *
+     * <p>YAGNI: 권한 검증(actorId가 OWNER인지), last-OWNER guard, role 변경은 Plan A2 또는 controller layer.
+     *
+     * @param teamId 대상 team
+     * @param userId 제거할 user
+     * @param actorId 제거 수행자 (audit용)
+     */
+    @Transactional
+    public void remove(UUID teamId, UUID userId, UUID actorId) {
+        TeamMembershipId id = new TeamMembershipId(teamId, userId);
+        if (!memRepo.existsById(id)) {
+            return;
+        }
+        memRepo.deleteById(id);
+        events.publishEvent(new TeamMemberRemovedEvent(teamId, userId, actorId));
+    }
 }
