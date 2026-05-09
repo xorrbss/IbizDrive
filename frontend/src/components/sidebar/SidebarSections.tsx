@@ -46,6 +46,7 @@ export function SidebarSections() {
             workspaceId={t.id}
             title={t.name}
             rootFolderId={t.rootFolderId}
+            archived={!!t.archivedAt}
           />
         ))}
         <TeamCreateButton />

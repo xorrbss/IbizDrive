@@ -2,19 +2,36 @@
 import { WorkspaceFolderTree } from './WorkspaceFolderTree'
 
 export function WorkspaceSection({
-  kind, workspaceId, title, rootFolderId,
+  kind, workspaceId, title, rootFolderId, archived = false,
 }: {
   kind: 'department' | 'team'
   workspaceId: string
   title: string
   rootFolderId: string
+  /**
+   * Visual archived state — dim + read-only indicator.
+   * Currently always false: backend `findForUser` returns only active workspaces.
+   * Hook is ready for Plan A2 (team archive endpoint) when backend starts
+   * including archived entries with `archivedAt` set.
+   */
+  archived?: boolean
 }) {
   return (
-    <WorkspaceFolderTree
-      kind={kind}
-      workspaceId={workspaceId}
-      rootFolderId={rootFolderId}
-      rootName={title}
-    />
+    <div className={archived ? 'opacity-60' : undefined}>
+      {archived && (
+        <span
+          aria-label="보관됨"
+          className="ml-2 text-[11px] text-fg-muted font-medium"
+        >
+          [보관됨]
+        </span>
+      )}
+      <WorkspaceFolderTree
+        kind={kind}
+        workspaceId={workspaceId}
+        rootFolderId={rootFolderId}
+        rootName={title}
+      />
+    </div>
   )
 }

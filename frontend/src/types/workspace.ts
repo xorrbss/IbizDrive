@@ -18,6 +18,14 @@ export interface WorkspaceRef {
   id: string
   name: string
   rootFolderId: string
+  /**
+   * ISO-8601 timestamp set when the team/workspace is archived.
+   * Backend `WorkspaceRef` record does not currently expose this field —
+   * `findForUser` returns only active workspaces. This field is optional
+   * as a hook for when Plan A2 (team archive endpoint) lands and the backend
+   * starts including archived entries in the response.
+   */
+  archivedAt?: string
 }
 
 /** GET /api/workspaces/me 응답. department 미배정 사용자는 null, teams는 항상 배열(0개 이상). */
