@@ -1,9 +1,20 @@
 'use client'
-export function WorkspaceSection({ title }: {
+import { WorkspaceFolderTree } from './WorkspaceFolderTree'
+
+export function WorkspaceSection({
+  kind, workspaceId, title, rootFolderId,
+}: {
   kind: 'department' | 'team'
   workspaceId: string
   title: string
   rootFolderId: string
 }) {
-  return <div className="px-2 py-1">{title}</div>
+  return (
+    <WorkspaceFolderTree
+      kind={kind}
+      workspaceId={workspaceId}
+      rootFolderId={rootFolderId}
+      rootName={title}
+    />
+  )
 }
