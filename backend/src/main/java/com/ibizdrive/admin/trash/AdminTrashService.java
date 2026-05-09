@@ -4,11 +4,13 @@ import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileMutationService;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileNotFoundException;
+import com.ibizdrive.file.FileRestoreConflictException;
 import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderMutationService;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.folder.FolderRestoreConflictException;
+import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.trash.TrashCursor;
 import com.ibizdrive.trash.TrashItemType;
 import com.ibizdrive.trash.TrashPurgeService;
@@ -300,8 +302,20 @@ public class AdminTrashService {
                     case SCOPE_MISMATCH -> "SCOPE_MISMATCH";
                 };
                 failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), reasonCode));
+            } catch (FileRestoreConflictException ex) {
+                // Plan E T5 — File 측에도 동일 분기 (NAME_CONFLICT vs SCOPE_MISMATCH).
+                // FileNameConflictException과 별개 catch — Reason switch가 필요하므로 통합 불가.
+                String reasonCode = switch (ex.getReason()) {
+                    case NAME_CONFLICT -> "NAME_CONFLICT";
+                    case SCOPE_MISMATCH -> "SCOPE_MISMATCH";
+                };
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), reasonCode));
             } catch (FileNameConflictException ex) {
                 failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), "NAME_CONFLICT"));
+            } catch (TeamArchivedException ex) {
+                // Plan E T5 — File/Folder restore 양쪽 진입점이 archive guard를 호출하므로 통합 catch.
+                // 이전에는 잡히지 않아 unchecked propagate → batch 전체 abort 위험 (T4 reviewer 발견 gap).
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), "TEAM_ARCHIVED"));
             }
             // 그 외 RuntimeException은 의도적으로 잡지 않음 — 인프라/프로그래밍 오류는
             // 글로벌 핸들러에서 500으로 처리되어야 한다(부분 실패 모델은 도메인 예외 한정).

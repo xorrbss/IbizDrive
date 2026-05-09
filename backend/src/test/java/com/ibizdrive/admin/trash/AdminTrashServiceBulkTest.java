@@ -4,10 +4,12 @@ import com.ibizdrive.file.FileMutationService;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileNotFoundException;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.file.FileRestoreConflictException;
 import com.ibizdrive.folder.FolderMutationService;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.folder.FolderRestoreConflictException;
+import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.trash.TrashItemType;
 import com.ibizdrive.trash.TrashPurgeService;
 import com.ibizdrive.user.UserRepository;
@@ -239,6 +241,76 @@ class AdminTrashServiceBulkTest {
 
         assertThat(res.failed()).hasSize(1);
         assertThat(res.failed().get(0).error()).isEqualTo("SCOPE_MISMATCH");
+    }
+
+    @Test
+    void bulk_restore_mapsFileScopeMismatchToFailed() {
+        // Plan E T5 — File 측에도 동일 SCOPE_MISMATCH wire code 분기가 필요.
+        // catch 누락 시 FileRestoreConflictException이 unchecked propagate되어 batch 전체 abort.
+        UUID actor = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+
+        doThrow(new FileRestoreConflictException(
+                FileRestoreConflictException.Reason.SCOPE_MISMATCH, id, "scope mismatch"))
+            .when(fileMutationService).restore(eq(id), any());
+
+        AdminTrashBulkResponseDto res = service.bulk("restore",
+            List.of(file(id)), actor);
+
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).error()).isEqualTo("SCOPE_MISMATCH");
+    }
+
+    @Test
+    void bulk_restore_mapsFileNameConflictViaRestoreExceptionToFailed() {
+        // Plan E T5 — FileRestoreConflictException(NAME_CONFLICT)도 동일 catch 분기가 NAME_CONFLICT로 매핑.
+        // (FileNameConflictException과 별개 클래스 — restore 경로에서 envelope 구분 필요.)
+        UUID actor = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+
+        doThrow(new FileRestoreConflictException("name conflict"))
+            .when(fileMutationService).restore(eq(id), any());
+
+        AdminTrashBulkResponseDto res = service.bulk("restore",
+            List.of(file(id)), actor);
+
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).error()).isEqualTo("NAME_CONFLICT");
+    }
+
+    @Test
+    void bulk_restore_mapsTeamArchivedToFailed_file() {
+        // Plan E T5 — TeamArchivedException catch chain 통합 (T4 reviewer 발견 gap).
+        // archive guard가 던지는 예외가 잡히지 않으면 batch 전체 abort 위험.
+        UUID actor = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+
+        doThrow(new TeamArchivedException(teamId))
+            .when(fileMutationService).restore(eq(id), any());
+
+        AdminTrashBulkResponseDto res = service.bulk("restore",
+            List.of(file(id)), actor);
+
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).error()).isEqualTo("TEAM_ARCHIVED");
+    }
+
+    @Test
+    void bulk_restore_mapsTeamArchivedToFailed_folder() {
+        // Plan E T5 — folder 측 동일 통합 catch 검증.
+        UUID actor = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+
+        doThrow(new TeamArchivedException(teamId))
+            .when(folderMutationService).restore(eq(id), any());
+
+        AdminTrashBulkResponseDto res = service.bulk("restore",
+            List.of(folder(id)), actor);
+
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).error()).isEqualTo("TEAM_ARCHIVED");
     }
 
     // ===== 7. invalid item shape =====

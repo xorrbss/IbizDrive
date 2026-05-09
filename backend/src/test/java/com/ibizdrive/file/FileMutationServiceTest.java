@@ -73,12 +73,18 @@ class FileMutationServiceTest {
             return mock(AuditService.class);
         }
 
+        /** Plan E T5 — restore 진입점 의존성. 본 테스트의 fixture는 모두 DEPARTMENT scope이므로 guard는 no-op. */
+        @Bean com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard(com.ibizdrive.team.TeamRepository teamRepo) {
+            return new com.ibizdrive.team.TeamArchiveGuard(teamRepo);
+        }
+
         @Bean FileMutationService fileMutationService(FileRepository fileRepo,
                                                       FolderRepository folderRepo,
                                                       AuditService audit,
-                                                      ObjectMapper mapper) {
+                                                      ObjectMapper mapper,
+                                                      com.ibizdrive.team.TeamArchiveGuard guard) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30));
+                new com.ibizdrive.trash.TrashRetentionProperties(30), guard);
         }
     }
 
