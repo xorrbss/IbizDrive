@@ -2,6 +2,7 @@ package com.ibizdrive.folder;
 
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileNameConflictException;
+import com.ibizdrive.file.FileNotFoundException;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionRepository;
@@ -203,11 +204,110 @@ public class CrossWorkspaceMoveService {
     }
 
     /**
-     * Cross-workspace file 이동 — Task 18 (Phase 4)에서 구현.
+     * Cross-workspace file 이동 — Task 18 (Phase 4).
+     *
+     * <p>subtree 없음. 7-step 흐름 (moveFolder의 file-단건 특수화):
+     * <ol>
+     *   <li>source file + destination folder 잠금</li>
+     *   <li>권한 검증 (source: EDIT+SHARE, dest: UPLOAD)</li>
+     *   <li>이름 충돌 검사</li>
+     *   <li>scope update (single file)</li>
+     *   <li>permissions 정리 — <b>CASCADE 주의</b>: shares.permission_id ON DELETE CASCADE 이므로
+     *       share id 수집을 permissions 삭제 이전에 수행한다.</li>
+     *   <li>folder_id 변경</li>
+     *   <li>invariant assert + event publish</li>
+     * </ol>
+     *
+     * @param fileId              이동할 파일 id
+     * @param destinationFolderId 목적지 폴더 id
+     * @param actorId             요청 사용자 id
+     * @return 이동된 FileItem entity (folder_id + scope가 destination 값으로 변경된 상태)
      */
     public FileItem moveFile(UUID fileId, UUID destinationFolderId, UUID actorId) {
-        throw new UnsupportedOperationException(
-            "CrossWorkspaceMoveService.moveFile — implemented in Plan D Task 18");
+        if (destinationFolderId == null) {
+            throw new InvalidMoveDestinationException("destinationFolderId is required");
+        }
+        FileItem source = fileRepo.lockByIdAndDeletedAtIsNull(fileId)
+            .orElseThrow(() -> new FileNotFoundException("source file not found: " + fileId));
+        Folder destination = folderRepo.lockByIdAndDeletedAtIsNull(destinationFolderId)
+            .orElseThrow(() -> new FolderNotFoundException("destination folder not found: " + destinationFolderId));
+
+        if (source.getScopeType() == destination.getScopeType()
+            && source.getScopeId().equals(destination.getScopeId())) {
+            throw new IllegalArgumentException(
+                "use FileMutationService.move for same-scope moves; cross-workspace path requires distinct scopes");
+        }
+
+        // step 1: 권한 검증
+        Set<Permission> sourcePerms = permissionResolver.resolveFor(actorId, "file", fileId);
+        if (!sourcePerms.contains(Permission.EDIT) || !sourcePerms.contains(Permission.SHARE)) {
+            throw new DestWorkspaceDeniedException("source file requires EDIT and SHARE");
+        }
+        Set<Permission> destPerms = permissionResolver.resolveFor(actorId, "folder", destinationFolderId);
+        if (!destPerms.contains(Permission.UPLOAD)) {
+            throw new DestWorkspaceDeniedException("destination folder requires UPLOAD");
+        }
+
+        // step 2: 이름 충돌
+        if (fileRepo.existsActiveByFolderAndNormalizedNameExcludingId(
+                destinationFolderId, source.getNormalizedName(), fileId)) {
+            throw new FileNameConflictException(
+                "file name already exists at destination: " + source.getNormalizedName());
+        }
+
+        String destScopeType = destination.getScopeType().dbValue();
+        UUID destScopeId = destination.getScopeId();
+        ScopeType sourceScopeTypeBeforeMove = source.getScopeType();
+
+        // step 3: scope update (single file)
+        fileRepo.updateScopeBatch(List.of(fileId), destScopeType, destScopeId);
+
+        // Collect active share ids BEFORE deleting permissions — shares.permission_id has
+        // ON DELETE CASCADE (V6 migration), so permission deletion will cascade-delete share rows.
+        // We capture the count here for the event and skip revokeByIds (rows will be gone).
+        List<Share> activeSharesBefore = shareRepo.findActiveByResourceIn("file", List.of(fileId));
+        List<UUID> shareIds = new ArrayList<>();
+        for (Share s : activeSharesBefore) shareIds.add(s.getId());
+
+        // step 4: permissions 정리 (cascade-deletes associated share rows via FK)
+        permRepo.deleteByResourceIn("file", List.of(fileId));
+
+        // step 5 + step 6 share a single timestamp
+        Instant now = Instant.now();
+
+        // step 5: shares — rows already deleted by cascade; revokeByIds is a no-op but
+        // calling it explicitly guards against schema changes that remove CASCADE in future.
+        if (!shareIds.isEmpty()) {
+            shareRepo.revokeByIds(shareIds, actorId, now);
+        }
+
+        // step 6: folder_id 변경
+        source.setFolderId(destinationFolderId);
+        source.setUpdatedAt(now);
+        fileRepo.saveAndFlush(source);
+
+        // step 7: invariant assert
+        int badFiles = fileRepo.countByIdInAndScopeNotMatching(List.of(fileId), destScopeType, destScopeId);
+        if (badFiles > 0) throw new IllegalStateException("invariant: file scope mismatch");
+        int permLeft = permRepo.findActiveByResourceIn("file", List.of(fileId)).size();
+        if (permLeft > 0) throw new IllegalStateException("invariant: permissions remain");
+        int sharesLeft = shareRepo.findActiveByResourceIn("file", List.of(fileId)).size();
+        if (sharesLeft > 0) throw new IllegalStateException("invariant: shares remain");
+
+        // step 8: event publish
+        eventPublisher.publishEvent(new CrossWorkspaceMoveCompletedEvent(
+            "file",
+            fileId,
+            sourceScopeTypeBeforeMove,
+            destination.getScopeType(),
+            destScopeId,
+            0,                  // subtreeFolderCount — file has no subtree
+            1,                  // subtreeFileCount
+            shareIds.size(),    // revokedShareCount (collected before cascade delete)
+            actorId,
+            now
+        ));
+        return source;
     }
 
     // ── private helpers ──
