@@ -156,6 +156,7 @@ class FolderRepositoryTest {
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         f.setCreatedAt(now);
         f.setUpdatedAt(now);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 

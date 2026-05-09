@@ -56,6 +56,7 @@ class FolderQueryServiceItemsTest {
         f.setAuditLevel("standard");
         f.setCreatedAt(updatedAt);
         f.setUpdatedAt(updatedAt);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 
