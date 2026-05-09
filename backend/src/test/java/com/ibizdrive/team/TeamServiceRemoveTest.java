@@ -129,5 +129,6 @@ class TeamServiceRemoveTest {
 
         verify(memRepo).deleteById(id);
         verify(events).publishEvent(any(TeamMemberRemovedEvent.class));
+        verify(memRepo, never()).countByTeamIdAndRole(any(UUID.class), any(TeamMembership.Role.class));
     }
 }
