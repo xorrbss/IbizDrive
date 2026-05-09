@@ -78,7 +78,8 @@ class FileMutationServiceTest {
                                                       AuditService audit,
                                                       ObjectMapper mapper) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30));
+                new com.ibizdrive.trash.TrashRetentionProperties(30),
+                mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class));
         }
     }
 

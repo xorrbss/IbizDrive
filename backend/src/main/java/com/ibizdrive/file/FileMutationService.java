@@ -8,6 +8,9 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
+import com.ibizdrive.folder.CrossScopeMoveException;
+import com.ibizdrive.folder.CrossWorkspaceMoveService;
+import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.trash.TrashRetentionProperties;
@@ -20,6 +23,7 @@ import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -65,17 +69,21 @@ public class FileMutationService {
     private final ObjectMapper objectMapper;
     /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (docs/02 §6.5). */
     private final TrashRetentionProperties retention;
+    /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
+    private final CrossWorkspaceMoveService crossWorkspaceMoveService;
 
     public FileMutationService(FileRepository fileRepository,
                                FolderRepository folderRepository,
                                AuditService auditService,
                                ObjectMapper objectMapper,
-                               TrashRetentionProperties retention) {
+                               TrashRetentionProperties retention,
+                               CrossWorkspaceMoveService crossWorkspaceMoveService) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.retention = retention;
+        this.crossWorkspaceMoveService = crossWorkspaceMoveService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -139,14 +147,32 @@ public class FileMutationService {
     // ──────────────────────────────────────────────────────────────────
 
     /**
+     * 활성 파일의 부모 폴더를 변경한다 (same-scope 전용 — {@code allowCrossScope=false} 기본값).
+     *
+     * <p>3-arg 오버로드: 기존 호출자(테스트 포함) API 유지 목적. {@link #move(UUID, UUID, UUID, boolean)}으로 위임.
+     */
+    public FileItem move(UUID fileId, UUID newFolderId, UUID actorId) {
+        return move(fileId, newFolderId, actorId, false);
+    }
+
+    /**
      * 활성 파일의 부모 폴더를 변경한다. 파일은 항상 폴더에 속하므로 {@code newFolderId}는 NOT NULL.
      *
+     * <p><b>Same-scope 강제 (spec §1.2, §5.6 — Plan A Task 25)</b>: target과 newFolder의
+     * {@code (scope_type, scope_id)}가 동일해야 한다. 다르면 {@link CrossScopeMoveException}
+     * (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}).
+     *
+     * <p><b>Cross-workspace 위임 (Plan D Task 17)</b>: {@code allowCrossScope=true}이고 scope가
+     * 다를 때 {@link CrossWorkspaceMoveService#moveFile}로 위임.
+     *
+     * @param allowCrossScope true이면 cross-workspace move 분기로 위임; false면 기존 same-scope 가드
      * @throws IllegalArgumentException  newFolderId == null
      * @throws FileNotFoundException     fileId가 활성 파일이 아님
      * @throws FolderNotFoundException   newFolderId가 활성 폴더가 아님
+     * @throws CrossScopeMoveException   {@code allowCrossScope=false}이고 scope가 다름
      * @throws FileNameConflictException 새 폴더 안에 동일 normalized_name 활성 파일 존재
      */
-    public FileItem move(UUID fileId, UUID newFolderId, UUID actorId) {
+    public FileItem move(UUID fileId, UUID newFolderId, UUID actorId, boolean allowCrossScope) {
         if (fileId == null) throw new IllegalArgumentException("fileId is required");
         if (newFolderId == null) throw new IllegalArgumentException("newFolderId is required");
 
@@ -154,16 +180,23 @@ public class FileMutationService {
             .orElseThrow(() -> new FileNotFoundException("file not found: " + fileId));
 
         UUID currentFolder = target.getFolderId();
-        if (newFolderId.equals(currentFolder)) {
-            return target;                                  // short-circuit
+        if (Objects.equals(currentFolder, newFolderId)) {
+            return target;                                                                // short-circuit
         }
 
-        // 새 폴더가 활성인지 확인. 폴더 자체의 lock은 잡지 않음 — 파일 이동은 폴더 메타데이터를 변경하지 않으며
-        // FK가 최종 가드.
-        folderRepository.findByIdAndDeletedAtIsNull(newFolderId)
-            .orElseThrow(() -> new FolderNotFoundException(
-                "target folder not found: " + newFolderId));
+        Folder newFolder = folderRepository.findByIdAndDeletedAtIsNull(newFolderId)
+            .orElseThrow(() -> new FolderNotFoundException("new folder not found: " + newFolderId));
 
+        boolean cross = target.getScopeType() != newFolder.getScopeType()
+                     || !target.getScopeId().equals(newFolder.getScopeId());
+        if (cross) {
+            if (!allowCrossScope) {
+                throw new CrossScopeMoveException();
+            }
+            return crossWorkspaceMoveService.moveFile(fileId, newFolderId, actorId);
+        }
+
+        // 기존 same-scope path — 이름 충돌 검사 → setFolderId → save → audit.
         if (fileRepository.existsActiveByFolderAndNormalizedNameExcludingId(
                 newFolderId, target.getNormalizedName(), target.getId())) {
             throw new FileNameConflictException(

@@ -20,6 +20,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
@@ -108,23 +109,23 @@ class FileControllerTest {
     void move_returnsOk_andDelegates() {
         UUID newFolder = UUID.fromString("44444444-4444-4444-4444-444444444444");
         FileItem moved = newFile(FILE_ID, newFolder, "doc.txt");
-        when(service.move(eq(FILE_ID), eq(newFolder), eq(ACTOR))).thenReturn(moved);
+        when(service.move(eq(FILE_ID), eq(newFolder), eq(ACTOR), eq(false))).thenReturn(moved);
 
-        MoveFileRequest body = new MoveFileRequest(newFolder);
+        MoveFileRequest body = new MoveFileRequest(newFolder, null);
         ResponseEntity<Map<String, FileDto>> res = controller.move(FILE_ID, body, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().get("file").folderId()).isEqualTo(newFolder);
-        verify(service).move(FILE_ID, newFolder, ACTOR);
+        verify(service).move(FILE_ID, newFolder, ACTOR, false);
     }
 
     @Test
     void move_serviceThrowsConflict_propagated() {
         UUID newFolder = UUID.fromString("55555555-5555-5555-5555-555555555555");
-        when(service.move(any(), any(), any()))
+        when(service.move(any(), any(), any(), anyBoolean()))
             .thenThrow(new FileNameConflictException("dup"));
 
-        MoveFileRequest body = new MoveFileRequest(newFolder);
+        MoveFileRequest body = new MoveFileRequest(newFolder, null);
         assertThatThrownBy(() -> controller.move(FILE_ID, body, principal))
             .isInstanceOf(FileNameConflictException.class);
     }

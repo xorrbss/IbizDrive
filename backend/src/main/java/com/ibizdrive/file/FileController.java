@@ -112,16 +112,24 @@ public class FileController {
 
     /**
      * 파일 이동 — 새 폴더로 옮긴다. {@code targetFolderId}는 NOT NULL ({@code MoveFileRequest @NotNull}).
-     * SpEL은 대상 파일의 MOVE + 새 폴더의 EDIT 모두 요구.
+     *
+     * <p>{@code allowCrossScope: true} 시 cross-workspace move 경로로 분기 (Plan D §5.6).
+     * 이 경우 source 파일의 EDIT+SHARE와 destination 폴더의 UPLOAD가 추가로 요구된다.
+     * 파일은 root 이동 개념 없으므로 folder의 {@code targetParentId == null} 분기가 없다.
      */
     @PostMapping("/{id}/move")
-    @PreAuthorize("hasPermission(#id, 'file', 'MOVE') and hasPermission(#req.targetFolderId, 'folder', 'EDIT')")
+    @PreAuthorize("hasPermission(#id, 'file', 'MOVE') and ("
+        + "#req.allowCrossScopeOrFalse() ? "
+            + "(hasPermission(#id, 'file', 'EDIT') and hasPermission(#id, 'file', 'SHARE') and hasPermission(#req.targetFolderId, 'folder', 'UPLOAD')) : "
+            + "hasPermission(#req.targetFolderId, 'folder', 'EDIT')"
+        + ")")
     public ResponseEntity<Map<String, FileDto>> move(
         @PathVariable("id") UUID id,
         @RequestBody @Valid MoveFileRequest req,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        FileItem moved = fileMutationService.move(id, req.targetFolderId(), principal.getUser().getId());
+        FileItem moved = fileMutationService.move(
+            id, req.targetFolderId(), principal.getUser().getId(), req.allowCrossScopeOrFalse());
         return ResponseEntity.ok(Map.of("file", FileDto.from(moved)));
     }
 
