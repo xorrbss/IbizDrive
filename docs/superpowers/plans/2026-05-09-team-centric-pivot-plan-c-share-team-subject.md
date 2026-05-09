@@ -564,6 +564,100 @@ git add backend/src/main/java/com/ibizdrive/share/ShareGrantCapValidator.java \
 git commit -m "feat(team-centric-pivot): ShareGrantCapValidator — §4.2 cap helper (Plan C Task 5)"
 ```
 
+### Task 5b: `WorkspaceMembershipResolver` 멤버권 정의 spec §3.2 정합화
+
+**Files:**
+- Modify: `backend/src/main/java/com/ibizdrive/permission/WorkspaceMembershipResolver.java`
+- Modify: `backend/src/test/java/com/ibizdrive/permission/WorkspaceMembershipResolverTest.java`
+- Modify: `backend/src/test/java/com/ibizdrive/share/ShareGrantCapValidatorTest.java`
+- Modify (if affected): `backend/src/test/java/com/ibizdrive/permission/PermissionResolverMembershipStepTest.java`
+
+**왜**: Task 5 구현 중 발견된 spec/impl 정합성 결함. spec §3.2 line 218-219는 멤버권을 **preset 단위**로 정의:
+```
+role='OWNER'  → 모든 file-level preset
+role='MEMBER' → READ + UPLOAD + EDIT (팀 기본 정책)
+부서 멤버     → READ + UPLOAD (부서 기본 정책)
+```
+
+현 `WorkspaceMembershipResolver`(Plan A Task 22) 구현은 권한 enum 단위로 좁게 펼침 — MOVE/DOWNLOAD/DELETE/PERMISSION_ADMIN 등이 누락되어 §4.2 cap("preset 펼침 ⊆ sharer 멤버권")에서 모든 share를 차단. 단일 진실의 출처(`Preset.permissions()`)를 호출하도록 정합화.
+
+**핵심 매핑** (정합화 후):
+- DEPT 멤버 → `Preset.UPLOAD.permissions()` = {READ, UPLOAD, DOWNLOAD}
+- TEAM MEMBER → `Preset.EDIT.permissions()` = {READ, UPLOAD, EDIT, MOVE, DOWNLOAD, DELETE}
+- TEAM OWNER → `Preset.ADMIN.permissions()` = ALL except PURGE
+
+**Step 1: WorkspaceMembershipResolver fix**
+
+```java
+public Set<Permission> resolve(UUID userId, ScopeType scopeType, UUID scopeId) {
+    return switch (scopeType) {
+        case DEPARTMENT -> userDeptLookup.departmentIdOf(userId)
+            .filter(id -> id.equals(scopeId))
+            .<Set<Permission>>map(id -> Preset.UPLOAD.permissions())
+            .orElseGet(() -> EnumSet.noneOf(Permission.class));
+        case TEAM -> memRepo.findById(new TeamMembershipId(scopeId, userId))
+            .<Set<Permission>>map(this::permsForRole)
+            .orElseGet(() -> EnumSet.noneOf(Permission.class));
+    };
+}
+
+private Set<Permission> permsForRole(TeamMembership m) {
+    return switch (m.getRole()) {
+        case OWNER -> Preset.ADMIN.permissions();
+        case MEMBER -> Preset.EDIT.permissions();
+    };
+}
+```
+
+**Step 2: WorkspaceMembershipResolverTest expected 정합화**
+
+기존 6 테스트 중 멤버권 expected 3건을 spec 정합 값으로 변경:
+- `resolve_returnsReadAndUpload_forDepartmentMember`: expected → `Preset.UPLOAD.permissions()`
+- `resolve_returnsReadUploadEdit_forTeamMember`: expected → `Preset.EDIT.permissions()`
+- `resolve_returnsFullSet_forTeamOwner`: expected → `Preset.ADMIN.permissions()`
+
+테스트명도 정합화 가능 (`resolve_returnsUploadPresetPermissions_forDepartmentMember` 등).
+
+**Step 3: ShareGrantCapValidatorTest mock 정합화**
+
+Task 5에서 임의로 확장한 mock perms를 `Preset.X.permissions()` 호출로 정규화:
+- `teamMember_canGrantEditPreset`: mock = `Preset.EDIT.permissions()`. EDIT preset 통과.
+- `teamMember_cannotGrantAdminPreset`: mock = `Preset.EDIT.permissions()`. ADMIN preset 차단 (PERMISSION_ADMIN 부족).
+- `teamOwner_canGrantAdminPreset`: mock = `Preset.ADMIN.permissions()`. ADMIN preset 통과 (이름 원복).
+- `departmentMember_grantUploadPreset_ok`: mock = `Preset.UPLOAD.permissions()`. UPLOAD preset 통과.
+- `departmentMember_grantEditPreset_blocked`: mock = `Preset.UPLOAD.permissions()`. EDIT preset 차단.
+
+Task 5의 `teamOwner_cannotGrantAdminPreset_becauseAdminIncludesPermissionAdmin` 테스트는 정합화 후 의미 사라짐 — 원래 plan의 `teamOwner_canGrantAdminPreset`로 복원.
+
+**Step 4: 회귀 테스트 통과 확인**
+
+```bash
+cd backend && ./gradlew test --tests "com.ibizdrive.permission.WorkspaceMembershipResolverTest" \
+                              --tests "com.ibizdrive.share.ShareGrantCapValidatorTest" \
+                              --tests "com.ibizdrive.permission.PermissionResolverMembershipStepTest"
+```
+
+**Important**: `PermissionResolverMembershipStepTest`(Plan A Phase 8 결과)도 union 동작을 검증 — 멤버권 확장이 그쪽 기대치를 깰 수 있다. 깨지면 그쪽 expected도 spec 정합으로 함께 갱신 — Plan C가 spec §3.2 정합화의 일부로 자연 해결. 통합 후 backend test sweep 1회 실행하여 회귀 가시화.
+
+```bash
+cd backend && ./gradlew test
+```
+
+Expected: BUILD SUCCESSFUL.
+
+**Step 5: 커밋**
+
+```bash
+git add backend/src/main/java/com/ibizdrive/permission/WorkspaceMembershipResolver.java \
+        backend/src/test/java/com/ibizdrive/permission/WorkspaceMembershipResolverTest.java \
+        backend/src/test/java/com/ibizdrive/share/ShareGrantCapValidatorTest.java
+# PermissionResolverMembershipStepTest 함께 수정됐다면:
+git add backend/src/test/java/com/ibizdrive/permission/PermissionResolverMembershipStepTest.java
+git commit -m "fix(team-centric-pivot): WorkspaceMembershipResolver — spec §3.2 정합화 (Preset.permissions() 위임) (Plan C Task 5b)"
+```
+
+커밋 메시지 본문에 PR description용 정합화 의도 명시.
+
 ### Task 6: `GlobalExceptionHandler` 매핑
 
 **Files:**
