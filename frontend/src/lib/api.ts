@@ -1,4 +1,4 @@
-import type { BreadcrumbItem, FolderDetail, FolderNode } from '@/types/folder'
+import type { BreadcrumbItem, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type {
@@ -28,52 +28,17 @@ import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
 import type { AdminDashboardSummaryResponse } from '@/types/admin'
+import type { WorkspaceMeResponse } from '@/types/workspace'
+import type { TeamCreateRequest, TeamResponse } from '@/types/team'
+import { normalizeFileName } from '@/lib/normalize'
 
 export const api = {
   /**
-   * Phase A — backend `GET /api/folders/tree` 호출 후 가상 root 노드로 래핑.
-   *
-   * Frontend는 URL의 첫 segment 부재 시 `id='root'`인 가상 노드를 사용한다 (folderPath.ts 정책).
-   * Backend는 실제 top-level 폴더들의 평면 트리만 반환하므로 여기서 한 번만 합성한다.
-   */
-  async getFolderTree(): Promise<FolderNode> {
-    const res = await fetch('/api/folders/tree', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    })
-    if (!res.ok) {
-      const err = new Error(
-        `getFolderTree fetch failed: ${res.status}`,
-      ) as Error & { status: number }
-      err.status = res.status
-      throw err
-    }
-    const body = (await res.json()) as { tree: FolderNode[] }
-    return {
-      id: 'root',
-      parentId: null,
-      name: '내 드라이브',
-      slug: '',
-      children: body.tree,
-    }
-  },
-
-  /**
-   * Phase A — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
+   * Plan B — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
    * 누적 slugPath 형태로 prefix-scan하여 frontend `BreadcrumbItem` 계약 (slugPath: string[])에
-   * 맞춘다. 가상 root({@code id='root'})는 backend 호출 없이 합성 응답으로 처리.
+   * 맞춘다.
    */
   async getFolder(id: string): Promise<FolderDetail> {
-    if (id === 'root') {
-      return {
-        id: 'root',
-        name: '내 드라이브',
-        slugPath: [],
-        breadcrumb: [{ id: 'root', name: '내 드라이브', slugPath: [] }],
-        parentId: null,
-      }
-    }
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
       method: 'GET',
       credentials: 'include',
@@ -113,12 +78,58 @@ export const api = {
   },
 
   /**
-   * Phase B P3 — 폴더 자식(폴더+파일) listing.
+   * spec §5.2 — 사이드바 첫 fetch + permission cache 진입.
+   * backend `WorkspaceMeResponse` 1:1. `department` 키는 Jackson @JsonInclude(NON_NULL) — null 시 응답에서 omit되므로 일괄 `?? null` 보정.
+   */
+  async getWorkspacesMe(): Promise<WorkspaceMeResponse> {
+    const res = await fetch('/api/workspaces/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getWorkspacesMe fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const body = (await res.json()) as Partial<WorkspaceMeResponse>
+    return {
+      department: body.department ?? null,
+      teams: body.teams ?? [],
+    }
+  },
+
+  /**
+   * Plan B Task 25 — 팀 생성 ({@code POST /api/teams}).
+   * backend {@code TeamController.create} → {@code TeamResponse}.
+   * CSRF double-submit — mutation endpoints 공통 정책 (createFolder 참조).
+   */
+  async createTeam(req: TeamCreateRequest): Promise<TeamResponse> {
+    const csrf = readCookie('XSRF-TOKEN')
+    const res = await fetch('/api/teams', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
+      },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `createTeam failed: ${res.status}`)
+    }
+    return (await res.json()) as TeamResponse
+  },
+
+  /**
+   * Plan B — 폴더 자식(폴더+파일) listing.
    *
-   * <p>{@code folderId === 'root'}: backend는 'root' literal을 받지 않으므로 ({@code GET /api/folders/{id}/items}는
-   * UUID만 수용) tree 응답의 top-level 폴더만 합성 — files=[]. 가상 root 정책 답습 (Phase A getFolder와 동일).
+   * 가상 root 분기 제거 (Task 12). 모든 호출부는 실제 workspace root folder UUID를 전달한다.
    *
-   * <p>그 외 UUID: {@code GET /api/folders/{id}/items?sort=&dir=} 호출. backend가 폴더-먼저 → 파일 그룹 정렬 적용.
+   * {@code GET /api/folders/{id}/items?sort=&dir=} 호출. backend가 폴더-먼저 → 파일 그룹 정렬 적용.
    * 응답 envelope의 {@code FolderItemDto}({type:'folder'|'file', size:Long?|null, mimeType:String?|null,
    * updatedBy:UUID?})를 frontend {@link FileItem} 1:1 mapping. backend는 {@code @JsonInclude(NON_NULL)}이므로
    * 폴더의 size/mimeType 키 자체가 응답에 없을 수 있다 — 매핑 시 null 보정.
@@ -128,22 +139,6 @@ export const api = {
     sort: SortKey = 'name',
     dir: 'asc' | 'desc' = 'asc',
   ): Promise<FileItem[]> {
-    if (folderId === 'root') {
-      // 가상 root는 backend 호출 없이 tree top-level 폴더 합성 — Phase A와 동일 정책.
-      const tree = await this.getFolderTree()
-      const topFolders = tree.children ?? []
-      return topFolders.map((f) => ({
-        id: f.id,
-        name: f.name,
-        type: 'folder',
-        mimeType: null,
-        size: null,
-        // tree 응답에 updatedAt이 없는 경우 빈 문자열 — UI는 hyphen으로 표시. 후속에서 tree DTO 확장 시 보강.
-        updatedAt: '',
-        updatedBy: '',
-        parentId: 'root',
-      }))
-    }
     const url =
       `/api/folders/${encodeURIComponent(folderId)}/items` +
       `?sort=${encodeURIComponent(sort.toUpperCase())}` +
@@ -178,6 +173,41 @@ export const api = {
       updatedBy: it.updatedBy ?? '',
       parentId: it.parentId ?? folderId,
     }))
+  },
+
+  /**
+   * Plan B 사이드바 트리 lazy children — folder-only.
+   * GET /api/folders/{id}/items 호출 후 type='folder'만 필터링.
+   * `slug`는 `normalizeFileName(name)`으로 생성 — 기존 buildCanonicalPath 동치.
+   */
+  async getFolderChildren(parentId: string): Promise<{
+    id: string
+    name: string
+    slug: string
+    parentId: string
+  }[]> {
+    const url = `/api/folders/${encodeURIComponent(parentId)}/items?sort=NAME&dir=ASC`
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(`getFolderChildren failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const body = (await res.json()) as {
+      items: Array<{ id: string; type: 'folder' | 'file'; name: string }>
+    }
+    return body.items
+      .filter((it) => it.type === 'folder')
+      .map((it) => ({
+        id: it.id,
+        name: it.name,
+        slug: normalizeFileName(it.name),
+        parentId,
+      }))
   },
 
   /**
@@ -462,7 +492,7 @@ export const api = {
         Accept: 'application/json',
         ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
       },
-      body: JSON.stringify({ parentId: parentId === 'root' ? null : parentId, name: name.trim() }),
+      body: JSON.stringify({ parentId, name: name.trim() }),
     })
     if (!res.ok) {
       throw await buildApiError(res, `createFolder failed: ${res.status}`)
