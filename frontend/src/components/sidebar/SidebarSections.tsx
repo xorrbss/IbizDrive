@@ -1,5 +1,6 @@
 'use client'
 import { useWorkspaces } from '@/hooks/useWorkspaces'
+import { useExpandPathOnNavigate } from '@/hooks/useExpandPathOnNavigate'
 import { WorkspaceSection } from './WorkspaceSection'
 import { SharedWithMeSection } from './SharedWithMeSection'
 import { TeamCreateButton } from './TeamCreateButton'
@@ -11,6 +12,7 @@ import { TeamCreateButton } from './TeamCreateButton'
  * Section 3: 공유받음 (별도 컴포넌트)
  */
 export function SidebarSections() {
+  useExpandPathOnNavigate()
   const { data, isLoading } = useWorkspaces()
 
   if (isLoading) return <SectionsSkeleton />
