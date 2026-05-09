@@ -1,5 +1,6 @@
 package com.ibizdrive.team;
 
+import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderMutationService;
@@ -23,7 +24,8 @@ import java.util.UUID;
  * {@code TEAM_CREATED} audit이 "team + 초기 OWNER 생성"을 묶어 표현하므로 create는
  * {@code TeamMemberAddedEvent}를 발행하지 않는다 (Task 17 invite만 발행).
  *
- * <p><b>YAGNI</b>: archive/role-change/last-OWNER guard는 Plan A2 이월. 본 클래스는 create + invite + remove만.
+ * <p><b>메서드 현황</b>: create + invite + remove + changeRole (Plan A2 T3). archive/restore는 Plan A2 T7 이월.
+ * remove의 last-OWNER guard는 Plan A2 T4 이월.
  */
 @Service
 public class TeamService {
@@ -129,5 +131,58 @@ public class TeamService {
         }
         memRepo.deleteById(id);
         events.publishEvent(new TeamMemberRemovedEvent(teamId, userId, actorId));
+    }
+
+    /**
+     * 팀 멤버의 role을 변경한다 — last-OWNER 강등 차단 포함.
+     *
+     * <p>동일 role로 호출하면 idempotent no-op (event 미발행). 멤버십이 없으면
+     * {@link ResourceNotFoundException}. OWNER → MEMBER 강등 시 해당 유저가 유일한 OWNER라면
+     * {@link LastOwnerRequiredException}.
+     *
+     * <p>audit 위임: {@link TeamMemberRoleChangedEvent}를 publish하고 {@code TeamAuditListener}
+     * (Task 28)가 AFTER_COMMIT으로 {@code TEAM_MEMBER_ROLE_CHANGED} audit_log를 기록한다.
+     *
+     * <p>YAGNI: 권한 검증(actorId가 OWNER인지)은 controller layer 또는 Plan A3.
+     *
+     * @param teamId  대상 team
+     * @param userId  역할을 변경할 user
+     * @param newRole 변경 후 역할 (null 불가)
+     * @param actorId 변경 수행자 (audit용, null 불가)
+     * @return 갱신된 (또는 변경 없는) TeamMembership row
+     * @throws IllegalArgumentException       newRole 또는 actorId가 null
+     * @throws ResourceNotFoundException      해당 멤버십이 존재하지 않음
+     * @throws LastOwnerRequiredException     마지막 OWNER를 MEMBER로 강등하려 할 때
+     */
+    @Transactional
+    public TeamMembership changeRole(UUID teamId, UUID userId,
+                                     TeamMembership.Role newRole, UUID actorId) {
+        if (newRole == null) {
+            throw new IllegalArgumentException("newRole must not be null");
+        }
+        if (actorId == null) {
+            throw new IllegalArgumentException("actorId must not be null");
+        }
+
+        TeamMembershipId id = new TeamMembershipId(teamId, userId);
+        TeamMembership existing = memRepo.findById(id)
+            .orElseThrow(() -> new ResourceNotFoundException(
+                "team membership not found: team=" + teamId + " user=" + userId));
+
+        if (existing.getRole() == newRole) {
+            return existing;
+        }
+
+        if (existing.getRole() == TeamMembership.Role.OWNER
+                && newRole == TeamMembership.Role.MEMBER
+                && memRepo.countByTeamIdAndRole(teamId, TeamMembership.Role.OWNER) == 1) {
+            throw new LastOwnerRequiredException(teamId);
+        }
+
+        TeamMembership.Role oldRole = existing.getRole();
+        existing.changeRole(newRole);
+        memRepo.save(existing);
+        events.publishEvent(new TeamMemberRoleChangedEvent(teamId, userId, oldRole, newRole, actorId));
+        return existing;
     }
 }
