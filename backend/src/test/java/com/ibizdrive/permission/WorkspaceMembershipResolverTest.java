@@ -37,14 +37,14 @@ class WorkspaceMembershipResolverTest {
     }
 
     @Test
-    void resolve_returnsReadAndUpload_forDepartmentMember() {
+    void resolve_returnsUploadPresetPermissions_forDepartmentMember() {
         UUID userId = UUID.randomUUID();
         UUID dept = UUID.randomUUID();
         when(lookup.departmentIdOf(userId)).thenReturn(Optional.of(dept));
 
         Set<Permission> perms = resolver.resolve(userId, ScopeType.DEPARTMENT, dept);
 
-        assertThat(perms).containsExactlyInAnyOrder(Permission.READ, Permission.UPLOAD);
+        assertThat(perms).isEqualTo(Preset.UPLOAD.permissions());
     }
 
     @Test
@@ -71,7 +71,7 @@ class WorkspaceMembershipResolverTest {
     }
 
     @Test
-    void resolve_returnsReadUploadEdit_forTeamMember() {
+    void resolve_returnsEditPresetPermissions_forTeamMember() {
         UUID userId = UUID.randomUUID();
         UUID team = UUID.randomUUID();
         when(memRepo.findById(new TeamMembershipId(team, userId))).thenReturn(
@@ -80,12 +80,11 @@ class WorkspaceMembershipResolverTest {
 
         Set<Permission> perms = resolver.resolve(userId, ScopeType.TEAM, team);
 
-        assertThat(perms).containsExactlyInAnyOrder(
-            Permission.READ, Permission.UPLOAD, Permission.EDIT);
+        assertThat(perms).isEqualTo(Preset.EDIT.permissions());
     }
 
     @Test
-    void resolve_returnsFullSet_forTeamOwner() {
+    void resolve_returnsAdminPresetPermissions_forTeamOwner() {
         UUID userId = UUID.randomUUID();
         UUID team = UUID.randomUUID();
         when(memRepo.findById(new TeamMembershipId(team, userId))).thenReturn(
@@ -94,9 +93,7 @@ class WorkspaceMembershipResolverTest {
 
         Set<Permission> perms = resolver.resolve(userId, ScopeType.TEAM, team);
 
-        assertThat(perms).containsExactlyInAnyOrder(
-            Permission.READ, Permission.UPLOAD, Permission.EDIT,
-            Permission.DELETE, Permission.SHARE);
+        assertThat(perms).isEqualTo(Preset.ADMIN.permissions());
     }
 
     @Test
