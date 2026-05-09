@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibizdrive.team.TeamCreatedEvent;
 import com.ibizdrive.team.TeamMemberAddedEvent;
 import com.ibizdrive.team.TeamMemberRemovedEvent;
+import com.ibizdrive.team.TeamMemberRoleChangedEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -31,6 +32,7 @@ import java.util.Map;
  *   <li>{@link TeamCreatedEvent} → {@link AuditEventType#TEAM_CREATED} ({@code afterState = {name}})</li>
  *   <li>{@link TeamMemberAddedEvent} → {@link AuditEventType#TEAM_MEMBER_ADDED} ({@code afterState = {userId}})</li>
  *   <li>{@link TeamMemberRemovedEvent} → {@link AuditEventType#TEAM_MEMBER_REMOVED} ({@code beforeState = {userId}})</li>
+ *   <li>{@link TeamMemberRoleChangedEvent} → {@link AuditEventType#TEAM_MEMBER_ROLE_CHANGED} ({@code beforeState = {role}}, {@code afterState = {role}})</li>
  * </ul>
  */
 @Component
@@ -112,6 +114,32 @@ public class TeamAuditListener {
             event.teamId(),
             toJson(before),
             null,
+            null
+        ));
+    }
+
+    /**
+     * {@link TeamMemberRoleChangedEvent} 수신 → {@link AuditEventType#TEAM_MEMBER_ROLE_CHANGED} audit row 생성.
+     *
+     * <p>{@code beforeState}에 변경 전 role, {@code afterState}에 변경 후 role을 JSON으로 보존.
+     * 역할 전환 이력 추적 및 감사자의 before/after 비교 지원.
+     *
+     * @param event TeamService#changeRole (Plan A2 T3)이 publish한 이벤트
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTeamMemberRoleChanged(TeamMemberRoleChangedEvent event) {
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("role", event.oldRole().name());
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("role", event.newRole().name());
+        emit(new AuditEvent(
+            AuditEventType.TEAM_MEMBER_ROLE_CHANGED,
+            event.actorId(),
+            null, null,
+            AuditTargetType.TEAM,
+            event.teamId(),
+            toJson(before),
+            toJson(after),
             null
         ));
     }

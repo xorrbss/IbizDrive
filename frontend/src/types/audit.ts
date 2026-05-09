@@ -62,8 +62,10 @@ export type AuditEventType =
   | 'storage.orphan.cleaned'
   // 감사 로그 자체
   | 'audit.exported'
+  // 팀
+  | 'team.member.role_changed'
 
-export type AuditResourceType = 'file' | 'folder' | 'user' | 'permission' | 'share' | 'system' | 'audit' | 'department'
+export type AuditResourceType = 'file' | 'folder' | 'user' | 'permission' | 'share' | 'system' | 'audit' | 'department' | 'team'
 
 export interface AuditLogEntry {
   /** UUID. 백엔드는 audit_log.id (BIGINT) → 노출 시 hashId로 변환 권장이나 v1.0 mock은 string. */
