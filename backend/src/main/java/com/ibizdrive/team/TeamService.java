@@ -81,4 +81,31 @@ public class TeamService {
         events.publishEvent(new TeamCreatedEvent(teamId, creatorId, displayName));
         return t;
     }
+
+    /**
+     * user를 team에 MEMBER로 초대 — idempotent.
+     *
+     * <p>이미 해당 team의 멤버인 경우 (role 무관) 기존 row를 반환하고 audit/event는 발행하지 않는다.
+     * 신규 추가 시 role=MEMBER로 저장하고 {@link TeamMemberAddedEvent} publish — Task 28 listener가
+     * AFTER_COMMIT으로 audit.
+     *
+     * <p>YAGNI: 권한 검증(invitedBy가 OWNER인지)은 controller layer 또는 Plan A2.
+     *
+     * @param teamId 대상 team
+     * @param userId 초대할 user
+     * @param invitedBy 초대 수행자 (audit용)
+     * @return membership row (기존 또는 신규)
+     * @throws IllegalArgumentException teamId/userId/invitedBy null 또는 TeamMembership 검증 실패
+     */
+    @Transactional
+    public TeamMembership invite(UUID teamId, UUID userId, UUID invitedBy) {
+        TeamMembershipId id = new TeamMembershipId(teamId, userId);
+        return memRepo.findById(id).orElseGet(() -> {
+            TeamMembership m = new TeamMembership(teamId, userId,
+                TeamMembership.Role.MEMBER, invitedBy, OffsetDateTime.now());
+            memRepo.save(m);
+            events.publishEvent(new TeamMemberAddedEvent(teamId, userId, invitedBy));
+            return m;
+        });
+    }
 }
