@@ -108,6 +108,38 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
     );
 
     /**
+     * Plan D — cross-workspace move preview/transaction에서 subtree id 집합에 대한 active grant 일괄 조회.
+     *
+     * <p>{@code resourceIds}가 비어있으면 빈 리스트 반환(IN(...) empty 회피).
+     * 만료(expires_at <= NOW())는 제외 — preview에 표시할 가치 없음, 실제 move 시 cron이 곧 정리.
+     */
+    @Query(value = """
+        SELECT p.id, p.resource_type, p.resource_id, p.subject_type, p.subject_id,
+               p.preset, p.granted_by, p.expires_at, p.created_at
+        FROM permissions p
+        WHERE p.resource_type = :resourceType
+          AND p.resource_id IN (:resourceIds)
+          AND (p.expires_at IS NULL OR p.expires_at > NOW())
+        """, nativeQuery = true)
+    List<PermissionRow> findActiveByResourceIn(
+        @Param("resourceType") String resourceType,
+        @Param("resourceIds") java.util.Collection<UUID> resourceIds
+    );
+
+    /**
+     * Plan D — subtree 내 모든 명시 grant 일괄 hard-delete (트랜잭션 안에서 호출).
+     *
+     * <p>{@code resourceIds}가 비어있으면 0 반환.
+     */
+    @org.springframework.data.jpa.repository.Modifying
+    @Query(value = "DELETE FROM permissions WHERE resource_type = :resourceType AND resource_id IN (:resourceIds)",
+           nativeQuery = true)
+    int deleteByResourceIn(
+        @Param("resourceType") String resourceType,
+        @Param("resourceIds") java.util.Collection<UUID> resourceIds
+    );
+
+    /**
      * M8.0 — resource-level grant 목록 조회. {@code GET /api/{resource}/{id}/permissions} 의 service 단
      * 진입점({@link PermissionService#listPermissions})이 사용한다.
      *
