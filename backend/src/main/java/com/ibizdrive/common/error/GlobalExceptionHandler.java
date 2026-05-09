@@ -5,6 +5,7 @@ import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileRestoreConflictException;
 import com.ibizdrive.folder.CrossScopeMoveException;
 import com.ibizdrive.folder.DestWorkspaceDeniedException;
+import com.ibizdrive.folder.InvalidMoveDestinationException;
 import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.permission.Permission;
@@ -158,6 +159,16 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleDestWorkspaceDenied(DestWorkspaceDeniedException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(ApiError.of("ERR_DEST_WORKSPACE_DENIED", "다른 workspace로 이동할 권한이 없습니다", null));
+    }
+
+    /**
+     * Plan D — cross-workspace move destination 부적절 (null = root 직접, 자기 자신/후손 등).
+     * 메시지는 caller가 구체화 (예: "destinationFolderId is required", "destination cannot be a descendant").
+     */
+    @ExceptionHandler(InvalidMoveDestinationException.class)
+    public ResponseEntity<ApiError> handleInvalidMoveDestination(InvalidMoveDestinationException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiError.of("ERR_INVALID_DESTINATION", ex.getMessage(), null));
     }
 
     private static String[] toWireArray(Set<Permission> have) {
