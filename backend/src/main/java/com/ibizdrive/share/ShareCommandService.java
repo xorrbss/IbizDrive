@@ -13,6 +13,7 @@ import com.ibizdrive.permission.PermissionService;
 import com.ibizdrive.permission.Preset;
 import com.ibizdrive.team.Team;
 import com.ibizdrive.team.TeamRepository;
+import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -70,6 +71,7 @@ public class ShareCommandService {
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
     private final TeamRepository teamRepository;
+    private final ShareGrantCapValidator capValidator;
     private final ApplicationEventPublisher eventPublisher;
 
     public ShareCommandService(FileRepository fileRepository,
@@ -80,6 +82,7 @@ public class ShareCommandService {
                                UserRepository userRepository,
                                DepartmentRepository departmentRepository,
                                TeamRepository teamRepository,
+                               ShareGrantCapValidator capValidator,
                                ApplicationEventPublisher eventPublisher) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
@@ -89,6 +92,7 @@ public class ShareCommandService {
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
         this.teamRepository = teamRepository;
+        this.capValidator = capValidator;
         this.eventPublisher = eventPublisher;
     }
 
@@ -120,6 +124,9 @@ public class ShareCommandService {
 
         FileItem file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new ResourceNotFoundException("file not found: " + fileId));
+
+        // §4.2 cap — 자원의 workspace 기준 sharer 멤버권 ≥ preset. subject 수와 무관하게 1회 검증.
+        capValidator.validate(actorId, file.getScopeType(), file.getScopeId(), preset);
 
         List<ShareDto> created = new ArrayList<>(subjects.size());
         for (ShareCreateRequest.Subject subject : subjects) {
@@ -193,6 +200,9 @@ public class ShareCommandService {
 
         Folder folder = folderRepository.findByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new ResourceNotFoundException("folder not found: " + folderId));
+
+        // §4.2 cap — 자원의 workspace 기준 sharer 멤버권 ≥ preset. subject 수와 무관하게 1회 검증.
+        capValidator.validate(actorId, folder.getScopeType(), folder.getScopeId(), preset);
 
         List<ShareDto> created = new ArrayList<>(subjects.size());
         for (ShareCreateRequest.Subject subject : subjects) {
