@@ -80,28 +80,28 @@ describe('TrashTable', () => {
   it('isLoading → 로딩 상태', () => {
     setHook({ isLoading: true })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByText('로딩…')).toBeTruthy()
   })
 
   it('isError → 에러 alert', () => {
     setHook({ isError: true })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByRole('alert').textContent).toMatch(/불러올 수 없습니다/)
   })
 
   it('items가 비어있으면 Empty 메시지', () => {
     setHook({ items: [] })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByText('휴지통이 비어있습니다')).toBeTruthy()
   })
 
   it('items 렌더 + aria-rowcount (tree=undefined → path 폴백)', () => {
     setHook({ items: [itemFile, itemFolder] })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     const grid = screen.getByRole('grid', { name: '휴지통 항목' })
     // header(1) + rows(2)
     expect(grid.getAttribute('aria-rowcount')).toBe('3')
@@ -117,7 +117,7 @@ describe('TrashTable', () => {
     const orphan: TrashItem = { ...itemFile, id: 'f2', name: '고아.pdf', originalParentId: 'gone' }
     setHook({ items: [orphan] })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByText('원위치 폴더 삭제됨')).toBeTruthy()
   })
 
@@ -125,7 +125,7 @@ describe('TrashTable', () => {
     setHook({ items: [itemFile] })
     ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: true })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByRole('button', { name: '영구 삭제' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '복원' })).toBeTruthy()
   })
@@ -134,7 +134,7 @@ describe('TrashTable', () => {
     setHook({ items: [itemFile] })
     ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: false })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.queryByRole('button', { name: '영구 삭제' })).toBeNull()
     expect(screen.getByRole('button', { name: '복원' })).toBeTruthy()
   })

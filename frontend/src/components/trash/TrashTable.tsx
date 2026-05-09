@@ -20,8 +20,12 @@ import type { FolderNode } from '@/types/folder'
 const GRID_COLS =
   'grid grid-cols-[1fr_60px_180px_140px_140px_160px] gap-3 items-center px-4'
 
-export function TrashTable() {
-  const query = useTrashList()
+// T8 will replace this component with ClientWorkspaceTrashPage that receives scope from route params.
+export function TrashTable(props: {
+  scopeType: 'department' | 'team'
+  scopeId: string
+}) {
+  const query = useTrashList(props)
   const tree: FolderNode | undefined = undefined // Tasks 17+: per-workspace lazy tree
 
   if (query.isLoading) {
