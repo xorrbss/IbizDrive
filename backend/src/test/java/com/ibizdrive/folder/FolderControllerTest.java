@@ -232,7 +232,7 @@ class FolderControllerTest {
     void items_defaultParams_delegatesWithNameAsc() {
         FolderItemsResponse svcRes = new FolderItemsResponse(List.of(
             new FolderItemDto(FOLDER_ID, "folder", "docs", null, null, Instant.now(),
-                ACTOR.toString(), PARENT_ID)
+                ACTOR.toString(), PARENT_ID, null)
         ));
         when(queryService.loadItems(eq(FOLDER_ID), eq(SortKey.NAME), eq(SortDir.ASC)))
             .thenReturn(svcRes);
