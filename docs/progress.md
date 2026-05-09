@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-09 — 🛎️ trash-policy-dual-approval-callout 트랙 종료 (/admin/trash/policy 변경 안내에 dual-approval 의존성 명시)
+
+### 범위
+
+PR #114 (wave2-trash-policy-viewer) read-only viewer 후속. `retention_change`가 docs/04 §15.4 dual-approval workflow 대상으로 등록됐으나 페이지 안내가 yml + 재기동만 명시. 운영자가 v1.x 무중단 변경 도입 후에도 우회 경로 없음을 사전 인지하도록 callout 1단락 추가.
+
+### 변경 핵심
+
+- `frontend/src/app/admin/trash/policy/page.tsx` — "보존 일수 변경 방법" 섹션 끝에 border-top callout 추가: v1.x `PUT /api/admin/trash/policy` 도입 시 dual-approval workflow 적용 예정 + docs/04 §15.4 backlink + hard purge 폭증 방지 이유.
+- `frontend/src/app/admin/trash/policy/page.test.tsx` — 회귀 가드 1 케이스 추가 (`2인 승인` + `dual-approval` 텍스트 노출 검증).
+
+backend 무변경, docs 무변경 — UI text 단독.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run admin/trash/policy` 7/7 PASS (기존 6 + 신규 1).
+
+### 결정/편차
+
+- **page.tsx 안에만 노출** — docs/04 §8.3 viewer 섹션은 이미 closure 마커 + mutation deferred 명시. 페이지 안내가 부족했던 부분만 보강. docs는 그대로.
+- **별도 ConfirmDialog/Modal 미도입** — KISS, 단순 텍스트 callout. mutation 실 구현 시점에 dual-approval flow UI 별도 트랙.
+- **dual-approval 한국어/영문 둘 다 노출** — 운영자가 docs와 워크플로 양쪽 매칭 쉽도록 `2인 승인(dual-approval)` 병기.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / 휴지통 보존 정책 mutation UI(본 callout과 페어로 진행) / 2인 승인 framework 실 구현(v1x-confirm-2admin-design #124 머지됨, 실 구현 별도) / progress streaming(SSE/WS).
+- `retention_change`는 dual-approval framework 의존이라 framework 실 구현 후 mutation UI 진입.
+
+---
+
 ## 2026-05-09 — 🏁 yml-enabled-cleanup 트랙 종료 (admin-cron-toggle 직접 후속)
 
 ### 범위

@@ -99,6 +99,11 @@ function PolicyPageBody() {
         <p className="text-[12px] text-fg-2">
           0/음수 입력은 default 30으로 보정됩니다 (즉시 hard purge 사고 방지).
         </p>
+        <p className="text-[12px] text-fg-2 border-t border-border pt-2 mt-2">
+          v1.x 무중단 변경(<code className="bg-bg-2 px-1 rounded">PUT /api/admin/trash/policy</code>)
+          도입 시 <strong>2인 승인(dual-approval)</strong> workflow 적용 예정 — 일수 감소로
+          인한 hard purge 폭증을 방지하기 위함입니다 (운영 런북 docs/04 §15.4).
+        </p>
       </section>
     </div>
   )
