@@ -1,14 +1,19 @@
 package com.ibizdrive.permission;
 
+import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.folder.FolderRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -18,10 +23,16 @@ import static org.mockito.Mockito.when;
  *
  * <p>재귀 CTE/조상/만료/everyone 처리는 PermissionRepository 슬라이스 테스트에서 검증되므로
  * 여기서는 row → preset → permission union 평면화 로직만 검증.
+ *
+ * <p>Plan A Task 23 추가: membershipResolver/folderRepository/fileRepository mock 주입.
+ * 기존 테스트는 membership 경로를 사용하지 않으므로 기본값(empty)으로 단락 방지.
  */
 class PermissionResolverTest {
 
     private PermissionRepository repository;
+    private WorkspaceMembershipResolver membershipResolver;
+    private FolderRepository folderRepository;
+    private FileRepository fileRepository;
     private PermissionResolver resolver;
 
     private final UUID userId = UUID.fromString("11111111-1111-1111-1111-111111111111");
@@ -30,7 +41,16 @@ class PermissionResolverTest {
     @BeforeEach
     void setUp() {
         repository = mock(PermissionRepository.class);
-        resolver = new PermissionResolver(repository);
+        membershipResolver = mock(WorkspaceMembershipResolver.class);
+        folderRepository = mock(FolderRepository.class);
+        fileRepository = mock(FileRepository.class);
+        resolver = new PermissionResolver(repository, membershipResolver, folderRepository, fileRepository);
+
+        // 기존 테스트는 membership 경로를 검증하지 않음 — empty로 단락 방지 (false positive 없음).
+        when(membershipResolver.resolve(any(), any(), any()))
+            .thenReturn(EnumSet.noneOf(Permission.class));
+        when(folderRepository.findById(any())).thenReturn(Optional.empty());
+        when(fileRepository.findById(any())).thenReturn(Optional.empty());
     }
 
     @Test
