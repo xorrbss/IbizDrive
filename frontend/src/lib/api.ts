@@ -138,12 +138,11 @@ export const api = {
   },
 
   /**
-   * Phase B P3 — 폴더 자식(폴더+파일) listing.
+   * Plan B — 폴더 자식(폴더+파일) listing.
    *
-   * <p>{@code folderId === 'root'}: backend는 'root' literal을 받지 않으므로 ({@code GET /api/folders/{id}/items}는
-   * UUID만 수용) tree 응답의 top-level 폴더만 합성 — files=[]. 가상 root 정책 답습 (Phase A getFolder와 동일).
+   * 가상 root 분기 제거 (Task 12). 모든 호출부는 실제 workspace root folder UUID를 전달한다.
    *
-   * <p>그 외 UUID: {@code GET /api/folders/{id}/items?sort=&dir=} 호출. backend가 폴더-먼저 → 파일 그룹 정렬 적용.
+   * {@code GET /api/folders/{id}/items?sort=&dir=} 호출. backend가 폴더-먼저 → 파일 그룹 정렬 적용.
    * 응답 envelope의 {@code FolderItemDto}({type:'folder'|'file', size:Long?|null, mimeType:String?|null,
    * updatedBy:UUID?})를 frontend {@link FileItem} 1:1 mapping. backend는 {@code @JsonInclude(NON_NULL)}이므로
    * 폴더의 size/mimeType 키 자체가 응답에 없을 수 있다 — 매핑 시 null 보정.
@@ -153,22 +152,6 @@ export const api = {
     sort: SortKey = 'name',
     dir: 'asc' | 'desc' = 'asc',
   ): Promise<FileItem[]> {
-    if (folderId === 'root') {
-      // 가상 root는 backend 호출 없이 tree top-level 폴더 합성 — Phase A와 동일 정책.
-      const tree = await this.getFolderTree()
-      const topFolders = tree.children ?? []
-      return topFolders.map((f) => ({
-        id: f.id,
-        name: f.name,
-        type: 'folder',
-        mimeType: null,
-        size: null,
-        // tree 응답에 updatedAt이 없는 경우 빈 문자열 — UI는 hyphen으로 표시. 후속에서 tree DTO 확장 시 보강.
-        updatedAt: '',
-        updatedBy: '',
-        parentId: 'root',
-      }))
-    }
     const url =
       `/api/folders/${encodeURIComponent(folderId)}/items` +
       `?sort=${encodeURIComponent(sort.toUpperCase())}` +
@@ -487,7 +470,7 @@ export const api = {
         Accept: 'application/json',
         ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
       },
-      body: JSON.stringify({ parentId: parentId === 'root' ? null : parentId, name: name.trim() }),
+      body: JSON.stringify({ parentId, name: name.trim() }),
     })
     if (!res.ok) {
       throw await buildApiError(res, `createFolder failed: ${res.status}`)

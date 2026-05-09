@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { usePermission } from '@/hooks/usePermission'
 import { useShareUiStore } from '@/stores/shareUi'
-import { buildCanonicalPath } from '@/lib/folderPath'
+import { buildWorkspacePath, type WorkspaceLocator } from '@/lib/workspacePath'
+import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 
 export function Breadcrumb() {
@@ -12,6 +13,7 @@ export function Breadcrumb() {
   // 현재 폴더 = breadcrumb 마지막 항목 (= folderId 동일). 루트 외 폴더에서 동작.
   const can = usePermission(folderId)
   const openShare = useShareUiStore((s) => s.open)
+  const ws = useCurrentWorkspace()
   if (isLoading) return <BreadcrumbSkeleton />
 
   const current = breadcrumb[breadcrumb.length - 1]
@@ -19,13 +21,19 @@ export function Breadcrumb() {
   // backend는 root 공유를 허용하지 않는 정책으로 가정 (루트는 시스템 폴더). UI 차단으로 충분.
   const showShare = !!current && breadcrumb.length > 1 && can.SHARE
 
+  const loc: WorkspaceLocator | null = ws
+    ? ws.section === 'shared'
+      ? { kind: 'shared' }
+      : { kind: ws.section as 'department' | 'team', workspaceId: ws.workspaceId! }
+    : null
+
   return (
     <nav
       aria-label="Breadcrumb"
       className="flex items-center gap-0.5 flex-wrap px-4 pt-2.5 pb-1.5 text-[13.5px] text-fg-muted"
     >
       {breadcrumb.map((c, i) => {
-        const href = buildCanonicalPath(c.id, c.slugPath)
+        const href = loc ? buildWorkspacePath(loc, c.id, c.slugPath) : '#'
         const last = i === breadcrumb.length - 1
         return (
           <span key={c.id} className="inline-flex items-center">

@@ -3,20 +3,27 @@ import Link from 'next/link'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useFolderTree } from '@/hooks/useFolderTree'
 import { useViewStore } from '@/stores/view'
-import { buildCanonicalPath } from '@/lib/folderPath'
+import { buildWorkspacePath, type WorkspaceLocator } from '@/lib/workspacePath'
+import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import type { FolderNode as FolderNodeType } from '@/types/folder'
 
 export function FolderTree() {
   const { data: tree, isLoading } = useFolderTree()
   const { folderId: activeId } = useCurrentFolder()
+  const ws = useCurrentWorkspace()
+  const loc: WorkspaceLocator | null = ws
+    ? ws.section === 'shared'
+      ? { kind: 'shared' }
+      : { kind: ws.section as 'department' | 'team', workspaceId: ws.workspaceId! }
+    : null
 
   if (isLoading) return <FolderTreeSkeleton />
   if (!tree) return null
 
   return (
     <nav aria-label="폴더 트리" className="text-[12.5px]">
-      <FolderNodeItem node={tree} activeId={activeId} depth={0} pathAcc={[]} />
+      <FolderNodeItem node={tree} activeId={activeId} depth={0} pathAcc={[]} loc={loc} />
     </nav>
   )
 }
@@ -26,19 +33,21 @@ function FolderNodeItem({
   activeId,
   depth,
   pathAcc,
+  loc,
 }: {
   node: FolderNodeType
   activeId: string
   depth: number
   pathAcc: string[]
+  loc: WorkspaceLocator | null
 }) {
   const { expandedFolderIds, toggleExpanded } = useViewStore()
   const { setNodeRef, isOver, isInvalid, isDragging, isSameFolder } =
     useFolderDroppable(node.id)
   const isExpanded = expandedFolderIds.includes(node.id)
   const isActive = activeId === node.id
-  const nextPath = node.id === 'root' ? [] : [...pathAcc, node.slug]
-  const href = buildCanonicalPath(node.id, nextPath)
+  const nextPath = [...pathAcc, node.slug].filter(Boolean)
+  const href = loc ? buildWorkspacePath(loc, node.id, nextPath) : '#'
 
   // 드래그 중일 때만 droppable 시각화 적용
   const dragClass = !isDragging
@@ -87,6 +96,7 @@ function FolderNodeItem({
             activeId={activeId}
             depth={depth + 1}
             pathAcc={nextPath}
+            loc={loc}
           />
         ))}
     </div>
