@@ -62,6 +62,8 @@ export type AuditEventType =
   | 'storage.orphan.cleaned'
   // 팀
   | 'team.member.role_changed'
+  | 'team.archived'
+  | 'team.restored'
   // 감사 로그 자체
   | 'audit.exported'
 
