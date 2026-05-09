@@ -1,5 +1,7 @@
 package com.ibizdrive.file;
 
+import com.ibizdrive.folder.ScopeType;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
@@ -78,6 +80,17 @@ public class FileItem {
     /** 휴지통 복원용 — 삭제 시점의 부모 폴더 id 보존 (docs/02 §2.4). */
     @Column(name = "original_folder_id")
     private UUID originalFolderId;
+
+    /**
+     * V13 — workspace scope 종류 ({@code 'department'} | {@code 'team'}). DB CHECK가 enforce.
+     * Folder.scope_type와 동일한 raw-String + enum-via-getter 패턴.
+     */
+    @Column(name = "scope_type", nullable = false, length = 20)
+    private String scopeTypeRaw;
+
+    /** V13 — scope의 entity id (departments.id 또는 teams.id). */
+    @Column(name = "scope_id", nullable = false)
+    private UUID scopeId;
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private Instant createdAt;
@@ -183,6 +196,30 @@ public class FileItem {
 
     public void setOriginalFolderId(UUID originalFolderId) {
         this.originalFolderId = originalFolderId;
+    }
+
+    public ScopeType getScopeType() {
+        return scopeTypeRaw == null ? null : ScopeType.fromDb(scopeTypeRaw);
+    }
+
+    public UUID getScopeId() {
+        return scopeId;
+    }
+
+    /**
+     * Workspace scope 할당 — type/id 모두 non-null 필수. V13 NOT NULL 제약과 일치.
+     *
+     * @throws IllegalArgumentException type 또는 id가 null
+     */
+    public void assignScope(ScopeType type, UUID id) {
+        if (type == null) {
+            throw new IllegalArgumentException("scopeType must not be null");
+        }
+        if (id == null) {
+            throw new IllegalArgumentException("scopeId must not be null");
+        }
+        this.scopeTypeRaw = type.dbValue();
+        this.scopeId = id;
     }
 
     public Instant getCreatedAt() {
