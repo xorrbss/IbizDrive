@@ -186,6 +186,40 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
                                    @Param("limit") int limit);
 
     /**
+     * E T1 — scope-aware 휴지통 page query. {@link #findTrashedPage}의 scope-filter 오버로드.
+     *
+     * <p>요청 scope ({@code scope_type + scope_id}) 에 속하는 soft-deleted file만 반환한다.
+     * 정렬 / cursor 의미는 {@link #findTrashedPage}와 동일 ({@code deleted_at DESC, id DESC}).
+     *
+     * <p>{@code scopeTypeRaw}는 {@link com.ibizdrive.folder.ScopeType#dbValue()} 소문자 문자열이어야 한다
+     * ({@code "department"} | {@code "team"}). 호출자는 {@code scopeType.dbValue()}를 전달한다.
+     *
+     * <p>{@code cursorDeletedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지. NOT NULL이면
+     * 해당 tuple보다 strictly less than인 row만 반환 (cursor pagination). T2(TrashQueryService)가
+     * 호출 시점에 변환을 담당한다.
+     */
+    @Query(value = """
+        SELECT * FROM files
+        WHERE deleted_at IS NOT NULL
+          AND scope_type = :scopeTypeRaw
+          AND scope_id = CAST(:scopeId AS uuid)
+          AND (
+            CAST(:cursorDeletedAt AS timestamptz) IS NULL
+            OR deleted_at < CAST(:cursorDeletedAt AS timestamptz)
+            OR (deleted_at = CAST(:cursorDeletedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<FileItem> findTrashedPageByScope(
+        @Param("scopeTypeRaw") String scopeTypeRaw,
+        @Param("scopeId") UUID scopeId,
+        @Param("cursorDeletedAt") Instant cursorDeletedAt,
+        @Param("cursorId") UUID cursorId,
+        @Param("limit") int limit
+    );
+
+    /**
      * A9.2 — search by normalized_name LIKE (docs/02 §7.8, ADR #33).
      *
      * <p>{@code pattern}은 호출자가 사전 escape + wildcard wrap 완료 (예: {@code "%foo%"}). ESCAPE
