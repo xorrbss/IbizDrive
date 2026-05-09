@@ -278,14 +278,68 @@ share_grant_max(scope=A, target=B) =
 
 ### 4.3 공유 받은 콘텐츠 가시성
 
-- 받는 쪽 사이드바: 자기 부서 트리 + 가입한 팀들 + **"공유받음"** 별도 섹션
-- "공유받음" 항목은 원본 workspace 명시 (`Shared from #영업팀 / Q4`)
-- re-share 금지 — 원본 workspace에서만 권한 부여 가능. 권한 누수 방지.
+- 받는 쪽 사이드바: 자기 부서 트리 + 가입한 팀들 + **"공유받음"** 별도 섹션 (§4.5 트리 사양)
+- "공유받음" 섹션은 **원본 workspace로 그룹핑** (`영업팀에서 공유` / `#marketing 에서 공유` 등)
+- re-share 금지 — 원본 workspace에서만 권한 부여 가능. 권한 누수 방지. 트리 DnD에서는 "공유받음" 항목으로 drop 차단 (시각 피드백).
 
 ### 4.4 만료·revoke
 
 - 기존 `shares.expires_at` + revoke cron 그대로
 - workspace archive/purge 시 source share는 자동 revoke (cascade — `shares.folder_id/file_id` ON DELETE CASCADE 활용)
+
+### 4.5 사이드바 트리 — 탐색기 스타일
+
+```
+▼ 🏢 내 부서                          (Section 1, user.department_id로 자동)
+  ▼ 📁 영업부             (root)
+    ▶ 📁 2026년
+      ▶ 📁 Q1
+    ▶ 📁 매뉴얼
+
+▼ 👥 내 팀 (3)                        (Section 2, team_memberships로 자동)
+  ▼ 📁 ProjectAlpha       (root)
+    ▶ 📁 design
+  ▼ 📁 신제품기획         (root)
+  ▶ 📁 ux-research-2026   (root, archived 시각 표시)
+  [+ 새 팀 만들기]
+
+▼ 🔗 공유받음 (5)                     (Section 3, shares로 자동)
+  ▼ 🏷 영업팀에서 공유                (출처 workspace로 그룹핑)
+    ▶ 📁 Q4 보고서
+
+─────
+🗑 휴지통                             (별도 페이지: workspace 탭)
+```
+
+**핵심 결정**:
+
+1. **3-section 트리** (단일 통합 트리 X) — 부서/팀/공유받음의 거버넌스 맥락이 다르므로 분리. 각 섹션 헤더는 collapsible.
+2. **Workspace root = 트리 1차 노드** — root folder 이름 = workspace 이름 (생성 시 고정, §1.3 불변량). 하위는 일반 폴더 트리.
+3. **Lazy load**:
+   - 초기: section roots만 (`GET /api/workspaces/me`로 한 번에 부서+팀+공유받은 root 리스트)
+   - workspace root expand → 1-depth children (`GET /api/folders/:rootId/children`)
+   - 하위 폴더 expand → 그 폴더 children
+   - TanStack Query 키: `['folderChildren', scopeType, scopeId, parentId]`
+4. **URL ↔ 트리 동기화** (CLAUDE.md §3 원칙 1):
+   - URL 변경 (`/d/sales/[parts]`) → 트리가 경로 자동 expand + highlight
+   - 트리 클릭 → URL push → URL handler가 라우팅
+   - expand/highlight 상태는 URL 파생, Zustand 복제 금지
+5. **Persisted UI state** (localStorage):
+   - 펼쳐진 폴더 ID 집합 + 섹션 collapsed 상태
+   - key: `sidebar-tree-state:v1`. 30일 미접속 시 자동 정리.
+6. **DnD 정책** (§5.3 ERR_CROSS_SCOPE_MOVE 정합):
+   - 같은 workspace 내에서만 이동
+   - cross-workspace hover 시: "🚫 다른 workspace로 이동 불가" 시각 피드백 + drop 차단
+   - "공유받음" 섹션은 drop 대상 X (re-share 금지)
+7. **휴지통 진입점**:
+   - 사이드바 단일 "🗑 휴지통" 링크
+   - 클릭 시 별도 페이지: workspace 선택 탭 (`부서 휴지통 | ProjectAlpha 휴지통 | ...`)
+   - URL: `/trash/d/:dept` 또는 `/trash/t/:team` (§5.1 정합)
+8. **빈 상태**:
+   - 부서 미배정: "부서 미배정 — 관리자에게 문의"
+   - 팀 0개: "[+ 새 팀 만들기]" CTA만
+   - 공유받음 0개: 섹션 자체 hide
+9. **archived 팀 표시** — 트리에서 dim + 🔒 아이콘. read-only로 진입 가능.
 
 ---
 
@@ -421,12 +475,14 @@ ERR_NOT_WORKSPACE_MEMBER   403  // 해당 workspace 멤버 아님
 - §6 용어집: `workspace`, `team`, `team membership`, `scope`, `shared with me`
 
 ### docs/01-frontend-design.md
+- §2 사이드바: **3-section 트리** (부서/팀/공유받음) 사양 (본 spec §4.5). 현재 단일 FolderTree 가정 → `SidebarSections` + per-section `FolderTree`로 분리. archived 팀 시각, "[+ 새 팀]" CTA, 빈 상태 처리 포함.
 - §2~§4 라우팅: `/files/*` → `/d/*`, `/t/*`, `/shared/*` 재설계
-- §5 Zustand: `currentWorkspace` 슬라이스 신규 (URL 파생)
-- §6 Query keys: `workspaces`, `teams`, `teamMembers`
-- §13 휴지통: workspace별 분리 트리
-- §14 권한 패널: subject `team` 추가, "공유받음" 분리
-- §17 URL canonical: workspace prefix 빌더
+- §5 Zustand: `currentWorkspace` 슬라이스 신규 (URL 파생). 사이드바 expand 상태는 localStorage(persisted), Zustand 미관리.
+- §6 Query keys: `workspaces.me()`, `folderChildren(scopeType, scopeId, parentId)`, `teams`, `teamMembers` 추가
+- §7 DnD: same-workspace constraint + cross-workspace drop 차단 (시각 피드백 + `ERR_CROSS_SCOPE_MOVE`). "공유받음" drop 대상 X.
+- §13 휴지통: workspace별 분리 (탭 UI). 사이드바는 단일 진입점.
+- §14 권한 패널: subject `team` 추가, "공유받음" 섹션 분리 (re-share 금지)
+- §17 URL canonical: workspace prefix 빌더 (`/d/:slug/...`, `/t/:slug/...`)
 - §18 로드맵: M_team-pivot 마일스톤 신설
 - §19 핵심 원칙: 원칙 1 갱신 (URL이 workspace + folder를 소유)
 
