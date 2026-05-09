@@ -24,6 +24,8 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
 
+import org.mockito.ArgumentCaptor;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
@@ -294,15 +296,20 @@ class CrossWorkspaceMoveServiceTest {
 
         service.moveFolder(childInA, rootB, actor);
 
-        // Share revoked
-        String revokedAt = jdbc.queryForObject("SELECT CAST(revoked_at AS varchar) FROM shares WHERE id = ?", String.class, shareId);
-        assertThat(revokedAt).isNotNull();
-        String revokedBy = jdbc.queryForObject("SELECT CAST(revoked_by AS varchar) FROM shares WHERE id = ?", String.class, shareId);
-        assertThat(UUID.fromString(revokedBy)).isEqualTo(actor);
+        // Share row was cascade-deleted by perm cleanup (V6 ON DELETE CASCADE on shares.permission_id).
+        // Use COUNT to avoid EmptyResultDataAccessException from queryForObject on 0 rows.
+        Integer shareCount = jdbc.queryForObject("SELECT COUNT(*) FROM shares WHERE id = ?", Integer.class, shareId);
+        assertThat(shareCount).isZero();
 
         // Folder reparented
         String parent = jdbc.queryForObject("SELECT CAST(parent_id AS varchar) FROM folders WHERE id = ?", String.class, childInA);
         assertThat(UUID.fromString(parent)).isEqualTo(rootB);
+
+        // Event fired with correct revokedShareCount (collected before cascade-delete)
+        ArgumentCaptor<CrossWorkspaceMoveCompletedEvent> captor =
+            ArgumentCaptor.forClass(CrossWorkspaceMoveCompletedEvent.class);
+        verify(applicationEventPublisher).publishEvent(captor.capture());
+        assertThat(captor.getValue().revokedShareCount()).isEqualTo(1);
     }
 
     @Test
@@ -379,8 +386,9 @@ class CrossWorkspaceMoveServiceTest {
         assertThat(UUID.fromString(childScope)).isEqualTo(scopeB);
         Integer permCount = jdbc.queryForObject("SELECT COUNT(*) FROM permissions WHERE resource_id = ?", Integer.class, childInA);
         assertThat(permCount).isZero();
-        String revokedAt = jdbc.queryForObject("SELECT CAST(revoked_at AS varchar) FROM shares WHERE id = ?", String.class, shareId);
-        assertThat(revokedAt).isNotNull();
+        // Share row cascade-deleted by perm cleanup (V6 ON DELETE CASCADE); verify via COUNT
+        Integer shareCount = jdbc.queryForObject("SELECT COUNT(*) FROM shares WHERE id = ?", Integer.class, shareId);
+        assertThat(shareCount).isZero();
     }
 
     // ── private helpers ──

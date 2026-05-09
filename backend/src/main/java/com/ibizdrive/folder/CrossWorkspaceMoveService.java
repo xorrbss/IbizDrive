@@ -137,13 +137,8 @@ public class CrossWorkspaceMoveService {
             fileRepo.updateScopeBatch(subtreeFileIds, destScopeType, destScopeId);
         }
 
-        // step 4: 명시 권한 정리
-        permRepo.deleteByResourceIn("folder", subtreeFolderIds);
-        if (!subtreeFileIds.isEmpty()) {
-            permRepo.deleteByResourceIn("file", subtreeFileIds);
-        }
-
-        // step 5: shares revoke
+        // step 5 (collected EARLY due to V6 ON DELETE CASCADE on shares.permission_id —
+        // perm delete in step 4 cascade-deletes share rows; collect IDs before they vanish):
         Instant now = Instant.now();
         List<Share> folderShares =
             shareRepo.findActiveByResourceIn("folder", subtreeFolderIds);
@@ -155,6 +150,12 @@ public class CrossWorkspaceMoveService {
         for (var s : fileShares) allShareIds.add(s.getId());
         if (!allShareIds.isEmpty()) {
             shareRepo.revokeByIds(allShareIds, actorId, now);
+        }
+
+        // step 4: 명시 권한 정리 (cascade-deletes the just-revoked share rows via V6 FK)
+        permRepo.deleteByResourceIn("folder", subtreeFolderIds);
+        if (!subtreeFileIds.isEmpty()) {
+            permRepo.deleteByResourceIn("file", subtreeFileIds);
         }
 
         // step 6: parent_id 변경
