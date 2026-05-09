@@ -10,14 +10,13 @@ import type { AdminTrashFilters } from '@/types/trash'
  * - 폴더별 파일 목록 키는 [...files(), 'list', folderId, sort, dir] 형태로 sort/dir까지 포함.
  *   따라서 정렬 변종 전체를 한 번에 무효화하려면 sort/dir 없이 prefix 매칭이 필요 → filesListPrefix 사용.
  * - 폴더 메타(detail)와 파일 메타(detail)는 별개 keyspace.
- * - folderTree는 사이드바 트리 1개. 폴더 rename/move 시 무효화.
+ * - 사이드바 트리는 Plan B folderChildren (lazy per-workspace). folderTree 키 제거됨.
  *
  * `as const`로 readonly tuple을 반환해야 invalidateQueries({ queryKey }) 매칭이 정확함.
  */
 export const qk = {
   all: ['explorer'] as const,
   folders: () => [...qk.all, 'folders'] as const,
-  folderTree: () => [...qk.folders(), 'tree'] as const,
   folder: (id: string) => [...qk.folders(), 'detail', id] as const,
   effectivePermissions: () => [...qk.all, 'permissions', 'effective'] as const,
   /** 노드(폴더/파일)별 effective 권한 (M8 docs/01 §14.2). nodeId 없으면 effectivePermissions(전역). */
@@ -200,6 +199,25 @@ export const qk = {
    * 401(미인증)도 정상 캐시값(null)으로 다룬다 — useMe가 retry false 처리.
    */
   authMe: () => [...qk.auth(), 'me'] as const,
+
+  // ── Workspaces (Plan B, spec §5.2) ──
+  workspaces: {
+    all: () => [...qk.all, 'workspaces'] as const,
+    me: () => [...qk.all, 'workspaces', 'me'] as const,
+  },
+
+  /**
+   * 사이드바 트리 lazy children — spec §4.5 §3.
+   * `scopeType` + `scopeId`까지 포함해 동일 parentId가 부서/팀 간 우연 일치(매우 드물지만)에도 캐시 분리.
+   * `parentId === rootFolderId` 인 호출이 워크스페이스 root 직속 자식 조회.
+   */
+  folderChildren: (scopeType: 'department' | 'team', scopeId: string, parentId: string) =>
+    [...qk.all, 'folders', 'children', scopeType, scopeId, parentId] as const,
+
+  // ── Teams (Plan B, spec §5.2 — POST /api/teams) ──
+  teams: {
+    all: () => [...qk.all, 'teams'] as const,
+  },
 } as const
 
 // ─── 무효화 전략 헬퍼 ──────────────────────────────────────────────────────
@@ -211,7 +229,7 @@ export const invalidations = {
   /**
    * 파일/폴더 이동 후 무효화.
    * - source/target 폴더의 파일 목록 (모든 sort/dir 변종 prefix 매칭)
-   * - folderTree (이동된 항목 중 폴더가 있을 수 있음 → 보수적으로 항상 무효화)
+   * - folderChildren prefix 전체 (이동된 항목 중 폴더가 있을 수 있음 → 사이드바 트리 갱신)
    * - 각 이동된 id의 fileDetail (parent 변경)
    */
   afterFilesMoved(
@@ -222,7 +240,7 @@ export const invalidations = {
     return Promise.all([
       qc.invalidateQueries({ queryKey: qk.filesListPrefix(sourceFolderId) }),
       qc.invalidateQueries({ queryKey: qk.filesListPrefix(targetFolderId) }),
-      qc.invalidateQueries({ queryKey: qk.folderTree() }),
+      qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] }),
       ...ids.map((id) => qc.invalidateQueries({ queryKey: qk.fileDetail(id) })),
     ]).then(() => undefined)
   },
@@ -230,7 +248,7 @@ export const invalidations = {
   /**
    * 폴더 신규 생성 후 무효화 (folder-create-ui 트랙).
    * - parentId 폴더의 자식 목록 (`getFilesInFolder`는 폴더+파일 통합 listing)
-   * - folderTree (사이드바)
+   * - folderChildren prefix 전체 (사이드바 트리 갱신)
    * - folder(parentId) (breadcrumb / detail의 자식 카운트가 노출될 수 있어 보수적)
    *
    * 가상 root(`'root'`)도 그대로 호출 — `getFilesInFolder('root')`가 tree top-level
@@ -243,7 +261,7 @@ export const invalidations = {
     const { parentId } = opts
     return Promise.all([
       qc.invalidateQueries({ queryKey: qk.filesListPrefix(parentId) }),
-      qc.invalidateQueries({ queryKey: qk.folderTree() }),
+      qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] }),
       qc.invalidateQueries({ queryKey: qk.folder(parentId) }),
     ]).then(() => undefined)
   },
@@ -252,7 +270,7 @@ export const invalidations = {
    * 단일 항목 이름 변경 후 무효화.
    * - parentId 폴더의 파일 목록
    * - 해당 항목의 fileDetail
-   * - 폴더인 경우 추가로 folderTree + folder(id)
+   * - 폴더인 경우 추가로 folderChildren prefix 전체 + folder(id)
    */
   afterRename(
     qc: QueryClient,
@@ -264,7 +282,7 @@ export const invalidations = {
       qc.invalidateQueries({ queryKey: qk.fileDetail(id) }),
     ]
     if (isFolder) {
-      tasks.push(qc.invalidateQueries({ queryKey: qk.folderTree() }))
+      tasks.push(qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] }))
       tasks.push(qc.invalidateQueries({ queryKey: qk.folder(id) }))
     }
     return Promise.all(tasks).then(() => undefined)
@@ -275,7 +293,7 @@ export const invalidations = {
    * - 해당 폴더의 파일 목록 (제외됨 → 새로고침)
    * - 휴지통 라우트 (새 항목 표시)
    * - 검색 결과 (휴지통 항목 제외 — `qk.search` prefix 전체)
-   * - folderTree (폴더 soft-delete 시 트리에서 제거; file-only 호출에도 보수적 무효화)
+   * - folderChildren prefix 전체 (폴더 soft-delete 시 트리에서 제거; file-only 호출에도 보수적 무효화)
    */
   afterDelete(
     qc: QueryClient,
@@ -285,7 +303,7 @@ export const invalidations = {
       qc.invalidateQueries({ queryKey: qk.filesListPrefix(opts.folderId) }),
       qc.invalidateQueries({ queryKey: qk.trash() }),
       qc.invalidateQueries({ queryKey: qk.search() }),
-      qc.invalidateQueries({ queryKey: qk.folderTree() }),
+      qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] }),
     ]).then(() => undefined)
   },
 
@@ -294,7 +312,7 @@ export const invalidations = {
    * - 복원 대상의 originalParent 폴더 목록 (있다면)
    * - 휴지통 라우트 (해당 항목 사라짐)
    * - 검색 결과 (다시 노출 가능)
-   * - folderTree (folder cascade restore 시 트리에 재등장; file-only 호출에도 보수적 무효화)
+   * - folderChildren prefix 전체 (folder cascade restore 시 트리에 재등장; file-only 호출에도 보수적 무효화)
    * 호출자는 originalParent가 다양할 수 있으니 prefix 전체(`qk.files()`) 보수 무효화도 옵션으로 허용.
    */
   afterRestore(
@@ -304,7 +322,7 @@ export const invalidations = {
     const tasks: Promise<void>[] = [
       qc.invalidateQueries({ queryKey: qk.trash() }),
       qc.invalidateQueries({ queryKey: qk.search() }),
-      qc.invalidateQueries({ queryKey: qk.folderTree() }),
+      qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] }),
     ]
     if (opts.folderIds && opts.folderIds.length > 0) {
       for (const fid of opts.folderIds) {
@@ -374,5 +392,13 @@ export const invalidations = {
    */
   afterAdminTrashChanged(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.adminTrash() })
+  },
+
+  /**
+   * 팀 생성/멤버 변경 후 무효화 — Plan B Task 3.
+   * - workspaces.me() (사이드바가 새 팀을 즉시 표시)
+   */
+  afterTeamChanged(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.workspaces.me() })
   },
 } as const

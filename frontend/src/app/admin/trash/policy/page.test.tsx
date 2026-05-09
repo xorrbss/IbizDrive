@@ -86,4 +86,13 @@ describe('/admin/trash/policy', () => {
     wrap(<AdminTrashPolicyPage />)
     expect(screen.getByRole('heading', { level: 1, name: /휴지통 보존 정책/ })).toBeTruthy()
   })
+
+  // trash-policy-dual-approval-callout — 무중단 변경 도입 시 dual-approval 의존성을
+  // 페이지 안내에 미리 노출. 운영자가 yml 직접 변경 외 우회 경로가 없음을 사전 인지하도록.
+  it('보존 일수 변경 안내에 v1.x dual-approval 의존성 명시', () => {
+    hookState = { isLoading: false, isError: false, data: { retentionDays: 30 } }
+    wrap(<AdminTrashPolicyPage />)
+    expect(screen.getByText(/2인 승인/)).toBeTruthy()
+    expect(screen.getByText(/dual-approval/)).toBeTruthy()
+  })
 })

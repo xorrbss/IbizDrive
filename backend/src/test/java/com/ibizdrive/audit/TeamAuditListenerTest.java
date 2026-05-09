@@ -1,9 +1,13 @@
 package com.ibizdrive.audit;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibizdrive.team.TeamArchivedEvent;
 import com.ibizdrive.team.TeamCreatedEvent;
 import com.ibizdrive.team.TeamMemberAddedEvent;
 import com.ibizdrive.team.TeamMemberRemovedEvent;
+import com.ibizdrive.team.TeamMemberRoleChangedEvent;
+import com.ibizdrive.team.TeamMembership;
+import com.ibizdrive.team.TeamRestoredEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -85,6 +89,68 @@ class TeamAuditListenerTest {
         assertThat(recorded.actorId()).isEqualTo(actor);
         assertThat(recorded.beforeState()).contains("\"userId\":\"" + userId + "\"");
         assertThat(recorded.afterState()).isNull();
+    }
+
+    @Test
+    void onTeamMemberRoleChanged_recordsAuditWithBeforeAndAfterRoles() {
+        UUID teamId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+
+        listener.onTeamMemberRoleChanged(new TeamMemberRoleChangedEvent(
+            teamId, userId, TeamMembership.Role.MEMBER, TeamMembership.Role.OWNER, actor
+        ));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent recorded = captor.getValue();
+        assertThat(recorded.eventType()).isEqualTo(AuditEventType.TEAM_MEMBER_ROLE_CHANGED);
+        assertThat(recorded.targetType()).isEqualTo(AuditTargetType.TEAM);
+        assertThat(recorded.targetId()).isEqualTo(teamId);
+        assertThat(recorded.actorId()).isEqualTo(actor);
+        assertThat(recorded.beforeState()).contains("\"userId\":\"" + userId + "\"");
+        assertThat(recorded.beforeState()).contains("\"role\":\"MEMBER\"");
+        assertThat(recorded.afterState()).contains("\"userId\":\"" + userId + "\"");
+        assertThat(recorded.afterState()).contains("\"role\":\"OWNER\"");
+        assertThat(recorded.metadata()).isNull();
+    }
+
+    @Test
+    void onTeamArchived_recordsAuditWithTeamTarget() {
+        UUID teamId = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+
+        listener.onTeamArchived(new TeamArchivedEvent(teamId, actor));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent recorded = captor.getValue();
+        assertThat(recorded.eventType()).isEqualTo(AuditEventType.TEAM_ARCHIVED);
+        assertThat(recorded.targetType()).isEqualTo(AuditTargetType.TEAM);
+        assertThat(recorded.targetId()).isEqualTo(teamId);
+        assertThat(recorded.actorId()).isEqualTo(actor);
+        assertThat(recorded.beforeState()).isNull();
+        assertThat(recorded.afterState()).isNull();
+        assertThat(recorded.metadata()).isNull();
+    }
+
+    @Test
+    void onTeamRestored_recordsAuditWithTeamTarget() {
+        UUID teamId = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+
+        listener.onTeamRestored(new TeamRestoredEvent(teamId, actor));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent recorded = captor.getValue();
+        assertThat(recorded.eventType()).isEqualTo(AuditEventType.TEAM_RESTORED);
+        assertThat(recorded.targetType()).isEqualTo(AuditTargetType.TEAM);
+        assertThat(recorded.targetId()).isEqualTo(teamId);
+        assertThat(recorded.actorId()).isEqualTo(actor);
+        assertThat(recorded.beforeState()).isNull();
+        assertThat(recorded.afterState()).isNull();
+        assertThat(recorded.metadata()).isNull();
     }
 
     @Test

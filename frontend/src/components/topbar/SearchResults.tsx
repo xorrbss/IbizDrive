@@ -1,8 +1,9 @@
 'use client'
 import { useRouter } from 'next/navigation'
 import { useOpenFile } from '@/hooks/useOpenFile'
+import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
+import { buildWorkspacePath, type WorkspaceLocator } from '@/lib/workspacePath'
 import type { FileItem } from '@/types/file'
-import { buildCanonicalPath } from '@/lib/folderPath'
 
 /**
  * 검색 결과 드롭다운 — SearchBar 바로 아래에 absolute 배치.
@@ -30,6 +31,7 @@ export function SearchResults({
 }: SearchResultsProps) {
   const { open } = useOpenFile()
   const router = useRouter()
+  const ws = useCurrentWorkspace()
 
   if (query.length < 2) {
     return (
@@ -78,8 +80,14 @@ export function SearchResults({
   const handleClick = (item: FileItem) => {
     onSelect?.()
     if (item.type === 'folder') {
-      // 폴더는 slug 없이 id만으로도 canonical redirect 처리됨 (M1 패턴)
-      router.push(buildCanonicalPath(item.id, []))
+      // 폴더는 slug 없이 id만으로도 canonical redirect 처리됨. workspace 컨텍스트로 이동.
+      const loc: WorkspaceLocator | null = ws
+        ? ws.section === 'shared'
+          ? { kind: 'shared' }
+          : { kind: ws.section as 'department' | 'team', workspaceId: ws.workspaceId! }
+        : null
+      const path = loc ? buildWorkspacePath(loc, item.id, []) : '#'
+      router.push(path)
     } else {
       open(item.id)
     }

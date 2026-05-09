@@ -684,7 +684,7 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 **일일 점검** (사내 베타):
 
 1. `/admin/permissions?preset=expiring` (만료 임박 필터, 7일 이내) → 갱신 필요 항목 list-up.
-2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리. 잘못 부여되었거나 만료 임박 이전 즉시 회수가 필요한 경우 viewer 행의 "철회" 버튼으로 처리(admin-permission-revoke, Wave 2 T5 follow-up, 2026-05-09 — 기존 `DELETE /api/permissions/{id}` 재사용, ROLE.ADMIN 통과). grant 다이얼로그(subject/resource picker)는 v1.x deferred.
+2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리. 잘못 부여되었거나 만료 임박 이전 즉시 회수가 필요한 경우 viewer 행의 "철회" 버튼으로 처리(admin-permission-revoke, Wave 2 T5 follow-up, 2026-05-09 — 기존 `DELETE /api/permissions/{id}` 재사용, ROLE.ADMIN 통과). 단일 자원 grant 다이얼로그는 **docs/01 §14.5 spec 작성** (2026-05-09, spec-permission-grant-dialog) — `RightPanel` 권한 탭에서 부여, 실 구현은 v1.x phase B/C/D. admin 페이지 전역 grant (resource picker)는 v2.x.
 3. cron 동작 검증:
 
    ```sql
@@ -753,6 +753,78 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 - 휴지통 bulk restore/purge → §15.2 단건 제약 해소.
 - 휴지통 날짜 범위 필터 + full path resolve → §15.1 운영자 식별 공수 축소.
 - T7 KPI 확장 (오늘 업로드/다운로드, 쿼터 알림, 비정상 패턴) → §15.5 일일 점검 자동화.
+
+### 15.7 Multi-session 자율 작업 트러블슈팅 (2026-05-09 추가)
+
+자율 모드 (다중 Claude/codex 세션이 동일 repo에 병렬 작업) 운영 시 자주 마주치는 충돌 + 복구 패턴. 본 세션 trajectory에서 검증됐고 운영 가드로 명시한다.
+
+#### 15.7.1 PR 자동 머지 백그라운드 — `mergeStateStatus` 5단계 분기
+
+`gh pr view <PR> --json mergeStateStatus,state --jq '"\(.state) \(.mergeStateStatus)"'`로 폴링. 각 분기별 처리:
+
+| state · mergeStateStatus | 의미 | 처리 |
+|---|---|---|
+| `OPEN UNSTABLE` | CI 일부 진행 중 또는 fail | 폴링 지속 (30s 간격) |
+| `OPEN UNKNOWN` | GitHub 평가 중 | 일시적, 다음 폴링 시 보통 해결 |
+| `OPEN DIRTY` | master 새 push로 충돌 | 즉시 ABORT + rebase + `--force-with-lease` 재시도 |
+| `OPEN CLEAN` | 머지 가능 | `gh pr merge --squash --delete-branch` |
+| `MERGED *` | 이미 머지됨 | 폴링 break (다른 세션이 끝낸 PR 처리 시 무한 polling 방지) |
+
+폴링 간격은 30초 권장 — GitHub API rate limit + cache miss 회피.
+
+#### 15.7.2 충돌 복구 — rebase + force-push
+
+`OPEN DIRTY` 발견 시 워크트리에서:
+
+```bash
+git fetch origin master
+git rebase origin/master
+# 충돌 해소 (보통 docs/progress.md — 양쪽 entry 보존 + 시간순 배치)
+git add <resolved files>
+GIT_EDITOR=true git rebase --continue
+git push --force-with-lease origin <branch>
+```
+
+`--force-with-lease`는 다른 세션이 우리 브랜치에 직접 push한 경우 force-push를 차단한다 — 보호 가드 (메모리 `feedback_co_session_collab`).
+
+복구 단계에서 워크트리 인덱스가 stale state로 빠지면 (`docs/progress.md: needs merge` 등):
+
+```bash
+git reset --hard origin/<branch>      # 우리 브랜치 origin 최신으로 복구
+git rebase origin/master              # 깨끗한 base로 재시도
+```
+
+**주의**: 본 sequence 전 `git reflog -10`으로 우리 작업 SHA를 백업해 둔다 — `reset --hard`가 미푸시 commit을 삭제하기 때문.
+
+#### 15.7.3 다른 세션 영역 회피
+
+다른 세션이 작업 중인 worktree/branch는 **본 세션이 손대지 않는다**:
+
+- `git worktree list`로 활성 worktree 확인. 다른 worktree 안의 파일은 read-only도 가급적 회피 (lock 위험).
+- `git branch -a`에서 다른 세션 작업 브랜치는 정리 대상에서 제외 (`backup/*`, 다른 세션 active branch).
+- `gh pr list --state open`으로 open PR 확인 — 다른 세션 PR은 영역 점유로 간주.
+
+#### 15.7.4 다른 세션이 `master` 브랜치에 직접 commit한 경우
+
+자율 모드에서 다른 세션이 실수로 master 로컬에 commit하고 push 안 한 상태 (`master ahead 1`, origin GONE) 발견 시:
+
+- **본 세션은 절대 reset/discard 하지 않는다** — 작업 손실 위험.
+- 메인 worktree가 `master [ahead N]` 상태면 다른 세션이 정리할 때까지 보존.
+- 본 세션이 master fast-forward 필요하면 별도 worktree를 `origin/master` 직접 base로 생성:
+
+```bash
+git worktree add .claude/worktrees/<task> -b <branch> origin/master
+```
+
+archive PR 등 master 위 작업도 본 패턴으로 분리한다 (메인 worktree 잘못 commit과 격리).
+
+#### 15.7.5 cleanup 잔여 (Windows lock)
+
+머지 + cleanup 백그라운드 종료 후 worktree 디렉터리가 `Permission denied` / `Device or resource busy`로 남는 경우:
+
+- `git worktree list`에서 사라졌으면 git 메타데이터는 정리됨 (디스크 공간만 잠식, 무해).
+- 다음 세션 시작 시 또는 codex/IDE 프로세스 종료 후 수동 `rm -rf` 가능.
+- 동일 이름 worktree 재생성은 git 에러 없음 (메타데이터 free 상태).
 
 ---
 

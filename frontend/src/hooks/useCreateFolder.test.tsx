@@ -25,7 +25,7 @@ describe('useCreateFolder', () => {
     vi.clearAllMocks()
   })
 
-  it('성공 → api.createFolder 호출 + 3개 키 무효화 (filesListPrefix / folderTree / folder)', async () => {
+  it('성공 → api.createFolder 호출 + 3개 키 무효화 (filesListPrefix / folderChildren prefix / folder)', async () => {
     ;(api.createFolder as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'new-id',
       name: '새 폴더',
@@ -45,7 +45,7 @@ describe('useCreateFolder', () => {
     expect(calls).toEqual(
       expect.arrayContaining([
         { queryKey: qk.filesListPrefix('p1') },
-        { queryKey: qk.folderTree() },
+        { queryKey: [...qk.all, 'folders', 'children'] },
         { queryKey: qk.folder('p1') },
       ]),
     )

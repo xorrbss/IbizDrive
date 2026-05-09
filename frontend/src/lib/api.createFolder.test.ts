@@ -51,15 +51,7 @@ describe('api.createFolder', () => {
     expect(out).toEqual({ id: 'f-1', name: '새 폴더', parentId: 'p-1' })
   })
 
-  it("parentId 'root'은 backend body에서 null로 정규화", async () => {
-    fetchMock.mockResolvedValueOnce(jsonResponse({
-      folder: { id: 'f-2', parentId: null, name: 'Root폴더' },
-    }, 200))
-
-    await api.createFolder('root', 'Root폴더')
-    const [, init] = fetchMock.mock.calls[0]
-    expect(JSON.parse(init.body as string).parentId).toBeNull()
-  })
+  // 가상 root 'root' 정규화 테스트 제거 — Plan B는 virtual root 폐기 (모든 caller가 실제 workspace folder UUID 전달).
 
   it('name은 trim 후 송신', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({

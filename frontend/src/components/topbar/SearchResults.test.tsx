@@ -8,7 +8,8 @@ const mockPush = vi.fn()
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: mockPush, replace: vi.fn() }),
-  usePathname: () => '/files/root',
+  // workspace 컨텍스트 — useCurrentWorkspace가 department 워크스페이스로 파싱.
+  usePathname: () => '/d/dept-1/folder-x',
   useSearchParams: () => new URLSearchParams(''),
 }))
 
@@ -71,10 +72,10 @@ describe('SearchResults', () => {
     expect(mockPush).not.toHaveBeenCalled()
   })
 
-  it('폴더 결과 클릭 → router.push(canonical path)', () => {
+  it('폴더 결과 클릭 → router.push(workspace path)', () => {
     render(<SearchResults query="ab" isFetching={false} isError={false} items={[folderItem]} />)
     fireEvent.click(screen.getByRole('button', { name: /Y폴더/ }))
-    expect(mockPush).toHaveBeenCalledWith('/files/folder_y')
+    expect(mockPush).toHaveBeenCalledWith('/d/dept-1/folder_y')
     expect(mockOpen).not.toHaveBeenCalled()
   })
 

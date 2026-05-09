@@ -42,6 +42,35 @@ backend(Phase 1~6 + Finalize)는 이번 PR에서 완료. frontend Phase 7은 Pla
 
 ---
 
+## 2026-05-09 세션 — Plan B (Frontend Foundation)
+
+### 완료
+- [team-pivot-fe] workspaces 타입 + api + queryKeys + useWorkspaces (Tasks 1~4)
+- [team-pivot-fe] workspacePath builder/parser + useCurrentWorkspace + useCurrentFolder refactor (Tasks 5~7)
+- [team-pivot-fe] /d/[dept], /t/[team], /shared/* 라우트 + ClientFilesPage variants + root redirect (Tasks 8~12)
+- [team-pivot-fe] Breadcrumb workspace head crumb (Task 13)
+- [team-pivot-fe] SidebarSections + WorkspaceSection + WorkspaceFolderTree + lazy children (Tasks 14~22)
+- [team-pivot-fe] SharedWithMeSection (flat MVP) + empty states + archived hook (Tasks 23~24)
+- [team-pivot-fe] TeamCreateButton + Dialog + useCreateTeam (Task 25)
+- [team-pivot-fe] DnD same-workspace constraint + visual feedback (Tasks 27~29)
+- [team-pivot-fe] /files/* + folderPath.ts + FolderTree.tsx + view.ts + getFolderTree() 폐기 (Tasks 12, 16, 22)
+- [team-pivot-fe] MoveFolderDialog lazy-tree 회복 (Phase 6 follow-up — `MoveFolderTree` 신규)
+- [team-pivot-fe] docs/01 + CLAUDE.md 동기화 (Tasks 30~31)
+- [team-pivot-fe] code review 1차 fix — `/files` redirect stub 복구, SidebarSectionKind dedupe, Breadcrumb canonical builder, TeamCreateDialog try/catch + Escape, FolderTreeNode/MoveFolderTree 에러 상태, getFolder dead virtual-root 제거
+
+### 다음 세션 컨텍스트
+- 공유받음 출처 workspace 그룹핑은 backend가 shares-with-me에 source workspace 메타 노출 후 — Plan C와 함께
+- archived 팀 dim/[보관됨]은 backend Team archive endpoint(Plan A2)와 함께 활성
+- /trash workspace별 분리 페이지(탭 UI)는 Plan E
+- TrashTable 원위치 path display는 backend가 trash item DTO에 originalPath 노출하면 정합 (현재 fallback "원위치 폴더 삭제됨")
+- folderTreeUtils.ts는 MoveFolderDialog 재작성 후 orphan — Plan C/D 따라 정리 가능
+
+### PR
+- PR #139 — `feat/team-centric-pivot-plan-b-frontend`
+- 34 commits ahead of origin/master, 1057+ tests pass
+
+---
+
 ## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
 
 ### 범위 (이전 세션 핸드오프 후 추가분)
@@ -157,6 +186,154 @@ team-centric-pivot 설계 변경 backend foundation 구현. 직전 세션이 Pha
 - **두 브랜치 통합 필요** — `feat/team-centric-pivot-plan-a` (mine, Phase 3-8+10 완료) + `feat/team-centric-pivot-plan-a-phase9` (Phase 9 + 일부 중복). 중복 영역(Tasks 20-21)은 양쪽 functionally 동일하지만 commit SHA 다름. merge 전략 결정 필요.
 - **Task 29 E2E**는 phase9 통합 후 진행. create team → invite member → child folder 생성 시 scope 상속 + permission resolver가 membership으로 grant되는지 검증.
 - **Plan A2 backlog**: archive/un-archive, last-OWNER guard, role 변경, frontend `types/audit.ts` sync, cross-workspace move (가드레일 포함), Department workspace listing UI.
+
+---
+
+## 2026-05-09 — 📋 spec-permission-grant-dialog 트랙 종료 (단일 자원 권한 grant 다이얼로그 spec, Phase A)
+
+### 범위
+
+v1.x backlog "권한 grant 다이얼로그" 진입 — Phase A 설계 문서만. backend `POST /api/{folders|files}/{id}/permissions`는 완비(`PermissionController#grant`, A1.4), frontend가 누락이라 운영자가 SQL 직접 INSERT 또는 ShareDialog 우회 사용 중. 본 트랙으로 spec 명시 → phase B/C/D 후속 트랙에서 구현.
+
+### 변경 핵심
+
+- `docs/01 §14.5 GrantPermissionDialog` (NEW, 11 sub-sections):
+  - Scope (단일 자원 grant, admin 전역 grant는 v2.x)
+  - Architecture (ResourcePermissionsList → "권한 부여" 버튼 → GrantPermissionDialog → SubjectPicker / PresetSelector / ExpiresAtInput)
+  - api wrapper spec (`api.grantPermission` + X-CSRF-TOKEN 헤더)
+  - wire body (`GrantPermissionRequest`)
+  - Subject 분기 (USER/DEPARTMENT/ROLE/EVERYONE — 4종 모두)
+  - Preset 라벨 한국어 (READ/UPLOAD/EDIT/SHARE/ADMIN 5종)
+  - Error envelope mapping (409/400/403/404)
+  - 캐시 무효화 (resourcePermissions + adminPermissions + 자기 effective)
+  - Phase 분할 (B 골격, C 분기, D 통합)
+  - 결정/편차 (ShareDialog 패턴 답습 + ROLE 추가 + Preset 5값 / 단일 다이얼로그)
+  - 회귀 가드 spec (Phase B 적용 시 가드 목록)
+- `docs/04 §15.3` 운영 런북 backlink 갱신 — "grant 다이얼로그 v1.x deferred" → "docs/01 §14.5 spec 작성, 실 구현 v1.x phase B/C/D".
+
+backend/frontend 무변경, 코드 0줄. ShareDialog UserSearchCombobox/DepartmentSearchCombobox 재사용 명시 (KISS / ULTIMATE INVARIANT 5).
+
+### 검증
+
+- markdown 렌더 깨짐 없음.
+- backend `Preset.from(wire)` 실재 enum 5값 일치 (`Preset.java` 검토 후 spec 작성).
+- backend `PermissionController#grant` `@PreAuthorize("hasPermission(#id, #resource, 'PERMISSION_ADMIN')")` 가드 명시.
+
+### 결정/편차
+
+- **Phase 분할** — 단일 PR로 BcD 다 묶지 않음. spec 단계만 본 세션, 실 구현은 Phase B 시 backend wire 검증 / Phase C 시 subject 분기 / Phase D 시 통합으로 분할.
+- **단일 자원 단위만** — admin/permissions 페이지 전역 grant는 v2.x. resource picker (folder tree + file search) 컴포넌트가 phase 5+ 추가.
+- **ShareDialog 패턴 답습** — UserSearchCombobox / DepartmentSearchCombobox 재사용. 추상화 정당화 3+ 규칙(ADR #28 동형) 미충족이라 새 generic picker 신설 거부.
+- **ROLE 분기 추가** — ShareDialog는 schema impedance(ADR #37 결정 #5)로 ROLE 미노출이지만 permissions 테이블은 `subject_type='role'` persistable. backend 수정 없이 frontend만 ROLE select 노출.
+- **CSRF 헤더 명시** — Phase B 시 csrf-mutation-sweep(#121) 패턴 적용, spec에 `'X-CSRF-TOKEN': csrf` 명시.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant Phase B/C/D / quota / 휴지통 보존 정책 mutation UI / 2인 승인 framework 실 구현 / progress streaming.
+- Phase B 진입 시 `api.grantPermission` + 회귀 가드 vitest 부터. backend 검증은 이미 완료, 단순 frontend wire wrapper 추가.
+- ResourcePermissionsList 통합(Phase D)은 `usePermission().admin` 가드 필요 — 자원에 PERMISSION_ADMIN 보유한 운영자에게만 "권한 부여" 버튼 노출.
+
+---
+
+## 2026-05-09 — 📐 format-bytes-tb-nan-guard 트랙 종료 (formatBytes TB 단위 + NaN/Infinity 폴백)
+
+### 범위
+
+`frontend/src/lib/formatBytes.ts` 두 가지 작은 회귀 보강:
+1. **TB 단위 추가** — 1024 GB 이상이 "1500.0 GB"가 아닌 "1.5 TB"로 표기. v1.x storage.usedBytes 증가 대비.
+2. **NaN/Infinity 폴백** — 비정상 입력 시 `'-'` 반환 (`Number.isFinite` 가드). 일시적 nullable API 반환 시 "NaN GB" 표기 회귀 차단.
+
+### 변경 핵심
+
+- `formatBytes.ts` — `Number.isFinite(bytes)` 가드 + TB 분기 (1024 GB 이상은 `(bytes / 1024^4).toFixed(1) + ' TB'`).
+- `formatBytes.test.ts` — 회귀 가드 2 그룹 추가 (TB 3 케이스 + NaN/Infinity 3 케이스), 기존 GB 그룹에 1024 GB - 1 byte 경계 1 케이스 보강.
+
+backend 무변경, docs 무변경. utility 단독 (DashboardSummary/StorageOverviewCards/StorageBar/AdminTrashAllPage 모두 자동 혜택).
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run formatBytes` 6/6 PASS (기존 4 그룹 + 신규 2 그룹).
+
+### 결정/편차
+
+- **음수 무처리** — backend 자동 계산이라 음수 발생 가능성 ↓. `Number.isFinite`만 가드, 음수는 그대로 통과 (`'-N B'` 표기 가능). 발생 시 별도 트랙.
+- **TB 이상 단위 미도입** — PB 등은 v1.x 운영 환경에서 도달 가능성 ↓. KISS, 도달 시 별도 트랙.
+- **`'-'` 폴백 텍스트** — `'?'`, `'N/A'` 후보 중 `-`가 사내 베타 운영 화면에 가장 자연스러움 (admin/trash size 컬럼이 이미 `null`을 `-`로 표기).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / 휴지통 보존 정책 mutation UI / 2인 승인 framework 실 구현 / progress streaming.
+- formatBytes utility는 사내 베타 운영 KPI 표시의 core라 회귀 가드 보강이 운영 신뢰도에 직접 기여.
+
+---
+
+## 2026-05-09 — 📖 docs-multi-session-runbook 트랙 종료 (사내 베타 운영 런북에 multi-session 자율 작업 트러블슈팅 §15.7 추가)
+
+### 범위
+
+본 세션 trajectory에서 검증된 multi-session 자율 작업 패턴 (mergeStateStatus 5단계 분기 + rebase/force-push-with-lease 복구 + 다른 세션 영역 회피 + master 직접 commit 회피 + Windows lock cleanup)을 docs/04 §15 사내 베타 운영 런북에 §15.7 sub-section으로 추가. 차후 자율 세션 시작 시 재개 가이드.
+
+### 변경 핵심
+
+- `docs/04 §15.7` 신설 (5 sub-sections):
+  - §15.7.1 `mergeStateStatus` 5단계 분기 표 (UNSTABLE/UNKNOWN/DIRTY/CLEAN/MERGED)
+  - §15.7.2 충돌 복구 — rebase + `--force-with-lease` + reflog 백업 가드
+  - §15.7.3 다른 세션 영역 회피 — worktree list / branch -a / open PR 확인
+  - §15.7.4 다른 세션이 master에 직접 commit 시 회피 — `origin/master` 직접 base worktree로 격리
+  - §15.7.5 Windows lock cleanup 잔여 처리
+
+backend/frontend 무변경, 코드 0줄. 운영 매뉴얼 추가만.
+
+### 검증
+
+- 시각 검증: §15.7 markdown 렌더 깨짐 없음.
+- `git diff --stat`: docs/04 + docs/progress.md + dev/active만.
+- 백링크: `feedback_co_session_collab` 메모리와 일치.
+
+### 결정/편차
+
+- **§15.7 위치 선정** — §15.6 (Wave 2 backlog → v1.x 전환) 다음, §16 (Dual-Approval 운영) 직전. 본 세션이 발견한 운영 패턴이 §15 런북 영역에 자연스럽게 들어감.
+- **메모리와 docs 양쪽 명시** — `feedback_co_session_collab.md`는 자율 세션 즉시 가드, docs/04 §15.7은 운영 런북. 두 경로 다 유지가 KISS — 메모리는 자동 로드, docs는 사람 검수용.
+- **5단계 분기 표 형식** — 운영자가 한 번에 인지 가능하도록 mergeStateStatus 5상태를 표로. 본문 풀어쓰지 않음.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / 휴지통 보존 정책 mutation UI (callout #130 페어) / 2인 승인 framework 실 구현 (#124 design 머지됨) / progress streaming.
+- 다음 자율 세션은 §15.7을 재개 가이드로 활용 가능 — 백그라운드 패턴, force-push 가드, master 직접 commit 회피 모두 명시.
+
+---
+
+## 2026-05-09 — 🛎️ trash-policy-dual-approval-callout 트랙 종료 (/admin/trash/policy 변경 안내에 dual-approval 의존성 명시)
+
+### 범위
+
+PR #114 (wave2-trash-policy-viewer) read-only viewer 후속. `retention_change`가 docs/04 §15.4 dual-approval workflow 대상으로 등록됐으나 페이지 안내가 yml + 재기동만 명시. 운영자가 v1.x 무중단 변경 도입 후에도 우회 경로 없음을 사전 인지하도록 callout 1단락 추가.
+
+### 변경 핵심
+
+- `frontend/src/app/admin/trash/policy/page.tsx` — "보존 일수 변경 방법" 섹션 끝에 border-top callout 추가: v1.x `PUT /api/admin/trash/policy` 도입 시 dual-approval workflow 적용 예정 + docs/04 §15.4 backlink + hard purge 폭증 방지 이유.
+- `frontend/src/app/admin/trash/policy/page.test.tsx` — 회귀 가드 1 케이스 추가 (`2인 승인` + `dual-approval` 텍스트 노출 검증).
+
+backend 무변경, docs 무변경 — UI text 단독.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run admin/trash/policy` 7/7 PASS (기존 6 + 신규 1).
+
+### 결정/편차
+
+- **page.tsx 안에만 노출** — docs/04 §8.3 viewer 섹션은 이미 closure 마커 + mutation deferred 명시. 페이지 안내가 부족했던 부분만 보강. docs는 그대로.
+- **별도 ConfirmDialog/Modal 미도입** — KISS, 단순 텍스트 callout. mutation 실 구현 시점에 dual-approval flow UI 별도 트랙.
+- **dual-approval 한국어/영문 둘 다 노출** — 운영자가 docs와 워크플로 양쪽 매칭 쉽도록 `2인 승인(dual-approval)` 병기.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / 휴지통 보존 정책 mutation UI(본 callout과 페어로 진행) / 2인 승인 framework 실 구현(v1x-confirm-2admin-design #124 머지됨, 실 구현 별도) / progress streaming(SSE/WS).
+- `retention_change`는 dual-approval framework 의존이라 framework 실 구현 후 mutation UI 진입.
 
 ---
 
