@@ -24,6 +24,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -75,17 +76,21 @@ public class FolderMutationService {
     private final ObjectMapper objectMapper;
     /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (FileMutationService와 동일 source). */
     private final TrashRetentionProperties retention;
+    /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
+    private final CrossWorkspaceMoveService crossWorkspaceMoveService;
 
     public FolderMutationService(FolderRepository folderRepository,
                                  FileRepository fileRepository,
                                  AuditService auditService,
                                  ObjectMapper objectMapper,
-                                 TrashRetentionProperties retention) {
+                                 TrashRetentionProperties retention,
+                                 CrossWorkspaceMoveService crossWorkspaceMoveService) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.retention = retention;
+        this.crossWorkspaceMoveService = crossWorkspaceMoveService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -272,26 +277,39 @@ public class FolderMutationService {
     // ──────────────────────────────────────────────────────────────────
 
     /**
+     * 활성 폴더의 부모를 변경한다 (same-scope 전용 — {@code allowCrossScope=false} 기본값).
+     *
+     * <p>3-arg 오버로드: 기존 호출자(테스트 포함) API 유지 목적. {@link #move(UUID, UUID, UUID, boolean)}으로 위임.
+     */
+    public Folder move(UUID folderId, UUID newParentId, UUID actorId) {
+        return move(folderId, newParentId, actorId, false);
+    }
+
+    /**
      * 활성 폴더의 부모를 변경한다. {@code newParentId == null}이면 root로 이동.
      *
      * <p><b>Same-scope 강제 (spec §1.2, §5.6 — Plan A Task 25)</b>: {@code newParentId}가 non-null일
      * 때 target과 newParent의 {@code (scope_type, scope_id)}가 동일해야 한다. 다르면
-     * {@link CrossScopeMoveException} (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}). 명시적
-     * cross-workspace move는 Plan D scope ({@code allowCrossScope: true} + 영향 미리보기).
+     * {@link CrossScopeMoveException} (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}).
      *
+     * <p><b>Cross-workspace 위임 (Plan D Task 16)</b>: {@code allowCrossScope=true}이고 scope가
+     * 다를 때 {@link CrossWorkspaceMoveService#moveFolder}로 위임. 위임 서비스는 자체적으로
+     * SELECT FOR UPDATE 잠금하므로 본 메서드의 lock과 충돌하지 않음 (Postgres re-entrant locks within same tx).
+     *
+     * @param allowCrossScope true이면 cross-workspace move 분기로 위임; false면 기존 same-scope 가드
      * @throws FolderNotFoundException  folderId 또는 newParentId가 활성 폴더가 아님
      * @throws IllegalArgumentException 자기 자신 또는 자기 자신의 하위 트리로 이동 (cycle)
-     * @throws CrossScopeMoveException  newParent의 scope가 target과 다름 (Plan A: same-scope만)
+     * @throws CrossScopeMoveException  {@code allowCrossScope=false}이고 newParent scope가 다름
      * @throws FolderNameConflictException 새 부모 안에 동일 normalized_name 활성 폴더 존재
      */
-    public Folder move(UUID folderId, UUID newParentId, UUID actorId) {
+    public Folder move(UUID folderId, UUID newParentId, UUID actorId, boolean allowCrossScope) {
         if (folderId == null) throw new IllegalArgumentException("folderId is required");
 
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
         UUID currentParent = target.getParentId();
-        if (java.util.Objects.equals(currentParent, newParentId)) {
+        if (Objects.equals(currentParent, newParentId)) {
             return target;                                  // short-circuit
         }
 
@@ -300,12 +318,15 @@ public class FolderMutationService {
             Folder newParent = folderRepository.findByIdAndDeletedAtIsNull(newParentId)
                 .orElseThrow(() -> new FolderNotFoundException(
                     "new parent folder not found: " + newParentId));
-            // Plan A Task 25 — same-scope 가드. newParentId == null (root) 케이스는 §1.2 invariant
-            // 와 충돌하나 본 task는 명시적으로 same-scope 검증만 다룸 (rootless folder 차단은
-            // 별도 트랙). 가드는 mutation 직전, 가장 저렴한 비교부터 (cycle walk 이전) 배치.
-            if (target.getScopeType() != newParent.getScopeType()
-                || !target.getScopeId().equals(newParent.getScopeId())) {
-                throw new CrossScopeMoveException();
+
+            boolean cross = target.getScopeType() != newParent.getScopeType()
+                         || !target.getScopeId().equals(newParent.getScopeId());
+            if (cross) {
+                if (!allowCrossScope) {
+                    throw new CrossScopeMoveException();
+                }
+                // 위임 — CrossWorkspaceMoveService가 완전한 트랜잭션 경로 수행.
+                return crossWorkspaceMoveService.moveFolder(folderId, newParentId, actorId);
             }
             assertNoCycle(folderId, newParentId);
         }

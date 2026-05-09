@@ -196,17 +196,26 @@ public class FolderController {
     /**
      * 폴더 이동. {@code targetParentId == null}이면 root로 이동 — SpEL 삼항이 ROLE ADMIN으로 분기 (ADR #30).
      *
+     * <p>{@code allowCrossScope: true} 시 cross-workspace move 경로로 분기 (Plan D §5.6).
+     * 이 경우 source 폴더의 EDIT+SHARE와 destination 폴더의 UPLOAD가 추가로 요구된다.
+     *
      * <p>cycle/자기 자신/후손 검사는 service의 {@code IllegalArgumentException}으로 처리되어 400으로 매핑.
-     * docs/02 §7.5의 별도 코드(MOVE_INTO_SELF/MOVE_INTO_DESCENDANT)로의 분리는 후속 세션 (frontend errors mirror 정련 시점).
      */
     @PostMapping("/{id}/move")
-    @PreAuthorize("hasPermission(#id, 'folder', 'MOVE') and (#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))")
+    @PreAuthorize("hasPermission(#id, 'folder', 'MOVE') and ("
+        + "#req.targetParentId == null ? hasRole('ADMIN') : "
+        + "(#req.allowCrossScopeOrFalse() ? "
+            + "(hasPermission(#id, 'folder', 'EDIT') and hasPermission(#id, 'folder', 'SHARE') and hasPermission(#req.targetParentId, 'folder', 'UPLOAD')) : "
+            + "hasPermission(#req.targetParentId, 'folder', 'EDIT')"
+        + ")"
+        + ")")
     public ResponseEntity<Map<String, FolderDto>> move(
         @PathVariable("id") UUID id,
         @RequestBody @Valid MoveFolderRequest req,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        Folder moved = folderMutationService.move(id, req.targetParentId(), principal.getUser().getId());
+        Folder moved = folderMutationService.move(
+            id, req.targetParentId(), principal.getUser().getId(), req.allowCrossScopeOrFalse());
         return ResponseEntity.ok(Map.of("folder", FolderDto.from(moved)));
     }
 

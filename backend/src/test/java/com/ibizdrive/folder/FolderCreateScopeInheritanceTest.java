@@ -71,7 +71,8 @@ class FolderCreateScopeInheritanceTest {
                                                           AuditService audit,
                                                           ObjectMapper mapper) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30));
+                new com.ibizdrive.trash.TrashRetentionProperties(30),
+                mock(CrossWorkspaceMoveService.class));
         }
     }
 

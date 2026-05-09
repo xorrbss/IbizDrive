@@ -157,9 +157,9 @@ class FolderControllerTest {
     void move_toAnotherParent_delegates() {
         UUID newParent = UUID.fromString("44444444-4444-4444-4444-444444444444");
         Folder moved = newFolder(FOLDER_ID, newParent, "docs", "standard");
-        when(service.move(eq(FOLDER_ID), eq(newParent), eq(ACTOR))).thenReturn(moved);
+        when(service.move(eq(FOLDER_ID), eq(newParent), eq(ACTOR), eq(false))).thenReturn(moved);
 
-        MoveFolderRequest body = new MoveFolderRequest(newParent);
+        MoveFolderRequest body = new MoveFolderRequest(newParent, null);
         ResponseEntity<Map<String, FolderDto>> res = controller.move(FOLDER_ID, body, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
@@ -169,25 +169,38 @@ class FolderControllerTest {
     @Test
     void move_toRoot_passesNullTarget() {
         Folder moved = newFolder(FOLDER_ID, null, "docs", "standard");
-        when(service.move(eq(FOLDER_ID), isNull(), eq(ACTOR))).thenReturn(moved);
+        when(service.move(eq(FOLDER_ID), isNull(), eq(ACTOR), eq(false))).thenReturn(moved);
 
-        MoveFolderRequest body = new MoveFolderRequest(null);
+        MoveFolderRequest body = new MoveFolderRequest(null, null);
         ResponseEntity<Map<String, FolderDto>> res = controller.move(FOLDER_ID, body, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().get("folder").parentId()).isNull();
-        verify(service).move(FOLDER_ID, null, ACTOR);
+        verify(service).move(FOLDER_ID, null, ACTOR, false);
     }
 
     @Test
     void move_serviceThrowsCycle_propagated() {
-        when(service.move(any(), any(), any()))
+        when(service.move(any(), any(), any(), eq(false)))
             .thenThrow(new IllegalArgumentException("cannot move folder into its own descendant"));
 
-        MoveFolderRequest body = new MoveFolderRequest(PARENT_ID);
+        MoveFolderRequest body = new MoveFolderRequest(PARENT_ID, null);
         assertThatThrownBy(() -> controller.move(FOLDER_ID, body, principal))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("descendant");
+    }
+
+    @Test
+    void move_allowCrossScope_true_delegatesWithFlag() {
+        UUID newParent = UUID.fromString("44444444-4444-4444-4444-444444444444");
+        Folder moved = newFolder(FOLDER_ID, newParent, "docs", "standard");
+        when(service.move(eq(FOLDER_ID), eq(newParent), eq(ACTOR), eq(true))).thenReturn(moved);
+
+        MoveFolderRequest body = new MoveFolderRequest(newParent, true);
+        ResponseEntity<Map<String, FolderDto>> res = controller.move(FOLDER_ID, body, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(service).move(FOLDER_ID, newParent, ACTOR, true);
     }
 
     // ── helpers ────────────────────────────────────────────────────────
