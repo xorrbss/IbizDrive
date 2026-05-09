@@ -180,9 +180,9 @@ class V5MigrationIT {
     private UUID insertFolder(UUID parentId, String name, String normalizedName, UUID ownerId) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, parentId, name, normalizedName, name, ownerId
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            id, parentId, name, normalizedName, name, ownerId, java.util.UUID.randomUUID()
         );
         return id;
     }
@@ -190,9 +190,9 @@ class V5MigrationIT {
     private UUID insertFile(UUID folderId, String name, String normalizedName, UUID ownerId) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, folderId, name, normalizedName, ownerId, 0L
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            id, folderId, name, normalizedName, ownerId, 0L, java.util.UUID.randomUUID()
         );
         return id;
     }

@@ -280,9 +280,9 @@ class FileUploadServiceTest {
         UUID id = UUID.randomUUID();
         String normalized = name.toLowerCase();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level) " +
-            "VALUES (?, NULL, ?, ?, ?, ?, 'standard')",
-            id, name, normalized, normalized, ownerId
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id) " +
+            "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?)",
+            id, name, normalized, normalized, ownerId, java.util.UUID.randomUUID()
         );
         return id;
     }

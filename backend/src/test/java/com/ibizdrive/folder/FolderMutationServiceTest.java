@@ -398,9 +398,9 @@ class FolderMutationServiceTest {
         // 후손 파일도 cascade 대상이 되도록 추가 (id만 사용; insert는 jdbc raw로 충분).
         UUID grandFile = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            grandFile, child.getId(), "F.txt", "f.txt", owner, 0L
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            grandFile, child.getId(), "F.txt", "f.txt", owner, 0L, java.util.UUID.randomUUID()
         );
         reset(auditService);
 

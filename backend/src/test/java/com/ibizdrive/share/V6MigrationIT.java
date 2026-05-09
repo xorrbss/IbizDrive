@@ -227,9 +227,9 @@ class V6MigrationIT {
         UUID id = UUID.randomUUID();
         String name = "f-" + id.toString().substring(0, 8);
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id) " +
-            "VALUES (?, NULL, ?, ?, ?, ?)",
-            id, name, name, name, ownerId
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, scope_type, scope_id) " +
+            "VALUES (?, NULL, ?, ?, ?, ?, 'department', ?)",
+            id, name, name, name, ownerId, java.util.UUID.randomUUID()
         );
         return id;
     }
@@ -238,9 +238,9 @@ class V6MigrationIT {
         UUID id = UUID.randomUUID();
         String name = "file-" + id.toString().substring(0, 8) + ".bin";
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, folderId, name, name, ownerId, 0L
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            id, folderId, name, name, ownerId, 0L, java.util.UUID.randomUUID()
         );
         return id;
     }
