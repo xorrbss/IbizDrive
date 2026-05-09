@@ -32,7 +32,7 @@
 ### 1.1 신규 테이블 — `teams`, `team_memberships`
 
 ```sql
--- V11__teams.sql
+-- V12__teams.sql
 -- 임시 팀: 사용자 자율 생성, 평면(계층 없음), archive 가능
 CREATE TABLE teams (
   id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -75,7 +75,7 @@ CREATE INDEX idx_team_memberships_user ON team_memberships(user_id);
 ### 1.2 `folders` / `files` — workspace scope 도입
 
 ```sql
--- V12__folders_files_scope.sql
+-- V13__folders_files_scope.sql
 -- Scenario A (green-field, 채택): NOT NULL + CHECK 즉시 적용
 ALTER TABLE folders
   ADD COLUMN scope_type VARCHAR(20) NOT NULL,             -- 'department' | 'team'
@@ -93,7 +93,7 @@ CREATE INDEX idx_folders_scope ON folders(scope_type, scope_id) WHERE deleted_at
 CREATE INDEX idx_files_scope   ON files(scope_type, scope_id)   WHERE deleted_at IS NULL;
 ```
 
-> 시나리오 B 선택 시: NOT NULL/CHECK는 V12에서 빼고 V15에서 강화 (§6.3 참조).
+> 시나리오 B 선택 시: NOT NULL/CHECK는 V13에서 빼고 V16에서 강화 (§6.3 참조).
 
 **핵심 결정 — 다형 scope 컬럼을 모든 row에 denormalize**:
 
@@ -110,7 +110,7 @@ CREATE INDEX idx_files_scope   ON files(scope_type, scope_id)   WHERE deleted_at
 - `departments.root_folder_id` 컬럼 추가 (`teams.root_folder_id`는 §1.1에 이미 포함).
 
 ```sql
--- V13__departments_root_folder.sql
+-- V14__departments_root_folder.sql
 ALTER TABLE departments ADD COLUMN root_folder_id UUID REFERENCES folders(id);
 ```
 
@@ -127,7 +127,7 @@ CREATE UNIQUE INDEX idx_folders_root_per_scope
 ### 1.4 `permissions` — subject_type 확장
 
 ```sql
--- V14__permissions_audit_team.sql
+-- V15__permissions_audit_team.sql
 ALTER TABLE permissions DROP CONSTRAINT permissions_subject_type_check;
 ALTER TABLE permissions
   ADD CONSTRAINT permissions_subject_type_check
@@ -157,7 +157,7 @@ ALTER TABLE audit_log
 
 - 신규 테이블 2개 (`teams`, `team_memberships`)
 - 변경 테이블: `folders` (+2 컬럼, +2 인덱스), `files` (+2 컬럼, +1 인덱스), `permissions` (CHECK 확장), `audit_log` (CHECK 확장), `departments` (+1 컬럼)
-- 마이그레이션 V11~V14 (Phase 1) + V15~V17 (Phase 3, scenario B에서만)
+- 마이그레이션 V12~V15 (Phase 1) + V16~V18 (Phase 3, scenario B에서만)
 
 ---
 
@@ -483,7 +483,7 @@ POST /api/folders/:id/move/preview
 ### 6.1 시나리오 A — Green-field cutover (**채택**)
 
 - 베타 데이터를 버리고 깨끗한 schema로 재시작
-- V11~V14 한 번에 적용 + DB reset
+- V12~V15 한 번에 적용 + DB reset
 - 장점: 다형 컬럼·root folder 일관성을 백필 코드로 채울 필요 없음. 위험 최소.
 - 조건: 사내 베타 사용자에게 데이터 reset 안내 가능.
 
@@ -496,19 +496,19 @@ POST /api/folders/:id/move/preview
 
 - [ ] 베타 사용자 공지 (T-7, T-1, T-0)
 - [ ] 기존 데이터 dump 백업 (S3 archive) — 30일 보관
-- [ ] V11~V14 마이그레이션 적용 + 시드 (시스템 부서 1개 "전사", admin 사용자만 멤버)
+- [ ] V12~V15 마이그레이션 적용 + 시드 (시스템 부서 1개 "전사", admin 사용자만 멤버)
 - [ ] 신규 사용자 등록 시 부서 선택/배정 강제 (admin entry rewrite 트랙 후속)
-- [ ] 롤백 플랜: dump 복원 (V11~V14 down + 백업 restore)
+- [ ] 롤백 플랜: dump 복원 (V12~V15 down + 백업 restore)
 
 ### 6.3 시나리오 B — In-place migration (대안, 미채택)
 
 데이터 보존이 필수일 경우의 3-phase rolling 전략:
 
 **Phase 1 — 스키마 추가 (backward-compatible)**
-- V11: teams, team_memberships
-- V12: folders/files scope_* NULLABLE
-- V13: departments.root_folder_id
-- V14: permissions/audit_log CHECK 확장
+- V12: teams, team_memberships
+- V13: folders/files scope_* NULLABLE
+- V14: departments.root_folder_id
+- V15: permissions/audit_log CHECK 확장
 
 **Phase 2 — 데이터 백필 (배치, A6 트랙 패턴)**
 1. 부서별 root folder 생성 + `departments.root_folder_id` 채움
@@ -517,9 +517,9 @@ POST /api/folders/:id/move/preview
 4. 모든 folder/file에 scope 백필 (트리 BFS)
 
 **Phase 3 — 제약 강화 (breaking)**
-- V15: scope_type/scope_id NOT NULL
-- V16: idx_folders_root_per_scope partial unique
-- V17: 코드에서 owner_id 권한 부여 제거
+- V16: scope_type/scope_id NOT NULL
+- V17: idx_folders_root_per_scope partial unique
+- V18: 코드에서 owner_id 권한 부여 제거
 
 비용: 백필 검증·롤백·기존 권한 매핑 복잡 → 4~6주 추가. ADR #34(shares migration) 패턴 참고.
 
