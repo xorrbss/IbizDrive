@@ -106,7 +106,9 @@ class TeamAuditListenerTest {
         assertThat(recorded.targetType()).isEqualTo(AuditTargetType.TEAM);
         assertThat(recorded.targetId()).isEqualTo(teamId);
         assertThat(recorded.actorId()).isEqualTo(actor);
+        assertThat(recorded.beforeState()).contains("\"userId\":\"" + userId + "\"");
         assertThat(recorded.beforeState()).contains("\"role\":\"MEMBER\"");
+        assertThat(recorded.afterState()).contains("\"userId\":\"" + userId + "\"");
         assertThat(recorded.afterState()).contains("\"role\":\"OWNER\"");
         assertThat(recorded.metadata()).isNull();
     }

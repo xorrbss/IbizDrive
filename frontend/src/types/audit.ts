@@ -60,10 +60,10 @@ export type AuditEventType =
   | 'system.backup.completed'
   | 'system.purge.executed'
   | 'storage.orphan.cleaned'
-  // 감사 로그 자체
-  | 'audit.exported'
   // 팀
   | 'team.member.role_changed'
+  // 감사 로그 자체
+  | 'audit.exported'
 
 export type AuditResourceType = 'file' | 'folder' | 'user' | 'permission' | 'share' | 'system' | 'audit' | 'department' | 'team'
 

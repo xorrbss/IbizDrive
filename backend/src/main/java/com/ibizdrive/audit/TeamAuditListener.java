@@ -32,7 +32,7 @@ import java.util.Map;
  *   <li>{@link TeamCreatedEvent} → {@link AuditEventType#TEAM_CREATED} ({@code afterState = {name}})</li>
  *   <li>{@link TeamMemberAddedEvent} → {@link AuditEventType#TEAM_MEMBER_ADDED} ({@code afterState = {userId}})</li>
  *   <li>{@link TeamMemberRemovedEvent} → {@link AuditEventType#TEAM_MEMBER_REMOVED} ({@code beforeState = {userId}})</li>
- *   <li>{@link TeamMemberRoleChangedEvent} → {@link AuditEventType#TEAM_MEMBER_ROLE_CHANGED} ({@code beforeState = {role}}, {@code afterState = {role}})</li>
+ *   <li>{@link TeamMemberRoleChangedEvent} → {@link AuditEventType#TEAM_MEMBER_ROLE_CHANGED} ({@code beforeState = {userId, role}}, {@code afterState = {userId, role}})</li>
  * </ul>
  */
 @Component
@@ -129,8 +129,10 @@ public class TeamAuditListener {
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void onTeamMemberRoleChanged(TeamMemberRoleChangedEvent event) {
         Map<String, Object> before = new LinkedHashMap<>();
+        before.put("userId", event.userId().toString());
         before.put("role", event.oldRole().name());
         Map<String, Object> after = new LinkedHashMap<>();
+        after.put("userId", event.userId().toString());
         after.put("role", event.newRole().name());
         emit(new AuditEvent(
             AuditEventType.TEAM_MEMBER_ROLE_CHANGED,
