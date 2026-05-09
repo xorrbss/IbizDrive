@@ -69,7 +69,7 @@ public class CrossWorkspaceMoveService {
     }
 
     /**
-     * Cross-workspace folder 이동 — step 1~6 구현, step 7 (invariant assert)은 Task 15에서 추가.
+     * Cross-workspace folder 이동 — step 1~7 구현 (Task 15로 완성).
      *
      * @param folderId            이동할 폴더 id
      * @param destinationFolderId 목적지 폴더 id
@@ -85,6 +85,9 @@ public class CrossWorkspaceMoveService {
             .orElseThrow(() -> new FolderNotFoundException("source folder not found: " + folderId));
         Folder destination = folderRepo.lockByIdAndDeletedAtIsNull(destinationFolderId)
             .orElseThrow(() -> new FolderNotFoundException("destination folder not found: " + destinationFolderId));
+
+        // Capture before step 3 batch update mutates the JPA-managed entity's scopeType in-place
+        ScopeType sourceScopeTypeBeforeMove = source.getScopeType();
 
         if (folderId.equals(destinationFolderId)) {
             throw new InvalidMoveDestinationException("cannot move folder into itself");
@@ -158,7 +161,44 @@ public class CrossWorkspaceMoveService {
         source.setUpdatedAt(now);
         folderRepo.saveAndFlush(source);
 
-        // step 7: invariant assert — Task 15
+        // step 7: invariant assert
+        // step 7-a: scope 일관성 (folder + file)
+        int badFolders = folderRepo.countByIdInAndScopeNotMatching(subtreeFolderIds, destScopeType, destScopeId);
+        if (badFolders > 0) {
+            throw new IllegalStateException("invariant violation: " + badFolders + " folders not in destination scope");
+        }
+        if (!subtreeFileIds.isEmpty()) {
+            int badFiles = fileRepo.countByIdInAndScopeNotMatching(subtreeFileIds, destScopeType, destScopeId);
+            if (badFiles > 0) {
+                throw new IllegalStateException("invariant violation: " + badFiles + " files not in destination scope");
+            }
+        }
+        // step 7-b: permissions 0 (subtree 내)
+        int permLeft = permRepo.findActiveByResourceIn("folder", subtreeFolderIds).size()
+                     + (subtreeFileIds.isEmpty() ? 0 : permRepo.findActiveByResourceIn("file", subtreeFileIds).size());
+        if (permLeft > 0) {
+            throw new IllegalStateException("invariant violation: " + permLeft + " explicit permissions remain");
+        }
+        // step 7-c: active shares 0
+        int sharesLeft = shareRepo.findActiveByResourceIn("folder", subtreeFolderIds).size()
+                       + (subtreeFileIds.isEmpty() ? 0 : shareRepo.findActiveByResourceIn("file", subtreeFileIds).size());
+        if (sharesLeft > 0) {
+            throw new IllegalStateException("invariant violation: " + sharesLeft + " active shares remain");
+        }
+
+        // step 8: event publish
+        eventPublisher.publishEvent(new CrossWorkspaceMoveCompletedEvent(
+            "folder",
+            source.getId(),
+            sourceScopeTypeBeforeMove,
+            destination.getScopeType(),
+            destScopeId,
+            subtreeFolderIds.size(),
+            subtreeFileIds.size(),
+            allShareIds.size(),
+            actorId,
+            now
+        ));
         return source;
     }
 

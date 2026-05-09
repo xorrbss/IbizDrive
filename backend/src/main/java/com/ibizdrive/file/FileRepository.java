@@ -247,6 +247,21 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
         """, nativeQuery = true)
     long countByNormalizedName(@Param("pattern") String pattern);
 
+    /**
+     * Plan D Task 15 — cross-workspace move 완료 후 invariant 검증 (a), file 분기.
+     * {@link com.ibizdrive.folder.FolderRepository#countByIdInAndScopeNotMatching}의 mirror.
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 — service 레이어에서 empty-guard 처리.
+     */
+    @Query(value = "SELECT COUNT(*) FROM files WHERE id IN (:ids) "
+                 + "AND (scope_type <> :scopeType OR scope_id <> :scopeId)",
+           nativeQuery = true)
+    int countByIdInAndScopeNotMatching(
+        @Param("ids") java.util.Collection<UUID> ids,
+        @Param("scopeType") String scopeType,
+        @Param("scopeId") UUID scopeId
+    );
+
     // ============================================================
     // admin-storage-overview / admin-dashboard — read-only 합계 메서드 (append-only).
     // `GET /api/admin/storage/overview` 와 `GET /api/admin/dashboard/summary` 공유.
