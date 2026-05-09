@@ -78,7 +78,10 @@ class TeamMembershipRepositoryTest {
         em.persist(new TeamMembership(team, user2, TeamMembership.Role.MEMBER, null, OffsetDateTime.now()));
         em.flush();
 
-        assertThat(repo.findByTeamId(team)).hasSize(2);
+        List<TeamMembership> members = repo.findByTeamId(team);
+        assertThat(members).hasSize(2);
+        assertThat(members).extracting(TeamMembership::getUserId)
+            .containsExactlyInAnyOrder(user1, user2);
     }
 
     private UUID persistUser(String email, String displayName) {
