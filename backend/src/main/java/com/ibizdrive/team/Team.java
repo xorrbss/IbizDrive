@@ -236,6 +236,49 @@ public class Team {
     }
 
     /**
+     * 팀 archive — soft archive. archivedAt/By + updatedAt 갱신, 멱등.
+     *
+     * <p>spec docs/superpowers/specs/2026-05-09-team-centric-pivot-design.md §2.2.
+     * archive = read-only 시맨틱 (콘텐츠는 휴지통으로 가지 않음). 호출자(서비스)는 audit emit/listing 차단 책임.
+     *
+     * <p>이미 archived 상태면 no-op (archivedAt/By/updatedAt 모두 갱신 안 함) — 최초 archive 시각/주체 보존.
+     *
+     * @param actorId archive 수행자 (null 불가)
+     * @param now archive 시각 (null 불가)
+     * @throws IllegalArgumentException actorId 또는 now가 null
+     */
+    public void archive(UUID actorId, OffsetDateTime now) {
+        if (actorId == null) throw new IllegalArgumentException("actorId must not be null");
+        if (now == null) throw new IllegalArgumentException("now must not be null");
+        if (this.archivedAt != null) {
+            return; // idempotent — preserve original archive timestamp/actor.
+        }
+        this.archivedAt = now;
+        this.archivedBy = actorId;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 팀 restore — archive 해제. archivedAt/By 둘 다 clear, updatedAt 갱신, 멱등.
+     *
+     * <p>spec §2.2 un-archive. 활성 이름 충돌 검사는 service layer 책임 (V12 partial unique idx_teams_name_active).
+     *
+     * <p>이미 active 상태면 no-op.
+     *
+     * @param now restore 시각 (null 불가)
+     * @throws IllegalArgumentException now가 null
+     */
+    public void restore(OffsetDateTime now) {
+        if (now == null) throw new IllegalArgumentException("now must not be null");
+        if (this.archivedAt == null) {
+            return; // idempotent — already active.
+        }
+        this.archivedAt = null;
+        this.archivedBy = null;
+        this.updatedAt = now;
+    }
+
+    /**
      * 팀 root folder backref 부착 — 일회성. 팀 생성 직후 root folder를 만들고 한 번만 호출한다.
      *
      * <p>V12 schema는 {@code root_folder_id}를 nullable FK로만 두어 일회성을 DB에서 강제하지 않는다
