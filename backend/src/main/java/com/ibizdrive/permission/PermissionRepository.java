@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -131,7 +132,7 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
      *
      * <p>{@code resourceIds}가 비어있으면 0 반환.
      */
-    @org.springframework.data.jpa.repository.Modifying
+    @Modifying
     @Query(value = "DELETE FROM permissions WHERE resource_type = :resourceType AND resource_id IN (:resourceIds)",
            nativeQuery = true)
     int deleteByResourceIn(

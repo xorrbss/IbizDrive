@@ -64,4 +64,38 @@ class PermissionRepositorySubtreeTest {
         assertThat(rows).hasSize(2);
         assertThat(rows).allMatch(r -> r.getResourceType().equals("folder"));
     }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void deletesByResourceIdsRemovesRowsFromTable() {
+        UUID granter = UUID.randomUUID();
+        UUID subject = UUID.randomUUID();
+        jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", granter, "g2@t", "g2");
+        jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", subject, "s2@t", "s2");
+
+        UUID folder = UUID.randomUUID();
+        UUID otherFolder = UUID.randomUUID();
+        Instant now = Instant.now();
+
+        UUID folderGrant1 = UUID.randomUUID();
+        UUID folderGrant2 = UUID.randomUUID();
+        UUID otherGrant = UUID.randomUUID();
+
+        jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
+            folderGrant1, folder, subject, granter, now);
+        jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'read', ?, NULL, ?)",
+            folderGrant2, folder, subject, granter, now);
+        jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
+            otherGrant, otherFolder, subject, granter, now);
+
+        int deleted = repo.deleteByResourceIn("folder", List.of(folder));
+        assertThat(deleted).isEqualTo(2);
+
+        Integer remaining = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM permissions WHERE resource_id = ?", Integer.class, folder);
+        assertThat(remaining).isZero();
+        Integer otherRemaining = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM permissions WHERE resource_id = ?", Integer.class, otherFolder);
+        assertThat(otherRemaining).isEqualTo(1);                                  // 다른 resource는 영향 없음
+    }
 }
