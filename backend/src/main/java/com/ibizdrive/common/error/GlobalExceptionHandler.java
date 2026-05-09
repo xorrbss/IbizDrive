@@ -8,6 +8,7 @@ import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionConflictException;
 import com.ibizdrive.permission.PermissionDenyContext;
+import com.ibizdrive.share.ShareExceedsMembershipException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -115,6 +116,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleDepartmentConflict(DepartmentConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("DEPARTMENT_CONFLICT", "동일 이름의 활성 부서가 이미 존재합니다", null));
+    }
+
+    /**
+     * Plan C — §4.2 share grant cap 위반 → 403.
+     *
+     * <p>sharer의 workspace 멤버십 default permission 집합을 넘어선 preset으로 share 시도 시 발생.
+     * 예: sharer가 MEMBER ({READ, UPLOAD, EDIT})인데 ADMIN preset으로 share 시도.
+     * envelope code {@code SHARE_EXCEEDS_MEMBER} (spec §5.4).
+     */
+    @ExceptionHandler(ShareExceedsMembershipException.class)
+    public ResponseEntity<ApiError> handleShareExceedsMembership(ShareExceedsMembershipException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiError.of("SHARE_EXCEEDS_MEMBER", "share 권한이 sharer의 멤버십 권한을 초과합니다", null));
     }
 
     /**
