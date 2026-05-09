@@ -111,6 +111,19 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     List<UUID> findActiveIdsByFolderIdIn(@Param("folderIds") Collection<UUID> folderIds);
 
     /**
+     * Plan D Task 12 — cross-workspace 이동 시 subtree 파일의 (scope_type, scope_id) 일괄 갱신.
+     * {@link com.ibizdrive.folder.FolderRepository#updateScopeBatch}의 mirror.
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 — service 레이어에서 empty-guard 처리.
+     */
+    @Modifying
+    @Query(value = "UPDATE files SET scope_type = :scopeType, scope_id = :scopeId, updated_at = NOW() "
+                 + "WHERE id IN (:ids)", nativeQuery = true)
+    int updateScopeBatch(@Param("ids") Collection<UUID> ids,
+                         @Param("scopeType") String scopeType,
+                         @Param("scopeId") UUID scopeId);
+
+    /**
      * 폴더 cascade soft-delete의 file 분기 (A6.1) — folder 트리가 삭제될 때 트리에 속한 활성
      * 파일도 동일 트랜잭션에서 일괄 soft-delete.
      *

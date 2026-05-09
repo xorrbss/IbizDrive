@@ -11,7 +11,12 @@ import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Deque;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
@@ -63,12 +68,12 @@ public class CrossWorkspaceMoveService {
     }
 
     /**
-     * Cross-workspace folder 이동 — step 1~2 구현, step 3~7은 Tasks 12~15에서 추가.
+     * Cross-workspace folder 이동 — step 1~3 구현, step 4~7은 Tasks 13~15에서 추가.
      *
      * @param folderId            이동할 폴더 id
      * @param destinationFolderId 목적지 폴더 id
      * @param actorId             요청 사용자 id
-     * @return 이동된 (혹은 이동 준비된) Folder entity — Tasks 12~15에서 실제 이동 후 반환으로 교체
+     * @return 이동된 (혹은 이동 준비된) Folder entity — Tasks 13~15에서 실제 이동 후 반환으로 교체
      */
     public Folder moveFolder(UUID folderId, UUID destinationFolderId, UUID actorId) {
         if (destinationFolderId == null) {
@@ -111,7 +116,23 @@ public class CrossWorkspaceMoveService {
                 "folder name already exists at destination: " + source.getNormalizedName());
         }
 
-        // step 3~7: Tasks 12~15에서 구현 — 컴파일 통과용 placeholder return
+        // step 3: subtree scope update
+        List<UUID> subtreeFolderIds = new ArrayList<>();
+        subtreeFolderIds.add(source.getId());
+        subtreeFolderIds.addAll(collectDescendantFolderIds(source.getId()));
+        List<UUID> subtreeFileIds = subtreeFolderIds.isEmpty()
+            ? Collections.emptyList()
+            : fileRepo.findActiveIdsByFolderIdIn(subtreeFolderIds);
+
+        String destScopeType = destination.getScopeType().dbValue();
+        UUID destScopeId = destination.getScopeId();
+
+        folderRepo.updateScopeBatch(subtreeFolderIds, destScopeType, destScopeId);
+        if (!subtreeFileIds.isEmpty()) {
+            fileRepo.updateScopeBatch(subtreeFileIds, destScopeType, destScopeId);
+        }
+
+        // step 4~7: Tasks 13~15에서 구현 — 컴파일 통과용 placeholder return
         return source;
     }
 
@@ -147,5 +168,29 @@ public class CrossWorkspaceMoveService {
                 .orElse(null);
         }
         return false;
+    }
+
+    /**
+     * source 폴더의 후손 folder id BFS 수집 — root 자신은 제외 (호출자가 별도 추가).
+     *
+     * <p>{@link MovePreviewService#collectDescendantFolderIds} 패턴 동일. YAGNI: 공용 utility 추출
+     * 없이 두 곳 중복 허용 (plan D 명시 결정).
+     */
+    private List<UUID> collectDescendantFolderIds(UUID rootId) {
+        List<UUID> descendants = new ArrayList<>();
+        Set<UUID> visited = new HashSet<>();
+        visited.add(rootId);
+        Deque<UUID> frontier = new ArrayDeque<>();
+        frontier.add(rootId);
+        while (!frontier.isEmpty()) {
+            UUID current = frontier.pollFirst();
+            List<UUID> children = folderRepo.findIdsByParentIdAndDeletedAtIsNull(current);
+            for (UUID childId : children) {
+                if (!visited.add(childId)) continue;
+                descendants.add(childId);
+                frontier.addLast(childId);
+            }
+        }
+        return descendants;
     }
 }

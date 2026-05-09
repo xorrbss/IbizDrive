@@ -24,6 +24,7 @@ import java.time.Instant;
 import java.util.EnumSet;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -169,5 +170,55 @@ class CrossWorkspaceMoveServiceTest {
         assertThatThrownBy(() -> service.moveFolder(sourceFolder, destFolder, actor))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessageContaining("FolderMutationService.move");
+    }
+
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void subtreeScopeFlippedToDestination() {
+        UUID actor = UUID.randomUUID();
+        jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", actor, "csm12@t", "csm12");
+
+        UUID scopeA = UUID.randomUUID();
+        UUID scopeB = UUID.randomUUID();
+        UUID rootA = insertFakeRoot(actor, "department", scopeA);
+        UUID rootB = insertFakeRoot(actor, "department", scopeB);
+
+        UUID childInA = UUID.randomUUID();
+        UUID grandchildInA = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub12', 'sub12', 'sub12', ?, 'standard', 'department', ?, ?, ?)",
+            childInA, rootA, actor, scopeA, now, now);
+        jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'gc12', 'gc12', 'gc12', ?, 'standard', 'department', ?, ?, ?)",
+            grandchildInA, childInA, actor, scopeA, now, now);
+
+        UUID fileId = UUID.randomUUID();
+        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '12.txt', '12.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
+            fileId, grandchildInA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+
+        when(permissionResolver.resolveFor(actor, "folder", childInA))
+            .thenReturn(java.util.EnumSet.of(Permission.EDIT, Permission.SHARE));
+        when(permissionResolver.resolveFor(actor, "folder", rootB))
+            .thenReturn(java.util.EnumSet.of(Permission.UPLOAD));
+
+        service.moveFolder(childInA, rootB, actor);
+
+        String childScope = jdbc.queryForObject("SELECT scope_id FROM folders WHERE id = ?", String.class, childInA);
+        assertThat(UUID.fromString(childScope)).isEqualTo(scopeB);
+        String grandchildScope = jdbc.queryForObject("SELECT scope_id FROM folders WHERE id = ?", String.class, grandchildInA);
+        assertThat(UUID.fromString(grandchildScope)).isEqualTo(scopeB);
+        String fileScope = jdbc.queryForObject("SELECT scope_id FROM files WHERE id = ?", String.class, fileId);
+        assertThat(UUID.fromString(fileScope)).isEqualTo(scopeB);
+    }
+
+    // ── private helpers ──
+
+    private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
+        UUID id = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbc.update(
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, 'standard', ?, ?, ?, ?)",
+            id, "root-" + id, "root-" + id, "root-" + id, ownerId, scopeType, scopeId, now, now
+        );
+        return id;
     }
 }
