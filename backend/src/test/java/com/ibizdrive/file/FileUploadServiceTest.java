@@ -276,17 +276,26 @@ class FileUploadServiceTest {
         return id;
     }
 
+    /**
+     * V13 — folders.scope_type/scope_id NOT NULL. fixture root는 fake department scope를 가지며,
+     * 본 테스트가 검증하는 file scope inheritance는 별도 {@link FileScopeInheritanceTest}가 담당.
+     */
     private UUID insertFolder(UUID ownerId, String name) {
         UUID id = UUID.randomUUID();
         String normalized = name.toLowerCase();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id) " +
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id) " +
             "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?)",
-            id, name, normalized, normalized, ownerId, java.util.UUID.randomUUID()
+            id, name, normalized, normalized, ownerId, UUID.randomUUID()
         );
         return id;
     }
 
+    /**
+     * V13 — files.scope_type/scope_id NOT NULL. fixture는 부모 folder의 scope를 raw query로 lookup해
+     * inheritance invariant와 동일한 값을 채운다.
+     */
     private FileItem insertFile(UUID folderId, UUID ownerId, String name) {
         FileItem f = new FileItem();
         f.setId(UUID.randomUUID());
@@ -295,10 +304,16 @@ class FileUploadServiceTest {
         f.setNormalizedName(name.toLowerCase());
         f.setOwnerId(ownerId);
         f.setSizeBytes(0L);
+        // 부모 folder의 scope를 그대로 상속 (spec §1.2 invariant) — fixture에서도 동일하게 충족.
+        Object[] scope = jdbc.queryForObject(
+            "SELECT scope_type, scope_id FROM folders WHERE id = ?",
+            (rs, rowNum) -> new Object[]{rs.getString("scope_type"), rs.getObject("scope_id", UUID.class)},
+            folderId
+        );
+        f.assignScope(com.ibizdrive.folder.ScopeType.fromDb((String) scope[0]), (UUID) scope[1]);
         Instant now = Instant.now();
         f.setCreatedAt(now);
         f.setUpdatedAt(now);
-        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return fileRepository.saveAndFlush(f);
     }
 

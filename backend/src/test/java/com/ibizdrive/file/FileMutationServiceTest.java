@@ -453,18 +453,23 @@ class FileMutationServiceTest {
      * Folder FK용 minimal row. service.create 우회 — file 테스트는 folder mutation 검증 대상이 아님.
      * V5 schema의 {@code folders} 모든 NOT NULL 컬럼 (name/normalized_name/slug/owner_id/audit_level)을 채운다.
      */
+    /** V13 — folders.scope_type/scope_id NOT NULL. fixture root는 fake department scope를 가진다. */
     private UUID insertFolder(UUID ownerId, String name) {
         UUID id = UUID.randomUUID();
         String normalized = name.toLowerCase();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id) " +
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id) " +
             "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?)",
-            id, name, normalized, normalized, ownerId, java.util.UUID.randomUUID()
+            id, name, normalized, normalized, ownerId, UUID.randomUUID()
         );
         return id;
     }
 
-    /** {@link FileRepository#save}로 fixture INSERT — V5 NOT NULL 컬럼 모두 채움. */
+    /**
+     * {@link FileRepository#save}로 fixture INSERT — V5 NOT NULL 컬럼 모두 채움.
+     * V13 — files.scope_type/scope_id 도 부모 folder의 scope를 상속해 채운다 (spec §1.2 invariant).
+     */
     private FileItem insertFile(UUID folderId, UUID ownerId, String name) {
         FileItem f = new FileItem();
         f.setId(UUID.randomUUID());
@@ -473,10 +478,15 @@ class FileMutationServiceTest {
         f.setNormalizedName(name.toLowerCase());
         f.setOwnerId(ownerId);
         f.setSizeBytes(0L);
+        Object[] scope = jdbc.queryForObject(
+            "SELECT scope_type, scope_id FROM folders WHERE id = ?",
+            (rs, rowNum) -> new Object[]{rs.getString("scope_type"), rs.getObject("scope_id", UUID.class)},
+            folderId
+        );
+        f.assignScope(com.ibizdrive.folder.ScopeType.fromDb((String) scope[0]), (UUID) scope[1]);
         Instant now = Instant.now();
         f.setCreatedAt(now);
         f.setUpdatedAt(now);
-        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return fileRepository.saveAndFlush(f);
     }
 

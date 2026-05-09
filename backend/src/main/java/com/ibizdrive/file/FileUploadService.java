@@ -90,8 +90,9 @@ public class FileUploadService {
         String displayName = NormalizeUtil.normalizeFileName(filename);
         String normalizedName = NormalizeUtil.normalizedNameForDedup(filename);
 
-        // 폴더 lock (활성 only) — soft-deleted/미존재 → 404 매핑.
-        folderRepository.lockByIdAndDeletedAtIsNull(folderId)
+        // 폴더 lock (활성 only) — soft-deleted/미존재 → 404 매핑. 신규 INSERT 분기에서 scope 상속을
+        // 위해 entity를 보관 (spec §1.2 invariant — child file은 부모 folder의 scope를 그대로 상속).
+        Folder parent = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
         boolean conflict = fileRepository.existsActiveByFolderAndNormalizedName(folderId, normalizedName);
@@ -102,6 +103,7 @@ public class FileUploadService {
         }
 
         if (conflict && resolution == UploadResolution.NEW_VERSION) {
+            // 기존 FileItem row에 version만 append — scope는 이미 부여되어 있어 변경하지 않음.
             return appendNewVersion(folderId, actorId, normalizedName, contentType, sizeBytes, content);
         }
 
@@ -112,7 +114,7 @@ public class FileUploadService {
             normalizedName = resolved[1];
         }
 
-        return insertNewFile(folderId, actorId, displayName, normalizedName,
+        return insertNewFile(parent, actorId, displayName, normalizedName,
             contentType, sizeBytes, content);
     }
 
@@ -120,24 +122,20 @@ public class FileUploadService {
     // branches
     // ──────────────────────────────────────────────────────────────────
 
-    private UploadResult insertNewFile(UUID folderId,
+    private UploadResult insertNewFile(Folder parent,
                                        UUID actorId,
                                        String displayName,
                                        String normalizedName,
                                        String contentType,
                                        long sizeBytes,
                                        InputStream content) {
+        UUID folderId = parent.getId();
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         UUID storageKey = UUID.randomUUID();
 
         // storage write 먼저 — DB INSERT 실패 시 orphan 가능성은 MVP 알려진 한계 (docs/02 §6.2).
         // 객체 key는 UUID 그대로 (ADR #5: 원본 파일명 미저장). 디렉터리 prefix는 LocalFs/S3 어댑터 책임.
         writeToStorage(storageKey, content, sizeBytes, contentType);
-
-        // V13 scope: file은 소속 folder의 scope를 그대로 상속. lock은 upload() 진입 시 이미 획득
-        // 됐으므로 first-level cache hit으로 동일 트랜잭션 내 추가 query 비용 무시 가능.
-        Folder folder = folderRepository.findByIdAndDeletedAtIsNull(folderId)
-            .orElseThrow(() -> new FolderNotFoundException("folder vanished mid-upload: " + folderId));
 
         FileItem file = new FileItem();
         file.setId(UUID.randomUUID());
@@ -147,7 +145,9 @@ public class FileUploadService {
         file.setOwnerId(actorId);
         file.setSizeBytes(sizeBytes);
         file.setMimeType(contentType);
-        file.assignScope(folder.getScopeType(), folder.getScopeId());
+        // spec §1.2 invariant: file은 부모 folder의 scope를 그대로 상속. assignScope는 V13 NOT NULL
+        // 제약과 일치하는 non-null 검증을 entity 레벨에서 수행 (FolderMutationService.create와 동일 패턴).
+        file.assignScope(parent.getScopeType(), parent.getScopeId());
         file.setCreatedAt(now);
         file.setUpdatedAt(now);
 
