@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-05-09 — 📋 spec-permission-grant-dialog 트랙 종료 (단일 자원 권한 grant 다이얼로그 spec, Phase A)
+
+### 범위
+
+v1.x backlog "권한 grant 다이얼로그" 진입 — Phase A 설계 문서만. backend `POST /api/{folders|files}/{id}/permissions`는 완비(`PermissionController#grant`, A1.4), frontend가 누락이라 운영자가 SQL 직접 INSERT 또는 ShareDialog 우회 사용 중. 본 트랙으로 spec 명시 → phase B/C/D 후속 트랙에서 구현.
+
+### 변경 핵심
+
+- `docs/01 §14.5 GrantPermissionDialog` (NEW, 11 sub-sections):
+  - Scope (단일 자원 grant, admin 전역 grant는 v2.x)
+  - Architecture (ResourcePermissionsList → "권한 부여" 버튼 → GrantPermissionDialog → SubjectPicker / PresetSelector / ExpiresAtInput)
+  - api wrapper spec (`api.grantPermission` + X-CSRF-TOKEN 헤더)
+  - wire body (`GrantPermissionRequest`)
+  - Subject 분기 (USER/DEPARTMENT/ROLE/EVERYONE — 4종 모두)
+  - Preset 라벨 한국어 (READ/UPLOAD/EDIT/SHARE/ADMIN 5종)
+  - Error envelope mapping (409/400/403/404)
+  - 캐시 무효화 (resourcePermissions + adminPermissions + 자기 effective)
+  - Phase 분할 (B 골격, C 분기, D 통합)
+  - 결정/편차 (ShareDialog 패턴 답습 + ROLE 추가 + Preset 5값 / 단일 다이얼로그)
+  - 회귀 가드 spec (Phase B 적용 시 가드 목록)
+- `docs/04 §15.3` 운영 런북 backlink 갱신 — "grant 다이얼로그 v1.x deferred" → "docs/01 §14.5 spec 작성, 실 구현 v1.x phase B/C/D".
+
+backend/frontend 무변경, 코드 0줄. ShareDialog UserSearchCombobox/DepartmentSearchCombobox 재사용 명시 (KISS / ULTIMATE INVARIANT 5).
+
+### 검증
+
+- markdown 렌더 깨짐 없음.
+- backend `Preset.from(wire)` 실재 enum 5값 일치 (`Preset.java` 검토 후 spec 작성).
+- backend `PermissionController#grant` `@PreAuthorize("hasPermission(#id, #resource, 'PERMISSION_ADMIN')")` 가드 명시.
+
+### 결정/편차
+
+- **Phase 분할** — 단일 PR로 BcD 다 묶지 않음. spec 단계만 본 세션, 실 구현은 Phase B 시 backend wire 검증 / Phase C 시 subject 분기 / Phase D 시 통합으로 분할.
+- **단일 자원 단위만** — admin/permissions 페이지 전역 grant는 v2.x. resource picker (folder tree + file search) 컴포넌트가 phase 5+ 추가.
+- **ShareDialog 패턴 답습** — UserSearchCombobox / DepartmentSearchCombobox 재사용. 추상화 정당화 3+ 규칙(ADR #28 동형) 미충족이라 새 generic picker 신설 거부.
+- **ROLE 분기 추가** — ShareDialog는 schema impedance(ADR #37 결정 #5)로 ROLE 미노출이지만 permissions 테이블은 `subject_type='role'` persistable. backend 수정 없이 frontend만 ROLE select 노출.
+- **CSRF 헤더 명시** — Phase B 시 csrf-mutation-sweep(#121) 패턴 적용, spec에 `'X-CSRF-TOKEN': csrf` 명시.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant Phase B/C/D / quota / 휴지통 보존 정책 mutation UI / 2인 승인 framework 실 구현 / progress streaming.
+- Phase B 진입 시 `api.grantPermission` + 회귀 가드 vitest 부터. backend 검증은 이미 완료, 단순 frontend wire wrapper 추가.
+- ResourcePermissionsList 통합(Phase D)은 `usePermission().admin` 가드 필요 — 자원에 PERMISSION_ADMIN 보유한 운영자에게만 "권한 부여" 버튼 노출.
+
+---
+
 ## 2026-05-09 — 📐 format-bytes-tb-nan-guard 트랙 종료 (formatBytes TB 단위 + NaN/Infinity 폴백)
 
 ### 범위
