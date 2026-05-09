@@ -12,6 +12,7 @@ import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.storage.StorageClient;
+import com.ibizdrive.team.TeamArchiveGuard;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,6 +45,10 @@ import java.util.UUID;
  *
  * <p>권한 검증은 controller layer({@code @PreAuthorize hasPermission(folderId, 'folder', 'UPLOAD')})에서
  * 이미 통과된 상태로 호출됨 — service는 폴더 활성성과 충돌만 책임.
+ *
+ * <p><b>TEAM_ARCHIVED 가드</b> (spec §2.2/§5.4): 부모 폴더 fetch 직후, storage/DB write 직전에
+ * {@link TeamArchiveGuard#assertNotArchived(com.ibizdrive.folder.ScopeType, UUID)} 호출 — archived
+ * 팀 컨테이너로의 신규 업로드/버전 추가 모두 차단. DEPARTMENT scope는 가드 내부에서 no-op.
  */
 @Service
 @Transactional
@@ -58,19 +63,22 @@ public class FileUploadService {
     private final StorageClient storageClient;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final TeamArchiveGuard teamArchiveGuard;
 
     public FileUploadService(FileRepository fileRepository,
                              FileVersionRepository fileVersionRepository,
                              FolderRepository folderRepository,
                              StorageClient storageClient,
                              AuditService auditService,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             TeamArchiveGuard teamArchiveGuard) {
         this.fileRepository = fileRepository;
         this.fileVersionRepository = fileVersionRepository;
         this.folderRepository = folderRepository;
         this.storageClient = storageClient;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.teamArchiveGuard = teamArchiveGuard;
     }
 
     public UploadResult upload(UUID folderId,
@@ -94,6 +102,10 @@ public class FileUploadService {
         // 위해 entity를 보관 (spec §1.2 invariant — child file은 부모 folder의 scope를 그대로 상속).
         Folder parent = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
+
+        // spec §2.2 — archived 팀 컨테이너로의 업로드 차단 (DEPARTMENT는 가드 내부 no-op).
+        // 부모 fetch 후, conflict 검사/storage write/DB insert 모든 경로 진입 전에 1회 호출.
+        teamArchiveGuard.assertNotArchived(parent.getScopeType(), parent.getScopeId());
 
         boolean conflict = fileRepository.existsActiveByFolderAndNormalizedName(folderId, normalizedName);
 
