@@ -4,12 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { TrashTable } from './TrashTable'
 import { useTrashList } from '@/hooks/useTrashList'
-import { useFolderTree } from '@/hooks/useFolderTree'
 import { usePermission } from '@/hooks/usePermission'
 import type { TrashItem } from '@/types/trash'
 
 vi.mock('@/hooks/useTrashList', () => ({ useTrashList: vi.fn() }))
-vi.mock('@/hooks/useFolderTree', () => ({ useFolderTree: vi.fn() }))
 vi.mock('@/hooks/usePermission', () => ({ usePermission: vi.fn() }))
 vi.mock('@/hooks/useRestoreItem', () => ({
   useRestoreItem: () => ({ mutate: vi.fn(), isPending: false }),
@@ -43,7 +41,9 @@ const itemFolder: TrashItem = {
   originalParentId: null,
 }
 
-const mockTree = {
+// mockTree kept for reference; TrashTable now uses tree=undefined (Tasks 17+ 대기).
+// originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백으로 표시됨.
+const _mockTree = {
   id: 'root',
   parentId: null,
   name: 'root',
@@ -74,7 +74,6 @@ function setHook(opts: {
 describe('TrashTable', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(useFolderTree as ReturnType<typeof vi.fn>).mockReturnValue({ data: mockTree })
     ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: true })
   })
 
@@ -99,7 +98,7 @@ describe('TrashTable', () => {
     expect(screen.getByText('휴지통이 비어있습니다')).toBeTruthy()
   })
 
-  it('items 렌더 + 원위치 path 표시 + aria-rowcount', () => {
+  it('items 렌더 + aria-rowcount (tree=undefined → path 폴백)', () => {
     setHook({ items: [itemFile, itemFolder] })
     const qc = new QueryClient()
     render(<TrashTable />, { wrapper: wrap(qc) })
@@ -108,13 +107,13 @@ describe('TrashTable', () => {
     expect(grid.getAttribute('aria-rowcount')).toBe('3')
     expect(screen.getByText('제안서.pdf')).toBeTruthy()
     expect(screen.getByText('계약서')).toBeTruthy()
-    // file은 originalParentId='p1' → '내 드라이브 / 영업팀'
-    expect(screen.getByText('내 드라이브 / 영업팀')).toBeTruthy()
+    // tree=undefined → originalParentId가 있으면 "원위치 폴더 삭제됨" (Tasks 17+ 대기)
+    expect(screen.getByText('원위치 폴더 삭제됨')).toBeTruthy()
     // folder는 originalParentId=null → '최상위'
     expect(screen.getByText('최상위')).toBeTruthy()
   })
 
-  it('parent가 tree에 없으면 "원위치 폴더 삭제됨" 폴백', () => {
+  it('originalParentId가 있으면 tree=undefined → "원위치 폴더 삭제됨" 폴백', () => {
     const orphan: TrashItem = { ...itemFile, id: 'f2', name: '고아.pdf', originalParentId: 'gone' }
     setHook({ items: [orphan] })
     const qc = new QueryClient()

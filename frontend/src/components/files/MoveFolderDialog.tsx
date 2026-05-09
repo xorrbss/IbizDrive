@@ -3,19 +3,24 @@ import { useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useQueryClient } from '@tanstack/react-query'
 import { useMoveUiStore } from '@/stores/moveUi'
-import { useFolderTree } from '@/hooks/useFolderTree'
 import { useMoveBulk } from '@/hooks/useMoveBulk'
 import { qk } from '@/lib/queryKeys'
 import { isSelfOrDescendantOfAny } from '@/lib/folderTreeUtils'
 import type { FolderNode } from '@/types/folder'
 import type { FileItem } from '@/types/file'
 
+// TODO: [BLOCKED]
+//   violated: 기존 구조 우선
+//   reason: useFolderTree (flat tree) 제거됨. Plan B lazy per-workspace tree (Tasks 17+) 미구현.
+//   required_change: Tasks 17+ 구현 후 per-workspace tree로 MoveFolderDialog 폴더 피커 복원.
+//   현재: tree=undefined → 다이얼로그가 null 반환 (이동 UI 비활성 — 안전 degradation).
+
 export function MoveFolderDialog() {
   const isOpen = useMoveUiStore((s) => s.isMoveDialogOpen)
   const ids = useMoveUiStore((s) => s.moveIds)
   const sourceFolderId = useMoveUiStore((s) => s.moveSourceFolderId)
   const close = useMoveUiStore((s) => s.closeMoveDialog)
-  const { data: tree } = useFolderTree()
+  const tree: FolderNode | undefined = undefined // Tasks 17+: per-workspace lazy tree
   const moveBulk = useMoveBulk({
     // hook-level 콜백 — 다이얼로그가 mount된 동안 호출되어야 sonner 토스트가 보장됨.
     // 따라서 close()는 mutate options.onSettled에 두어 mutation 완료 후로 미룸.

@@ -1,9 +1,15 @@
 'use client'
 import { useTrashList } from '@/hooks/useTrashList'
-import { useFolderTree } from '@/hooks/useFolderTree'
 import { findFolderPath } from '@/lib/folderTreeUtils'
 import { TrashRowActions } from './TrashRowActions'
 import type { TrashItem } from '@/types/trash'
+import type { FolderNode } from '@/types/folder'
+
+// TODO: [BLOCKED]
+//   violated: 기존 구조 우선
+//   reason: useFolderTree (flat tree) 제거됨. Plan B lazy per-workspace tree (Tasks 17+) 미구현.
+//   required_change: Tasks 17+ 구현 후 per-workspace tree로 원위치 path 표시 복원.
+//   현재: tree=undefined → originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백 (안전 degradation).
 
 /**
  * 휴지통 테이블 (M9.3). 단순 list (MVP는 가상화 없음 — 휴지통은 일반적으로 ≤ 수백건).
@@ -16,7 +22,7 @@ const GRID_COLS =
 
 export function TrashTable() {
   const query = useTrashList()
-  const tree = useFolderTree().data
+  const tree: FolderNode | undefined = undefined // Tasks 17+: per-workspace lazy tree
 
   if (query.isLoading) {
     return (

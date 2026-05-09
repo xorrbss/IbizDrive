@@ -25,7 +25,7 @@ type Vars = {
  * - 'RENAME_CONFLICT'  — 새 이름 충돌 (newName 지정), 다이얼로그 inline alert.
  *
  * 무효화 매트릭스 (docs/01 §6.2):
- * - trash + search + folderTree (afterRestore 공통)
+ * - trash + search + folderChildren prefix (afterRestore 공통)
  * - sourceFolderId 있으면 filesListPrefix(id) / 없으면 files() prefix
  */
 export function useRestoreItem() {

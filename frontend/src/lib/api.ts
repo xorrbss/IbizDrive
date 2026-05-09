@@ -1,4 +1,4 @@
-import type { BreadcrumbItem, FolderDetail, FolderNode } from '@/types/folder'
+import type { BreadcrumbItem, FolderDetail } from '@/types/folder'
 import type { FileItem, SortKey } from '@/types/file'
 import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit'
 import type {
@@ -31,35 +31,6 @@ import type { AdminDashboardSummaryResponse } from '@/types/admin'
 import type { WorkspaceMeResponse } from '@/types/workspace'
 
 export const api = {
-  /**
-   * Phase A — backend `GET /api/folders/tree` 호출 후 가상 root 노드로 래핑.
-   *
-   * Frontend는 URL의 첫 segment 부재 시 `id='root'`인 가상 노드를 사용한다 (folderPath.ts 정책).
-   * Backend는 실제 top-level 폴더들의 평면 트리만 반환하므로 여기서 한 번만 합성한다.
-   */
-  async getFolderTree(): Promise<FolderNode> {
-    const res = await fetch('/api/folders/tree', {
-      method: 'GET',
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    })
-    if (!res.ok) {
-      const err = new Error(
-        `getFolderTree fetch failed: ${res.status}`,
-      ) as Error & { status: number }
-      err.status = res.status
-      throw err
-    }
-    const body = (await res.json()) as { tree: FolderNode[] }
-    return {
-      id: 'root',
-      parentId: null,
-      name: '내 드라이브',
-      slug: '',
-      children: body.tree,
-    }
-  },
-
   /**
    * Phase A — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
    * 누적 slugPath 형태로 prefix-scan하여 frontend `BreadcrumbItem` 계약 (slugPath: string[])에

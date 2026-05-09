@@ -33,7 +33,7 @@ describe('qk.filesListPrefix', () => {
 })
 
 describe('invalidations.afterFilesMoved', () => {
-  it('source/target 폴더 + folderTree + 각 fileDetail 호출', async () => {
+  it('source/target 폴더 + folderChildren prefix + 각 fileDetail 호출', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -48,7 +48,7 @@ describe('invalidations.afterFilesMoved', () => {
       expect.arrayContaining([
         qk.filesListPrefix('src'),
         qk.filesListPrefix('dst'),
-        qk.folderTree(),
+        [...qk.all, 'folders', 'children'],
         qk.fileDetail('a'),
         qk.fileDetail('b'),
       ]),
@@ -58,7 +58,7 @@ describe('invalidations.afterFilesMoved', () => {
 })
 
 describe('invalidations.afterRename', () => {
-  it('파일: parent prefix + fileDetail (folderTree 미호출)', async () => {
+  it('파일: parent prefix + fileDetail (folderChildren prefix 미호출)', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -68,11 +68,11 @@ describe('invalidations.afterRename', () => {
     expect(keys).toEqual(
       expect.arrayContaining([qk.filesListPrefix('root'), qk.fileDetail('f1')]),
     )
-    expect(keys).not.toEqual(expect.arrayContaining([qk.folderTree()]))
+    expect(keys).not.toEqual(expect.arrayContaining([[...qk.all, 'folders', 'children']]))
     expect(spy).toHaveBeenCalledTimes(2)
   })
 
-  it('폴더: parent prefix + fileDetail + folderTree + folder(id)', async () => {
+  it('폴더: parent prefix + fileDetail + folderChildren prefix + folder(id)', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -83,7 +83,7 @@ describe('invalidations.afterRename', () => {
       expect.arrayContaining([
         qk.filesListPrefix('root'),
         qk.fileDetail('fld'),
-        qk.folderTree(),
+        [...qk.all, 'folders', 'children'],
         qk.folder('fld'),
       ]),
     )
@@ -92,7 +92,7 @@ describe('invalidations.afterRename', () => {
 })
 
 describe('invalidations.afterDelete', () => {
-  it('해당 폴더 prefix + trash + search + folderTree 호출 (M9)', async () => {
+  it('해당 폴더 prefix + trash + search + folderChildren prefix 호출 (M9)', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -104,7 +104,7 @@ describe('invalidations.afterDelete', () => {
         qk.filesListPrefix('root'),
         qk.trash(),
         qk.search(),
-        qk.folderTree(),
+        [...qk.all, 'folders', 'children'],
       ]),
     )
     expect(spy).toHaveBeenCalledTimes(4)
@@ -121,7 +121,7 @@ describe('qk.trash', () => {
 })
 
 describe('invalidations.afterRestore', () => {
-  it('folderIds 미지정: trash + search + folderTree + files prefix 보수 무효화', async () => {
+  it('folderIds 미지정: trash + search + folderChildren prefix + files prefix 보수 무효화', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -129,12 +129,12 @@ describe('invalidations.afterRestore', () => {
 
     const keys = spy.mock.calls.map((c) => (c[0] as { queryKey: readonly unknown[] }).queryKey)
     expect(keys).toEqual(
-      expect.arrayContaining([qk.trash(), qk.search(), qk.folderTree(), qk.files()]),
+      expect.arrayContaining([qk.trash(), qk.search(), [...qk.all, 'folders', 'children'], qk.files()]),
     )
     expect(spy).toHaveBeenCalledTimes(4)
   })
 
-  it('folderIds 지정: trash + search + folderTree + 각 folder prefix만', async () => {
+  it('folderIds 지정: trash + search + folderChildren prefix + 각 folder prefix만', async () => {
     const qc = new QueryClient()
     const spy = vi.spyOn(qc, 'invalidateQueries')
 
@@ -145,7 +145,7 @@ describe('invalidations.afterRestore', () => {
       expect.arrayContaining([
         qk.trash(),
         qk.search(),
-        qk.folderTree(),
+        [...qk.all, 'folders', 'children'],
         qk.filesListPrefix('root'),
         qk.filesListPrefix('folder_sales'),
       ]),
