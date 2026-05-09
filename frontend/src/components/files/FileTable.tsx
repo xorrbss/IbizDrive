@@ -21,8 +21,8 @@ import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { UploadOverlay } from '@/components/upload/UploadOverlay'
 import { computeNextIndex, type ArrowKey } from '@/lib/gridNav'
-import { isVirtualRoot } from '@/lib/folderPath'
-import { toast } from 'sonner'
+import { buildWorkspacePath, type WorkspaceLocator } from '@/lib/workspacePath'
+import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
 import type { FileItem } from '@/types/file'
 
 const ROW_HEIGHT = 40
@@ -51,16 +51,12 @@ export function FileTable({ folderId }: Props) {
   const gridContainerRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
+  const ws = useCurrentWorkspace()
   const { open: openFile } = useOpenFile()
   const { enqueue: enqueueUploads } = useUpload()
   const handleNativeDrop = useCallback(
     (files: File[]) => {
       if (files.length === 0) return
-      // 가상 root는 backend 폴더가 아니므로 업로드 시 400 — UploadButton과 동일 정책으로 사전 차단.
-      if (isVirtualRoot(folderId)) {
-        toast.info('내 드라이브에는 직접 업로드할 수 없습니다. 폴더를 선택하세요.')
-        return
-      }
       enqueueUploads(files, folderId)
     },
     [enqueueUploads, folderId],
@@ -140,12 +136,18 @@ export function FileTable({ folderId }: Props) {
   const handleOpen = useCallback(
     (item: FileItem) => {
       if (item.type === 'folder') {
-        router.push(`/files/${item.id}`)
+        const loc: WorkspaceLocator | null = ws
+          ? ws.section === 'shared'
+            ? { kind: 'shared' }
+            : { kind: ws.section as 'department' | 'team', workspaceId: ws.workspaceId! }
+          : null
+        const path = loc ? buildWorkspacePath(loc, item.id, []) : `#`
+        router.push(path)
       } else {
         openFile(item.id)
       }
     },
-    [router, openFile]
+    [router, openFile, ws]
   )
 
   const handleRowClick = useCallback(

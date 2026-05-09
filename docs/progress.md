@@ -5,6 +5,36 @@
 
 ---
 
+## 2026-05-09 세션 — Plan B (Frontend Foundation)
+
+### 완료
+- [team-pivot-fe] workspaces 타입 + api + queryKeys + useWorkspaces (Tasks 1~4)
+- [team-pivot-fe] workspacePath builder/parser + useCurrentWorkspace + useCurrentFolder refactor (Tasks 5~7)
+- [team-pivot-fe] /d/[dept], /t/[team], /shared/* 라우트 + ClientFilesPage variants + root redirect (Tasks 8~12)
+- [team-pivot-fe] Breadcrumb workspace head crumb (Task 13)
+- [team-pivot-fe] SidebarSections + WorkspaceSection + WorkspaceFolderTree + lazy children (Tasks 14~22)
+- [team-pivot-fe] SharedWithMeSection (flat MVP) + empty states + archived hook (Tasks 23~24)
+- [team-pivot-fe] TeamCreateButton + Dialog + useCreateTeam (Task 25)
+- [team-pivot-fe] DnD same-workspace constraint + visual feedback (Tasks 27~29)
+- [team-pivot-fe] /files/* + folderPath.ts + FolderTree.tsx + view.ts + getFolderTree() 폐기 (Tasks 12, 16, 22)
+- [team-pivot-fe] MoveFolderDialog lazy-tree 회복 (Phase 6 follow-up — `MoveFolderTree` 신규)
+- [team-pivot-fe] docs/01 + CLAUDE.md 동기화 (Tasks 30~31)
+- [team-pivot-fe] code review 1차 fix — `/files` redirect stub 복구, SidebarSectionKind dedupe, Breadcrumb canonical builder, TeamCreateDialog try/catch + Escape, FolderTreeNode/MoveFolderTree 에러 상태, getFolder dead virtual-root 제거
+
+### 다음 세션 컨텍스트
+- 공유받음 출처 workspace 그룹핑은 backend가 shares-with-me에 source workspace 메타 노출 후 — Plan C와 함께
+- archived 팀 dim/[보관됨]은 backend Team archive endpoint(Plan A2)와 함께 활성
+- /trash workspace별 분리 페이지(탭 UI)는 Plan E
+- TrashTable 원위치 path display는 backend가 trash item DTO에 originalPath 노출하면 정합 (현재 fallback "원위치 폴더 삭제됨")
+- folderTreeUtils.ts는 MoveFolderDialog 재작성 후 orphan — Plan C/D 따라 정리 가능
+
+### PR
+- PR #139 — `feat/team-centric-pivot-plan-b-frontend`
+- 34 commits ahead of origin/master, 1057+ tests pass
+
+---
+
+
 ## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
 
 ### 범위 (이전 세션 핸드오프 후 추가분)

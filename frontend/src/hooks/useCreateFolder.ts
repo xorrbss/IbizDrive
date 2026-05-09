@@ -10,7 +10,7 @@ type Result = { id: string; name: string; parentId: string | null }
  * 폴더 생성 mutation (folder-create-ui 트랙).
  *
  * <p>{@code api.createFolder(parentId, name)}을 호출하고, 성공 시
- * {@link invalidations.afterFolderCreated}로 parentId의 자식 목록 + folderTree
+ * {@link invalidations.afterFolderCreated}로 parentId의 자식 목록 + folderChildren prefix
  * + folder(parentId) 3개 키를 무효화한다.
  *
  * <p>409 RENAME_CONFLICT / 403 등은 envelope 그대로 onError surface — UI 레이어
