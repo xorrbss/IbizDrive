@@ -9,6 +9,7 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionConflictException;
 import com.ibizdrive.permission.PermissionDenyContext;
 import com.ibizdrive.share.ShareExceedsMembershipException;
+import com.ibizdrive.team.LastOwnerRequiredException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -129,6 +130,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleShareExceedsMembership(ShareExceedsMembershipException ex) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
             .body(ApiError.of("SHARE_EXCEEDS_MEMBER", "share 권한이 sharer의 멤버십 권한을 초과합니다", null));
+    }
+
+    /**
+     * spec §2.2 last-OWNER 가드 — 팀에서 마지막 OWNER를 제거하거나 강등하려 할 때 발생.
+     *
+     * <p>HTTP 400 + envelope code {@code TEAM_OWNER_REQUIRED} (spec §5.4).
+     * spec 문서에서는 {@code ERR_TEAM_OWNER_REQUIRED} 로 표기하나, wire format은 접두사 없이
+     * {@code TEAM_OWNER_REQUIRED} — peer convention: {@code DEPARTMENT_CONFLICT}, {@code RENAME_CONFLICT}.
+     */
+    @ExceptionHandler(LastOwnerRequiredException.class)
+    public ResponseEntity<ApiError> handleLastOwnerRequired(LastOwnerRequiredException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiError.of("TEAM_OWNER_REQUIRED", "팀에는 최소 한 명의 OWNER가 필요합니다", null));
     }
 
     /**

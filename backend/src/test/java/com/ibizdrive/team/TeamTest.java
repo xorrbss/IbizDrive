@@ -75,6 +75,93 @@ class TeamTest {
             .isInstanceOf(IllegalArgumentException.class);
     }
 
+    @Test
+    void archive_setsArchivedAtAndBy_andUpdatesUpdatedAt() {
+        Team team = newTeam("Engineering");
+        UUID actor = UUID.randomUUID();
+        OffsetDateTime before = team.getUpdatedAt();
+        OffsetDateTime now = before.plusSeconds(10);
+
+        team.archive(actor, now);
+
+        assertThat(team.isActive()).isFalse();
+        assertThat(team.getArchivedAt()).isEqualTo(now);
+        assertThat(team.getArchivedBy()).isEqualTo(actor);
+        assertThat(team.getUpdatedAt()).isEqualTo(now);
+    }
+
+    @Test
+    void archive_isNoOp_whenAlreadyArchived() {
+        Team team = newTeam("Engineering");
+        UUID firstActor = UUID.randomUUID();
+        OffsetDateTime firstTime = OffsetDateTime.now();
+        team.archive(firstActor, firstTime);
+
+        UUID secondActor = UUID.randomUUID();
+        OffsetDateTime secondTime = firstTime.plusSeconds(60);
+        team.archive(secondActor, secondTime);
+
+        assertThat(team.getArchivedAt()).isEqualTo(firstTime);
+        assertThat(team.getArchivedBy()).isEqualTo(firstActor);
+        assertThat(team.getUpdatedAt()).isEqualTo(firstTime);
+    }
+
+    @Test
+    void archive_throwsIllegalArgument_whenActorIdNull() {
+        Team team = newTeam("Engineering");
+
+        assertThatThrownBy(() -> team.archive(null, OffsetDateTime.now()))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("actorId");
+    }
+
+    @Test
+    void archive_throwsIllegalArgument_whenNowNull() {
+        Team team = newTeam("Engineering");
+
+        assertThatThrownBy(() -> team.archive(UUID.randomUUID(), null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("now");
+    }
+
+    @Test
+    void restore_clearsArchivedAtAndBy_andUpdatesUpdatedAt() {
+        Team team = newTeam("Engineering");
+        UUID actor = UUID.randomUUID();
+        OffsetDateTime archiveTime = OffsetDateTime.now();
+        team.archive(actor, archiveTime);
+
+        OffsetDateTime restoreTime = archiveTime.plusSeconds(30);
+        team.restore(restoreTime);
+
+        assertThat(team.isActive()).isTrue();
+        assertThat(team.getArchivedAt()).isNull();
+        assertThat(team.getArchivedBy()).isNull();
+        assertThat(team.getUpdatedAt()).isEqualTo(restoreTime);
+    }
+
+    @Test
+    void restore_isNoOp_whenAlreadyActive() {
+        Team team = newTeam("Engineering");
+        OffsetDateTime originalUpdatedAt = team.getUpdatedAt();
+
+        team.restore(originalUpdatedAt.plusSeconds(10));
+
+        assertThat(team.isActive()).isTrue();
+        assertThat(team.getArchivedAt()).isNull();
+        assertThat(team.getArchivedBy()).isNull();
+        assertThat(team.getUpdatedAt()).isEqualTo(originalUpdatedAt);
+    }
+
+    @Test
+    void restore_throwsIllegalArgument_whenNowNull() {
+        Team team = newTeam("Engineering");
+
+        assertThatThrownBy(() -> team.restore(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("now");
+    }
+
     private static Team newTeam(String name) {
         return new Team(
             UUID.randomUUID(),

@@ -563,6 +563,13 @@ type AuditEventType =
   | 'admin.department.updated'      // Wave 2 T4 활성화 — PATCH (rename + reactivate 흡수, before/after JSON)
   | 'admin.department.deactivated'  // Wave 2 T4 활성화 — PATCH isActive=false (제재 분기)
   | 'admin.cron.toggled'            // admin-cron-policy-toggle 활성화 (2026-05-08) — PUT /api/admin/system/cron/{key}, metadata={key, fromEnabled, toEnabled}
+  // 팀
+  | 'team.created'                 // team-centric-pivot Plan A 활성화 (2026-05-09) — POST /api/teams
+  | 'team.member.added'            // team-centric-pivot Plan A — OWNER 초대
+  | 'team.member.removed'          // team-centric-pivot Plan A — OWNER/본인 탈퇴·제외
+  | 'team.member.role_changed'     // team-centric-pivot Plan A — OWNER↔MEMBER role 변경
+  | 'team.archived'                // team-centric-pivot Plan A — archive (read-only 전환)
+  | 'team.restored'                // team-centric-pivot Plan A — archive 해제
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'

@@ -146,7 +146,7 @@ ALTER TABLE audit_log
                            'system','audit','department','team'));
 ```
 
-신규 이벤트: `team.created`, `team.archived`, `team.member.added`, `team.member.removed`, `team.member.role_changed`.
+신규 이벤트: `team.created`, `team.archived`, `team.restored`, `team.member.added`, `team.member.removed`, `team.member.role_changed`.
 
 ### 1.6 `owner_id` 의미 재정의 (스키마 변경 없음)
 
@@ -185,6 +185,8 @@ ALTER TABLE audit_log
 | **archive** | OWNER (또는 admin) | `archived_at` set. 콘텐츠 read-only |
 | **un-archive** | admin only | `archived_at = NULL`. 활성 이름 충돌 시 거부 |
 | **삭제(purge)** | 시스템 `ADMIN` + dual-approval | archived 상태에서만. 콘텐츠는 휴지통 경유 후 30일 retention |
+
+> **스키마 등가 참고**: `Department.deactivate` (admin 도메인, V7 스키마 `deleted_at`) ≡ `Team.archive` (V12 스키마 `archived_at/by`) — 두 경우 모두 콘텐츠 read-only + 목록 제외 효과를 낸다.
 
 ### 2.3 콘텐츠 라이프사이클
 
@@ -410,6 +412,8 @@ ERR_TEAM_ARCHIVED          423  // archive된 팀에 쓰기 시도
 ERR_SHARE_EXCEEDS_MEMBER   403  // 멤버 기본권 초과 share 시도
 ERR_NOT_WORKSPACE_MEMBER   403  // 해당 workspace 멤버 아님
 ```
+
+> **wire 포맷 주의**: 이 spec의 `ERR_` 접두사는 spec 내부 표기이며, 실제 envelope `code` 필드에는 접두사 없이 전송된다. 예: `ERR_TEAM_OWNER_REQUIRED` (spec) ↔ `TEAM_OWNER_REQUIRED` (wire). peer convention: `RENAME_CONFLICT`, `DEPARTMENT_CONFLICT`, `PERMISSION_DENIED`.
 
 ### 5.5 OpenAPI 영향
 

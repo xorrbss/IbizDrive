@@ -2,9 +2,12 @@ package com.ibizdrive.audit;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibizdrive.team.TeamArchivedEvent;
 import com.ibizdrive.team.TeamCreatedEvent;
 import com.ibizdrive.team.TeamMemberAddedEvent;
 import com.ibizdrive.team.TeamMemberRemovedEvent;
+import com.ibizdrive.team.TeamMemberRoleChangedEvent;
+import com.ibizdrive.team.TeamRestoredEvent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
@@ -31,6 +34,9 @@ import java.util.Map;
  *   <li>{@link TeamCreatedEvent} → {@link AuditEventType#TEAM_CREATED} ({@code afterState = {name}})</li>
  *   <li>{@link TeamMemberAddedEvent} → {@link AuditEventType#TEAM_MEMBER_ADDED} ({@code afterState = {userId}})</li>
  *   <li>{@link TeamMemberRemovedEvent} → {@link AuditEventType#TEAM_MEMBER_REMOVED} ({@code beforeState = {userId}})</li>
+ *   <li>{@link TeamMemberRoleChangedEvent} → {@link AuditEventType#TEAM_MEMBER_ROLE_CHANGED} ({@code beforeState = {userId, role}}, {@code afterState = {userId, role}})</li>
+ *   <li>{@link TeamArchivedEvent} → {@link AuditEventType#TEAM_ARCHIVED} ({@code beforeState = null}, {@code afterState = null})</li>
+ *   <li>{@link TeamRestoredEvent} → {@link AuditEventType#TEAM_RESTORED} ({@code beforeState = null}, {@code afterState = null})</li>
  * </ul>
  */
 @Component
@@ -111,6 +117,78 @@ public class TeamAuditListener {
             AuditTargetType.TEAM,
             event.teamId(),
             toJson(before),
+            null,
+            null
+        ));
+    }
+
+    /**
+     * {@link TeamMemberRoleChangedEvent} 수신 → {@link AuditEventType#TEAM_MEMBER_ROLE_CHANGED} audit row 생성.
+     *
+     * <p>{@code beforeState}에 변경 전 role, {@code afterState}에 변경 후 role을 JSON으로 보존.
+     * 역할 전환 이력 추적 및 감사자의 before/after 비교 지원.
+     *
+     * @param event TeamService#changeRole (Plan A2 T3)이 publish한 이벤트
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTeamMemberRoleChanged(TeamMemberRoleChangedEvent event) {
+        Map<String, Object> before = new LinkedHashMap<>();
+        before.put("userId", event.userId().toString());
+        before.put("role", event.oldRole().name());
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("userId", event.userId().toString());
+        after.put("role", event.newRole().name());
+        emit(new AuditEvent(
+            AuditEventType.TEAM_MEMBER_ROLE_CHANGED,
+            event.actorId(),
+            null, null,
+            AuditTargetType.TEAM,
+            event.teamId(),
+            toJson(before),
+            toJson(after),
+            null
+        ));
+    }
+
+    /**
+     * {@link TeamArchivedEvent} 수신 → {@link AuditEventType#TEAM_ARCHIVED} audit row 생성.
+     *
+     * <p>archive 이벤트 자체가 신호이므로 before/afterState 모두 null.
+     * archivedAt 타임스탬프는 Team 엔티티에 보존된다.
+     *
+     * @param event TeamService#archive (Plan A2 T7)가 publish한 이벤트
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTeamArchived(TeamArchivedEvent event) {
+        emit(new AuditEvent(
+            AuditEventType.TEAM_ARCHIVED,
+            event.actorId(),
+            null, null,
+            AuditTargetType.TEAM,
+            event.teamId(),
+            null,
+            null,
+            null
+        ));
+    }
+
+    /**
+     * {@link TeamRestoredEvent} 수신 → {@link AuditEventType#TEAM_RESTORED} audit row 생성.
+     *
+     * <p>restore 이벤트 자체가 신호이므로 before/afterState 모두 null.
+     * Team 엔티티의 archivedAt 필드 클리어가 복원 시각을 나타낸다.
+     *
+     * @param event TeamService#restore (Plan A2 T7)가 publish한 이벤트
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTeamRestored(TeamRestoredEvent event) {
+        emit(new AuditEvent(
+            AuditEventType.TEAM_RESTORED,
+            event.actorId(),
+            null, null,
+            AuditTargetType.TEAM,
+            event.teamId(),
+            null,
             null,
             null
         ));

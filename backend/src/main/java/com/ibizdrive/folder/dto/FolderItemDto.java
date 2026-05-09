@@ -29,7 +29,8 @@ public record FolderItemDto(
     Long size,
     Instant updatedAt,
     String updatedBy,
-    UUID parentId
+    UUID parentId,
+    ScopeRef scope
 ) {
     public static FolderItemDto fromFolder(Folder f) {
         return new FolderItemDto(
@@ -40,7 +41,8 @@ public record FolderItemDto(
             null,
             f.getUpdatedAt(),
             f.getOwnerId() != null ? f.getOwnerId().toString() : null,
-            f.getParentId()
+            f.getParentId(),
+            ScopeRef.of(f.getScopeType(), f.getScopeId())
         );
     }
 
@@ -53,7 +55,8 @@ public record FolderItemDto(
             file.getSizeBytes(),
             file.getUpdatedAt(),
             file.getOwnerId() != null ? file.getOwnerId().toString() : null,
-            file.getFolderId()
+            file.getFolderId(),
+            ScopeRef.of(file.getScopeType(), file.getScopeId())
         );
     }
 }

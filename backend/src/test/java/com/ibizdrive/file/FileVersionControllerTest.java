@@ -121,18 +121,23 @@ class FileVersionControllerTest {
         auditor = principalOf(insertUser("auditor@test", "Auditor", Role.AUDITOR), Role.AUDITOR, "auditor@test");
         member = principalOf(insertUser("member@test", "Member", Role.MEMBER), Role.MEMBER, "member@test");
 
+        // V13 — folders/files scope NOT NULL. fixture root는 fake department scope를 가지며,
+        // file은 동일 scope를 상속 (spec §1.2 invariant).
         folderId = UUID.randomUUID();
+        UUID scopeId = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id) " +
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id) " +
             "VALUES (?, NULL, 'f', 'f', 'f', ?, 'standard', 'department', ?)",
-            folderId, admin.getUser().getId(), java.util.UUID.randomUUID()
+            folderId, admin.getUser().getId(), scopeId
         );
 
         fileId = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, " +
+            "scope_type, scope_id) " +
             "VALUES (?, ?, 'doc.txt', 'doc.txt', ?, 0, 'department', ?)",
-            fileId, folderId, admin.getUser().getId(), java.util.UUID.randomUUID()
+            fileId, folderId, admin.getUser().getId(), scopeId
         );
 
         // 3개 버전 INSERT (오름차순) — current는 v2(중간 버전)로 설정해 정렬 + isCurrent 분리 검증.
@@ -323,10 +328,13 @@ class FileVersionControllerTest {
     void restore_crossFileVersion_returns404_noAudit() throws Exception {
         // 다른 파일에 속한 version으로 본 파일의 current를 바꾸려는 우회 시도 차단.
         UUID otherFileId = UUID.randomUUID();
+        // V13 — file은 부모 folder의 scope를 그대로 상속 (spec §1.2 invariant).
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
-            "VALUES (?, ?, 'other.txt', 'other.txt', ?, 0, 'department', ?)",
-            otherFileId, folderId, admin.getUser().getId(), java.util.UUID.randomUUID()
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, " +
+            "scope_type, scope_id) " +
+            "SELECT ?, ?, 'other.txt', 'other.txt', ?, 0, scope_type, scope_id " +
+            "FROM folders WHERE id = ?",
+            otherFileId, folderId, admin.getUser().getId(), folderId
         );
         UUID strayVersionId = saveVersion(otherFileId, 1, admin.getUser().getId());
 

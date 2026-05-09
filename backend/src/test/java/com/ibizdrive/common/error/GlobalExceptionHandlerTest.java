@@ -6,6 +6,7 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.Preset;
 import com.ibizdrive.share.ShareController;
 import com.ibizdrive.share.ShareExceedsMembershipException;
+import com.ibizdrive.team.LastOwnerRequiredException;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -16,7 +17,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.context.annotation.Import;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -24,6 +27,7 @@ import java.time.OffsetDateTime;
 import java.util.Set;
 import java.util.UUID;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
@@ -35,10 +39,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * {@link GlobalExceptionHandler} 예외 매핑 통합 테스트.
+ * {@link GlobalExceptionHandler} 예외 매핑 테스트.
  *
- * <p>MockMvc를 통해 controller → handler → envelope 매핑을 검증.
- * 각 exception handler가 정확한 HTTP status + envelope code를 반환하는지 확인.
+ * <p>두 방식 혼용:
+ * <ul>
+ *   <li>MockMvc 통합 — controller → handler → envelope 매핑 검증 (Plan C ShareExceedsMembership).
+ *   <li>단위 — handler 메서드 직접 호출 (Plan A2 LastOwnerRequired).
+ * </ul>
  */
 @WebMvcTest(controllers = ShareController.class)
 @Import({SecurityConfig.class, MethodSecurityConfig.class,
@@ -46,6 +53,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class GlobalExceptionHandlerTest {
 
     private static final UUID ACTOR = UUID.fromString("11111111-1111-1111-1111-111111111111");
+
+    private final GlobalExceptionHandler handler = new GlobalExceptionHandler();
 
     @Autowired
     private MockMvc mvc;
@@ -101,5 +110,18 @@ class GlobalExceptionHandlerTest {
                 .content("{\"subjects\":[{\"type\":\"user\",\"id\":\"" + subjectId + "\"}],\"preset\":\"admin\"}"))
             .andExpect(status().isForbidden())
             .andExpect(jsonPath("$.error.code").value("SHARE_EXCEEDS_MEMBER"));
+    }
+
+    @Test
+    void handleLastOwnerRequired_returns400WithEnvelope() {
+        LastOwnerRequiredException ex = new LastOwnerRequiredException(UUID.randomUUID());
+
+        ResponseEntity<ApiError> response = handler.handleLastOwnerRequired(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        ApiError.Body body = response.getBody().error();
+        assertThat(body.code()).isEqualTo("TEAM_OWNER_REQUIRED");
+        assertThat(body.message()).isNotBlank();
+        assertThat(body.details()).isNull();
     }
 }

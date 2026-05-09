@@ -15,6 +15,11 @@ import java.util.UUID;
  * <p>tombstone 컬럼({@code deletedAt}/{@code purgeAfter})과 {@code originalParentId}는 노출하지 않음 —
  * delete/restore endpoint는 본 세션 범위 외이며, mutation 응답에서는 활성 폴더만 다루므로 항상 NULL.
  *
+ * <p>{@link #scope}는 team-centric pivot의 workspace discriminator — frontend가
+ * {@code /d/:slug/...} 또는 {@code /t/:slug/...} 라우트로 라우팅할 수 있도록 노출 (spec §5.3, §5.5).
+ * V13 이후 모든 활성 folder는 NOT NULL scope_type/scope_id를 갖지만, 방어적으로 entity가 scope를
+ * 채우지 않은 경우 {@code null}이 되며 {@code @JsonInclude(NON_NULL)}이 키를 생략한다.
+ *
  * @see com.ibizdrive.permission.dto.PermissionDto 동등 패턴
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
@@ -25,6 +30,7 @@ public record FolderDto(
     String slug,
     UUID ownerId,
     String auditLevel,
+    ScopeRef scope,
     Instant createdAt,
     Instant updatedAt
 ) {
@@ -36,6 +42,7 @@ public record FolderDto(
             f.getSlug(),
             f.getOwnerId(),
             f.getAuditLevel(),
+            ScopeRef.of(f.getScopeType(), f.getScopeId()),
             f.getCreatedAt(),
             f.getUpdatedAt()
         );
