@@ -13,12 +13,16 @@ export function TeamCreateDialog({ onClose }: { onClose: () => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!name.trim()) return
-    const team = await create.mutateAsync({
-      name: name.trim(),
-      description: description.trim() || undefined,
-    })
-    onClose()
-    router.push(buildWorkspacePath({ kind: 'team', workspaceId: team.id }, team.rootFolderId, []))
+    try {
+      const team = await create.mutateAsync({
+        name: name.trim(),
+        description: description.trim() || undefined,
+      })
+      onClose()
+      router.push(buildWorkspacePath({ kind: 'team', workspaceId: team.id }, team.rootFolderId, []))
+    } catch {
+      // create.isError handles inline display
+    }
   }
 
   return (
@@ -26,6 +30,7 @@ export function TeamCreateDialog({ onClose }: { onClose: () => void }) {
       role="dialog"
       aria-modal="true"
       aria-label="새 팀 만들기"
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose() }}
       className="fixed inset-0 flex items-center justify-center bg-black/40 z-50"
     >
       <form

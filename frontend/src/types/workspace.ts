@@ -10,9 +10,6 @@
  */
 export type WorkspaceKind = 'department' | 'team'
 
-/** UI용 sidebar section 식별자 — `WorkspaceKind` 확장 + 'shared' 가상 섹션. */
-export type SidebarSectionKind = 'department' | 'team' | 'shared'
-
 export interface WorkspaceRef {
   kind: WorkspaceKind
   id: string

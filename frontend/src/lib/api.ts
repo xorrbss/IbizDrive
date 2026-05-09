@@ -34,20 +34,11 @@ import { normalizeFileName } from '@/lib/normalize'
 
 export const api = {
   /**
-   * Phase A — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
+   * Plan B — backend `GET /api/folders/{id}` 호출. 응답의 단일-segment breadcrumb을
    * 누적 slugPath 형태로 prefix-scan하여 frontend `BreadcrumbItem` 계약 (slugPath: string[])에
-   * 맞춘다. 가상 root({@code id='root'})는 backend 호출 없이 합성 응답으로 처리.
+   * 맞춘다.
    */
   async getFolder(id: string): Promise<FolderDetail> {
-    if (id === 'root') {
-      return {
-        id: 'root',
-        name: '내 드라이브',
-        slugPath: [],
-        breadcrumb: [{ id: 'root', name: '내 드라이브', slugPath: [] }],
-        parentId: null,
-      }
-    }
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
       method: 'GET',
       credentials: 'include',

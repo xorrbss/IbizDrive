@@ -77,7 +77,7 @@ export function FolderTreeNode({
           {isExpanded ? '▾' : '▸'}
         </button>
         <Link href={href} className="flex-1 truncate text-inherit">
-          📁 {name}
+          <span aria-hidden className="mr-1">📁</span>{name}
         </Link>
       </div>
       {isExpanded && children.data?.map((c) => (
@@ -96,6 +96,11 @@ export function FolderTreeNode({
       {isExpanded && children.isLoading && (
         <div className="px-2 py-0.5 text-[11px] text-fg-muted" style={{ paddingLeft: (depth + 1) * 12 + 8 }}>
           로딩…
+        </div>
+      )}
+      {isExpanded && children.isError && (
+        <div role="alert" className="px-2 py-0.5 text-[11px] text-danger" style={{ paddingLeft: (depth + 1) * 12 + 8 }}>
+          로드 실패
         </div>
       )}
     </div>

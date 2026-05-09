@@ -22,15 +22,15 @@ function useWorkspaceHeadCrumb(): HeadCrumb | null {
     return {
       id: data.department.rootFolderId,
       name: data.department.name,
-      href: `/d/${ws.workspaceId}/${data.department.rootFolderId}`,
+      href: buildWorkspacePath({ kind: 'department', workspaceId: ws.workspaceId! }, data.department.rootFolderId, []),
     }
   }
   if (ws.section === 'team') {
     const t = data?.teams.find((x) => x.id === ws.workspaceId)
-    if (t) return { id: t.rootFolderId, name: t.name, href: `/t/${ws.workspaceId}/${t.rootFolderId}` }
+    if (t) return { id: t.rootFolderId, name: t.name, href: buildWorkspacePath({ kind: 'team', workspaceId: ws.workspaceId! }, t.rootFolderId, []) }
   }
   if (ws.section === 'shared') {
-    return { id: 'shared', name: '공유받음', href: '/shared' }
+    return { id: 'shared', name: '공유받음', href: buildWorkspacePath({ kind: 'shared' }, null, []) }
   }
   return null
 }

@@ -110,6 +110,15 @@ function MoveFolderRadioNode({
           로딩…
         </div>
       )}
+      {expanded && children.isError && (
+        <div
+          role="alert"
+          className="px-2 py-0.5 text-[11px] text-danger"
+          style={{ paddingLeft: (depth + 1) * 12 + 8 }}
+        >
+          로드 실패
+        </div>
+      )}
     </div>
   )
 }
