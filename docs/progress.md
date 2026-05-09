@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-05-09 — 🎯 team-centric-pivot Plan D 완료 (cross-workspace move backend)
+
+### 범위
+spec §5.6 cross-workspace folder/file 이동을 backend(트랜잭션 + invariant) + frontend(컨텍스트 메뉴 + dialog)로 활성화.
+backend(Phase 1~6 + Finalize)는 이번 PR에서 완료. frontend Phase 7은 Plan B의 `WorkspaceFolderTree` 머지 후 별도 트랙으로 진행.
+
+### 변경 핵심
+- `CrossWorkspaceMoveService` (subtree scope update + permissions cleanup + shares revoke + invariant assert + Spring ApplicationEvent publish)
+- `MovePreviewService` (멱등 영향 계산)
+- `/move/preview` endpoint (folder + file)
+- `/move`에 `allowCrossScope` body 추가 (default false → 기존 same-scope 가드 유지)
+- 신규 envelope: `ERR_DEST_WORKSPACE_DENIED` (403), `ERR_INVALID_DESTINATION` (400). 기존 `ERR_CROSS_SCOPE_MOVE` 매핑 wire-up 정상화 (Plan A 잔여)
+- 신규 audit event: `folder.moved.cross_workspace`, `file.moved.cross_workspace`
+- `CrossWorkspaceMoveCompletedEvent` (SSE는 v1.x 이월)
+- frontend `types/audit.ts` 두 wire 멤버 추가
+
+### 검증
+- backend: `./gradlew test` 모든 신규/회귀 테스트 컴파일 통과. Testcontainers 의존 테스트는 로컬 SKIP (Plan A 패턴), CI에서 실행.
+- E2E: `CrossWorkspaceMoveE2ETest`(folder), `CrossWorkspaceFileMoveE2ETest`(file)이 full stack을 검증.
+
+### 결정/편차
+- subtree permissions 보존 옵션 → v1.x 이월 (spec §5.6 KISS 명시)
+- SSE 실 전송 → v1.x 이월 (이벤트 publish hook만 도입)
+- destination=root 직접 이동 차단 (`ERR_INVALID_DESTINATION`) — spec §1.3 정합
+- ADMIN preset cross-workspace 절대 금지(§4.2 강한 형태) → 본 plan에서 추가 분기 불필요. permissions 전체 삭제 후 destination 멤버십 기본권만 적용되어 ADMIN cross 부여 경로 차단.
+- V6 `shares.permission_id ON DELETE CASCADE` 발견 — Task 18 implementer가 `revokedShareCount`를 step 4(perm delete) 전에 capture하도록 조정. 결과적으로 active shares 0 invariant은 cascade로 자연 만족, audit metadata는 정확.
+
+### 다음 세션 컨텍스트
+- Plan D Phase 7 (frontend): Plan B의 `WorkspaceFolderTree` 머지 후 enable. 컨텍스트 메뉴 + `MoveToWorkspaceDialog` + `errors.ts` 상수 sync.
+- Plan E (휴지통 workspace 분리) 진입 가능.
+- Plan A에 stranded된 Task 4 commit `6fe62ea`(audit enum 값 추가) — Plan D Task 20 commit `9e40db5`이 동일 enum을 다시 추가했으므로 양 브랜치 머지 시 충돌 가능. master 머지 순서에서 처리 필요.
+
+### 블로커
+- 없음.
+
+---
+
 ## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
 
 ### 범위 (이전 세션 핸드오프 후 추가분)
