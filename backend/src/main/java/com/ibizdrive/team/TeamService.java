@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -24,8 +25,7 @@ import java.util.UUID;
  * {@code TEAM_CREATED} audit이 "team + 초기 OWNER 생성"을 묶어 표현하므로 create는
  * {@code TeamMemberAddedEvent}를 발행하지 않는다 (Task 17 invite만 발행).
  *
- * <p><b>메서드 현황</b>: create + invite + remove + changeRole (Plan A2 T3). archive/restore는 Plan A2 T7 이월.
- * remove의 last-OWNER guard는 Plan A2 T4 이월.
+ * <p><b>메서드 현황</b>: create + invite + remove + changeRole (Plan A2 T4). archive/restore는 Plan A2 T6/T7 이월.
  */
 @Service
 public class TeamService {
@@ -112,22 +112,29 @@ public class TeamService {
     }
 
     /**
-     * user를 team에서 제거 — idempotent, last-OWNER guard 없음 (Plan A2 이월).
+     * user를 team에서 제거 — idempotent, last-OWNER guard 포함.
      *
-     * <p>해당 멤버십이 없으면 silent no-op (예외/event 없음). 존재하면 row 삭제 후
-     * {@link TeamMemberRemovedEvent} publish — Task 28 listener가 AFTER_COMMIT으로 audit.
+     * <p>해당 멤버십이 없으면 silent no-op (예외/event 없음). 존재하면 last-OWNER 여부를 확인한 뒤
+     * row 삭제 후 {@link TeamMemberRemovedEvent} publish — Task 28 listener가 AFTER_COMMIT으로 audit.
      *
-     * <p>YAGNI: 권한 검증(actorId가 OWNER인지), last-OWNER guard, role 변경은 Plan A2 또는 controller layer.
+     * <p>YAGNI: 권한 검증(actorId가 OWNER인지)은 controller layer 또는 Plan A3.
      *
-     * @param teamId 대상 team
-     * @param userId 제거할 user
+     * @param teamId  대상 team
+     * @param userId  제거할 user
      * @param actorId 제거 수행자 (audit용)
+     * @throws LastOwnerRequiredException 팀의 유일한 OWNER를 제거하려 할 때
      */
     @Transactional
     public void remove(UUID teamId, UUID userId, UUID actorId) {
         TeamMembershipId id = new TeamMembershipId(teamId, userId);
-        if (!memRepo.existsById(id)) {
+        Optional<TeamMembership> opt = memRepo.findById(id);
+        if (opt.isEmpty()) {
             return;
+        }
+        TeamMembership existing = opt.get();
+        if (existing.getRole() == TeamMembership.Role.OWNER
+                && memRepo.countByTeamIdAndRole(teamId, TeamMembership.Role.OWNER) == 1) {
+            throw new LastOwnerRequiredException(teamId);
         }
         memRepo.deleteById(id);
         events.publishEvent(new TeamMemberRemovedEvent(teamId, userId, actorId));
