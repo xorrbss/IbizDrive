@@ -5,6 +5,33 @@
 
 ---
 
+## 2026-05-09 세션 — Plan B (Frontend Foundation)
+
+### 완료
+- [team-pivot-fe] workspaces 타입 + api + queryKeys + useWorkspaces (Tasks 1~4)
+- [team-pivot-fe] workspacePath builder/parser + useCurrentWorkspace + useCurrentFolder refactor (Tasks 5~7)
+- [team-pivot-fe] /d/[dept], /t/[team], /shared/* 라우트 + ClientFilesPage variants + root redirect (Tasks 8~12)
+- [team-pivot-fe] Breadcrumb workspace head crumb (Task 13)
+- [team-pivot-fe] SidebarSections + WorkspaceSection + WorkspaceFolderTree + lazy children (Tasks 14~22)
+- [team-pivot-fe] SharedWithMeSection (flat MVP) + empty states + archived hook (Tasks 23~24)
+- [team-pivot-fe] TeamCreateButton + Dialog + useCreateTeam (Task 25)
+- [team-pivot-fe] DnD same-workspace constraint + visual feedback (Tasks 27~29)
+- [team-pivot-fe] /files/* + folderPath.ts + FolderTree.tsx + view.ts + getFolderTree() 폐기 (Tasks 12, 16, 22)
+- [team-pivot-fe] docs/01 + CLAUDE.md 동기화 (Tasks 30~31)
+
+### 다음 세션 컨텍스트
+- 공유받음 출처 workspace 그룹핑은 backend가 shares-with-me에 source workspace 메타 노출 후 — Plan C와 함께
+- archived 팀 dim/[보관됨]은 backend Team archive endpoint(Plan A2)와 함께 활성
+- /trash workspace별 분리 페이지(탭 UI)는 Plan E
+- MoveFolderDialog + TrashTable + folderTreeUtils 는 Task 16에서 graceful-degradation 상태 — lazy 트리 모델로 재작성 follow-up 필요 (Plan B 명시 외, 후속 트랙)
+
+### 블로커 / 후속
+- Plan A 잔여 (Task 23, 28~30) 별 세션에서 wrap-up
+- Plan C (share dialog + team subject_type) 시작 가능
+- Plan D (cross-workspace move 모달) 시작 가능
+
+---
+
 ## 2026-05-09 — 📋 spec-permission-grant-dialog 트랙 종료 (단일 자원 권한 grant 다이얼로그 spec, Phase A)
 
 ### 범위

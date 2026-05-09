@@ -41,6 +41,8 @@ app/               Next.js App Router
 | 작업 유형 | 읽을 문서 / 섹션 |
 |---|---|
 | 전체 개요, 용어, ADR | `docs/00-overview.md` |
+| URL 라우팅 (workspace prefix) | `docs/01-frontend-design.md` §2~§4, §17, spec `2026-05-09-team-centric-pivot-design.md` §5.1 |
+| 사이드바 3-section 트리 | `docs/01-frontend-design.md` §2, spec `2026-05-09-team-centric-pivot-design.md` §4.5 |
 | 프론트 컴포넌트, 라우팅 | `docs/01-frontend-design.md` §2~§4, §17 |
 | Zustand 슬라이스 | `docs/01-frontend-design.md` §5 |
 | TanStack Query 캐시/무효화 | `docs/01-frontend-design.md` §6 |
@@ -89,7 +91,7 @@ app/               Next.js App Router
 
 ### 프론트 (docs/01 §1, §19)
 
-1. **URL이 "어디"를 소유한다.** `folderId`는 URL(`/files/[...parts]`의 parts[0]), 절대 Zustand에 복제 금지.
+1. **URL이 "어디"를 소유한다.** workspace + folderId 모두 URL이 진실 (`/d/:deptId/:folderId/...`, `/t/:teamId/:folderId/...`, `/shared/:folderId/...`). 사이드바 expand state만 localStorage(persist), workspace/folderId 절대 Zustand 복제 금지.
 2. **RightPanel은 query param** (`?file=xxx`). parallel route 쓰지 않음.
 3. **낙관적 업데이트는 비파괴적 액션만.** 이동/삭제/권한 변경은 pending 로딩 상태로 처리.
 4. **DnD 컨텍스트 두 개는 섞지 않음.** 업로드 DnD(window 네이티브) ≠ 이동 DnD(dnd-kit).
