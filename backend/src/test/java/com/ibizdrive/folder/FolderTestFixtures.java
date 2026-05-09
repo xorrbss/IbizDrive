@@ -25,6 +25,7 @@ public final class FolderTestFixtures {
         fd.setPurgeAfter(deletedAt.plusSeconds(60L * 60 * 24 * 30));
         fd.setCreatedAt(deletedAt);
         fd.setUpdatedAt(deletedAt);
+        fd.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return fd;
     }
 }

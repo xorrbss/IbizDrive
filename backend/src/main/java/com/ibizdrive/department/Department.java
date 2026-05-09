@@ -41,6 +41,9 @@ public class Department {
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
 
+    @Column(name = "root_folder_id")
+    private UUID rootFolderId;
+
     protected Department() {
         // JPA
     }
@@ -123,5 +126,23 @@ public class Department {
      */
     public void reactivate() {
         this.deletedAt = null;
+    }
+
+    public UUID getRootFolderId() {
+        return rootFolderId;
+    }
+
+    /**
+     * Workspace pivot — root folder는 부서 생성 트랜잭션에서 정확히 1회만 attach.
+     * 재할당은 root invariant(spec §1.3) 위반.
+     */
+    public void attachRootFolder(UUID folderId) {
+        if (folderId == null) {
+            throw new IllegalArgumentException("folderId must not be null");
+        }
+        if (this.rootFolderId != null) {
+            throw new IllegalStateException("root folder already attached");
+        }
+        this.rootFolderId = folderId;
     }
 }

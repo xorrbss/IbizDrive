@@ -307,23 +307,27 @@ class FileVersionRepositoryTest {
         return id;
     }
 
+    /** V13 — folders.scope_type/scope_id NOT NULL. fixture root는 fake department scope를 가진다. */
     private UUID insertFolder(UUID ownerId, String name) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level) " +
-            "VALUES (?, NULL, ?, ?, ?, ?, 'standard')",
-            id, name, name, name, ownerId
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id) " +
+            "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?)",
+            id, name, name, name, ownerId, UUID.randomUUID()
         );
         assertNotNull(id);
         return id;
     }
 
+    /** V13 — files.scope는 부모 folder의 scope를 그대로 상속 (spec §1.2 invariant). */
     private UUID insertFile(UUID ownerId, UUID folderId, String name) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, folderId, name, name, ownerId, 0L
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, " +
+            "scope_type, scope_id) " +
+            "SELECT ?, ?, ?, ?, ?, ?, scope_type, scope_id FROM folders WHERE id = ?",
+            id, folderId, name, name, ownerId, 0L, folderId
         );
         return id;
     }

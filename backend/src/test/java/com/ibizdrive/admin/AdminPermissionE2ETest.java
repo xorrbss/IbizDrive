@@ -106,16 +106,16 @@ class AdminPermissionE2ETest {
 
         folderId = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id) " +
-            "VALUES (?, NULL, ?, ?, ?, ?)",
-            folderId, "QuarterlyReports", "quarterlyreports", "quarterlyreports", adminId
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, scope_type, scope_id) " +
+            "VALUES (?, NULL, ?, ?, ?, ?, 'department', ?)",
+            folderId, "QuarterlyReports", "quarterlyreports", "quarterlyreports", adminId, java.util.UUID.randomUUID()
         );
 
         fileId = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            fileId, folderId, "Budget.xlsx", "budget.xlsx", adminId, 0L
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            fileId, folderId, "Budget.xlsx", "budget.xlsx", adminId, 0L, java.util.UUID.randomUUID()
         );
 
         // 5 grants — 다양한 subject/preset, 시간 차이를 두어 정렬 검증 가능

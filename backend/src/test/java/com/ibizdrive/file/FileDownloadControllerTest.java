@@ -176,6 +176,7 @@ class FileDownloadControllerTest {
         Instant now = Instant.now();
         f.setCreatedAt(now);
         f.setUpdatedAt(now);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 

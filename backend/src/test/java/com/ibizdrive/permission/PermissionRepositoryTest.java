@@ -588,9 +588,9 @@ class PermissionRepositoryTest {
     private UUID insertFolder(UUID parentId, String name, UUID ownerId) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, parentId, name, name, name, ownerId
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            id, parentId, name, name, name, ownerId, java.util.UUID.randomUUID()
         );
         return id;
     }
@@ -598,9 +598,9 @@ class PermissionRepositoryTest {
     private UUID insertFile(UUID folderId, String name, UUID ownerId) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, folderId, name, name, ownerId, 0L
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            id, folderId, name, name, ownerId, 0L, java.util.UUID.randomUUID()
         );
         return id;
     }

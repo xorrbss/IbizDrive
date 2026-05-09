@@ -203,6 +203,63 @@ class ShareControllerTest {
     }
 
     @Test
+    void create_teamSubject_201() {
+        UUID fileId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("team", teamId)),
+            "read", null, null
+        );
+        ShareDto dto = makeFileDto(fileId, "team", teamId, "read");
+        when(commandService.createShares(eq(fileId), eq(req), eq(ACTOR)))
+            .thenReturn(List.of(dto));
+
+        ResponseEntity<Map<String, List<ShareDto>>> res = controller.create(fileId, req, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(res.getBody()).containsKey("shares");
+        List<ShareDto> dtos = res.getBody().get("shares");
+        assertThat(dtos).hasSize(1);
+        ShareDto out = dtos.get(0);
+        assertThat(out.subjectType()).isEqualTo("team");
+        assertThat(out.subjectId()).isEqualTo(teamId);
+        assertThat(out.preset()).isEqualTo("read");
+        // A16 — team share row에 team name이 envelope에 노출.
+        assertThat(out.subjectName()).isEqualTo("ProjectAlpha");
+        verify(commandService).createShares(fileId, req, ACTOR);
+    }
+
+    @Test
+    void createFolderShare_teamSubject_201() {
+        UUID folderId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("team", teamId)),
+            "edit", null, null
+        );
+        ShareDto dto = makeFolderDto(folderId, "team", teamId, "edit");
+        when(commandService.createFolderShares(eq(folderId), eq(req), eq(ACTOR)))
+            .thenReturn(List.of(dto));
+
+        ResponseEntity<Map<String, List<ShareDto>>> res =
+            controller.createFolderShare(folderId, req, principal);
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.CREATED);
+        assertThat(res.getBody()).containsKey("shares");
+        List<ShareDto> dtos = res.getBody().get("shares");
+        assertThat(dtos).hasSize(1);
+        ShareDto out = dtos.get(0);
+        assertThat(out.folderId()).isEqualTo(folderId);
+        assertThat(out.fileId()).isNull();
+        assertThat(out.subjectType()).isEqualTo("team");
+        assertThat(out.subjectId()).isEqualTo(teamId);
+        assertThat(out.preset()).isEqualTo("edit");
+        // A16 — team share row에 team name이 envelope에 노출.
+        assertThat(out.subjectName()).isEqualTo("ProjectAlpha");
+        verify(commandService).createFolderShares(folderId, req, ACTOR);
+    }
+
+    @Test
     void createFolderShare_propagatesResourceNotFound() {
         UUID folderId = UUID.randomUUID();
         ShareCreateRequest req = new ShareCreateRequest(
@@ -315,7 +372,7 @@ class ShareControllerTest {
 
     /**
      * A13 — service 반환이 ShareDto이므로 controller 테스트 fixture도 DTO로 직접 구성. file XOR (folderId=null).
-     * A16 — subjectName 14번째 필드 (user면 displayName, dept면 dept.name, everyone이면 null).
+     * A16 — subjectName 14번째 필드 (user면 displayName, dept면 dept.name, team이면 team.name, everyone이면 null).
      */
     private static ShareDto makeFileDto(UUID fileId, String subjectType, UUID subjectId, String preset) {
         return new ShareDto(
@@ -334,6 +391,7 @@ class ShareControllerTest {
             preset,
             "user".equals(subjectType) ? "Display Name"
                 : "department".equals(subjectType) ? "Engineering"
+                : "team".equals(subjectType) ? "ProjectAlpha"
                 : null
         );
     }
@@ -356,6 +414,7 @@ class ShareControllerTest {
             preset,
             "user".equals(subjectType) ? "Display Name"
                 : "department".equals(subjectType) ? "Engineering"
+                : "team".equals(subjectType) ? "ProjectAlpha"
                 : null
         );
     }
