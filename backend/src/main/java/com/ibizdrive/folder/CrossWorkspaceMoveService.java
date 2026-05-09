@@ -24,13 +24,13 @@ import java.util.UUID;
  * Plan D — cross-workspace (cross-scope) 이동 서비스.
  *
  * <p>Phase 3 전체 흐름(7 steps)을 단일 {@code @Transactional}로 묶는다.
- * 본 task(Task 11)는 step 1~2를 구현한다:
+ * Tasks 11~13이 step 1~4를 구현했다:
  * <ol>
- *   <li>source/destination 잠금 + 권한 검증</li>
- *   <li>이름 충돌 검사</li>
+ *   <li>source/destination 잠금 + 권한 검증 (Task 11)</li>
+ *   <li>이름 충돌 검사 (Task 11)</li>
  *   <li>scope 재할당 (Task 12)</li>
  *   <li>permission 정리 (Task 13)</li>
- *   <li>share 정리 (Task 13)</li>
+ *   <li>share 정리 (Task 14)</li>
  *   <li>subtree cascade scope 갱신 (Task 14)</li>
  *   <li>이동 확정 + 이벤트 발행 (Task 15)</li>
  * </ol>
@@ -43,14 +43,14 @@ import java.util.UUID;
 public class CrossWorkspaceMoveService {
 
     private static final int ANCESTOR_WALK_LIMIT = 1000;
+    private static final int MAX_CASCADE_NODES = 100_000;
 
     private final FolderRepository folderRepo;
     private final FileRepository fileRepo;
     private final PermissionResolver permissionResolver;
     private final ApplicationEventPublisher eventPublisher;
-    @SuppressWarnings("unused") // Tasks 13~15에서 사용
     private final PermissionRepository permRepo;
-    @SuppressWarnings("unused") // Tasks 13~15에서 사용
+    @SuppressWarnings("unused") // Tasks 14~15에서 사용
     private final ShareRepository shareRepo;
 
     public CrossWorkspaceMoveService(FolderRepository folderRepo,
@@ -68,12 +68,12 @@ public class CrossWorkspaceMoveService {
     }
 
     /**
-     * Cross-workspace folder 이동 — step 1~3 구현, step 4~7은 Tasks 13~15에서 추가.
+     * Cross-workspace folder 이동 — step 1~4 구현, step 5~7은 Tasks 14~15에서 추가.
      *
      * @param folderId            이동할 폴더 id
      * @param destinationFolderId 목적지 폴더 id
      * @param actorId             요청 사용자 id
-     * @return 이동된 (혹은 이동 준비된) Folder entity — Tasks 13~15에서 실제 이동 후 반환으로 교체
+     * @return 이동된 (혹은 이동 준비된) Folder entity — Tasks 14~15에서 실제 이동 후 반환으로 교체
      */
     public Folder moveFolder(UUID folderId, UUID destinationFolderId, UUID actorId) {
         if (destinationFolderId == null) {
@@ -132,7 +132,13 @@ public class CrossWorkspaceMoveService {
             fileRepo.updateScopeBatch(subtreeFileIds, destScopeType, destScopeId);
         }
 
-        // step 4~7: Tasks 13~15에서 구현 — 컴파일 통과용 placeholder return
+        // step 4: 명시 권한 정리
+        permRepo.deleteByResourceIn("folder", subtreeFolderIds);
+        if (!subtreeFileIds.isEmpty()) {
+            permRepo.deleteByResourceIn("file", subtreeFileIds);
+        }
+
+        // step 5~7: Tasks 14~15에서 구현 — 컴파일 통과용 placeholder return
         return source;
     }
 
@@ -189,6 +195,9 @@ public class CrossWorkspaceMoveService {
                 if (!visited.add(childId)) continue;
                 descendants.add(childId);
                 frontier.addLast(childId);
+                if (descendants.size() > MAX_CASCADE_NODES) {
+                    throw new IllegalStateException("subtree size exceeded safety limit at " + childId);
+                }
             }
         }
         return descendants;

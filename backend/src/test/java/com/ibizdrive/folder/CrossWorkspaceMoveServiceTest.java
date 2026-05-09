@@ -210,6 +210,48 @@ class CrossWorkspaceMoveServiceTest {
         assertThat(UUID.fromString(fileScope)).isEqualTo(scopeB);
     }
 
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void subtreePermissionsDeleted() {
+        UUID actor = UUID.randomUUID();
+        jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", actor, "csm13@t", "csm13");
+
+        UUID scopeA = UUID.randomUUID();
+        UUID scopeB = UUID.randomUUID();
+        UUID rootA = insertFakeRoot(actor, "department", scopeA);
+        UUID rootB = insertFakeRoot(actor, "department", scopeB);
+
+        UUID childInA = UUID.randomUUID();
+        UUID grandchildInA = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub13', 'sub13', 'sub13', ?, 'standard', 'department', ?, ?, ?)",
+            childInA, rootA, actor, scopeA, now, now);
+        jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'gc13', 'gc13', 'gc13', ?, 'standard', 'department', ?, ?, ?)",
+            grandchildInA, childInA, actor, scopeA, now, now);
+
+        UUID fileId = UUID.randomUUID();
+        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '13.txt', '13.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
+            fileId, grandchildInA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+
+        // Permissions: 1 on grandchild folder, 1 on file
+        jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
+            UUID.randomUUID(), grandchildInA, actor, actor, now);
+        jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'file', ?, 'user', ?, 'edit', ?, NULL, ?)",
+            UUID.randomUUID(), fileId, actor, actor, now);
+
+        when(permissionResolver.resolveFor(actor, "folder", childInA))
+            .thenReturn(java.util.EnumSet.of(Permission.EDIT, Permission.SHARE));
+        when(permissionResolver.resolveFor(actor, "folder", rootB))
+            .thenReturn(java.util.EnumSet.of(Permission.UPLOAD));
+
+        service.moveFolder(childInA, rootB, actor);
+
+        Integer remaining = jdbc.queryForObject(
+            "SELECT COUNT(*) FROM permissions WHERE resource_id IN (?, ?, ?)",
+            Integer.class, childInA, grandchildInA, fileId);
+        assertThat(remaining).isZero();
+    }
+
     // ── private helpers ──
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
