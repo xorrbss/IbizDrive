@@ -8,6 +8,7 @@ import com.ibizdrive.folder.dto.FolderDto;
 import com.ibizdrive.folder.dto.FolderItemDto;
 import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
+import com.ibizdrive.folder.dto.ScopeRef;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -68,6 +69,7 @@ public class FolderQueryService {
                 f.getParentId(),
                 f.getName(),
                 f.getSlug(),
+                ScopeRef.of(f.getScopeType(), f.getScopeId()),
                 childrenById.get(f.getId())
             );
             UUID parentId = f.getParentId();

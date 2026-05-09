@@ -30,6 +30,7 @@ public final class FileTestFixtures {
         f.setMimeType("application/octet-stream");
         f.setCreatedAt(updatedAt);
         f.setUpdatedAt(updatedAt);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 
@@ -46,6 +47,7 @@ public final class FileTestFixtures {
         f.setPurgeAfter(deletedAt.plusSeconds(60L * 60 * 24 * 30));
         f.setCreatedAt(deletedAt);
         f.setUpdatedAt(deletedAt);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 }

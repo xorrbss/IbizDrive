@@ -82,7 +82,7 @@ class AuditQueryServiceTest {
         private final Set<String> grants = ConcurrentHashMap.newKeySet();
 
         StubPermissionResolver() {
-            super(null);
+            super(null, null, null, null);
         }
 
         void grant(UUID userId, String type, UUID id, Permission p) {

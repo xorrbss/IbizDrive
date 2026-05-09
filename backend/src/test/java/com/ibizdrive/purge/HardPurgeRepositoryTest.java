@@ -221,27 +221,27 @@ class HardPurgeRepositoryTest {
     private UUID insertFolder(UUID owner, String name) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level) " +
-            "VALUES (?, NULL, ?, ?, ?, ?, 'standard')",
-            id, name, name, name, owner);
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id) " +
+            "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?)",
+            id, name, name, name, owner, java.util.UUID.randomUUID());
         return id;
     }
 
     private UUID insertFolderWithParent(UUID owner, String name, UUID parent) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level) " +
-            "VALUES (?, ?, ?, ?, ?, ?, 'standard')",
-            id, parent, name, name, name, owner);
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'standard', 'department', ?)",
+            id, parent, name, name, name, owner, java.util.UUID.randomUUID());
         return id;
     }
 
     private UUID insertFile(UUID owner, UUID folder, String name) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes) " +
-            "VALUES (?, ?, ?, ?, ?, ?)",
-            id, folder, name, name, owner, 0L);
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'department', ?)",
+            id, folder, name, name, owner, 0L, java.util.UUID.randomUUID());
         return id;
     }
 

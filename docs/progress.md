@@ -17,18 +17,139 @@
 - [team-pivot-fe] TeamCreateButton + Dialog + useCreateTeam (Task 25)
 - [team-pivot-fe] DnD same-workspace constraint + visual feedback (Tasks 27~29)
 - [team-pivot-fe] /files/* + folderPath.ts + FolderTree.tsx + view.ts + getFolderTree() 폐기 (Tasks 12, 16, 22)
+- [team-pivot-fe] MoveFolderDialog lazy-tree 회복 (Phase 6 follow-up — `MoveFolderTree` 신규)
 - [team-pivot-fe] docs/01 + CLAUDE.md 동기화 (Tasks 30~31)
+- [team-pivot-fe] code review 1차 fix — `/files` redirect stub 복구, SidebarSectionKind dedupe, Breadcrumb canonical builder, TeamCreateDialog try/catch + Escape, FolderTreeNode/MoveFolderTree 에러 상태, getFolder dead virtual-root 제거
 
 ### 다음 세션 컨텍스트
 - 공유받음 출처 workspace 그룹핑은 backend가 shares-with-me에 source workspace 메타 노출 후 — Plan C와 함께
 - archived 팀 dim/[보관됨]은 backend Team archive endpoint(Plan A2)와 함께 활성
 - /trash workspace별 분리 페이지(탭 UI)는 Plan E
-- MoveFolderDialog + TrashTable + folderTreeUtils 는 Task 16에서 graceful-degradation 상태 — lazy 트리 모델로 재작성 follow-up 필요 (Plan B 명시 외, 후속 트랙)
+- TrashTable 원위치 path display는 backend가 trash item DTO에 originalPath 노출하면 정합 (현재 fallback "원위치 폴더 삭제됨")
+- folderTreeUtils.ts는 MoveFolderDialog 재작성 후 orphan — Plan C/D 따라 정리 가능
 
-### 블로커 / 후속
-- Plan A 잔여 (Task 23, 28~30) 별 세션에서 wrap-up
-- Plan C (share dialog + team subject_type) 시작 가능
-- Plan D (cross-workspace move 모달) 시작 가능
+### PR
+- PR #139 — `feat/team-centric-pivot-plan-b-frontend`
+- 34 commits ahead of origin/master, 1057+ tests pass
+
+---
+
+
+## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
+
+### 범위 (이전 세션 핸드오프 후 추가분)
+
+직전 세션이 24/30(80%)에서 핸드오프된 상태에서 Phase 9 통합 + Task 29 E2E + Task 30 finalize 진행. 두 worktree(`feat/team-centric-pivot-plan-a` + `feat/team-centric-pivot-plan-a-phase9`)가 병렬 진행되어 분기 → cherry-pick으로 통합.
+
+### 변경 핵심
+
+**Phase 9 통합 (cherry-pick from `feat/team-centric-pivot-plan-a-phase9`):**
+- `f6e1809` Task 24 folder.create scope 상속 + root via API 차단 (parentId NOT NULL invariant 강제, spec §1.3)
+- `3b2b0b5` Task 25 folder.move same-scope 검증 (`CrossScopeMoveException`, ERR_CROSS_SCOPE_MOVE)
+- `5011be3` Task 26 file upload parent folder scope 상속
+- `cee17b8` Task 27 Folder/File response DTO에 `ScopeRef` 블록 추가
+
+**Phase 11 finalize:**
+- `9ece76d` Task 29 `TeamPivotEndToEndTest` — `@SpringBootTest + Testcontainers Postgres` E2E. team create → invite → workspace listing → child folder scope 상속 → membership 기반 permission 검증.
+
+### Cherry-pick conflict 해결 노트
+
+- `ba490c0`(Task 24)이 이전 회차(merge base = c6bbfce) 이전 커밋이라 내 `13f6c0e` Task 16 refactor의 `FolderMutationService.createRootForScope`를 보지 못함. 단순 `--theirs`는 createRootForScope를 삭제 → 수동 hunk-level 수정으로 두 변경(create() 본문 + createRootForScope) 모두 보존.
+- Tasks 25-27은 대부분 자동 merge. `37e5778`(Task 26)에서 V13 fixture 충돌 5건 발생 — 그들 버전(parent scope 사용)이 우리 버전('department' literal)보다 의미적으로 정확 → `--theirs` 채택.
+
+### 미통합 (의도적)
+
+- Phase9 worktree의 Tasks 20/21 별개 commit(`01edf48`/`be6f57a`) — `Folder.createWorkspaceRoot` 정적 factory 패턴(Option A). 내 `067f624`/`be6cae3`는 `FolderMutationService.createRootForScope` 위임(Option B). 두 워크트리에 같은 기능을 다른 패턴으로 보유. 통합 시점에 단일 패턴으로 정합화 필요(권장: Option B = 내 버전, Folder 캡슐화 보존).
+
+### 검증
+
+- 본 브랜치 단위 + 통합 테스트 합계 약 47건 PASS (Testcontainers 가용 시).
+- E2E `TeamPivotEndToEndTest`는 환경적으로 Testcontainers Docker socket strategy fail 시 SKIP 처리 (peer V12MigrationIT와 동일 조건). 코드 정합성은 컴파일 + Spring context 로드 + 실제 API 호출 시그니처 검증으로 보장.
+- 코-세션 WIP `PermissionServiceGrantRevokeTest.grantPermission_teamSubjectTypeAccepted` 1건은 production code 미반영 상태로 working tree에 잔존 — 본 브랜치 commit에 미포함.
+
+### 다음 세션 컨텍스트 (Plan A2 backlog)
+
+- 두 워크트리 통합 — Tasks 20/21 패턴 통일 + phase9 worktree archive.
+- archive/un-archive (Team + Department), last-OWNER guard, role 변경, frontend types/audit.ts sync.
+- cross-workspace move 가드 (spec §5.6), Department workspace listing UI (spec §4.5).
+- PermissionService grant에 `subjectType="team"` 허용 (코-세션 WIP 후속).
+
+---
+
+## 2026-05-09 — 🚀 team-centric-pivot Plan A Phase 3~8+10 (24/30 task, 80%)
+
+### 범위
+
+team-centric-pivot 설계 변경 backend foundation 구현. 직전 세션이 Phase 1~2 (Tasks 1-9: V12-V15 마이그레이션 + 도메인 엔티티 5종)를 완료한 상태에서 이어 받아 다음을 처리.
+
+### 변경 핵심 (commit 순서)
+
+**Phase 3 — Repositories** (`feat/team-centric-pivot-plan-a`):
+- `2c2b2cc` Task 10 `TeamRepository` (active-name lookup, Javadoc + AssertJ ID assertion + underscore tests)
+- `553ae4b` Task 11 `TeamMembershipRepository` (3 query methods: `findByUserId`, `countByTeamIdAndRole`, `findByTeamId`)
+- `7fcefb9` Task 11 follow-up: `findByTeamId` identity assertion 복구 (코-세션 reset로 손실)
+
+**Phase 4 — Audit constants**:
+- `b129271` Task 12 `AuditTargetType.TEAM` + `TEAM_CREATED`/`TEAM_MEMBER_ADDED`/`TEAM_MEMBER_REMOVED` (YAGNI: archive/role-change은 Plan A2 이월; frontend `types/audit.ts` sync도 Plan A2)
+
+**Phase 5 — Workspace 추상화**:
+- `4737bec` Task 13 `Workspace` interface + `WorkspaceKind` enum + `DepartmentWorkspace` / `TeamWorkspace` adapters (record + null-guard compact constructor)
+- `1c9d67a` Task 14 `WorkspaceService.findForUser` + `UserDepartmentLookup` indirection + `DefaultUserDepartmentLookup` + `WorkspaceListing` (3 Mockito tests)
+- `87108ec` Task 15 `WorkspaceController GET /api/workspaces/me` (3 WebMvcTest, `@AuthenticationPrincipal IbizDriveUserDetails`)
+- `7b82fe2` Task 15 follow-up: `@JsonInclude(NON_NULL)` (peer DTO 일관성)
+
+**Phase 6 — Team CRUD**:
+- `41d1933` → `13f6c0e` Task 16 `TeamService.create` (initial) + refactor: audit 위임을 Task 28 listener로 + `FolderMutationService.createRootForScope` 위임 (Folder 캡슐화 보존, 생성자 protected 유지)
+- `bc29a9d` Task 17 `TeamService.invite` (idempotent — `findById().orElseGet(...)`, `TeamMemberAddedEvent` publish)
+- `311f3c9` Task 18 `TeamService.remove` (basic — last-OWNER guard 없음, Plan A2 이월; `TeamMemberRemovedEvent` publish)
+- `f788214` Task 19 `TeamController` + `TeamAuthz` (Spring Security SpEL `@PreAuthorize`) + 3 DTOs (TeamCreateRequest/TeamResponse/TeamMemberInviteRequest) + 7 WebMvcTest
+
+**Phase 7 — Department root folder hook**:
+- `067f624` Task 20 `AdminDepartmentService.create` 확장 — root Folder 생성 + `attachRootFolder` (FolderMutationService.createRootForScope 위임)
+- `be6cae3` Task 21 `DepartmentRootFolderBackfillRunner` (idempotent dev tool, production 자동 실행 안 함)
+
+**Phase 8 — Permission evaluation rewrite**:
+- `c6bbfce` Task 22 `WorkspaceMembershipResolver` — workspace 멤버십 → 묵시적 권한 (DEPT member: READ+UPLOAD / TEAM MEMBER: +EDIT / TEAM OWNER: +DELETE+SHARE)
+- `8b4e267` Task 23 `PermissionResolver`에 membership 단계 wiring — `isGranted` 흐름이 explicit/share 우선, membership fallback. `FolderRepository`/`FileRepository` 주입으로 scope lookup. `IbizDrivePermissionEvaluator` 무수정 (자동 혜택)
+
+**Phase 10 — Audit listener**:
+- `7739d51` Task 28 `TeamAuditListener` — `@TransactionalEventListener(AFTER_COMMIT)`로 TeamCreatedEvent/MemberAddedEvent/MemberRemovedEvent를 audit_log row로 변환. ADR #24에 따라 audit 실패는 ERROR 로그로 swallow.
+
+**코-세션 commits (origin push됨):**
+- `dd9d135` raw SQL fixtures에 `scope_type/scope_id` 추가 (V13 NOT NULL fallout)
+- `7f6608e` JPA Folder/FileItem fixtures에 `assignScope` 추가
+- `1afd61b` production 서비스 scope 상속 (FolderMutationService.create / FileUploadService.insertNewFile)
+
+### 미완료 (다음 세션)
+
+**phase9 worktree (별도 브랜치 `feat/team-centric-pivot-plan-a-phase9`)에 이미 진행됨**:
+- Task 24 `ba490c0` folder.create scope 상속
+- Task 25 `d3a0f98` folder.move same-scope validation (`ERR_CROSS_SCOPE_MOVE`)
+- Task 26 `37e5778` file upload scope 상속
+- Task 27 `c4412fc` Folder/File response DTOs scope block
+
+**양쪽 브랜치 모두 미수행**:
+- Task 29 E2E (create team → list members → child folder → scope cascade + permission). Phase 9 의존 — phase9 통합 후 진행.
+
+### 검증
+
+- 본 브랜치 `feat/team-centric-pivot-plan-a` 모든 commit별 `./gradlew test --tests <target>` PASS.
+- 누적 새 unit test 약 35건 (10 → 11 → 12 → 13 → 14 → 15 → 16 → 17 → 18 → 19 → 20 → 21 → 22 → 23 → 28).
+- 회귀 zero — Task 23에서 PermissionResolver constructor arity 변경으로 `AuditQueryServiceTest.StubPermissionResolver` collateral fix 1건만 발생.
+
+### 결정/편차
+
+- **plan 리터럴 API 가정 다수 부정확** — 실제 코드 기반 adaptation: `NameNormalizer` → `NormalizeUtil`, `Folder.assignNew` → setters + `FolderMutationService.createRootForScope`, `auth.getName()` → `IbizDriveUserDetails.getUser().getId()`, `AuditTargetType.dbValue()` → `wire()`, `@SpringBootTest` 무거운 통합 → Mockito unit + WebMvcTest slice.
+- **audit 위임 패턴** — Task 16 초기 구현이 직접 audit emit → review에서 Task 28 listener와 중복 row 위험 발견 → refactor로 도메인 event publish만 남김 (TeamCreatedEvent → Task 28 AFTER_COMMIT). 안전성 +1.
+- **Folder 생성자 캡슐화 보존** — Task 16 초기 구현이 cross-package 접근 위해 `protected → public` 변경 → review에서 peer 엔티티(Department/User/Team) 일관성 위반 지적 → `FolderMutationService.createRootForScope(...)` 위임으로 refactor (Option B), 생성자 protected 유지.
+- **YAGNI 엄수** — Task 12 audit constants 6개 → 4개로 축소 (archive/role-change/role 변경 audit은 Plan A2). Task 18 last-OWNER guard 미구현. Task 17 권한 검증은 controller layer에 위임.
+- **코-세션 origin push 활성** — `feat/team-centric-pivot-plan-a` 브랜치를 코-세션이 origin에 push. 한 차례 reset --hard origin이 내 로컬 rebase 결과(Task 11 identity fix 포함)를 덮음 → 별도 follow-up commit `7fcefb9`로 복구. 이후 양 세션 모두 push 자제.
+
+### 다음 세션 컨텍스트
+
+- **두 브랜치 통합 필요** — `feat/team-centric-pivot-plan-a` (mine, Phase 3-8+10 완료) + `feat/team-centric-pivot-plan-a-phase9` (Phase 9 + 일부 중복). 중복 영역(Tasks 20-21)은 양쪽 functionally 동일하지만 commit SHA 다름. merge 전략 결정 필요.
+- **Task 29 E2E**는 phase9 통합 후 진행. create team → invite member → child folder 생성 시 scope 상속 + permission resolver가 membership으로 grant되는지 검증.
+- **Plan A2 backlog**: archive/un-archive, last-OWNER guard, role 변경, frontend `types/audit.ts` sync, cross-workspace move (가드레일 포함), Department workspace listing UI.
 
 ---
 

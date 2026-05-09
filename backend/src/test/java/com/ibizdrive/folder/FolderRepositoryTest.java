@@ -143,6 +143,9 @@ class FolderRepositoryTest {
     /**
      * Test helper — V5 schema가 요구하는 NOT NULL 컬럼을 모두 채워 minimal Folder를 만든다.
      * id/createdAt/updatedAt는 application 레벨에서 명시 set (entity 정책 — DB DEFAULT 의존 회피).
+     *
+     * <p>V13 (Plan A Task 2/24) — scope_type/scope_id NOT NULL. 본 repository test는 scope 의미가
+     * 없으므로 임의의 department + random UUID를 채워 NOT NULL을 충족한다.
      */
     private Folder newFolder(UUID parentId, String normalizedName, UUID ownerId) {
         Folder f = new Folder();
@@ -153,9 +156,11 @@ class FolderRepositoryTest {
         f.setSlug(normalizedName);
         f.setOwnerId(ownerId);
         f.setAuditLevel("standard");
+        f.assignScope(ScopeType.DEPARTMENT, UUID.randomUUID());
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         f.setCreatedAt(now);
         f.setUpdatedAt(now);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 

@@ -8,6 +8,7 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
+import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.storage.StorageClient;
@@ -89,8 +90,9 @@ public class FileUploadService {
         String displayName = NormalizeUtil.normalizeFileName(filename);
         String normalizedName = NormalizeUtil.normalizedNameForDedup(filename);
 
-        // 폴더 lock (활성 only) — soft-deleted/미존재 → 404 매핑.
-        folderRepository.lockByIdAndDeletedAtIsNull(folderId)
+        // 폴더 lock (활성 only) — soft-deleted/미존재 → 404 매핑. 신규 INSERT 분기에서 scope 상속을
+        // 위해 entity를 보관 (spec §1.2 invariant — child file은 부모 folder의 scope를 그대로 상속).
+        Folder parent = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
         boolean conflict = fileRepository.existsActiveByFolderAndNormalizedName(folderId, normalizedName);
@@ -101,6 +103,7 @@ public class FileUploadService {
         }
 
         if (conflict && resolution == UploadResolution.NEW_VERSION) {
+            // 기존 FileItem row에 version만 append — scope는 이미 부여되어 있어 변경하지 않음.
             return appendNewVersion(folderId, actorId, normalizedName, contentType, sizeBytes, content);
         }
 
@@ -111,7 +114,7 @@ public class FileUploadService {
             normalizedName = resolved[1];
         }
 
-        return insertNewFile(folderId, actorId, displayName, normalizedName,
+        return insertNewFile(parent, actorId, displayName, normalizedName,
             contentType, sizeBytes, content);
     }
 
@@ -119,13 +122,14 @@ public class FileUploadService {
     // branches
     // ──────────────────────────────────────────────────────────────────
 
-    private UploadResult insertNewFile(UUID folderId,
+    private UploadResult insertNewFile(Folder parent,
                                        UUID actorId,
                                        String displayName,
                                        String normalizedName,
                                        String contentType,
                                        long sizeBytes,
                                        InputStream content) {
+        UUID folderId = parent.getId();
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         UUID storageKey = UUID.randomUUID();
 
@@ -141,6 +145,9 @@ public class FileUploadService {
         file.setOwnerId(actorId);
         file.setSizeBytes(sizeBytes);
         file.setMimeType(contentType);
+        // spec §1.2 invariant: file은 부모 folder의 scope를 그대로 상속. assignScope는 V13 NOT NULL
+        // 제약과 일치하는 non-null 검증을 entity 레벨에서 수행 (FolderMutationService.create와 동일 패턴).
+        file.assignScope(parent.getScopeType(), parent.getScopeId());
         file.setCreatedAt(now);
         file.setUpdatedAt(now);
 

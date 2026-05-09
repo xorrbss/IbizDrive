@@ -4,6 +4,9 @@ import com.ibizdrive.department.Department;
 import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.common.error.ResourceNotFoundException;
+import com.ibizdrive.folder.Folder;
+import com.ibizdrive.folder.FolderMutationService;
+import com.ibizdrive.folder.ScopeType;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -34,11 +37,14 @@ import java.util.UUID;
 public class AdminDepartmentService {
 
     private final DepartmentRepository departmentRepository;
+    private final FolderMutationService folderMutationService;
     private final ApplicationEventPublisher eventPublisher;
 
     public AdminDepartmentService(DepartmentRepository departmentRepository,
+                                  FolderMutationService folderMutationService,
                                   ApplicationEventPublisher eventPublisher) {
         this.departmentRepository = departmentRepository;
+        this.folderMutationService = folderMutationService;
         this.eventPublisher = eventPublisher;
     }
 
@@ -72,6 +78,10 @@ public class AdminDepartmentService {
 
         Department dept = new Department(UUID.randomUUID(), name, OffsetDateTime.now());
         departmentRepository.save(dept);
+
+        Folder root = folderMutationService.createRootForScope(
+            ScopeType.DEPARTMENT, dept.getId(), actorId, name);
+        dept.attachRootFolder(root.getId());
 
         eventPublisher.publishEvent(new AdminDepartmentCreatedEvent(dept.getId(), actorId, name));
         return dept;

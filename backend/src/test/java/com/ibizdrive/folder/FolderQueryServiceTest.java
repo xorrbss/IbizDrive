@@ -50,6 +50,7 @@ class FolderQueryServiceTest {
         Instant now = Instant.parse("2026-05-01T00:00:00Z");
         f.setCreatedAt(now);
         f.setUpdatedAt(now);
+        f.assignScope(com.ibizdrive.folder.ScopeType.DEPARTMENT, java.util.UUID.randomUUID());
         return f;
     }
 
