@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-09 — 📖 docs-multi-session-runbook 트랙 종료 (사내 베타 운영 런북에 multi-session 자율 작업 트러블슈팅 §15.7 추가)
+
+### 범위
+
+본 세션 trajectory에서 검증된 multi-session 자율 작업 패턴 (mergeStateStatus 5단계 분기 + rebase/force-push-with-lease 복구 + 다른 세션 영역 회피 + master 직접 commit 회피 + Windows lock cleanup)을 docs/04 §15 사내 베타 운영 런북에 §15.7 sub-section으로 추가. 차후 자율 세션 시작 시 재개 가이드.
+
+### 변경 핵심
+
+- `docs/04 §15.7` 신설 (5 sub-sections):
+  - §15.7.1 `mergeStateStatus` 5단계 분기 표 (UNSTABLE/UNKNOWN/DIRTY/CLEAN/MERGED)
+  - §15.7.2 충돌 복구 — rebase + `--force-with-lease` + reflog 백업 가드
+  - §15.7.3 다른 세션 영역 회피 — worktree list / branch -a / open PR 확인
+  - §15.7.4 다른 세션이 master에 직접 commit 시 회피 — `origin/master` 직접 base worktree로 격리
+  - §15.7.5 Windows lock cleanup 잔여 처리
+
+backend/frontend 무변경, 코드 0줄. 운영 매뉴얼 추가만.
+
+### 검증
+
+- 시각 검증: §15.7 markdown 렌더 깨짐 없음.
+- `git diff --stat`: docs/04 + docs/progress.md + dev/active만.
+- 백링크: `feedback_co_session_collab` 메모리와 일치.
+
+### 결정/편차
+
+- **§15.7 위치 선정** — §15.6 (Wave 2 backlog → v1.x 전환) 다음, §16 (Dual-Approval 운영) 직전. 본 세션이 발견한 운영 패턴이 §15 런북 영역에 자연스럽게 들어감.
+- **메모리와 docs 양쪽 명시** — `feedback_co_session_collab.md`는 자율 세션 즉시 가드, docs/04 §15.7은 운영 런북. 두 경로 다 유지가 KISS — 메모리는 자동 로드, docs는 사람 검수용.
+- **5단계 분기 표 형식** — 운영자가 한 번에 인지 가능하도록 mergeStateStatus 5상태를 표로. 본문 풀어쓰지 않음.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / 휴지통 보존 정책 mutation UI (callout #130 페어) / 2인 승인 framework 실 구현 (#124 design 머지됨) / progress streaming.
+- 다음 자율 세션은 §15.7을 재개 가이드로 활용 가능 — 백그라운드 패턴, force-push 가드, master 직접 commit 회피 모두 명시.
+
+---
+
 ## 2026-05-09 — 🛎️ trash-policy-dual-approval-callout 트랙 종료 (/admin/trash/policy 변경 안내에 dual-approval 의존성 명시)
 
 ### 범위
