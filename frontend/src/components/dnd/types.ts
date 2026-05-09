@@ -4,6 +4,8 @@ export type MoveDragData = {
   sourceFolderId: string
   /** ids 중 폴더인 것만. self/descendant 판정에 사용. */
   containsFolderIds: string[]
+  /** 드래그 출발 workspace 정보. droppable이 cross-workspace 여부 판정에 사용. */
+  sourceWorkspace: { kind: 'department' | 'team' | 'shared'; id: string | null }
 }
 
 export const DROPPABLE_FOLDER_PREFIX = 'folder-'
