@@ -70,12 +70,23 @@ export function FileRow({
   // 드래그 중인 폴더 타겟 시각화
   const dropClass =
     isFolderTarget && droppable.isDragging
-      ? droppable.isInvalid || droppable.isSameFolder
-        ? 'opacity-50'
-        : droppable.isOver
-          ? 'bg-accent-soft ring-2 ring-accent'
-          : ''
+      ? droppable.isCrossWorkspace || droppable.isSharedTarget
+        ? 'opacity-50 cursor-not-allowed'
+        : droppable.isInvalid || droppable.isSameFolder
+          ? 'opacity-50'
+          : droppable.isOver
+            ? 'bg-accent-soft ring-2 ring-accent'
+            : ''
       : ''
+
+  const dropTitle =
+    isFolderTarget && droppable.isDragging
+      ? droppable.isCrossWorkspace
+        ? '다른 workspace로 이동 불가 (컨텍스트 메뉴를 사용하세요)'
+        : droppable.isSharedTarget
+          ? '공유받음 영역으로 이동 불가'
+          : undefined
+      : undefined
 
   // 상태별 배경 — pending > dragging > selected > hover
   const stateClass = isPending
@@ -102,6 +113,7 @@ export function FileRow({
       }
       tabIndex={isFocused ? 0 : -1}
       className={`${gridCols} min-h-[var(--row-h)] h-10 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
+      title={dropTitle}
       onClick={(e) => {
         if (isPending) return
         onClick?.(item, e)

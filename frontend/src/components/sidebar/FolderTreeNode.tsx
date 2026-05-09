@@ -4,6 +4,7 @@ import { useFolderChildren } from '@/hooks/useFolderChildren'
 import { useSidebarTreeStore } from '@/stores/sidebarTree'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { buildWorkspacePath, type SidebarSectionKind } from '@/lib/workspacePath'
+import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 
 interface Props {
   section: SidebarSectionKind
@@ -33,15 +34,39 @@ export function FolderTreeNode({
       : { kind: section, workspaceId }
   const href = buildWorkspacePath(loc, folderId, pathAcc)
 
+  const drop = useFolderDroppable(folderId, {
+    kind: section === 'shared' ? 'shared' : section,
+    id: section === 'shared' ? null : workspaceId,
+  })
+
+  const dropClass = !drop.isDragging
+    ? ''
+    : drop.isCrossWorkspace || drop.isSharedTarget
+      ? 'opacity-50 cursor-not-allowed'
+      : drop.isInvalid || drop.isSameFolder
+        ? 'opacity-50'
+        : drop.isOver
+          ? 'bg-accent-soft ring-2 ring-accent'
+          : ''
+
+  const dropTitle =
+    drop.isCrossWorkspace
+      ? '다른 workspace로 이동 불가 (컨텍스트 메뉴를 사용하세요)'
+      : drop.isSharedTarget
+        ? '공유받음 영역으로 이동 불가'
+        : undefined
+
   return (
     <div>
       <div
+        ref={drop.setNodeRef}
         className={`flex items-center gap-1.5 px-2 py-1 rounded min-h-[26px] transition-colors ${
           isActive
             ? 'bg-accent-soft text-accent font-medium'
             : 'text-fg-2 hover:bg-surface-2 hover:text-fg'
-        }`}
+        } ${dropClass}`}
         style={{ paddingLeft: depth * 12 + 8 }}
+        title={dropTitle}
       >
         <button
           onClick={() => toggleFolder(folderId)}
