@@ -9,6 +9,7 @@ import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.trash.TrashRetentionProperties;
 import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -55,6 +56,12 @@ import java.util.UUID;
  * <p><b>actor / 컨텍스트</b>: {@code actorId}는 호출자(controller)가 명시적으로 전달.
  * IP/User-Agent는 {@link WebRequestContextHolder}로 현재 HTTP 요청에서 추출 — 비-HTTP 컨텍스트
  * (스케줄러 등)에서는 자연스럽게 null.
+ *
+ * <p><b>archived 팀 차단 (spec §2.2/§5.4 — Plan A T3)</b>: 5개 write 진입점
+ * (create/rename/move/delete/restore)은 target/parent fetch 직후 mutation 직전에
+ * {@link TeamArchiveGuard#assertNotArchived(ScopeType, java.util.UUID)}를 호출해
+ * archived 팀의 콘텐츠를 read-only로 강제한다. {@code TEAM_ARCHIVED} (HTTP 423) 변환은
+ * {@link com.ibizdrive.common.error.GlobalExceptionHandler}.
  */
 @Service
 @Transactional
@@ -75,17 +82,20 @@ public class FolderMutationService {
     private final ObjectMapper objectMapper;
     /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (FileMutationService와 동일 source). */
     private final TrashRetentionProperties retention;
+    private final TeamArchiveGuard teamArchiveGuard;
 
     public FolderMutationService(FolderRepository folderRepository,
                                  FileRepository fileRepository,
                                  AuditService auditService,
                                  ObjectMapper objectMapper,
-                                 TrashRetentionProperties retention) {
+                                 TrashRetentionProperties retention,
+                                 TeamArchiveGuard teamArchiveGuard) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.retention = retention;
+        this.teamArchiveGuard = teamArchiveGuard;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -119,6 +129,9 @@ public class FolderMutationService {
         // DB FK가 최종 가드.
         Folder parent = folderRepository.findByIdAndDeletedAtIsNull(parentId)
             .orElseThrow(() -> new FolderNotFoundException("parent folder not found: " + parentId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. parent fetch 직후, normalize/conflict 이전.
+        teamArchiveGuard.assertNotArchived(parent.getScopeType(), parent.getScopeId());
 
         String displayName = NormalizeUtil.normalizeFileName(name);
         String normalizedName = NormalizeUtil.normalizedNameForDedup(name);
@@ -227,6 +240,9 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. no-op 단락 이전 — 시도 자체가 write.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
+
         String newDisplay = NormalizeUtil.normalizeFileName(newName);
         String newNormalized = NormalizeUtil.normalizedNameForDedup(newName);
 
@@ -289,6 +305,10 @@ public class FolderMutationService {
 
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. same-scope 가드가 dst==src를 보장하므로
+        // target.scope 기준 1회 호출이면 newParent도 동일하게 차단된다.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         UUID currentParent = target.getParentId();
         if (java.util.Objects.equals(currentParent, newParentId)) {
@@ -361,6 +381,9 @@ public class FolderMutationService {
 
         Folder root = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. BFS/cascade 이전.
+        teamArchiveGuard.assertNotArchived(root.getScopeType(), root.getScopeId());
 
         // BFS frontier expansion: root → 후손 ids 수집. visited Set은 데이터 corruption 방어.
         // root 자체는 별도 처리(originalParentId 보존 + entity 단 update + saveAndFlush)이므로
@@ -436,6 +459,10 @@ public class FolderMutationService {
 
         Folder target = folderRepository.lockByIdAndDeletedAtIsNotNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("trashed folder not found: " + folderId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. soft-deleted row의 scope_type/scope_id는
+        // V13 NOT NULL 제약으로 preserve되므로 target.scope로 그대로 검증.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         UUID originalParentSnapshot = target.getOriginalParentId();
         UUID restoreParentId = originalParentSnapshot != null
