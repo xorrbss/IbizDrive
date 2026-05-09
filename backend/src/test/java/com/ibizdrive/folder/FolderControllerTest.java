@@ -58,7 +58,7 @@ class FolderControllerTest {
     void setUp() {
         service = mock(FolderMutationService.class);
         queryService = mock(FolderQueryService.class);
-        controller = new FolderController(service, queryService);
+        controller = new FolderController(service, queryService, mock(com.ibizdrive.folder.MovePreviewService.class));
 
         User u = new User(
             ACTOR, "admin@example.com", "Admin", "{bcrypt}$2a$12$dummy",

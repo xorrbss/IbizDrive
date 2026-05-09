@@ -54,7 +54,7 @@ class FileControllerTest {
     void setUp() {
         service = mock(FileMutationService.class);
         queryService = mock(FileQueryService.class);
-        controller = new FileController(service, queryService);
+        controller = new FileController(service, queryService, mock(com.ibizdrive.folder.MovePreviewService.class));
 
         User u = new User(
             ACTOR, "user@example.com", "User", "{bcrypt}$2a$12$dummy",

@@ -7,6 +7,8 @@ import com.ibizdrive.folder.dto.FolderDto;
 import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
 import com.ibizdrive.folder.dto.MoveFolderRequest;
+import com.ibizdrive.folder.dto.MovePreviewRequest;
+import com.ibizdrive.folder.dto.MovePreviewResponse;
 import com.ibizdrive.folder.dto.RenameFolderRequest;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
@@ -72,11 +74,14 @@ public class FolderController {
 
     private final FolderMutationService folderMutationService;
     private final FolderQueryService folderQueryService;
+    private final MovePreviewService movePreviewService;
 
     public FolderController(FolderMutationService folderMutationService,
-                            FolderQueryService folderQueryService) {
+                            FolderQueryService folderQueryService,
+                            MovePreviewService movePreviewService) {
         this.folderMutationService = folderMutationService;
         this.folderQueryService = folderQueryService;
+        this.movePreviewService = movePreviewService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -245,5 +250,26 @@ public class FolderController {
         String newName = body != null ? body.name() : null;
         Folder restored = folderMutationService.restore(id, principal.getUser().getId(), newName);
         return ResponseEntity.ok(Map.of("folder", FolderDto.from(restored)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // POST /api/folders/{id}/move/preview
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * spec §5.6 — cross-workspace move 다이얼로그 진입 시 영향 미리보기 (idempotent).
+     *
+     * <p>SpEL 가드: source 폴더 {@code EDIT+SHARE} (share 정리 동반).
+     */
+    @PostMapping("/{id}/move/preview")
+    @PreAuthorize("hasPermission(#id, 'folder', 'EDIT') and hasPermission(#id, 'folder', 'SHARE')")
+    public ResponseEntity<MovePreviewResponse> movePreview(
+        @PathVariable("id") UUID id,
+        @RequestBody @Valid MovePreviewRequest req,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        return ResponseEntity.ok(
+            movePreviewService.previewFolder(id, req.destinationFolderId(), principal.getUser().getId())
+        );
     }
 }

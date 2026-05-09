@@ -4,6 +4,9 @@ import com.ibizdrive.common.dto.RestoreRequest;
 import com.ibizdrive.file.dto.FileDto;
 import com.ibizdrive.file.dto.MoveFileRequest;
 import com.ibizdrive.file.dto.RenameFileRequest;
+import com.ibizdrive.folder.MovePreviewService;
+import com.ibizdrive.folder.dto.MovePreviewRequest;
+import com.ibizdrive.folder.dto.MovePreviewResponse;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -59,10 +62,14 @@ public class FileController {
 
     private final FileMutationService fileMutationService;
     private final FileQueryService fileQueryService;
+    private final MovePreviewService movePreviewService;
 
-    public FileController(FileMutationService fileMutationService, FileQueryService fileQueryService) {
+    public FileController(FileMutationService fileMutationService,
+                          FileQueryService fileQueryService,
+                          MovePreviewService movePreviewService) {
         this.fileMutationService = fileMutationService;
         this.fileQueryService = fileQueryService;
+        this.movePreviewService = movePreviewService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -156,5 +163,26 @@ public class FileController {
         String newName = body != null ? body.name() : null;
         FileItem restored = fileMutationService.restore(id, principal.getUser().getId(), newName);
         return ResponseEntity.ok(Map.of("file", FileDto.from(restored)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // POST /api/files/{id}/move/preview
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * spec §5.6 — file 단건 cross-workspace move 미리보기.
+     *
+     * <p>SpEL 가드: source 파일 {@code EDIT+SHARE}.
+     */
+    @PostMapping("/{id}/move/preview")
+    @PreAuthorize("hasPermission(#id, 'file', 'EDIT') and hasPermission(#id, 'file', 'SHARE')")
+    public ResponseEntity<MovePreviewResponse> movePreview(
+        @PathVariable("id") UUID id,
+        @RequestBody @Valid MovePreviewRequest req,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        return ResponseEntity.ok(
+            movePreviewService.previewFile(id, req.destinationFolderId(), principal.getUser().getId())
+        );
     }
 }
