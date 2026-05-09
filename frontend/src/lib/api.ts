@@ -29,6 +29,7 @@ import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
 import type { AdminDashboardSummaryResponse } from '@/types/admin'
 import type { WorkspaceMeResponse } from '@/types/workspace'
+import { normalizeFileName } from '@/lib/normalize'
 
 export const api = {
   /**
@@ -157,6 +158,41 @@ export const api = {
       updatedBy: it.updatedBy ?? '',
       parentId: it.parentId ?? folderId,
     }))
+  },
+
+  /**
+   * Plan B 사이드바 트리 lazy children — folder-only.
+   * GET /api/folders/{id}/items 호출 후 type='folder'만 필터링.
+   * `slug`는 `normalizeFileName(name)`으로 생성 — 기존 buildCanonicalPath 동치.
+   */
+  async getFolderChildren(parentId: string): Promise<{
+    id: string
+    name: string
+    slug: string
+    parentId: string
+  }[]> {
+    const url = `/api/folders/${encodeURIComponent(parentId)}/items?sort=NAME&dir=ASC`
+    const res = await fetch(url, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(`getFolderChildren failed: ${res.status}`) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const body = (await res.json()) as {
+      items: Array<{ id: string; type: 'folder' | 'file'; name: string }>
+    }
+    return body.items
+      .filter((it) => it.type === 'folder')
+      .map((it) => ({
+        id: it.id,
+        name: it.name,
+        slug: normalizeFileName(it.name),
+        parentId,
+      }))
   },
 
   /**
