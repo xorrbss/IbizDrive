@@ -93,27 +93,32 @@ public class FolderMutationService {
     // ──────────────────────────────────────────────────────────────────
 
     /**
-     * 새 폴더 생성. {@code parentId == null}이면 root 폴더.
+     * 새 child 폴더 생성. parent의 {@code (scope_type, scope_id)}를 그대로 상속한다 (spec §1.2 invariant).
      *
-     * @throws IllegalArgumentException name/owner/auditLevel 검증 실패
+     * <p><b>Root 폴더 생성 차단</b>: 본 public API는 {@code parentId == null}을 거부한다 — workspace
+     * lifecycle (Task 16 team root, Task 20 department root)이 root 폴더를 생성하는 유일한 경로.
+     * 이 invariant는 "모든 폴더는 정확히 하나의 워크스페이스에 속한다"는 §1.2 보장의 1차 가드.
+     *
+     * @throws IllegalArgumentException name/owner/auditLevel 검증 실패, 또는 {@code parentId == null}
      * @throws FolderNotFoundException  parentId가 활성 폴더가 아님
      * @throws FolderNameConflictException 동일 부모 내 같은 normalized_name 활성 폴더 존재
      */
     public Folder create(UUID parentId, String name, UUID ownerId, String auditLevel, UUID actorId) {
+        if (parentId == null) {
+            throw new IllegalArgumentException(
+                "parent_id required — root folders are created by workspace lifecycle only (spec §1.3)");
+        }
         if (name == null) throw new IllegalArgumentException("name is required");
         if (ownerId == null) throw new IllegalArgumentException("ownerId is required");
         if (auditLevel == null || !ALLOWED_AUDIT_LEVELS.contains(auditLevel)) {
             throw new IllegalArgumentException("auditLevel must be one of: " + ALLOWED_AUDIT_LEVELS);
         }
 
-        // parent가 활성 상태인지 확인 — soft-deleted/존재하지 않는 부모 아래 생성 차단.
-        // 잠금까지는 필요 없음 (parent 메타데이터 변경이 아닌 자식 INSERT). DB FK가 최종 가드.
-        // V13 scope_type/scope_id 상속을 위해 parent 객체 캡처.
-        Folder parent = null;
-        if (parentId != null) {
-            parent = folderRepository.findByIdAndDeletedAtIsNull(parentId)
-                .orElseThrow(() -> new FolderNotFoundException("parent folder not found: " + parentId));
-        }
+        // parent가 활성 상태인지 확인 + scope 상속을 위해 entity를 가져온다 — soft-deleted/존재하지
+        // 않는 부모 아래 생성 차단. 잠금까지는 필요 없음 (parent 메타데이터 변경이 아닌 자식 INSERT).
+        // DB FK가 최종 가드.
+        Folder parent = folderRepository.findByIdAndDeletedAtIsNull(parentId)
+            .orElseThrow(() -> new FolderNotFoundException("parent folder not found: " + parentId));
 
         String displayName = NormalizeUtil.normalizeFileName(name);
         String normalizedName = NormalizeUtil.normalizedNameForDedup(name);
@@ -131,14 +136,9 @@ public class FolderMutationService {
         folder.setSlug(normalizedName);            // MVP — slug = normalized_name (별도 정책 도입 시 분리)
         folder.setOwnerId(ownerId);
         folder.setAuditLevel(auditLevel);
-        // V13 scope: child folder는 parent의 scope 상속, ad-hoc root는 transitional default 부여.
-        // TODO(team-centric-pivot): Plan A spec §1.3대로 workspace 생성 시 root를 묶는 흐름이 도입되면
-        //   ad-hoc root 분기는 제거 + 외부 caller가 scope를 명시하도록 시그니처 확장한다.
-        if (parent != null) {
-            folder.assignScope(parent.getScopeType(), parent.getScopeId());
-        } else {
-            folder.assignScope(ScopeType.DEPARTMENT, UUID.randomUUID());
-        }
+        // spec §1.2 invariant: child는 parent의 scope를 그대로 상속. assignScope는 V13 NOT NULL 제약과
+        // 일치하는 non-null 검증을 entity 레벨에서 수행.
+        folder.assignScope(parent.getScopeType(), parent.getScopeId());
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         folder.setCreatedAt(now);
         folder.setUpdatedAt(now);
@@ -152,13 +152,15 @@ public class FolderMutationService {
                 "folder name conflict at insert: " + normalizedName, ex);
         }
 
-        // root 폴더는 parentId=null — Map.of 가 null 값을 거부하므로 LinkedHashMap 사용.
+        // child-only 경로 — parentId는 항상 non-null이지만 LinkedHashMap 유지 (key 순서 보존).
         Map<String, Object> afterState = new LinkedHashMap<>();
         afterState.put("name", displayName);
         afterState.put("normalizedName", normalizedName);
         afterState.put("parentId", parentId);
         afterState.put("ownerId", ownerId);
         afterState.put("auditLevel", auditLevel);
+        afterState.put("scopeType", saved.getScopeType().dbValue());
+        afterState.put("scopeId", saved.getScopeId());
         emitAudit(AuditEventType.FOLDER_CREATED, saved.getId(), actorId, null, afterState);
         return saved;
     }
