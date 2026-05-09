@@ -167,10 +167,6 @@ public class Team {
         return description;
     }
 
-    public void setDescription(String description) {
-        this.description = description;
-    }
-
     public Visibility getVisibility() {
         return Visibility.fromDbValue(visibilityRaw);
     }
@@ -257,37 +253,5 @@ public class Team {
             throw new IllegalStateException("rootFolderId already set: " + this.rootFolderId);
         }
         this.rootFolderId = rootFolderId;
-    }
-
-    /**
-     * archive (soft). idempotent — 이미 archive된 경우 최초 archive 시점/actor 보존.
-     */
-    public void archive(UUID actor, OffsetDateTime at) {
-        if (actor == null) {
-            throw new IllegalArgumentException("actor must not be null");
-        }
-        if (at == null) {
-            throw new IllegalArgumentException("at must not be null");
-        }
-        if (this.archivedAt == null) {
-            this.archivedAt = at;
-            this.archivedBy = actor;
-        }
-    }
-
-    /**
-     * archive 해제. idempotent.
-     */
-    public void unarchive() {
-        this.archivedAt = null;
-        this.archivedBy = null;
-    }
-
-    /** service/listener가 mutation 후 갱신. */
-    public void touchUpdatedAt(OffsetDateTime at) {
-        if (at == null) {
-            throw new IllegalArgumentException("at must not be null");
-        }
-        this.updatedAt = at;
     }
 }
