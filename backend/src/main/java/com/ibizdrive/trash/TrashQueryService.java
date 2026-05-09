@@ -4,10 +4,13 @@ import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.permission.PermissionService;
+import com.ibizdrive.permission.WorkspaceMembershipResolver;
 import com.ibizdrive.user.Role;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,15 +21,31 @@ import java.util.List;
 import java.util.UUID;
 
 /**
- * A8.1 — {@code GET /api/trash} list 트랙 (docs/02 §7.11, ADR #32).
+ * A8.1 + Plan E T2 — {@code GET /api/trash} list 트랙 (docs/02 §7.11, ADR #32, spec §3.1/§5.1).
  *
  * <p><b>책임</b>:
  * <ul>
- *   <li>cursor 파싱 + per-source page query (file / folder / both)</li>
+ *   <li>workspace 멤버십 fast-fail 가드 (Plan E T2) — non-member ⇒
+ *       {@link AccessDeniedException} 401/403 (GlobalExceptionHandler 매핑).
+ *       시스템 ROLE.ADMIN은 bypass (spec §3 권한 평가 1순위).</li>
+ *   <li>cursor 파싱 + per-source scope-filtered page query (file / folder / both)</li>
  *   <li>type=null 케이스 in-memory merge sort</li>
- *   <li>per-row {@link Permission#DELETE} 후처리 필터 — actor의 ROLE 또는 resource grant로 평가</li>
+ *   <li>per-row {@link Permission#DELETE} 후처리 필터 — actor의 ROLE 또는 resource grant로 평가
+ *       (Plan A 이후 {@link PermissionResolver}가 내부에서 workspace membership step을 자동 적용,
+ *       TEAM MEMBER+ → DELETE 묵시 통과)</li>
  *   <li>nextCursor 계산</li>
  * </ul>
+ *
+ * <p><b>scope_type wire 계약</b>: T1 repo {@code findTrashedPageByScope}는 {@code scope_type}을
+ * lower-case 문자열({@code "department"}/{@code "team"})로 비교한다. {@link ScopeType} enum을
+ * 직접 전달하면 {@code name()} 대문자가 들어가 silent 0-row 매칭이 발생하므로 반드시
+ * {@link ScopeType#dbValue()}를 호출해 변환한다.
+ *
+ * <p><b>cursor null invariant</b>: 본 service는 {@code cursorAt}/{@code cursorId}를 항상 함께
+ * NULL이거나 함께 NOT NULL이도록 유지한다. 한쪽만 NULL인 상태가 repo로 전달되면 native query의
+ * cursor 술부가 NULL OR 가지로 short-circuit되어 의도치 않게 첫 페이지가 반환될 수 있다 — 본
+ * service는 {@link TrashCursor#decode}가 record 1쌍을 반환하도록 보장하므로 단일 출처에서 invariant
+ * 유지가 자연스럽다.
  *
  * <p><b>권한 평가 정책 (ADR #32)</b>: DB-level join은 MVP overkill — trash 데이터셋이 소규모(30일
  * grace × 평균 트래시율, 수만건 미만 가정)이므로 in-memory 후처리. 큰 dataset 시 별도 ADR.
@@ -48,26 +67,41 @@ public class TrashQueryService {
     private final FolderRepository folderRepository;
     private final PermissionService permissionService;
     private final PermissionResolver permissionResolver;
+    private final WorkspaceMembershipResolver membershipResolver;
 
     public TrashQueryService(FileRepository fileRepository,
                              FolderRepository folderRepository,
                              PermissionService permissionService,
-                             PermissionResolver permissionResolver) {
+                             PermissionResolver permissionResolver,
+                             WorkspaceMembershipResolver membershipResolver) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.permissionService = permissionService;
         this.permissionResolver = permissionResolver;
+        this.membershipResolver = membershipResolver;
     }
 
     /**
      * @param actorId      현재 인증된 사용자
-     * @param role         actor의 ROLE — ADMIN/AUDITOR ROLE 경로 평가에 사용
+     * @param role         actor의 ROLE — ADMIN이면 workspace 멤버십 bypass + 모든 row DELETE 통과
+     * @param scopeType    {@link ScopeType#DEPARTMENT} 또는 {@link ScopeType#TEAM} (필수)
+     * @param scopeId      workspace id (필수)
      * @param cursorWire   opaque base64 cursor (null = 첫 페이지)
      * @param type         null = file + folder 양쪽
      * @param limitOpt     null이면 {@link #DEFAULT_LIMIT}, 100 초과 시 100으로 cap
+     * @throws AccessDeniedException ADMIN이 아닌 사용자가 비멤버 workspace를 요청한 경우
      */
     @Transactional(readOnly = true)
-    public TrashPage list(UUID actorId, Role role, String cursorWire, TrashItemType type, Integer limitOpt) {
+    public TrashPage list(UUID actorId, Role role,
+                          ScopeType scopeType, UUID scopeId,
+                          String cursorWire, TrashItemType type, Integer limitOpt) {
+        // (1) workspace 멤버십 fast-fail — ADMIN bypass + non-member ⇒ AccessDeniedException.
+        if (!isWorkspaceMember(actorId, role, scopeType, scopeId)) {
+            throw new AccessDeniedException(
+                "User is not a member of " + scopeType.dbValue() + ":" + scopeId
+            );
+        }
+
         TrashCursor cursor = TrashCursor.decode(cursorWire);
         Instant cursorAt = cursor != null ? cursor.deletedAt() : null;
         UUID cursorId = cursor != null ? cursor.id() : null;
@@ -75,10 +109,14 @@ public class TrashQueryService {
 
         // page query — over-fetch 1 to detect hasMore
         int fetchSize = limit + 1;
+        // T1 repo wire 계약 — ScopeType.name() 대문자가 들어가지 않도록 dbValue() 사용 (Javadoc 참조).
+        String scopeTypeRaw = scopeType.dbValue();
 
         List<TrashItemDto> merged = new ArrayList<>(fetchSize * 2);
         if (type == null || type == TrashItemType.FILE) {
-            for (FileItem f : fileRepository.findTrashedPage(cursorAt, cursorId, fetchSize)) {
+            for (FileItem f : fileRepository.findTrashedPageByScope(
+                scopeTypeRaw, scopeId, cursorAt, cursorId, fetchSize
+            )) {
                 merged.add(new TrashItemDto(
                     f.getId(), f.getName(), TrashItemType.FILE,
                     f.getDeletedAt(), f.getPurgeAfter(), f.getOriginalFolderId()
@@ -86,7 +124,9 @@ public class TrashQueryService {
             }
         }
         if (type == null || type == TrashItemType.FOLDER) {
-            for (Folder fd : folderRepository.findTrashedPage(cursorAt, cursorId, fetchSize)) {
+            for (Folder fd : folderRepository.findTrashedPageByScope(
+                scopeTypeRaw, scopeId, cursorAt, cursorId, fetchSize
+            )) {
                 merged.add(new TrashItemDto(
                     fd.getId(), fd.getName(), TrashItemType.FOLDER,
                     fd.getDeletedAt(), fd.getPurgeAfter(), fd.getOriginalParentId()
@@ -120,12 +160,24 @@ public class TrashQueryService {
         return new TrashPage(List.copyOf(page), nextCursor);
     }
 
+    /**
+     * 시스템 ROLE.ADMIN은 모든 workspace를 bypass 가능 (spec §3 권한 평가 1순위 — 시스템 ROLE 검사).
+     * 그 외 사용자는 {@link WorkspaceMembershipResolver}가 비-empty 권한 집합을 반환하면 멤버로 간주.
+     */
+    private boolean isWorkspaceMember(UUID actorId, Role role, ScopeType scopeType, UUID scopeId) {
+        if (role == Role.ADMIN) {
+            return true;
+        }
+        return !membershipResolver.resolve(actorId, scopeType, scopeId).isEmpty();
+    }
+
     private boolean canDelete(UUID actorId, Role role, UUID resourceId, TrashItemType type) {
         // 1) ROLE 경로 — ADMIN은 모든 권한, MEMBER는 DELETE 미보유 (preset에서만)
         if (permissionService.effectivePermissions(role).contains(Permission.DELETE)) {
             return true;
         }
-        // 2) Resource-level grant — file/folder에 직접 부여된 권한
+        // 2) Resource-level grant — file/folder에 직접 부여된 권한 (Plan A 이후 PermissionResolver
+        //    내부에 workspace membership step이 추가되어 TEAM MEMBER+ → DELETE 묵시 통과 자동 반영).
         return permissionResolver.isGranted(actorId, type.wire(), resourceId, Permission.DELETE);
     }
 
