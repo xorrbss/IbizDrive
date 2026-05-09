@@ -5,7 +5,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
 import org.springframework.boot.test.autoconfigure.orm.jpa.DataJpaTest;
 import org.springframework.dao.DataIntegrityViolationException;
-import org.springframework.dao.DuplicateKeyException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -15,8 +14,10 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.util.UUID;
 
-import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * V12__teams.sql 스키마 + 제약 검증 — team-centric pivot Plan A Task 1.
@@ -63,7 +64,7 @@ class V12MigrationIT {
             Integer.class);
         // id, name, normalized_name, description, visibility, root_folder_id,
         // created_by, archived_at, archived_by, created_at, updated_at = 11
-        assertThat(cols).isEqualTo(11);
+        assertEquals(11, cols, "teams 테이블은 11개 컬럼을 가져야 함");
     }
 
     @Test
@@ -74,7 +75,7 @@ class V12MigrationIT {
             "WHERE table_schema='public' AND table_name='team_memberships' " +
             "AND constraint_name = 'team_memberships_pkey'",
             Integer.class);
-        assertThat(pkCols).isEqualTo(2);
+        assertEquals(2, pkCols, "team_memberships PK는 (team_id, user_id) 2개 컬럼이어야 함");
     }
 
     // -------------------- partial unique index --------------------
@@ -84,10 +85,14 @@ class V12MigrationIT {
         UUID owner = insertUser("v12-mig-1@test", "v12-mig-1");
         insertActiveTeam("Alpha", "alpha", owner);
 
-        assertThatThrownBy(() -> insertActiveTeam("Alpha", "alpha", owner))
-            // PostgreSQL이 인덱스 이름을 메시지에 포함 — Spring은 DuplicateKeyException으로 매핑.
-            .isInstanceOfAny(DuplicateKeyException.class, DataIntegrityViolationException.class)
-            .hasMessageContaining("idx_teams_name_active");
+        // PostgreSQL이 인덱스 이름을 메시지에 포함 — Spring은 DuplicateKeyException(DataIntegrityViolationException
+        // 하위)으로 매핑. 상위 타입으로 받아 두 케이스 모두 커버.
+        DataIntegrityViolationException ex = assertThrows(
+            DataIntegrityViolationException.class,
+            () -> insertActiveTeam("Alpha", "alpha", owner),
+            "동일 active normalized_name은 idx_teams_name_active로 차단되어야 함");
+        assertTrue(ex.getMessage().contains("idx_teams_name_active"),
+            "예외 메시지에 인덱스 이름이 포함되어야 함: " + ex.getMessage());
     }
 
     @Test
@@ -99,7 +104,7 @@ class V12MigrationIT {
 
         // 동일 normalized_name 재사용 — block되지 않아야 함.
         UUID second = insertActiveTeam("Beta", "beta", owner);
-        assertThat(second).isNotEqualTo(first);
+        assertNotEquals(first, second, "archive 후 동일 normalized_name 재사용은 새 row를 생성해야 함");
     }
 
     // ====================== helpers ======================
