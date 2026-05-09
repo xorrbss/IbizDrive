@@ -29,6 +29,7 @@ import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
 import type { AdminDashboardSummaryResponse } from '@/types/admin'
 import type { WorkspaceMeResponse } from '@/types/workspace'
+import type { TeamCreateRequest, TeamResponse } from '@/types/team'
 import { normalizeFileName } from '@/lib/normalize'
 
 export const api = {
@@ -107,6 +108,29 @@ export const api = {
       department: body.department ?? null,
       teams: body.teams ?? [],
     }
+  },
+
+  /**
+   * Plan B Task 25 — 팀 생성 ({@code POST /api/teams}).
+   * backend {@code TeamController.create} → {@code TeamResponse}.
+   * CSRF double-submit — mutation endpoints 공통 정책 (createFolder 참조).
+   */
+  async createTeam(req: TeamCreateRequest): Promise<TeamResponse> {
+    const csrf = readCookie('XSRF-TOKEN')
+    const res = await fetch('/api/teams', {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
+      },
+      body: JSON.stringify(req),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `createTeam failed: ${res.status}`)
+    }
+    return (await res.json()) as TeamResponse
   },
 
   /**
