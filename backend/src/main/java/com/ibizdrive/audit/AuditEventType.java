@@ -17,12 +17,13 @@ import java.util.stream.Stream;
  */
 public enum AuditEventType {
 
-    // 파일 (8)
+    // 파일 (9)
     FILE_VIEWED("file.viewed"),
     FILE_DOWNLOADED("file.downloaded"),
     FILE_UPLOADED("file.uploaded"),
     FILE_RENAMED("file.renamed"),
     FILE_MOVED("file.moved"),
+    FILE_MOVED_CROSS_WORKSPACE("file.moved.cross_workspace"),
     FILE_DELETED("file.deleted"),
     FILE_RESTORED("file.restored"),
     FILE_PURGED("file.purged"),
@@ -32,10 +33,11 @@ public enum AuditEventType {
     VERSION_RESTORED("version.restored"),
     VERSION_DOWNLOADED("version.downloaded"),
 
-    // 폴더 (7)
+    // 폴더 (9)
     FOLDER_CREATED("folder.created"),
     FOLDER_RENAMED("folder.renamed"),
     FOLDER_MOVED("folder.moved"),
+    FOLDER_MOVED_CROSS_WORKSPACE("folder.moved.cross_workspace"),
     FOLDER_DELETED("folder.deleted"),
     FOLDER_RESTORED("folder.restored"),
     FOLDER_PURGED("folder.purged"),
