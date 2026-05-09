@@ -3,10 +3,12 @@ package com.ibizdrive.share;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -122,5 +124,34 @@ public interface ShareRepository extends JpaRepository<Share, UUID> {
         @Param("cursorCreatedAt") Instant cursorCreatedAt,
         @Param("cursorId") UUID cursorId,
         @Param("limit") int limit
+    );
+
+    /**
+     * Plan D — subtree resource source인 active share 일괄 조회. preview/transaction 진입점.
+     *
+     * <p>{@code share.permission_id → permissions.resource_id} 조인. resourceIds 비어있으면 빈 리스트.
+     */
+    @Query(value = """
+        SELECT s.* FROM shares s
+        INNER JOIN permissions p ON p.id = s.permission_id
+        WHERE s.revoked_at IS NULL
+          AND p.resource_type = :resourceType
+          AND p.resource_id IN (:resourceIds)
+        """, nativeQuery = true)
+    List<Share> findActiveByResourceIn(
+        @Param("resourceType") String resourceType,
+        @Param("resourceIds") Collection<UUID> resourceIds
+    );
+
+    /**
+     * Plan D — share id 집합 일괄 revoke (revoked_at, revoked_by SET). 트랜잭션 내 호출.
+     */
+    @Modifying
+    @Query("UPDATE Share s SET s.revokedAt = :revokedAt, s.revokedBy = :revokedBy "
+         + "WHERE s.id IN (:ids) AND s.revokedAt IS NULL")
+    int revokeByIds(
+        @Param("ids") Collection<UUID> ids,
+        @Param("revokedBy") UUID revokedBy,
+        @Param("revokedAt") Instant revokedAt
     );
 }
