@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-09 — 📐 format-bytes-tb-nan-guard 트랙 종료 (formatBytes TB 단위 + NaN/Infinity 폴백)
+
+### 범위
+
+`frontend/src/lib/formatBytes.ts` 두 가지 작은 회귀 보강:
+1. **TB 단위 추가** — 1024 GB 이상이 "1500.0 GB"가 아닌 "1.5 TB"로 표기. v1.x storage.usedBytes 증가 대비.
+2. **NaN/Infinity 폴백** — 비정상 입력 시 `'-'` 반환 (`Number.isFinite` 가드). 일시적 nullable API 반환 시 "NaN GB" 표기 회귀 차단.
+
+### 변경 핵심
+
+- `formatBytes.ts` — `Number.isFinite(bytes)` 가드 + TB 분기 (1024 GB 이상은 `(bytes / 1024^4).toFixed(1) + ' TB'`).
+- `formatBytes.test.ts` — 회귀 가드 2 그룹 추가 (TB 3 케이스 + NaN/Infinity 3 케이스), 기존 GB 그룹에 1024 GB - 1 byte 경계 1 케이스 보강.
+
+backend 무변경, docs 무변경. utility 단독 (DashboardSummary/StorageOverviewCards/StorageBar/AdminTrashAllPage 모두 자동 혜택).
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run formatBytes` 6/6 PASS (기존 4 그룹 + 신규 2 그룹).
+
+### 결정/편차
+
+- **음수 무처리** — backend 자동 계산이라 음수 발생 가능성 ↓. `Number.isFinite`만 가드, 음수는 그대로 통과 (`'-N B'` 표기 가능). 발생 시 별도 트랙.
+- **TB 이상 단위 미도입** — PB 등은 v1.x 운영 환경에서 도달 가능성 ↓. KISS, 도달 시 별도 트랙.
+- **`'-'` 폴백 텍스트** — `'?'`, `'N/A'` 후보 중 `-`가 사내 베타 운영 화면에 가장 자연스러움 (admin/trash size 컬럼이 이미 `null`을 `-`로 표기).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 권한 grant 다이얼로그 / quota / 휴지통 보존 정책 mutation UI / 2인 승인 framework 실 구현 / progress streaming.
+- formatBytes utility는 사내 베타 운영 KPI 표시의 core라 회귀 가드 보강이 운영 신뢰도에 직접 기여.
+
+---
+
 ## 2026-05-09 — 📖 docs-multi-session-runbook 트랙 종료 (사내 베타 운영 런북에 multi-session 자율 작업 트러블슈팅 §15.7 추가)
 
 ### 범위
