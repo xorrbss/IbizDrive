@@ -101,6 +101,16 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
                                                              @Param("selfId") UUID selfId);
 
     /**
+     * Plan D — MovePreviewService에서 subtree folder ids에 속한 활성 파일 id 일괄 조회.
+     * BFS로 수집된 subtree folder id 집합을 받아 각 폴더의 활성 파일 id를 반환.
+     *
+     * <p>{@code folderIds}가 비어있으면 service 레이어에서 호출 자체를 skip하므로
+     * empty IN(...) 문법 오류가 발생하지 않는다 (MovePreviewService 책임 분리).
+     */
+    @Query("SELECT f.id FROM FileItem f WHERE f.folderId IN :folderIds AND f.deletedAt IS NULL")
+    List<UUID> findActiveIdsByFolderIdIn(@Param("folderIds") Collection<UUID> folderIds);
+
+    /**
      * 폴더 cascade soft-delete의 file 분기 (A6.1) — folder 트리가 삭제될 때 트리에 속한 활성
      * 파일도 동일 트랜잭션에서 일괄 soft-delete.
      *
