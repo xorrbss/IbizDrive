@@ -3,6 +3,7 @@ package com.ibizdrive.common.error;
 import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileRestoreConflictException;
+import com.ibizdrive.folder.CrossScopeMoveException;
 import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.permission.Permission;
@@ -136,14 +137,14 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Plan D — cross-workspace move 가드 위반 ({@link com.ibizdrive.folder.CrossScopeMoveException}).
+     * Plan D — cross-workspace move 가드 위반 ({@link CrossScopeMoveException}).
      *
      * <p>spec §5.6: same-scope만 허용하는 default 경로에서 cross 시도는 409 + {@code ERR_CROSS_SCOPE_MOVE}.
      * 명시적 cross-workspace move ({@code allowCrossScope: true}) 분기는 본 envelope를 발생시키지 않는다 —
-     * service가 아예 다른 진입점({@link com.ibizdrive.folder.CrossWorkspaceMoveService}).
+     * service가 아예 다른 진입점({@code CrossWorkspaceMoveService} — Plan D Task 11에서 도입).
      */
-    @ExceptionHandler(com.ibizdrive.folder.CrossScopeMoveException.class)
-    public ResponseEntity<ApiError> handleCrossScopeMove(com.ibizdrive.folder.CrossScopeMoveException ex) {
+    @ExceptionHandler(CrossScopeMoveException.class)
+    public ResponseEntity<ApiError> handleCrossScopeMove(CrossScopeMoveException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("ERR_CROSS_SCOPE_MOVE",
                 "다른 workspace로 이동하려면 컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요", null));
