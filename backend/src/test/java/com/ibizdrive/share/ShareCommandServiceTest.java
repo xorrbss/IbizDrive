@@ -10,6 +10,8 @@ import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
+import com.ibizdrive.team.Team;
+import com.ibizdrive.team.TeamRepository;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -70,6 +72,8 @@ class ShareCommandServiceTest {
     UserRepository userRepository;
     @Mock
     DepartmentRepository departmentRepository;
+    @Mock
+    TeamRepository teamRepository;
     @Mock
     ApplicationEventPublisher eventPublisher;
 
@@ -270,6 +274,34 @@ class ShareCommandServiceTest {
         assertThat(result.get(0).subjectName()).isEqualTo("Engineering");
         // user repository는 dept share에서 호출되지 않음.
         verify(userRepository, never()).findById(any());
+    }
+
+    @Test
+    void createShares_teamSubject_resolvesTeamName() {
+        // A16 — subject_type='team' 분기는 teamRepository.findById로 team name resolve.
+        UUID teamId = UUID.randomUUID();
+        UUID grantId = UUID.randomUUID();
+        PermissionRow grant = grantRow(grantId, "team", teamId, "read");
+        when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
+        when(permissionService.grantPermission(eq("file"), eq(fileId), eq("team"),
+            eq(teamId), any(), any(), eq(actorId))).thenReturn(grant);
+        // nested stubbing 회피.
+        Team teamMock = teamWithName("ProjectAlpha");
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(teamMock));
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("team", teamId)),
+            "read", null, null
+        );
+
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).subjectType()).isEqualTo("team");
+        assertThat(result.get(0).subjectName()).isEqualTo("ProjectAlpha");
+        // user/department repositories는 team share에서 호출되지 않음.
+        verify(userRepository, never()).findById(any());
+        verify(departmentRepository, never()).findById(any());
     }
 
     @Test
@@ -545,6 +577,13 @@ class ShareCommandServiceTest {
         Department d = mock(Department.class);
         when(d.getName()).thenReturn(name);
         return d;
+    }
+
+    /** A16 — Team mock with name for subjectName lookup tests. */
+    private static Team teamWithName(String name) {
+        Team t = mock(Team.class);
+        when(t.getName()).thenReturn(name);
+        return t;
     }
 
     // ── A10.3 — revokeShare ──────────────────────────────────────────────
