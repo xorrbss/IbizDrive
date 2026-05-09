@@ -4,6 +4,8 @@ import com.ibizdrive.common.error.ResourceNotFoundException;
 import com.ibizdrive.department.Department;
 import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.department.DepartmentRepository;
+import com.ibizdrive.folder.Folder;
+import com.ibizdrive.folder.FolderMutationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -21,6 +23,7 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -38,14 +41,24 @@ class AdminDepartmentServiceTest {
     private static final UUID ACTOR_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
 
     private DepartmentRepository departmentRepository;
+    private FolderMutationService folderMutationService;
     private ApplicationEventPublisher eventPublisher;
     private AdminDepartmentService service;
 
     @BeforeEach
     void setUp() {
         departmentRepository = mock(DepartmentRepository.class);
+        folderMutationService = mock(FolderMutationService.class);
         eventPublisher = mock(ApplicationEventPublisher.class);
-        service = new AdminDepartmentService(departmentRepository, eventPublisher);
+        service = new AdminDepartmentService(departmentRepository, folderMutationService, eventPublisher);
+
+        // Stub folderMutationService for create tests — prevents NullPointerException.
+        when(folderMutationService.createRootForScope(any(), any(), any(), anyString()))
+            .thenAnswer(inv -> {
+                Folder f = mock(Folder.class);
+                when(f.getId()).thenReturn(UUID.randomUUID());
+                return f;
+            });
     }
 
     // -------- list --------
