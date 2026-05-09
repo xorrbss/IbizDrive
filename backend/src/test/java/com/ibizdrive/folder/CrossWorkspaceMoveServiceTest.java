@@ -252,6 +252,50 @@ class CrossWorkspaceMoveServiceTest {
         assertThat(remaining).isZero();
     }
 
+    @Test
+    @org.springframework.transaction.annotation.Transactional
+    void subtreeSharesRevokedAndFolderReparented() {
+        UUID actor = UUID.randomUUID();
+        jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", actor, "csm14a@t", "csm14a");
+        UUID subject = UUID.randomUUID();
+        jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", subject, "csm14b@t", "csm14b");
+
+        UUID scopeA = UUID.randomUUID();
+        UUID scopeB = UUID.randomUUID();
+        UUID rootA = insertFakeRoot(actor, "department", scopeA);
+        UUID rootB = insertFakeRoot(actor, "department", scopeB);
+
+        UUID childInA = UUID.randomUUID();
+        Instant now = Instant.now();
+        jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub14', 'sub14', 'sub14', ?, 'standard', 'department', ?, ?, ?)",
+            childInA, rootA, actor, scopeA, now, now);
+
+        // Active share on childInA
+        UUID permId = UUID.randomUUID();
+        jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
+            permId, childInA, subject, actor, now);
+        UUID shareId = UUID.randomUUID();
+        jdbc.update("INSERT INTO shares(id, permission_id, shared_by, folder_id, file_id, expires_at, revoked_at, revoked_by, created_at) VALUES (?, ?, ?, ?, NULL, NULL, NULL, NULL, ?)",
+            shareId, permId, actor, childInA, now);
+
+        when(permissionResolver.resolveFor(actor, "folder", childInA))
+            .thenReturn(java.util.EnumSet.of(Permission.EDIT, Permission.SHARE));
+        when(permissionResolver.resolveFor(actor, "folder", rootB))
+            .thenReturn(java.util.EnumSet.of(Permission.UPLOAD));
+
+        service.moveFolder(childInA, rootB, actor);
+
+        // Share revoked
+        String revokedAt = jdbc.queryForObject("SELECT CAST(revoked_at AS varchar) FROM shares WHERE id = ?", String.class, shareId);
+        assertThat(revokedAt).isNotNull();
+        String revokedBy = jdbc.queryForObject("SELECT CAST(revoked_by AS varchar) FROM shares WHERE id = ?", String.class, shareId);
+        assertThat(UUID.fromString(revokedBy)).isEqualTo(actor);
+
+        // Folder reparented
+        String parent = jdbc.queryForObject("SELECT CAST(parent_id AS varchar) FROM folders WHERE id = ?", String.class, childInA);
+        assertThat(UUID.fromString(parent)).isEqualTo(rootB);
+    }
+
     // ── private helpers ──
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {

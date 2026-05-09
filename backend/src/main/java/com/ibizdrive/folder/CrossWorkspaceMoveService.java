@@ -6,11 +6,13 @@ import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionResolver;
+import com.ibizdrive.share.Share;
 import com.ibizdrive.share.ShareRepository;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Instant;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -24,7 +26,7 @@ import java.util.UUID;
  * Plan D — cross-workspace (cross-scope) 이동 서비스.
  *
  * <p>Phase 3 전체 흐름(7 steps)을 단일 {@code @Transactional}로 묶는다.
- * Tasks 11~13이 step 1~4를 구현했다:
+ * Tasks 11~14가 step 1~6을 구현했다:
  * <ol>
  *   <li>source/destination 잠금 + 권한 검증 (Task 11)</li>
  *   <li>이름 충돌 검사 (Task 11)</li>
@@ -50,7 +52,6 @@ public class CrossWorkspaceMoveService {
     private final PermissionResolver permissionResolver;
     private final ApplicationEventPublisher eventPublisher;
     private final PermissionRepository permRepo;
-    @SuppressWarnings("unused") // Tasks 14~15에서 사용
     private final ShareRepository shareRepo;
 
     public CrossWorkspaceMoveService(FolderRepository folderRepo,
@@ -68,12 +69,12 @@ public class CrossWorkspaceMoveService {
     }
 
     /**
-     * Cross-workspace folder 이동 — step 1~4 구현, step 5~7은 Tasks 14~15에서 추가.
+     * Cross-workspace folder 이동 — step 1~6 구현, step 7 (invariant assert)은 Task 15에서 추가.
      *
      * @param folderId            이동할 폴더 id
      * @param destinationFolderId 목적지 폴더 id
      * @param actorId             요청 사용자 id
-     * @return 이동된 (혹은 이동 준비된) Folder entity — Tasks 14~15에서 실제 이동 후 반환으로 교체
+     * @return 이동된 Folder entity (parent_id가 destination으로 변경된 상태)
      */
     public Folder moveFolder(UUID folderId, UUID destinationFolderId, UUID actorId) {
         if (destinationFolderId == null) {
@@ -138,7 +139,26 @@ public class CrossWorkspaceMoveService {
             permRepo.deleteByResourceIn("file", subtreeFileIds);
         }
 
-        // step 5~7: Tasks 14~15에서 구현 — 컴파일 통과용 placeholder return
+        // step 5: shares revoke
+        Instant now = Instant.now();
+        List<Share> folderShares =
+            shareRepo.findActiveByResourceIn("folder", subtreeFolderIds);
+        List<Share> fileShares = subtreeFileIds.isEmpty()
+            ? Collections.emptyList()
+            : shareRepo.findActiveByResourceIn("file", subtreeFileIds);
+        List<UUID> allShareIds = new ArrayList<>();
+        for (var s : folderShares) allShareIds.add(s.getId());
+        for (var s : fileShares) allShareIds.add(s.getId());
+        if (!allShareIds.isEmpty()) {
+            shareRepo.revokeByIds(allShareIds, actorId, now);
+        }
+
+        // step 6: parent_id 변경
+        source.setParentId(destination.getId());
+        source.setUpdatedAt(now);
+        folderRepo.saveAndFlush(source);
+
+        // step 7: invariant assert — Task 15
         return source;
     }
 
