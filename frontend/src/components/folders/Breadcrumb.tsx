@@ -5,7 +5,35 @@ import { usePermission } from '@/hooks/usePermission'
 import { useShareUiStore } from '@/stores/shareUi'
 import { buildWorkspacePath, type WorkspaceLocator } from '@/lib/workspacePath'
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
+import { useWorkspaces } from '@/hooks/useWorkspaces'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
+
+interface HeadCrumb {
+  id: string
+  name: string
+  href: string
+}
+
+function useWorkspaceHeadCrumb(): HeadCrumb | null {
+  const ws = useCurrentWorkspace()
+  const { data } = useWorkspaces()
+  if (!ws) return null
+  if (ws.section === 'department' && data?.department?.id === ws.workspaceId) {
+    return {
+      id: data.department.rootFolderId,
+      name: data.department.name,
+      href: `/d/${ws.workspaceId}/${data.department.rootFolderId}`,
+    }
+  }
+  if (ws.section === 'team') {
+    const t = data?.teams.find((x) => x.id === ws.workspaceId)
+    if (t) return { id: t.rootFolderId, name: t.name, href: `/t/${ws.workspaceId}/${t.rootFolderId}` }
+  }
+  if (ws.section === 'shared') {
+    return { id: 'shared', name: '공유받음', href: '/shared' }
+  }
+  return null
+}
 
 export function Breadcrumb() {
   const { folderId, breadcrumb, isLoading } = useCurrentFolder()
@@ -14,6 +42,7 @@ export function Breadcrumb() {
   const can = usePermission(folderId)
   const openShare = useShareUiStore((s) => s.open)
   const ws = useCurrentWorkspace()
+  const headCrumb = useWorkspaceHeadCrumb()
   if (isLoading) return <BreadcrumbSkeleton />
 
   const current = breadcrumb[breadcrumb.length - 1]
@@ -27,14 +56,29 @@ export function Breadcrumb() {
       : { kind: ws.section as 'department' | 'team', workspaceId: ws.workspaceId! }
     : null
 
+  // spec §4.5 §2: workspace root는 트리 1차 노드, 이름 = workspace 이름.
+  // headCrumb이 있으면 breadcrumb의 첫 가상 root('내 드라이브')를 workspace 이름으로 교체.
+  // headCrumb이 null이면 (비workspace 라우트) 기존 동작 유지.
+  const displayCrumbs = headCrumb
+    ? [
+        { id: headCrumb.id, name: headCrumb.name, slugPath: [] as string[], _href: headCrumb.href },
+        ...breadcrumb.slice(1).map((c) => ({
+          ...c,
+          _href: loc ? buildWorkspacePath(loc, c.id, c.slugPath) : '#',
+        })),
+      ]
+    : breadcrumb.map((c) => ({
+        ...c,
+        _href: loc ? buildWorkspacePath(loc, c.id, c.slugPath) : '#',
+      }))
+
   return (
     <nav
       aria-label="Breadcrumb"
       className="flex items-center gap-0.5 flex-wrap px-4 pt-2.5 pb-1.5 text-[13.5px] text-fg-muted"
     >
-      {breadcrumb.map((c, i) => {
-        const href = loc ? buildWorkspacePath(loc, c.id, c.slugPath) : '#'
-        const last = i === breadcrumb.length - 1
+      {displayCrumbs.map((c, i) => {
+        const last = i === displayCrumbs.length - 1
         return (
           <span key={c.id} className="inline-flex items-center">
             {i > 0 && (
@@ -47,7 +91,7 @@ export function Breadcrumb() {
                 {c.name}
               </span>
             ) : (
-              <BreadcrumbLink id={c.id} href={href} name={c.name} />
+              <BreadcrumbLink id={c.id} href={c._href} name={c.name} />
             )}
           </span>
         )
