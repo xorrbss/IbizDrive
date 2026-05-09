@@ -8,6 +8,7 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
+import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.storage.StorageClient;
@@ -133,6 +134,11 @@ public class FileUploadService {
         // 객체 key는 UUID 그대로 (ADR #5: 원본 파일명 미저장). 디렉터리 prefix는 LocalFs/S3 어댑터 책임.
         writeToStorage(storageKey, content, sizeBytes, contentType);
 
+        // V13 scope: file은 소속 folder의 scope를 그대로 상속. lock은 upload() 진입 시 이미 획득
+        // 됐으므로 first-level cache hit으로 동일 트랜잭션 내 추가 query 비용 무시 가능.
+        Folder folder = folderRepository.findByIdAndDeletedAtIsNull(folderId)
+            .orElseThrow(() -> new FolderNotFoundException("folder vanished mid-upload: " + folderId));
+
         FileItem file = new FileItem();
         file.setId(UUID.randomUUID());
         file.setFolderId(folderId);
@@ -141,6 +147,7 @@ public class FileUploadService {
         file.setOwnerId(actorId);
         file.setSizeBytes(sizeBytes);
         file.setMimeType(contentType);
+        file.assignScope(folder.getScopeType(), folder.getScopeId());
         file.setCreatedAt(now);
         file.setUpdatedAt(now);
 

@@ -108,8 +108,10 @@ public class FolderMutationService {
 
         // parent가 활성 상태인지 확인 — soft-deleted/존재하지 않는 부모 아래 생성 차단.
         // 잠금까지는 필요 없음 (parent 메타데이터 변경이 아닌 자식 INSERT). DB FK가 최종 가드.
+        // V13 scope_type/scope_id 상속을 위해 parent 객체 캡처.
+        Folder parent = null;
         if (parentId != null) {
-            folderRepository.findByIdAndDeletedAtIsNull(parentId)
+            parent = folderRepository.findByIdAndDeletedAtIsNull(parentId)
                 .orElseThrow(() -> new FolderNotFoundException("parent folder not found: " + parentId));
         }
 
@@ -129,6 +131,14 @@ public class FolderMutationService {
         folder.setSlug(normalizedName);            // MVP — slug = normalized_name (별도 정책 도입 시 분리)
         folder.setOwnerId(ownerId);
         folder.setAuditLevel(auditLevel);
+        // V13 scope: child folder는 parent의 scope 상속, ad-hoc root는 transitional default 부여.
+        // TODO(team-centric-pivot): Plan A spec §1.3대로 workspace 생성 시 root를 묶는 흐름이 도입되면
+        //   ad-hoc root 분기는 제거 + 외부 caller가 scope를 명시하도록 시그니처 확장한다.
+        if (parent != null) {
+            folder.assignScope(parent.getScopeType(), parent.getScopeId());
+        } else {
+            folder.assignScope(ScopeType.DEPARTMENT, UUID.randomUUID());
+        }
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         folder.setCreatedAt(now);
         folder.setUpdatedAt(now);
