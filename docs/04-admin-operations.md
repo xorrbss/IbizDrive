@@ -684,7 +684,7 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 **일일 점검** (사내 베타):
 
 1. `/admin/permissions?preset=expiring` (만료 임박 필터, 7일 이내) → 갱신 필요 항목 list-up.
-2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리. 잘못 부여되었거나 만료 임박 이전 즉시 회수가 필요한 경우 viewer 행의 "철회" 버튼으로 처리(admin-permission-revoke, Wave 2 T5 follow-up, 2026-05-09 — 기존 `DELETE /api/permissions/{id}` 재사용, ROLE.ADMIN 통과). grant 다이얼로그(subject/resource picker)는 v1.x deferred.
+2. 갱신은 v1.x deferred — 베타 기간엔 직접 `permissions` row UPDATE 또는 `POST /api/folders|files/{id}/share` 재부여로 처리. 잘못 부여되었거나 만료 임박 이전 즉시 회수가 필요한 경우 viewer 행의 "철회" 버튼으로 처리(admin-permission-revoke, Wave 2 T5 follow-up, 2026-05-09 — 기존 `DELETE /api/permissions/{id}` 재사용, ROLE.ADMIN 통과). 단일 자원 grant 다이얼로그는 **docs/01 §14.5 spec 작성** (2026-05-09, spec-permission-grant-dialog) — `RightPanel` 권한 탭에서 부여, 실 구현은 v1.x phase B/C/D. admin 페이지 전역 grant (resource picker)는 v2.x.
 3. cron 동작 검증:
 
    ```sql
