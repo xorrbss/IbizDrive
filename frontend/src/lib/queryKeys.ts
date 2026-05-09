@@ -200,6 +200,25 @@ export const qk = {
    * 401(미인증)도 정상 캐시값(null)으로 다룬다 — useMe가 retry false 처리.
    */
   authMe: () => [...qk.auth(), 'me'] as const,
+
+  // ── Workspaces (Plan B, spec §5.2) ──
+  workspaces: {
+    all: () => [...qk.all, 'workspaces'] as const,
+    me: () => [...qk.all, 'workspaces', 'me'] as const,
+  },
+
+  /**
+   * 사이드바 트리 lazy children — spec §4.5 §3.
+   * `scopeType` + `scopeId`까지 포함해 동일 parentId가 부서/팀 간 우연 일치(매우 드물지만)에도 캐시 분리.
+   * `parentId === rootFolderId` 인 호출이 워크스페이스 root 직속 자식 조회.
+   */
+  folderChildren: (scopeType: 'department' | 'team', scopeId: string, parentId: string) =>
+    [...qk.all, 'folders', 'children', scopeType, scopeId, parentId] as const,
+
+  // ── Teams (Plan B, spec §5.2 — POST /api/teams) ──
+  teams: {
+    all: () => [...qk.all, 'teams'] as const,
+  },
 } as const
 
 // ─── 무효화 전략 헬퍼 ──────────────────────────────────────────────────────
@@ -374,5 +393,13 @@ export const invalidations = {
    */
   afterAdminTrashChanged(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.adminTrash() })
+  },
+
+  /**
+   * 팀 생성/멤버 변경 후 무효화 — Plan B Task 3.
+   * - workspaces.me() (사이드바가 새 팀을 즉시 표시)
+   */
+  afterTeamChanged(qc: QueryClient): Promise<void> {
+    return qc.invalidateQueries({ queryKey: qk.workspaces.me() })
   },
 } as const

@@ -204,3 +204,28 @@ describe('invalidations.afterShareRevoke', () => {
     expect((spy.mock.calls[0][0] as { queryKey: readonly unknown[] }).queryKey).toEqual(qk.shares())
   })
 })
+
+describe('qk.workspaces', () => {
+  it('me() is stable readonly tuple under workspaces prefix', () => {
+    const key = qk.workspaces.me()
+    expect(key).toEqual(['explorer', 'workspaces', 'me'])
+  })
+})
+
+describe('qk.folderChildren', () => {
+  it('builds key with scopeType + scopeId + parentId', () => {
+    const key = qk.folderChildren('team', 't1', 'f1')
+    expect(key).toEqual(['explorer', 'folders', 'children', 'team', 't1', 'f1'])
+  })
+
+  it('different parentIds produce different keys', () => {
+    expect(qk.folderChildren('team', 't1', 'a'))
+      .not.toEqual(qk.folderChildren('team', 't1', 'b'))
+  })
+})
+
+describe('qk.teams', () => {
+  it('all() prefix used by team mutations to invalidate', () => {
+    expect(qk.teams.all()).toEqual(['explorer', 'teams'])
+  })
+})
