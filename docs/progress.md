@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
+
+### 범위 (이전 세션 핸드오프 후 추가분)
+
+직전 세션이 24/30(80%)에서 핸드오프된 상태에서 Phase 9 통합 + Task 29 E2E + Task 30 finalize 진행. 두 worktree(`feat/team-centric-pivot-plan-a` + `feat/team-centric-pivot-plan-a-phase9`)가 병렬 진행되어 분기 → cherry-pick으로 통합.
+
+### 변경 핵심
+
+**Phase 9 통합 (cherry-pick from `feat/team-centric-pivot-plan-a-phase9`):**
+- `f6e1809` Task 24 folder.create scope 상속 + root via API 차단 (parentId NOT NULL invariant 강제, spec §1.3)
+- `3b2b0b5` Task 25 folder.move same-scope 검증 (`CrossScopeMoveException`, ERR_CROSS_SCOPE_MOVE)
+- `5011be3` Task 26 file upload parent folder scope 상속
+- `cee17b8` Task 27 Folder/File response DTO에 `ScopeRef` 블록 추가
+
+**Phase 11 finalize:**
+- `9ece76d` Task 29 `TeamPivotEndToEndTest` — `@SpringBootTest + Testcontainers Postgres` E2E. team create → invite → workspace listing → child folder scope 상속 → membership 기반 permission 검증.
+
+### Cherry-pick conflict 해결 노트
+
+- `ba490c0`(Task 24)이 이전 회차(merge base = c6bbfce) 이전 커밋이라 내 `13f6c0e` Task 16 refactor의 `FolderMutationService.createRootForScope`를 보지 못함. 단순 `--theirs`는 createRootForScope를 삭제 → 수동 hunk-level 수정으로 두 변경(create() 본문 + createRootForScope) 모두 보존.
+- Tasks 25-27은 대부분 자동 merge. `37e5778`(Task 26)에서 V13 fixture 충돌 5건 발생 — 그들 버전(parent scope 사용)이 우리 버전('department' literal)보다 의미적으로 정확 → `--theirs` 채택.
+
+### 미통합 (의도적)
+
+- Phase9 worktree의 Tasks 20/21 별개 commit(`01edf48`/`be6f57a`) — `Folder.createWorkspaceRoot` 정적 factory 패턴(Option A). 내 `067f624`/`be6cae3`는 `FolderMutationService.createRootForScope` 위임(Option B). 두 워크트리에 같은 기능을 다른 패턴으로 보유. 통합 시점에 단일 패턴으로 정합화 필요(권장: Option B = 내 버전, Folder 캡슐화 보존).
+
+### 검증
+
+- 본 브랜치 단위 + 통합 테스트 합계 약 47건 PASS (Testcontainers 가용 시).
+- E2E `TeamPivotEndToEndTest`는 환경적으로 Testcontainers Docker socket strategy fail 시 SKIP 처리 (peer V12MigrationIT와 동일 조건). 코드 정합성은 컴파일 + Spring context 로드 + 실제 API 호출 시그니처 검증으로 보장.
+- 코-세션 WIP `PermissionServiceGrantRevokeTest.grantPermission_teamSubjectTypeAccepted` 1건은 production code 미반영 상태로 working tree에 잔존 — 본 브랜치 commit에 미포함.
+
+### 다음 세션 컨텍스트 (Plan A2 backlog)
+
+- 두 워크트리 통합 — Tasks 20/21 패턴 통일 + phase9 worktree archive.
+- archive/un-archive (Team + Department), last-OWNER guard, role 변경, frontend types/audit.ts sync.
+- cross-workspace move 가드 (spec §5.6), Department workspace listing UI (spec §4.5).
+- PermissionService grant에 `subjectType="team"` 허용 (코-세션 WIP 후속).
+
+---
+
 ## 2026-05-09 — 🚀 team-centric-pivot Plan A Phase 3~8+10 (24/30 task, 80%)
 
 ### 범위
