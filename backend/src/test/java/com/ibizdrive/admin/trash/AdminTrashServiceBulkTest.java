@@ -223,6 +223,24 @@ class AdminTrashServiceBulkTest {
         assertThat(res.failed().get(0).error()).isEqualTo("NAME_CONFLICT");
     }
 
+    @Test
+    void bulk_restore_mapsFolderScopeMismatchToFailed() {
+        // Plan E T4 — SCOPE_MISMATCH는 NAME_CONFLICT와 별개 wire code로 노출되어야 한다.
+        // T3 reviewer 발견: 이전 catch 사이트는 둘을 NAME_CONFLICT로 silent misclassify.
+        UUID actor = UUID.randomUUID();
+        UUID id = UUID.randomUUID();
+
+        doThrow(new FolderRestoreConflictException(
+                FolderRestoreConflictException.Reason.SCOPE_MISMATCH, id, "scope mismatch"))
+            .when(folderMutationService).restore(eq(id), any());
+
+        AdminTrashBulkResponseDto res = service.bulk("restore",
+            List.of(folder(id)), actor);
+
+        assertThat(res.failed()).hasSize(1);
+        assertThat(res.failed().get(0).error()).isEqualTo("SCOPE_MISMATCH");
+    }
+
     // ===== 7. invalid item shape =====
 
     @Test

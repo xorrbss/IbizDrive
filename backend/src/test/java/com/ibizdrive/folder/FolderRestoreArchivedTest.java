@@ -3,6 +3,9 @@ package com.ibizdrive.folder;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.team.TeamArchiveGuard;
+import com.ibizdrive.team.TeamArchivedException;
+import com.ibizdrive.team.TeamRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -25,27 +28,19 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 
 /**
- * Plan A Task 25 — {@link FolderMutationService#move} same-scope guard.
+ * Plan E T4 — {@link FolderMutationService#restore} archive guard.
  *
- * <p>spec docs/superpowers/specs/2026-05-09-team-centric-pivot-design.md §1.2 (scope invariant),
- * §5.6 (cross-workspace explicit move action — Plan D scope).
+ * <p>spec docs/superpowers/specs/2026-05-09-team-centric-pivot-design.md §2.2 / §5.4 — archived 팀
+ * 콘텐츠는 read-only. 휴지통에서의 복원도 write 진입점이므로 차단해야 한다.
  *
- * <p>Plan A는 명시적 cross-workspace move action ({@code allowCrossScope: true})를 도입하지 않으며,
- * service.move는 same-scope만 무조건 허용. 다른 scope 부모로의 이동은
- * {@link CrossScopeMoveException} (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}).
- *
- * <p>"Fake workspace root"는 raw JDBC INSERT — TeamService/DepartmentService 도입 전이라
- * service의 root-via-API 가드(Task 24)를 우회하기 위함. 정상 운영에서는 workspace lifecycle
- * (Task 16/20)이 root를 만든다.
- *
- * <p>{@link FolderCreateScopeInheritanceTest}와 동일한 Testcontainers + DataJpaTest 슬라이스 —
- * V13 NOT NULL + CHECK 제약을 실제 Postgres에서 검증.
+ * <p>{@link FolderMutationServiceTest}와 동일한 Testcontainers + DataJpaTest 슬라이스 — V13 NOT NULL +
+ * V12 teams 테이블을 실제 Postgres에서 사용해 {@link TeamArchiveGuard}가 정상 호출되는지 검증.
  */
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers(disabledWithoutDocker = true)
-@Import(FolderMoveSameScopeTest.TestConfig.class)
-class FolderMoveSameScopeTest {
+@Import(FolderRestoreArchivedTest.TestConfig.class)
+class FolderRestoreArchivedTest {
 
     @Container
     @SuppressWarnings("resource")
@@ -70,15 +65,15 @@ class FolderMoveSameScopeTest {
             return mock(AuditService.class);
         }
 
-        @Bean com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard(com.ibizdrive.team.TeamRepository teamRepo) {
-            return new com.ibizdrive.team.TeamArchiveGuard(teamRepo);
+        @Bean TeamArchiveGuard teamArchiveGuard(TeamRepository teamRepo) {
+            return new TeamArchiveGuard(teamRepo);
         }
 
         @Bean FolderMutationService folderMutationService(FolderRepository repo,
                                                           FileRepository fileRepo,
                                                           AuditService audit,
                                                           ObjectMapper mapper,
-                                                          com.ibizdrive.team.TeamArchiveGuard guard) {
+                                                          TeamArchiveGuard guard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30), guard);
         }
@@ -89,43 +84,42 @@ class FolderMoveSameScopeTest {
     @Autowired private JdbcTemplate jdbc;
 
     @Test
-    void crossScopeMoveRejected() {
-        // 두 개의 fake workspace root — 같은 type(department), 다른 scope_id로 cross-scope 시뮬레이션.
-        UUID owner = insertUser("mvss1@test", "mvss1");
-        UUID scopeA = UUID.randomUUID();
-        UUID scopeB = UUID.randomUUID();
-        UUID rootA = insertFakeRoot(owner, "department", scopeA);
-        UUID rootB = insertFakeRoot(owner, "department", scopeB);
+    void restore_archivedTeamScope_throwsTeamArchived() {
+        // 시나리오: team scope 폴더 휴지통 → team archive → restore 시도 → TEAM_ARCHIVED.
+        UUID owner = insertUser("rstarc1@test", "rstarc1");
+        UUID teamId = insertActiveTeam("ArchivedTeam1", "archivedteam1", owner);
+        UUID rootId = insertFakeTeamRoot(owner, teamId);
 
-        // Task 24 invariant — child는 rootA의 scope를 그대로 상속.
-        Folder childInA = service.create(rootA, "subA", owner, "standard", owner);
-        assertThat(childInA.getScopeId()).isEqualTo(scopeA);
+        Folder folder = service.create(rootId, "ToRestoreArc1", owner, "standard", owner);
+        service.delete(folder.getId(), owner);
 
-        // rootB는 scopeB이므로 childInA를 rootB 아래로 이동 시 cross-scope.
-        assertThatThrownBy(() -> service.move(childInA.getId(), rootB, owner))
-            .isInstanceOf(CrossScopeMoveException.class)
-            .hasMessageContaining("ERR_CROSS_SCOPE_MOVE");
+        // active 동안에는 정상 동작 가능 — guard 미동작 분기 (active team).
+        // 여기선 archive 상태로 만든 뒤 restore.
+        archiveTeam(teamId, owner);
+
+        assertThatThrownBy(() -> service.restore(folder.getId(), owner))
+            .isInstanceOf(TeamArchivedException.class)
+            .satisfies(ex -> assertThat(((TeamArchivedException) ex).getTeamId()).isEqualTo(teamId));
     }
 
     @Test
-    void sameScopeMoveAllowed() {
-        // 같은 scope 내에서의 이동은 허용 — guard에 영향받지 않는 happy path.
-        UUID owner = insertUser("mvss2@test", "mvss2");
-        UUID scopeId = UUID.randomUUID();
-        UUID root = insertFakeRoot(owner, "department", scopeId);
+    void restore_activeTeamScope_succeeds() {
+        // 회귀 가드: active team scope에서 restore는 정상 동작 (archive guard short-circuit 검증).
+        UUID owner = insertUser("rstarc2@test", "rstarc2");
+        UUID teamId = insertActiveTeam("ActiveTeam2", "activeteam2", owner);
+        UUID rootId = insertFakeTeamRoot(owner, teamId);
 
-        Folder src = service.create(root, "SrcMvSs", owner, "standard", owner);
-        Folder dst = service.create(root, "DstMvSs", owner, "standard", owner);
-        Folder child = service.create(src.getId(), "ChildMvSs", owner, "standard", owner);
+        Folder folder = service.create(rootId, "ToRestoreArc2", owner, "standard", owner);
+        service.delete(folder.getId(), owner);
 
-        Folder moved = service.move(child.getId(), dst.getId(), owner);
+        Folder restored = service.restore(folder.getId(), owner);
 
-        assertThat(moved.getParentId()).isEqualTo(dst.getId());
-        assertThat(moved.getScopeId()).isEqualTo(scopeId);
+        assertThat(restored.getDeletedAt()).isNull();
+        assertThat(folderRepository.findByIdAndDeletedAtIsNull(folder.getId())).isPresent();
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // helpers (FolderCreateScopeInheritanceTest와 동일 패턴)
+    // helpers
     // ──────────────────────────────────────────────────────────────────
 
     private UUID insertUser(String email, String displayName) {
@@ -134,16 +128,33 @@ class FolderMoveSameScopeTest {
         return id;
     }
 
-    private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
+    private UUID insertActiveTeam(String name, String normalizedName, UUID createdBy) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'private', ?, NOW(), NOW())",
+            id, name, normalizedName, createdBy);
+        return id;
+    }
+
+    /** team scope를 갖는 fake root folder. service.create의 root-거부 가드를 우회. */
+    private UUID insertFakeTeamRoot(UUID ownerId, UUID teamId) {
         UUID id = UUID.randomUUID();
         Instant now = Instant.now();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
             "scope_type, scope_id, created_at, updated_at) " +
-            "VALUES (?, NULL, ?, ?, ?, ?, 'standard', ?, ?, ?, ?)",
-            id, "root-" + id, "root-" + id, "root-" + id, ownerId, scopeType, scopeId, now, now
+            "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'team', ?, ?, ?)",
+            id, "team-root-" + id, "team-root-" + id, "team-root-" + id, ownerId, teamId, now, now
         );
-        // folderRepository round-trip은 불필요 (id만 사용).
         return id;
+    }
+
+    /** Team을 archived 상태로 전환. archived_at + archived_by NOT NULL 동시 update. */
+    private void archiveTeam(UUID teamId, UUID actorId) {
+        jdbc.update(
+            "UPDATE teams SET archived_at = NOW(), archived_by = ?, updated_at = NOW() WHERE id = ?",
+            actorId, teamId
+        );
     }
 }

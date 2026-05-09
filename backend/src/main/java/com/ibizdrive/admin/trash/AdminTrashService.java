@@ -292,7 +292,15 @@ public class AdminTrashService {
                 succeeded.add(new AdminTrashBulkResponseDto.Item(type, item.id()));
             } catch (FileNotFoundException | FolderNotFoundException ex) {
                 failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), "NOT_FOUND"));
-            } catch (FileNameConflictException | FolderRestoreConflictException ex) {
+            } catch (FolderRestoreConflictException ex) {
+                // Plan E T4 — SCOPE_MISMATCH (cross-scope original parent) ↔ NAME_CONFLICT 분기.
+                // 이전에는 둘 다 NAME_CONFLICT로 silent misclassify (T3 reviewer 발견).
+                String reasonCode = switch (ex.getReason()) {
+                    case NAME_CONFLICT -> "NAME_CONFLICT";
+                    case SCOPE_MISMATCH -> "SCOPE_MISMATCH";
+                };
+                failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), reasonCode));
+            } catch (FileNameConflictException ex) {
                 failed.add(new AdminTrashBulkResponseDto.FailedItem(type, item.id(), "NAME_CONFLICT"));
             }
             // 그 외 RuntimeException은 의도적으로 잡지 않음 — 인프라/프로그래밍 오류는

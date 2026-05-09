@@ -74,12 +74,17 @@ class FolderMutationServiceTest {
             return mock(AuditService.class);
         }
 
+        @Bean com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard(com.ibizdrive.team.TeamRepository teamRepo) {
+            return new com.ibizdrive.team.TeamArchiveGuard(teamRepo);
+        }
+
         @Bean FolderMutationService folderMutationService(FolderRepository repo,
                                                           FileRepository fileRepo,
                                                           AuditService audit,
-                                                          ObjectMapper mapper) {
+                                                          ObjectMapper mapper,
+                                                          com.ibizdrive.team.TeamArchiveGuard guard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30));
+                new com.ibizdrive.trash.TrashRetentionProperties(30), guard);
         }
     }
 
