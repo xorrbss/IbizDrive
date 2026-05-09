@@ -5,7 +5,7 @@ import java.util.UUID;
 /**
  * Team 멤버 역할 변경 도메인 이벤트 — Plan A2 Task T2.
  *
- * <p>{@link TeamService#changeRole} (Plan A2 T3, 미구현)가 멤버십 role을 갱신할 때 publish.
+ * <p>{@link TeamService#changeRole}가 멤버십 role을 갱신할 때 publish.
  * {@code TeamAuditListener}가 AFTER_COMMIT 단계에서 {@link com.ibizdrive.audit.AuditEventType#TEAM_MEMBER_ROLE_CHANGED}
  * audit_log를 작성하며, {@code beforeState = {"role": oldRole}}와
  * {@code afterState = {"role": newRole}} 두 필드를 모두 기록한다.

@@ -119,6 +119,31 @@ class TeamServiceChangeRoleTest {
     }
 
     @Test
+    void changeRole_throwsIllegalArgument_whenNewRoleNull() {
+        UUID teamId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+
+        assertThatThrownBy(() -> svc.changeRole(teamId, userId, null, actor))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("newRole");
+
+        verify(memRepo, never()).findById(any());
+    }
+
+    @Test
+    void changeRole_throwsIllegalArgument_whenActorIdNull() {
+        UUID teamId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> svc.changeRole(teamId, userId, TeamMembership.Role.OWNER, null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("actorId");
+
+        verify(memRepo, never()).findById(any());
+    }
+
+    @Test
     void changeRole_promotesMemberToOwnerAndPublishesEvent() {
         UUID teamId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
