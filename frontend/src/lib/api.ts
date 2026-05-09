@@ -28,6 +28,7 @@ import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
 import type { AdminDashboardSummaryResponse } from '@/types/admin'
+import type { WorkspaceMeResponse } from '@/types/workspace'
 
 export const api = {
   /**
@@ -109,6 +110,30 @@ export const api = {
       slugPath,
       breadcrumb,
       parentId: parentBcrumb ? parentBcrumb.id : 'root',
+    }
+  },
+
+  /**
+   * spec §5.2 — 사이드바 첫 fetch + permission cache 진입.
+   * backend `WorkspaceMeResponse` 1:1. `department` 키는 Jackson @JsonInclude(NON_NULL) — null 시 응답에서 omit되므로 일괄 `?? null` 보정.
+   */
+  async getWorkspacesMe(): Promise<WorkspaceMeResponse> {
+    const res = await fetch('/api/workspaces/me', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      const err = new Error(
+        `getWorkspacesMe fetch failed: ${res.status}`,
+      ) as Error & { status: number }
+      err.status = res.status
+      throw err
+    }
+    const body = (await res.json()) as Partial<WorkspaceMeResponse>
+    return {
+      department: body.department ?? null,
+      teams: body.teams ?? [],
     }
   },
 
