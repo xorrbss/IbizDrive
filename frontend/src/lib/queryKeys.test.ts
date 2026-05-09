@@ -112,11 +112,32 @@ describe('invalidations.afterDelete', () => {
 })
 
 describe('qk.trash', () => {
-  it('trash() prefix + trashList()', () => {
+  it('trash() prefix shape unchanged (invalidations 영향 없음)', () => {
     expect(qk.trash()).toEqual(['explorer', 'trash'])
-    const full = qk.trashList()
+  })
+
+  it('trashList(scopeType, scopeId) — scope 포함 key shape', () => {
+    expect(qk.trashList('department', 'd1')).toEqual([
+      'explorer',
+      'trash',
+      'list',
+      'department',
+      'd1',
+    ])
+  })
+
+  it('trashList — trash() prefix로 시작 (prefix invalidation 호환)', () => {
+    const full = qk.trashList('team', 't1')
     const prefix = qk.trash()
     expect(full.slice(0, prefix.length)).toEqual([...prefix])
+  })
+
+  it('trashList — scopeType 다르면 다른 키', () => {
+    expect(qk.trashList('department', 'x')).not.toEqual(qk.trashList('team', 'x'))
+  })
+
+  it('trashList — scopeId 다르면 다른 키', () => {
+    expect(qk.trashList('department', 'a')).not.toEqual(qk.trashList('department', 'b'))
   })
 })
 
