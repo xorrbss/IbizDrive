@@ -934,6 +934,139 @@ export function usePermission(nodeId?: string) {
   `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset, subjectName|null}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface. **A16(ADR #37)**에서 `subjectName` 추가 — user→display_name, department→name, everyone/lookup miss → null.
 - **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. A13에서 컬럼 4열로 복원: `항목 | 공유한 사람 | 권한 | 만료`. preset은 한국어 라벨(읽기/업로드/편집/관리). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
 
+### 14.5 GrantPermissionDialog (v1.x backlog — spec 단계, 2026-05-09)
+
+> **Status: spec 작성, 실 구현 v1.x phase B/C/D.** Backend `POST /api/{folders|files}/{id}/permissions` (`PermissionController#grant`)는 완비 — Phase A1.4 grant endpoint(2026-04~). Frontend는 **api wrapper + 다이얼로그 + subject picker** 미구현 상태로 운영자가 SQL 직접 INSERT 또는 ShareDialog로 우회 사용 중.
+
+#### 14.5.1 Scope
+
+**단일 자원 단위 grant**만 — `ResourcePermissionsList` (RightPanel 권한 탭) 안에 "권한 부여" 버튼 → `GrantPermissionDialog`. **admin/permissions 페이지의 전역 grant는 미도입** (resource picker 부재라 v2.x).
+
+#### 14.5.2 Architecture
+
+```
+ResourcePermissionsList (existing, components/files/)
+ └─ "권한 부여" 버튼 (NEW, PERMISSION_ADMIN 보유 시 노출)
+     └─ GrantPermissionDialog (NEW)
+         ├─ SubjectPicker (USER/DEPARTMENT/ROLE/EVERYONE 라디오)
+         │   ├─ UserSearchCombobox (재사용, components/shares/)
+         │   ├─ DepartmentSearchCombobox (재사용, components/shares/)
+         │   ├─ ROLE select — MEMBER/AUDITOR/ADMIN 3 enum
+         │   └─ EVERYONE radio (subject_id NULL)
+         ├─ PresetSelector (READ/UPLOAD/EDIT/SHARE/ADMIN 5종 select)
+         ├─ ExpiresAtInput (datetime-local, optional, default 무기한)
+         └─ Submit → api.grantPermission → onSuccess → invalidate qk.resourcePermissions
+```
+
+**ShareDialog (§14.4) 패턴 답습 — UserSearchCombobox / DepartmentSearchCombobox 재사용**, KISS / ULTIMATE INVARIANT 5 (확장 전 검토). 차이: preset 5값 (ShareDialog는 4값, V5 CHECK가 share table에 SHARE preset 미지원), ROLE 분기 추가.
+
+#### 14.5.3 API wrapper (api.ts NEW)
+
+```ts
+async grantPermission(
+  resource: 'folder' | 'file',
+  resourceId: string,
+  body: GrantPermissionRequest,
+): Promise<PermissionDto> {
+  const csrf = readCookie('XSRF-TOKEN') ?? ''
+  const res = await fetch(
+    `/api/${resource}s/${encodeURIComponent(resourceId)}/permissions`,
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(body),
+    },
+  )
+  if (!res.ok) throw await buildApiError(res, `grantPermission failed: ${res.status}`)
+  const env = (await res.json()) as { permission: PermissionDto }
+  return env.permission
+}
+```
+
+**X-CSRF-TOKEN 헤더 필수** (csrf-mutation-sweep PR #121 sweep 결과 적용 — docs/03 §2.2 callout).
+
+#### 14.5.4 wire body (`GrantPermissionRequest`)
+
+```ts
+interface GrantPermissionRequest {
+  subject: { type: 'user' | 'department' | 'role' | 'everyone'; id: string | null }
+  preset: 'read' | 'upload' | 'edit' | 'share' | 'admin'
+  expiresAt?: string  // ISO 8601 datetime, undefined = 무기한
+}
+```
+
+backend `Preset.from(wire)` lower-case 매칭 (`backend/permission/Preset.java`). `subject.id`는 EVERYONE 시 null, ROLE 시 enum 문자열 (`'MEMBER' | 'AUDITOR' | 'ADMIN'`), USER/DEPARTMENT 시 UUID.
+
+#### 14.5.5 Subject 분기
+
+| subjectType | input | submit body |
+|---|---|---|
+| `everyone` | radio (default) | `{ type:'everyone', id: null }` |
+| `user` | UserSearchCombobox (A14, debounce 300ms + minLen 2) | `{ type:'user', id: selectedUser.id }` |
+| `department` | DepartmentSearchCombobox (A16) | `{ type:'department', id: selectedDept.id }` |
+| `role` | select (MEMBER/AUDITOR/ADMIN) | `{ type:'role', id: 'ADMIN' }` |
+
+ROLE 선택 시 backend persist는 `subject_type='role'`, `subject_id` 컬럼은 enum 문자열로 저장 (V5 schema 검토 — 기존 ShareDialog는 ROLE 미지원이지만 permissions 테이블은 지원).
+
+#### 14.5.6 Preset 라벨 (한국어)
+
+| wire | 라벨 | 포함 권한 |
+|---|---|---|
+| `read` | 읽기 | READ + DOWNLOAD |
+| `upload` | 업로드 | + UPLOAD |
+| `edit` | 편집 | + EDIT, MOVE, DELETE |
+| `share` | 공유 | + SHARE |
+| `admin` | 관리 | + 모든 권한 (PURGE 제외) |
+
+#### 14.5.7 Error envelope mapping
+
+| status / code | 원인 | UX |
+|---|---|---|
+| `409 PERMISSION_CONFLICT` | 동일 (resource, subject) 중복 grant | inline alert "이미 부여된 grant — 기존 row 만료 후 재부여 또는 row 수정" |
+| `400 VALIDATION_ERROR` | preset/expiresAt 형식 오류, subject 누락 | field-level error |
+| `403 PERMISSION_DENIED` | PERMISSION_ADMIN 미보유 (운영자가 권한 ADMIN 없는 자원 시도) | toast.error + 다이얼로그 닫기 |
+| `404 NOT_FOUND` | 자원 자체 미존재 (race) | toast.error + 다이얼로그 닫기 + invalidate parent |
+
+#### 14.5.8 캐시 무효화
+
+```ts
+onSuccess: () => {
+  queryClient.invalidateQueries({ queryKey: qk.resourcePermissions(resource, resourceId) })
+  queryClient.invalidateQueries({ queryKey: qk.adminPermissions() })  // /admin/permissions viewer
+  queryClient.invalidateQueries({ queryKey: qk.permissions(resourceId) })  // useEffectivePermissions (자기 권한)
+}
+```
+
+§6.1 prefix 무효화. 운영자가 자기에게 권한 부여 시 즉시 UI 권한 갱신.
+
+#### 14.5.9 Phase 분할
+
+본 spec(§14.5)은 **Phase A — 설계만**. 후속 phase는 별도 트랙:
+
+- **Phase B**: `api.grantPermission` + `useGrantPermission` + `GrantPermissionDialog` 골격 (subject = `everyone` 만, preset/expiresAt 포함). 회귀 가드 vitest.
+- **Phase C**: subject 분기 (UserSearchCombobox 재사용 + DepartmentSearchCombobox 재사용 + ROLE select).
+- **Phase D**: `ResourcePermissionsList` 통합 ("권한 부여" 버튼 + 가드: `usePermission().admin` true 시 노출).
+
+#### 14.5.10 결정/편차
+
+- **Subject 4종 모두 지원** (USER/DEPARTMENT/ROLE/EVERYONE) — backend 모두 persist 가능. ShareDialog는 ROLE 미지원이지만 permissions 테이블은 지원 (Preset/grant 정책이 share grant와 schema 분리).
+- **단일 다이얼로그 (별도 검색 모달 없음)** — KISS, ShareDialog와 동질 UX. 사용자 검색은 인라인 dropdown.
+- **admin/permissions 페이지 전역 grant 미도입** — resource picker (folder tree + file search) 대형 컴포넌트 → v2.x. 단일 자원 grant는 RightPanel에서 충분.
+- **Preset 5값 (SHARE 포함)** — ShareDialog와 분리. 자원 권한 grant는 share-grant 가능까지 포함하므로 5값 모두 노출.
+- **403 → 다이얼로그 닫기** — 사용자 인지 후 회수 (§14.1 비파괴적 액션 패턴 정합).
+- **invalidate 3종** — ResourcePermissionsList + admin/permissions + 자기 effective. 운영자가 자기에게 부여 시 즉시 권한 화면 갱신.
+
+#### 14.5.11 회귀 가드 spec (Phase B 시 적용)
+
+- `api.grantPermission.test.ts`: POST 메서드 + URL + X-CSRF-TOKEN 헤더 + body 형태 + 409/403/404/400 envelope.
+- `GrantPermissionDialog.test.tsx`: subject 라디오 분기 + preset select + expiresAt parse + submit body shape + 409 inline alert.
+- `useGrantPermission.test.tsx`: onSuccess invalidate 3종 + onError envelope pass-through.
+
 ---
 
 ## 15. 실시간 동기화 (SSE)
