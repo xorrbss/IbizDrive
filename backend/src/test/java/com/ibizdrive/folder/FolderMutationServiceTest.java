@@ -265,24 +265,22 @@ class FolderMutationServiceTest {
     }
 
     @Test
-    void move_toRoot_violatesRootPerScopeUniqueIndex() {
-        // Plan A V14 (idx_folders_root_per_scope) — workspace당 root folder 단 하나만 허용.
-        // child→root(null) move는 동일 scope에 두 번째 root를 만들어 partial unique index를 위반한다.
-        // spec §1.3: "root folder는 workspace lifecycle (Task 16/20)이 만드는 유일한 경로". service.move로
-        // root 생성/이동은 허용되지 않는다. DB가 진실의 출처 (CLAUDE.md §3 원칙 6).
+    void move_toRoot_throwsBadRequest() {
+        // spec §1.3 — root 폴더는 workspace lifecycle만 생성/소유 (V13 partial unique
+        // idx_folders_root_per_scope가 scope당 root 1개 강제). 일반 폴더의 null parent 이동은
+        // FolderMutationService.move 진입에서 IllegalArgumentException으로 거부 (PR #142,
+        // commit db32a9d). 본 PR(이전: V14 unique index를 통한 DB-level fail + FolderNameConflict
+        // wrap)에서 master의 service-level pre-check로 정렬 — 더 이른 거부 + 더 명확한 wire
+        // (BAD_REQUEST). DB index는 여전히 backstop 역할.
         UUID owner = insertUser("m2@test", "m2");
         Folder root = insertRootFolder("RootM2", owner);
         Folder parent = service.create(root.getId(), "ParentM2", owner, "standard", owner);
         Folder child = service.create(parent.getId(), "ChildM2", owner, "standard", owner);
         reset(auditService);
 
-        // V14 partial unique (parent_id IS NULL AND deleted_at IS NULL on (scope_type, scope_id))는
-        // saveAndFlush 시점에 DataIntegrityViolationException으로 발현 → FolderMutationService.move의
-        // catch 블록 (line 337-340)이 FolderNameConflictException으로 wrap (RENAME_CONFLICT envelope).
-        // wire 매핑이 이미 conflict로 통일돼 있으므로 호출자 관점에서 일관됨. v1.x에서 별도 reason
-        // 분기는 미도입 (root_per_scope 위반은 service-level pre-check 도입 시 분리 가능 — follow-up).
         assertThatThrownBy(() -> service.move(child.getId(), null, owner))
-            .isInstanceOf(FolderNameConflictException.class);
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("newParentId is required");
         verify(auditService, never()).record(any());
     }
 

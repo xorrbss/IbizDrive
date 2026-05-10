@@ -41,9 +41,9 @@ const itemFolder: TrashItem = {
   originalParentId: null,
 }
 
-// 참고: TrashTable은 현재 tree=undefined (Tasks 17+ 대기) — originalParentId가 있어도
-// "원위치 폴더 삭제됨" 폴백으로 표시. lazy per-workspace tree 도입 후 다시 mockTree fixture로
-// path 표시 검증이 필요하면 git history에서 fixture 복원 가능.
+// TrashTable currently uses tree=undefined → originalParentId 있어도 "원위치 폴더
+// 삭제됨" 폴백으로 표시. tree prop 활용 시점(Tasks 17+ 대기)에 mockTree fixture는
+// git 히스토리에서 복원 가능 — 현재는 lint 회피 위해 dead-code 제거.
 
 function setHook(opts: {
   isLoading?: boolean
