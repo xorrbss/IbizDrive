@@ -112,7 +112,7 @@ GET /api/trash?scopeType={department|team}&scopeId={uuid}&cursor=&type={file|fol
 
 | 시나리오 | status | code | body 추가 |
 |---|---|---|---|
-| listing scopeType/scopeId 누락 | 422 | VALIDATION_ERROR | `{ field: 'scopeType' \| 'scopeId' }` |
+| listing scopeType/scopeId 누락 | 400 | BAD_REQUEST | Spring `@RequestParam` 누락 → 자동 400. `parseScopeType` invalid (`global` 등) → `IllegalArgumentException` → `GlobalExceptionHandler.handleBadRequest` → 400 BAD_REQUEST |
 | listing 비멤버 | 403 | PERMISSION_DENIED | — |
 | restore archived team | 423 | TEAM_ARCHIVED | `{ teamId }` (team-archive-write-enforcement 정합) |
 | restore cross-workspace 원위치 mismatch | 409 | RESTORE_CONFLICT | `{ reason: 'scope_mismatch', expectedScopeType, expectedScopeId, actualScopeType, actualScopeId }` |
