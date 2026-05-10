@@ -81,6 +81,7 @@ class FolderMutationServiceTest {
                                                           com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30),
+                mock(CrossWorkspaceMoveService.class),
                 teamArchiveGuard);
         }
 

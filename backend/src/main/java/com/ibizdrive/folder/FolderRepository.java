@@ -223,6 +223,36 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     long countByNormalizedName(@Param("pattern") String pattern);
 
     /**
+     * Plan D Task 12 — cross-workspace 이동 시 subtree 폴더의 (scope_type, scope_id) 일괄 갱신.
+     * native UPDATE로 {@code updated_at = NOW()} 서버 사이드 처리 (Java Instant 불일치 허용).
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 — empty IN(...) 문법 오류를 피하기 위해
+     * service 레이어에서 source.getId()가 항상 포함된 non-empty list를 전달.
+     */
+    @Modifying
+    @Query(value = "UPDATE folders SET scope_type = :scopeType, scope_id = :scopeId, updated_at = NOW() "
+                 + "WHERE id IN (:ids)", nativeQuery = true)
+    int updateScopeBatch(@Param("ids") Collection<UUID> ids,
+                         @Param("scopeType") String scopeType,
+                         @Param("scopeId") UUID scopeId);
+
+    /**
+     * Plan D Task 15 — cross-workspace move 완료 후 invariant 검증 (a).
+     * subtree 폴더 중 destination scope와 일치하지 않는 row 수를 반환.
+     * 0이 아니면 scope 재할당(step 3)이 불완전하게 적용된 것이므로 트랜잭션 ROLLBACK.
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 (source 포함 subtree는 최소 1개).
+     */
+    @Query(value = "SELECT COUNT(*) FROM folders WHERE id IN (:ids) "
+                 + "AND (scope_type <> :scopeType OR scope_id <> :scopeId)",
+           nativeQuery = true)
+    int countByIdInAndScopeNotMatching(
+        @Param("ids") java.util.Collection<UUID> ids,
+        @Param("scopeType") String scopeType,
+        @Param("scopeId") UUID scopeId
+    );
+
+    /**
      * admin-dashboard — 활성 폴더 수 ({@code deleted_at IS NULL}).
      * Spring Data derived method — 별도 {@code @Query} 불필요.
      */

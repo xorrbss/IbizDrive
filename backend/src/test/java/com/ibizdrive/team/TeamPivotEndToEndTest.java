@@ -8,6 +8,7 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.workspace.WorkspaceListing;
 import com.ibizdrive.workspace.WorkspaceService;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -18,6 +19,9 @@ import org.springframework.test.context.DynamicPropertySource;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
+
+import java.util.ArrayList;
+import java.util.List;
 
 import java.util.UUID;
 
@@ -36,12 +40,12 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>PermissionResolver.isGranted — workspace membership 기반 묵시적 권한</li>
  * </ol>
  *
- * <p><b>note</b>: 본 클래스는 {@code @Transactional}을 의도적으로 사용하지 않는다 —
- * {@code FolderMutationService.create}의 {@code FOLDER_CREATED} audit이 직접
- * {@code REQUIRES_NEW} 트랜잭션으로 commit하는데, 테스트 tx의 raw JDBC user INSERT가
- * 미commit 상태라 {@code audit_log_actor_id_fkey} FK 위반이 발생함. 각 테스트는
- * unique UUID 사용 + Testcontainers 컨테이너가 매 run마다 fresh PG라 데이터 누수 무관.
- * Plan D의 {@code CrossWorkspaceMoveE2ETest} 등 다른 E2E 테스트와 동일 패턴.
+ * <p><b>트랜잭션 정책</b>: {@code @Transactional}을 사용하지 않는다. AuditService.record는
+ * {@code REQUIRES_NEW}로 별도 트랜잭션을 열어 audit_log를 INSERT하므로, 테스트 outer 트랜잭션이
+ * rollback이라도 AuditService 내부 트랜잭션은 commit된다. 이때 outer 트랜잭션의 user/team 등이
+ * 아직 commit되지 않은 상태라 FK 위반(actor_id, target_id 등)이 발생한다. E2E 테스트는 각 단계의
+ * write를 commit해 후속 audit 트랜잭션이 FK를 만족하도록 해야 한다. 정리는 {@code @AfterEach}에서
+ * 명시적으로 수행한다 (insert 순서의 역순으로 cascade 안전 삭제).
  */
 @SpringBootTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
@@ -82,6 +86,31 @@ class TeamPivotEndToEndTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    /** 테스트 종료 시 cascade 삭제 — non-transactional 테스트의 부산물 정리. */
+    private final List<UUID> insertedUserIds = new ArrayList<>();
+    private final List<UUID> insertedTeamIds = new ArrayList<>();
+
+    @AfterEach
+    void cleanup() {
+        // audit_log → folders/files (cascade FK는 V12/V13에 정의) → team_memberships (CASCADE)
+        // → teams → users 순서. user 삭제는 다른 FK 차단 가능성을 고려해 마지막.
+        for (UUID userId : insertedUserIds) {
+            jdbc.update("DELETE FROM audit_log WHERE actor_id = ? OR target_id = ?", userId, userId);
+        }
+        for (UUID teamId : insertedTeamIds) {
+            jdbc.update("DELETE FROM audit_log WHERE target_id = ?", teamId);
+            jdbc.update("DELETE FROM files WHERE folder_id IN (SELECT id FROM folders WHERE scope_type = 'team' AND scope_id = ?)", teamId);
+            jdbc.update("DELETE FROM folders WHERE scope_type = 'team' AND scope_id = ?", teamId);
+            jdbc.update("DELETE FROM team_memberships WHERE team_id = ?", teamId);
+            jdbc.update("DELETE FROM teams WHERE id = ?", teamId);
+        }
+        for (UUID userId : insertedUserIds) {
+            jdbc.update("DELETE FROM users WHERE id = ?", userId);
+        }
+        insertedUserIds.clear();
+        insertedTeamIds.clear();
+    }
+
     @Test
     void teamCreate_invite_childFolder_membershipPermissions_workEndToEnd() {
         UUID owner = persistUser("e2e-owner@t", "e2e-owner");
@@ -89,6 +118,7 @@ class TeamPivotEndToEndTest {
 
         // 1) Create team — TeamService.create produces team + root folder + OWNER membership
         Team team = teamSvc.create("E2E", null, Team.Visibility.PRIVATE, owner);
+        insertedTeamIds.add(team.getId());
         assertThat(team.getId()).isNotNull();
         assertThat(team.getRootFolderId()).isNotNull();
         assertThat(team.getName()).isEqualTo("E2E");
@@ -100,7 +130,8 @@ class TeamPivotEndToEndTest {
         teamSvc.invite(team.getId(), member, owner);
         assertThat(memRepo.findByTeamId(team.getId())).hasSize(2);
 
-        // 3) WorkspaceService — invited member의 listing에 team 노출
+        // 3) WorkspaceService — invited member의 listing에 team 노출.
+        // non-transactional E2E 테스트이므로 각 service 호출이 자체 tx를 commit한다 — flush 불필요.
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())
@@ -139,6 +170,7 @@ class TeamPivotEndToEndTest {
             "INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)",
             id, email, displayName
         );
+        insertedUserIds.add(id);
         return id;
     }
 }

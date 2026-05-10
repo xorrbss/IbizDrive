@@ -80,6 +80,7 @@ class FileMutationServiceTest {
                                                       com.ibizdrive.team.TeamRepository teamRepo) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30),
+                mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class),
                 new com.ibizdrive.team.TeamArchiveGuard(teamRepo));
         }
     }
@@ -169,8 +170,11 @@ class FileMutationServiceTest {
     @Test
     void move_happy_changesFolderAndEmitsAudit() {
         UUID owner = insertUser("fm1@test", "fm1");
-        UUID src = insertFolder(owner, "SrcFM1");
-        UUID dst = insertFolder(owner, "DstFM1");
+        // Plan D Task 17 — same-scope guard: src/dst가 동일 scope에 있어야 한다.
+        // V14 idx_folders_root_per_scope: 같은 scope에 root 둘 둘 수 없음 → 공통 root 아래 sibling으로 생성.
+        UUID parent = insertFolder(owner, "ParentFM1");
+        UUID src = insertChildFolder(owner, parent, "SrcFM1");
+        UUID dst = insertChildFolder(owner, parent, "DstFM1");
         FileItem f = insertFile(src, owner, "MoveFM1.txt");
         reset(auditService);
 
@@ -219,8 +223,10 @@ class FileMutationServiceTest {
     @Test
     void move_conflictAtTargetFolder_throwsConflict() {
         UUID owner = insertUser("fm5@test", "fm5");
-        UUID src = insertFolder(owner, "SrcFM5");
-        UUID dst = insertFolder(owner, "DstFM5");
+        // same-scope guard: src/dst sibling 구성 (Plan D Task 17).
+        UUID parent = insertFolder(owner, "ParentFM5");
+        UUID src = insertChildFolder(owner, parent, "SrcFM5");
+        UUID dst = insertChildFolder(owner, parent, "DstFM5");
         insertFile(dst, owner, "Common.txt");
         FileItem moving = insertFile(src, owner, "Common.txt");
         reset(auditService);
@@ -464,6 +470,27 @@ class FileMutationServiceTest {
             "scope_type, scope_id) " +
             "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?)",
             id, name, normalized, normalized, ownerId, UUID.randomUUID()
+        );
+        return id;
+    }
+
+    /**
+     * 부모 폴더의 scope를 상속해 child folder를 INSERT — same-scope guard (Plan D Task 17) 테스트용.
+     * V14 idx_folders_root_per_scope 제약 회피를 위해 sibling 구성에 사용.
+     */
+    private UUID insertChildFolder(UUID ownerId, UUID parentId, String name) {
+        UUID id = UUID.randomUUID();
+        String normalized = name.toLowerCase();
+        Object[] scope = jdbc.queryForObject(
+            "SELECT scope_type, scope_id FROM folders WHERE id = ?",
+            (rs, rowNum) -> new Object[]{rs.getString("scope_type"), rs.getObject("scope_id", UUID.class)},
+            parentId
+        );
+        jdbc.update(
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'standard', ?, ?)",
+            id, parentId, name, normalized, normalized, ownerId, scope[0], scope[1]
         );
         return id;
     }

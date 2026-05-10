@@ -81,6 +81,7 @@ class FileArchivedTeamGuardTest {
                                                       TeamRepository teamRepo) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30),
+                org.mockito.Mockito.mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class),
                 new TeamArchiveGuard(teamRepo));
         }
     }

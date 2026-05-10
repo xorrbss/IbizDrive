@@ -59,6 +59,34 @@ public class PermissionResolver {
     }
 
     /**
+     * 사용자가 주어진 리소스에 대해 보유한 {@link Permission} 집합을 반환한다.
+     *
+     * <p>평가 순서는 {@link #isGranted}와 동일하나 단일 권한 boolean 대신 보유한 모든 권한을 수집해
+     * 반환한다. {@link Permission#PURGE}는 Preset 미포함 — resource grant로 부여 불가이므로 제외된다.
+     *
+     * <p>Cross-workspace move service처럼 SpEL이 아닌 직접 호출이 필요한 경로에서 사용한다
+     * (Plan D Task 11 — CrossWorkspaceMoveService).
+     *
+     * @param userId       actor
+     * @param resourceType {@code "folder"} 또는 {@code "file"}
+     * @param resourceId   리소스 식별자
+     * @return 보유 권한 집합. 인자 null이거나 grant가 없으면 empty set.
+     */
+    public Set<Permission> resolveFor(UUID userId, String resourceType, UUID resourceId) {
+        if (userId == null || resourceType == null || resourceId == null) {
+            return EnumSet.noneOf(Permission.class);
+        }
+        Set<Permission> result = EnumSet.noneOf(Permission.class);
+        for (Permission p : Permission.values()) {
+            if (p == Permission.PURGE) continue; // Preset 미포함 — resource grant 부여 불가.
+            if (isGranted(userId, resourceType, resourceId, p)) {
+                result.add(p);
+            }
+        }
+        return result;
+    }
+
+    /**
      * 사용자가 주어진 리소스에 대해 요구 권한을 보유하는지.
      *
      * <p>1차: explicit/share grants (기존 PermissionRepository.findEffective 경로 유지).

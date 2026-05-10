@@ -3,6 +3,9 @@ package com.ibizdrive.common.error;
 import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileRestoreConflictException;
+import com.ibizdrive.folder.CrossScopeMoveException;
+import com.ibizdrive.folder.DestWorkspaceDeniedException;
+import com.ibizdrive.folder.InvalidMoveDestinationException;
 import com.ibizdrive.folder.FolderNameConflictException;
 import com.ibizdrive.folder.FolderRestoreConflictException;
 import com.ibizdrive.permission.Permission;
@@ -163,6 +166,39 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleBadRequest(IllegalArgumentException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ApiError.of("BAD_REQUEST", ex.getMessage(), null));
+    }
+
+    /**
+     * Plan D — cross-workspace move 가드 위반 ({@link CrossScopeMoveException}).
+     *
+     * <p>spec §5.6: same-scope만 허용하는 default 경로에서 cross 시도는 409 + {@code ERR_CROSS_SCOPE_MOVE}.
+     * 명시적 cross-workspace move ({@code allowCrossScope: true}) 분기는 본 envelope를 발생시키지 않는다 —
+     * service가 아예 다른 진입점({@code CrossWorkspaceMoveService} — Plan D Task 11에서 도입).
+     */
+    @ExceptionHandler(CrossScopeMoveException.class)
+    public ResponseEntity<ApiError> handleCrossScopeMove(CrossScopeMoveException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("ERR_CROSS_SCOPE_MOVE",
+                "다른 workspace로 이동하려면 컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요", null));
+    }
+
+    /**
+     * Plan D — cross-workspace move 권한 부족. source {@code EDIT+SHARE} 또는 destination {@code UPLOAD} 부재.
+     */
+    @ExceptionHandler(DestWorkspaceDeniedException.class)
+    public ResponseEntity<ApiError> handleDestWorkspaceDenied(DestWorkspaceDeniedException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiError.of("ERR_DEST_WORKSPACE_DENIED", "다른 workspace로 이동할 권한이 없습니다", null));
+    }
+
+    /**
+     * Plan D — cross-workspace move destination 부적절 (null = root 직접, 자기 자신/후손 등).
+     * 메시지는 caller가 구체화 (예: "destinationFolderId is required", "destination cannot be a descendant").
+     */
+    @ExceptionHandler(InvalidMoveDestinationException.class)
+    public ResponseEntity<ApiError> handleInvalidMoveDestination(InvalidMoveDestinationException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+            .body(ApiError.of("ERR_INVALID_DESTINATION", ex.getMessage(), null));
     }
 
     private static String[] toWireArray(Set<Permission> have) {

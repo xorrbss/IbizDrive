@@ -101,6 +101,29 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
                                                              @Param("selfId") UUID selfId);
 
     /**
+     * Plan D — MovePreviewService에서 subtree folder ids에 속한 활성 파일 id 일괄 조회.
+     * BFS로 수집된 subtree folder id 집합을 받아 각 폴더의 활성 파일 id를 반환.
+     *
+     * <p>{@code folderIds}가 비어있으면 service 레이어에서 호출 자체를 skip하므로
+     * empty IN(...) 문법 오류가 발생하지 않는다 (MovePreviewService 책임 분리).
+     */
+    @Query("SELECT f.id FROM FileItem f WHERE f.folderId IN :folderIds AND f.deletedAt IS NULL")
+    List<UUID> findActiveIdsByFolderIdIn(@Param("folderIds") Collection<UUID> folderIds);
+
+    /**
+     * Plan D Task 12 — cross-workspace 이동 시 subtree 파일의 (scope_type, scope_id) 일괄 갱신.
+     * {@link com.ibizdrive.folder.FolderRepository#updateScopeBatch}의 mirror.
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 — service 레이어에서 empty-guard 처리.
+     */
+    @Modifying
+    @Query(value = "UPDATE files SET scope_type = :scopeType, scope_id = :scopeId, updated_at = NOW() "
+                 + "WHERE id IN (:ids)", nativeQuery = true)
+    int updateScopeBatch(@Param("ids") Collection<UUID> ids,
+                         @Param("scopeType") String scopeType,
+                         @Param("scopeId") UUID scopeId);
+
+    /**
      * 폴더 cascade soft-delete의 file 분기 (A6.1) — folder 트리가 삭제될 때 트리에 속한 활성
      * 파일도 동일 트랜잭션에서 일괄 soft-delete.
      *
@@ -223,6 +246,21 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
           AND normalized_name LIKE :pattern ESCAPE '\\'
         """, nativeQuery = true)
     long countByNormalizedName(@Param("pattern") String pattern);
+
+    /**
+     * Plan D Task 15 — cross-workspace move 완료 후 invariant 검증 (a), file 분기.
+     * {@link com.ibizdrive.folder.FolderRepository#countByIdInAndScopeNotMatching}의 mirror.
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 — service 레이어에서 empty-guard 처리.
+     */
+    @Query(value = "SELECT COUNT(*) FROM files WHERE id IN (:ids) "
+                 + "AND (scope_type <> :scopeType OR scope_id <> :scopeId)",
+           nativeQuery = true)
+    int countByIdInAndScopeNotMatching(
+        @Param("ids") java.util.Collection<UUID> ids,
+        @Param("scopeType") String scopeType,
+        @Param("scopeId") UUID scopeId
+    );
 
     // ============================================================
     // admin-storage-overview / admin-dashboard — read-only 합계 메서드 (append-only).

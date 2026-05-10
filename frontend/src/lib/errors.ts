@@ -59,6 +59,14 @@ export const TEAM_ARCHIVED = 'TEAM_ARCHIVED'
 export const SHARE_EXCEEDS_MEMBER = 'SHARE_EXCEEDS_MEMBER'
 export const PERMISSION_CONFLICT = 'PERMISSION_CONFLICT'
 
+// Plan D — cross-workspace move
+/** Plan D — same-scope move guard violation (allowCrossScope=false인데 cross 시도). HTTP 409. */
+export const ERR_CROSS_SCOPE_MOVE = 'ERR_CROSS_SCOPE_MOVE' as const
+/** Plan D — cross-workspace move 시 source `EDIT+SHARE` 또는 destination `UPLOAD` 부재. HTTP 403. */
+export const ERR_DEST_WORKSPACE_DENIED = 'ERR_DEST_WORKSPACE_DENIED' as const
+/** Plan D — destinationFolderId가 null(=root 직접 이동) 또는 자기 자신/후손. HTTP 400. */
+export const ERR_INVALID_DESTINATION = 'ERR_INVALID_DESTINATION' as const
+
 // Rate / 서버
 export const RATE_LIMIT_EXCEEDED = 'RATE_LIMIT_EXCEEDED'
 export const INTERNAL_ERROR = 'INTERNAL_ERROR'
@@ -95,6 +103,9 @@ export type ErrorCode =
   | typeof TEAM_ARCHIVED
   | typeof SHARE_EXCEEDS_MEMBER
   | typeof PERMISSION_CONFLICT
+  | typeof ERR_CROSS_SCOPE_MOVE
+  | typeof ERR_DEST_WORKSPACE_DENIED
+  | typeof ERR_INVALID_DESTINATION
   | typeof RATE_LIMIT_EXCEEDED
   | typeof INTERNAL_ERROR
   | typeof SERVICE_UNAVAILABLE
