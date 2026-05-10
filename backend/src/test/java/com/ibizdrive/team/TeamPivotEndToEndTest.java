@@ -148,15 +148,16 @@ class TeamPivotEndToEndTest {
         assertThat(child.getParentId()).isEqualTo(root.getId());
 
         // 5) PermissionResolver — workspace membership 기반 묵시적 권한
-        // MEMBER (invited member): READ + UPLOAD + EDIT
+        // spec §3.2 + Plan C Task 5b: MEMBER → Preset.EDIT.permissions() (단일 진실의 출처)
+        // MEMBER (invited member): Preset.EDIT = READ + UPLOAD + EDIT + MOVE + DOWNLOAD + DELETE
         assertThat(permResolver.isGranted(member, "folder", child.getId(), Permission.READ)).isTrue();
         assertThat(permResolver.isGranted(member, "folder", child.getId(), Permission.UPLOAD)).isTrue();
         assertThat(permResolver.isGranted(member, "folder", child.getId(), Permission.EDIT)).isTrue();
-        // MEMBER does NOT have DELETE/SHARE
-        assertThat(permResolver.isGranted(member, "folder", child.getId(), Permission.DELETE)).isFalse();
+        assertThat(permResolver.isGranted(member, "folder", child.getId(), Permission.DELETE)).isTrue();
+        // MEMBER does NOT have SHARE (Preset.EDIT 경계)
         assertThat(permResolver.isGranted(member, "folder", child.getId(), Permission.SHARE)).isFalse();
 
-        // OWNER: READ + UPLOAD + EDIT + DELETE + SHARE
+        // OWNER: Preset.ADMIN.permissions() = PURGE 제외 모든 권한
         assertThat(permResolver.isGranted(owner, "folder", child.getId(), Permission.READ)).isTrue();
         assertThat(permResolver.isGranted(owner, "folder", child.getId(), Permission.UPLOAD)).isTrue();
         assertThat(permResolver.isGranted(owner, "folder", child.getId(), Permission.EDIT)).isTrue();
