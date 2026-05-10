@@ -58,6 +58,14 @@ class CrossWorkspaceMoveServiceFileTest {
             return mock(PermissionResolver.class);
         }
 
+        // @Primary: ApplicationContext도 ApplicationEventPublisher 구현체로 등록되어 모호성 발생.
+        // @Primary로 mock 빈 우선 picking — @Bean factory 파라미터와 @Autowired field 모두 동일 mock 사용.
+        @Bean
+        @org.springframework.context.annotation.Primary
+        ApplicationEventPublisher applicationEventPublisher() {
+            return mock(ApplicationEventPublisher.class);
+        }
+
         @Bean
         CrossWorkspaceMoveService crossWorkspaceMoveService(FolderRepository folderRepo,
                                                             FileRepository fileRepo,
@@ -76,10 +84,7 @@ class CrossWorkspaceMoveServiceFileTest {
     @Autowired private CrossWorkspaceMoveService service;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PermissionResolver permissionResolver;
-    // @MockBean: TestConfig @Bean ApplicationEventPublisher 대신 — autowire 시 ApplicationContext가
-    // 우선 주입되어 verify에서 NotAMockException 발생. @MockBean이 빈을 명시적으로 mock으로 교체.
-    @org.springframework.boot.test.mock.mockito.MockBean
-    private ApplicationEventPublisher applicationEventPublisher;
+    @Autowired private ApplicationEventPublisher applicationEventPublisher;
 
     // ── fixtures ──
 
