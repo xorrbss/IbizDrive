@@ -368,6 +368,9 @@ class FileMutationServiceTest {
 
     @Test
     void restore_originalFolderSoftDeleted_throwsNotFound() {
+        // Plan E T5 — original folder lookup이 후속 cross-scope 검증을 위해 활성 폴더만 허용한다
+        // (FileMutationService.restore line 298). T4 패턴(FolderRestoreCrossScopeTest) 답습으로
+        // FolderNotFoundException을 throw — NOT_FOUND envelope (UX는 동등).
         UUID owner = insertUser("fs3@test", "fs3");
         UUID folder = insertFolder(owner, "FolderFS3");
         FileItem f = insertFile(folder, owner, "FS3.txt");
@@ -376,7 +379,8 @@ class FileMutationServiceTest {
         reset(auditService);
 
         assertThatThrownBy(() -> service.restore(f.getId(), owner))
-            .isInstanceOf(FileNotFoundException.class);
+            .isInstanceOf(FolderNotFoundException.class)
+            .hasMessageContaining("original folder is not active");
         verify(auditService, never()).record(any());
     }
 
