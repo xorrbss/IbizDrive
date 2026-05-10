@@ -8,8 +8,6 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.workspace.WorkspaceListing;
 import com.ibizdrive.workspace.WorkspaceService;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -88,9 +86,6 @@ class TeamPivotEndToEndTest {
     @Autowired
     private JdbcTemplate jdbc;
 
-    @PersistenceContext
-    private EntityManager em;
-
     /** 테스트 종료 시 cascade 삭제 — non-transactional 테스트의 부산물 정리. */
     private final List<UUID> insertedUserIds = new ArrayList<>();
     private final List<UUID> insertedTeamIds = new ArrayList<>();
@@ -136,10 +131,7 @@ class TeamPivotEndToEndTest {
         assertThat(memRepo.findByTeamId(team.getId())).hasSize(2);
 
         // 3) WorkspaceService — invited member의 listing에 team 노출.
-        // em.flush() — outer test tx의 pending writes(team UPDATE root_folder_id 포함)를 DB에 반영.
-        // TeamService.create의 attachRootFolder는 managed entity에 대해 dirty check로 잡히므로
-        // 다음 query 시 auto-flush로 처리되나, 명시적 flush로 확정.
-        em.flush();
+        // non-transactional E2E 테스트이므로 각 service 호출이 자체 tx를 commit한다 — flush 불필요.
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())
