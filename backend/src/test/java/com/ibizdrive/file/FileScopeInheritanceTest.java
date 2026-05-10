@@ -5,6 +5,8 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.storage.StorageClient;
+import com.ibizdrive.team.TeamArchiveGuard;
+import com.ibizdrive.team.TeamRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -77,8 +79,10 @@ class FileScopeInheritanceTest {
                                                   FolderRepository folderRepo,
                                                   StorageClient storage,
                                                   AuditService audit,
-                                                  ObjectMapper mapper) {
-            return new FileUploadService(fileRepo, versionRepo, folderRepo, storage, audit, mapper);
+                                                  ObjectMapper mapper,
+                                                  TeamRepository teamRepo) {
+            return new FileUploadService(fileRepo, versionRepo, folderRepo, storage, audit, mapper,
+                new TeamArchiveGuard(teamRepo));
         }
     }
 

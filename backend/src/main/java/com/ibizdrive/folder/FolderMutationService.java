@@ -57,10 +57,14 @@ import java.util.UUID;
  * IP/User-Agent는 {@link WebRequestContextHolder}로 현재 HTTP 요청에서 추출 — 비-HTTP 컨텍스트
  * (스케줄러 등)에서는 자연스럽게 null.
  *
- * <p><b>archived 팀 차단 (Plan E T4 — spec §2.2/§5.4)</b>: {@link #restore(UUID, UUID, String)}는
- * 권한 체크 직후, name conflict 검사 이전에 {@link TeamArchiveGuard#assertNotArchived(ScopeType, UUID)}를
- * 호출해 archived 팀 콘텐츠 복원을 차단한다 ({@code TEAM_ARCHIVED} HTTP 423). cross-scope mismatch
- * (original parent가 다른 workspace로 이동된 상태) 검증도 동일 위치에서 수행해
+ * <p><b>archived 팀 차단 (spec §2.2/§5.4 — Plan A T3 + Plan E T4)</b>: 5개 write 진입점
+ * (create/rename/move/delete/restore)은 target/parent fetch 직후 mutation 직전에
+ * {@link TeamArchiveGuard#assertNotArchived(ScopeType, java.util.UUID)}를 호출해
+ * archived 팀의 콘텐츠를 read-only로 강제한다. {@code TEAM_ARCHIVED} (HTTP 423) 변환은
+ * {@link com.ibizdrive.common.error.GlobalExceptionHandler}.
+ *
+ * <p>Plan E T4 — {@link #restore(UUID, UUID, String)}는 archive guard 직후 cross-scope mismatch
+ * (original parent가 다른 workspace로 이동된 상태) 검증을 추가해
  * {@link FolderRestoreConflictException.Reason#SCOPE_MISMATCH} ({@code RESTORE_CONFLICT} HTTP 409 +
  * {@code reason=scope_mismatch})를 던진다.
  */
@@ -83,7 +87,10 @@ public class FolderMutationService {
     private final ObjectMapper objectMapper;
     /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (FileMutationService와 동일 source). */
     private final TrashRetentionProperties retention;
-    /** Plan E T4 — restore 진입점에서 archived 팀 차단 (spec §2.2/§5.4). */
+    /**
+     * 5개 write 진입점(create/rename/move/delete/restore)에서 archived 팀 콘텐츠 변경을 차단
+     * (spec §2.2/§5.4). Plan E T4에서 restore에 cross-scope mismatch 검증을 추가.
+     */
     private final TeamArchiveGuard teamArchiveGuard;
 
     public FolderMutationService(FolderRepository folderRepository,
@@ -131,6 +138,9 @@ public class FolderMutationService {
         // DB FK가 최종 가드.
         Folder parent = folderRepository.findByIdAndDeletedAtIsNull(parentId)
             .orElseThrow(() -> new FolderNotFoundException("parent folder not found: " + parentId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. parent fetch 직후, normalize/conflict 이전.
+        teamArchiveGuard.assertNotArchived(parent.getScopeType(), parent.getScopeId());
 
         String displayName = NormalizeUtil.normalizeFileName(name);
         String normalizedName = NormalizeUtil.normalizedNameForDedup(name);
@@ -239,6 +249,9 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. no-op 단락 이전 — 시도 자체가 write.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
+
         String newDisplay = NormalizeUtil.normalizeFileName(newName);
         String newNormalized = NormalizeUtil.normalizedNameForDedup(newName);
 
@@ -316,6 +329,10 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. same-scope 가드가 dst==src를 보장하므로
+        // target.scope 기준 1회 호출이면 newParent도 동일하게 차단된다.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
+
         UUID currentParent = target.getParentId();
         if (java.util.Objects.equals(currentParent, newParentId)) {
             return target;                                  // short-circuit
@@ -383,6 +400,9 @@ public class FolderMutationService {
 
         Folder root = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. BFS/cascade 이전.
+        teamArchiveGuard.assertNotArchived(root.getScopeType(), root.getScopeId());
 
         // BFS frontier expansion: root → 후손 ids 수집. visited Set은 데이터 corruption 방어.
         // root 자체는 별도 처리(originalParentId 보존 + entity 단 update + saveAndFlush)이므로

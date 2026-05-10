@@ -66,6 +66,37 @@
 
 ---
 
+## 2026-05-10 세션 — Plan A 라인 follow-on: ERR_TEAM_ARCHIVED Write Enforcement
+
+### 완료
+- [team-archive-enforcement] **T1+T2** TeamArchivedException + TeamArchiveGuard + GlobalExceptionHandler 423 → `TEAM_ARCHIVED` 매핑 (commit 18935d2)
+- [team-archive-enforcement] **T3** FolderMutationService 5 진입점 가드 (create/rename/move/delete/restore-3arg) + FolderArchivedTeamGuardTest (10 cases) (commit de99427)
+- [team-archive-enforcement] **T4** FileMutationService 4 진입점 가드 (rename/move/delete/restore-3arg) + FileArchivedTeamGuardTest (8 cases) (commit 510caa7)
+- [team-archive-enforcement] **T5** FileUploadService.upload + FileVersionMutationService.restoreVersion 가드 + FileUploadArchivedTeamGuardTest (4 cases) (commit 0ee3fe8)
+- [team-archive-enforcement] **T6** docs/02 §8 `TEAM_ARCHIVED` row "예약" 마커 제거 (정상 운영 항목으로 전환)
+- [team-archive-enforcement] dev-docs bootstrap + closure (dev/active → dev/completed)
+
+### 범위
+spec §2.2 archive lifecycle ("archived 팀 콘텐츠 read-only") + §5.4 (`ERR_TEAM_ARCHIVED 423`)에서 docs/02 §8 "예약" 항목으로만 선언되어 있던 enforcement 계약을 실제 동작하는 백엔드 가드로 닫음. archived 팀 소속 폴더/파일에 대한 모든 write API → HTTP 423 + envelope code `TEAM_ARCHIVED` + `details.teamId`. read 경로(GET, download)는 그대로 허용.
+
+11개 진입점 모두 `TeamArchiveGuard.assertNotArchived(scopeType, scopeId)` 단일 helper로 차단. DEPARTMENT scope는 helper에서 short-circuit (no-op) — 부서 deactivate는 별도 정책.
+
+### 다음 세션 컨텍스트
+- **CrossWorkspaceMoveService TEAM_ARCHIVED 가드** — Plan D 머지 후 (PR #138). 본 세션 미커버. cross-workspace move의 source/destination 양쪽 archive 검증 필요.
+- **프론트 423 토스트 wiring** — Plan B 머지(PR #139) 후 `errors.ts` `TEAM_ARCHIVED` 상수와 mutation hook의 onError에서 토스트 표시. UX 측면.
+- **archived 팀 read-only UI 시각** — spec §4.5(9) "archived 팀 dim + 🔒". 사이드바/탐색기에서 archived 팀 콘텐츠는 read-only 모드로 진입. 별도 frontend task.
+
+### 검증
+- backend 전체 suite: 1366 tests, 0 failures, 0 errors, 327 skipped (Testcontainers Docker 부재 시 skip — 기존 peer 패턴과 동일).
+- 신규 테스트 22 cases (Folder 10 + File 8 + Upload 4) — Docker 환경 CI에서 실행.
+- subagent 3-stage review READY (spec compliance + code quality 통합 패스, T1+T2 별도 패스 + T3/T4/T5 통합 패스).
+
+### PR
+- branch: `feat/team-centric-pivot-team-archive-write-enforcement`
+- 5 commits (bootstrap + T1+T2 + T3 + T4 + T5 + T6 docs sync)
+
+---
+
 ## 2026-05-09 세션 — Plan B (Frontend Foundation)
 
 ### 완료

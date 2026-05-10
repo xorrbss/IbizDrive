@@ -56,6 +56,11 @@ import java.util.UUID;
  * <p><b>FolderRepository 의존성</b>: move/restore가 대상 폴더의 활성 여부를 검증하므로
  * {@link FolderRepository#findByIdAndDeletedAtIsNull}을 호출. 폴더 자체의 lock은 잡지 않는다 —
  * 파일의 mutation은 폴더 메타데이터를 변경하지 않으며, FK 제약이 최종 가드.
+ *
+ * <p><b>TEAM_ARCHIVED enforcement</b> (spec §2.2/§5.4): 4개 write 진입점(rename/move/delete/restore)은
+ * 대상 fetch 직후, mutation 직전에 {@link TeamArchiveGuard#assertNotArchived}를 호출해 archived 팀
+ * scope의 콘텐츠 변경을 {@link com.ibizdrive.team.TeamArchivedException} (HTTP 423 +
+ * {@code TEAM_ARCHIVED})로 차단한다. DEPARTMENT scope는 가드 no-op.
  */
 @Service
 @Transactional
@@ -67,7 +72,10 @@ public class FileMutationService {
     private final ObjectMapper objectMapper;
     /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (docs/02 §6.5). */
     private final TrashRetentionProperties retention;
-    /** Plan E T5 — restore 진입점에서 archived 팀 차단 (spec §2.2/§5.4). */
+    /**
+     * 4개 write 진입점(rename/move/delete/restore)에서 archived 팀 콘텐츠 변경을 차단 (spec §2.2/§5.4).
+     * Plan E T5에서 restore 진입점 + cross-scope mismatch 검증을 추가.
+     */
     private final TeamArchiveGuard teamArchiveGuard;
 
     public FileMutationService(FileRepository fileRepository,
@@ -100,6 +108,9 @@ public class FileMutationService {
 
         FileItem target = fileRepository.lockByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new FileNotFoundException("file not found: " + fileId));
+        // spec §2.2 — archived 팀 scope의 콘텐츠는 read-only. no-op short-circuit 이전에 차단해
+        // attempted writes 자체를 거부한다 (콘텐츠 read-only 시맨틱).
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         String newDisplay = NormalizeUtil.normalizeFileName(newName);
         String newNormalized = NormalizeUtil.normalizedNameForDedup(newName);
@@ -158,6 +169,9 @@ public class FileMutationService {
 
         FileItem target = fileRepository.lockByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new FileNotFoundException("file not found: " + fileId));
+        // spec §2.2 — archived 팀 scope 차단. same-scope 가드(별도 진입점)는 src/dst scope가 동일함을
+        // 보장하므로 target scope 1회 검사로 충분.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         UUID currentFolder = target.getFolderId();
         if (newFolderId.equals(currentFolder)) {
@@ -213,6 +227,8 @@ public class FileMutationService {
 
         FileItem target = fileRepository.lockByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new FileNotFoundException("file not found: " + fileId));
+        // spec §2.2 — archived 팀 scope의 휴지통 이동 차단.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         target.setDeletedAt(now);
@@ -280,7 +296,6 @@ public class FileMutationService {
 
         FileItem target = fileRepository.lockByIdAndDeletedAtIsNotNull(fileId)
             .orElseThrow(() -> new FileNotFoundException("trashed file not found: " + fileId));
-
         // Plan E T5 / spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. soft-deleted row의
         // scope_type/scope_id는 V13 NOT NULL 제약으로 preserve되므로 target.scope로 그대로 검증.
         // name conflict / cross-scope mismatch 검사 이전에 단락 — 시도 자체가 write.
