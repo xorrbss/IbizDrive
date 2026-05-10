@@ -51,7 +51,7 @@ public class WorkspaceService {
      * @param userId 조회 대상 사용자
      * @return department + teams listing — 둘 다 비어있을 수 있음
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public WorkspaceListing findForUser(UUID userId) {
         Optional<DepartmentWorkspace> dept = userDeptLookup.departmentIdOf(userId)
             .flatMap(deptRepo::findById)
