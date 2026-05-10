@@ -10,7 +10,6 @@ import com.ibizdrive.team.dto.TeamCreateRequest;
 import com.ibizdrive.team.dto.TeamMemberInviteRequest;
 import com.ibizdrive.team.dto.TeamMemberResponse;
 import com.ibizdrive.team.dto.TeamMemberRoleUpdateRequest;
-import org.mockito.Mockito;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -32,6 +31,7 @@ import java.util.UUID;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -267,7 +267,7 @@ class TeamControllerTest {
         IbizDriveUserDetails principal = principalForUser(actorId);
 
         when(teamAuthz.isOwner(eq(teamId), any())).thenReturn(true);
-        Mockito.doThrow(new LastOwnerRequiredException(teamId))
+        doThrow(new LastOwnerRequiredException(teamId))
             .when(teamService).changeRole(any(), any(), any(), any());
 
         TeamMemberRoleUpdateRequest req = new TeamMemberRoleUpdateRequest(TeamMembership.Role.MEMBER);
