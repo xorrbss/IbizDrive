@@ -66,20 +66,21 @@ public class WorkspaceService {
         List<UUID> teamIds = memberships.stream()
             .map(TeamMembership::getTeamId).toList();
 
-        // DIAGNOSTIC: temporary SLF4J logging to identify which step returns empty in CI
-        log.warn("[findForUser-DBG] userId={} memberships.size={} teamIds={}",
-            userId, memberships.size(), teamIds);
-
         List<com.ibizdrive.team.Team> teamsRaw = teamIds.isEmpty() ? List.of()
             : teamRepo.findAllById(teamIds);
-        log.warn("[findForUser-DBG] teamsRaw.size={} rootFolderIds={}",
-            teamsRaw.size(),
-            teamsRaw.stream().map(com.ibizdrive.team.Team::getRootFolderId).toList());
 
         List<TeamWorkspace> teams = teamsRaw.stream()
                 .filter(t -> t.getRootFolderId() != null)
                 .map(TeamWorkspace::new).toList();
-        log.warn("[findForUser-DBG] final teams.size={}", teams.size());
+
+        // DIAG: throw on empty result with non-empty memberships to surface state in CI test failure stack
+        if (teams.isEmpty() && !memberships.isEmpty()) {
+            throw new IllegalStateException("[findForUser-DBG] userId=" + userId
+                + " memberships.size=" + memberships.size()
+                + " teamIds=" + teamIds
+                + " teamsRaw.size=" + teamsRaw.size()
+                + " rootFolderIds=" + teamsRaw.stream().map(com.ibizdrive.team.Team::getRootFolderId).toList());
+        }
 
         return new WorkspaceListing(dept, teams);
     }
