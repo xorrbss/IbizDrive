@@ -34,6 +34,7 @@ import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -195,6 +196,42 @@ class TeamControllerTest {
             .andExpect(status().isForbidden());
 
         verify(teamService, never()).remove(any(), any(), any());
+    }
+
+    @Test
+    void listMembers_returns200_whenMember() throws Exception {
+        UUID teamId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        IbizDriveUserDetails principal = principalForUser(userId);
+        com.ibizdrive.team.dto.TeamMemberResponse r1 =
+            new com.ibizdrive.team.dto.TeamMemberResponse(
+                userId, "Alice", "a@x.io",
+                TeamMembership.Role.OWNER, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+
+        when(teamAuthz.isMember(eq(teamId), any())).thenReturn(true);
+        when(teamService.listMembers(eq(teamId))).thenReturn(java.util.List.of(r1));
+
+        mvc.perform(get("/api/teams/" + teamId + "/members")
+                .with(user(principal)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].userId").value(userId.toString()))
+            .andExpect(jsonPath("$[0].displayName").value("Alice"))
+            .andExpect(jsonPath("$[0].role").value("OWNER"));
+    }
+
+    @Test
+    void listMembers_returns403_whenNonMember() throws Exception {
+        UUID teamId = UUID.randomUUID();
+        UUID userId = UUID.randomUUID();
+        IbizDriveUserDetails principal = principalForUser(userId);
+
+        when(teamAuthz.isMember(eq(teamId), any())).thenReturn(false);
+
+        mvc.perform(get("/api/teams/" + teamId + "/members")
+                .with(user(principal)))
+            .andExpect(status().isForbidden());
+
+        verify(teamService, never()).listMembers(any());
     }
 
     private IbizDriveUserDetails principalForUser(UUID userId) {
