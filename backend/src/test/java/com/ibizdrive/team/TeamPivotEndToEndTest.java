@@ -109,9 +109,13 @@ class TeamPivotEndToEndTest {
             .containsExactly(team.getId());
 
         // 3) WorkspaceService — invited member의 listing에 team 노출.
-        // @Transactional 테스트 + @Transactional(readOnly=true) findForUser 조합에서 outer 트랜잭션의
-        // 영속성 컨텍스트가 stale entity 또는 pending write를 들고 있을 가능성에 대비해 명시적 flush.
+        // 진단 probe — DB 상태와 서비스 결과를 격리해 어떤 단계에서 결과가 사라지는지 추적.
         em.flush();
+        UUID rootViaJdbc = jdbc.queryForObject(
+            "SELECT root_folder_id FROM teams WHERE id = ?",
+            (rs, rowNum) -> (UUID) rs.getObject(1),
+            team.getId());
+        assertThat(rootViaJdbc).as("team.root_folder_id in DB").isNotNull();
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())
