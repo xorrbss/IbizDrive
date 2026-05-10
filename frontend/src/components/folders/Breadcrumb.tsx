@@ -57,15 +57,20 @@ export function Breadcrumb() {
     : null
 
   // spec §4.5 §2: workspace root는 트리 1차 노드, 이름 = workspace 이름.
-  // headCrumb이 있으면 breadcrumb의 첫 가상 root('내 드라이브')를 workspace 이름으로 교체.
+  // headCrumb이 있으면 breadcrumb 안의 workspace root(=같은 id) entry를 제거하고 headCrumb으로 교체.
+  // backend breadcrumb은 (workspace pivot 이후) 이미 workspace root부터 시작하므로
+  // 단순 slice(1)은 root id를 두 번 포함시켜 React key 중복 warning을 일으킨다.
+  // headCrumb.id 와 같은 id를 명시적으로 제거하면 backend가 가상 root를 prepend하든 안 하든 안전.
   // headCrumb이 null이면 (비workspace 라우트) 기존 동작 유지.
   const displayCrumbs = headCrumb
     ? [
         { id: headCrumb.id, name: headCrumb.name, slugPath: [] as string[], _href: headCrumb.href },
-        ...breadcrumb.slice(1).map((c) => ({
-          ...c,
-          _href: loc ? buildWorkspacePath(loc, c.id, c.slugPath) : '#',
-        })),
+        ...breadcrumb
+          .filter((c) => c.id !== headCrumb.id)
+          .map((c) => ({
+            ...c,
+            _href: loc ? buildWorkspacePath(loc, c.id, c.slugPath) : '#',
+          })),
       ]
     : breadcrumb.map((c) => ({
         ...c,
