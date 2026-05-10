@@ -11,6 +11,7 @@ import { useShareUiStore } from '@/stores/shareUi'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
 import { api } from '@/lib/api'
+import { messageForError } from '@/lib/errors'
 import { invalidations } from '@/lib/queryKeys'
 
 type DeletedItem = { id: string; type: 'file' | 'folder' }
@@ -38,7 +39,8 @@ export function BulkActionBar() {
         },
       })
     },
-    onError: () => toast.error('삭제에 실패했습니다. 다시 시도해 주세요.'),
+    onError: (err) =>
+      toast.error(messageForError(err, '삭제에 실패했습니다. 다시 시도해 주세요.')),
   })
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
   const openRename = useRenameUiStore((s) => s.open)
@@ -201,7 +203,7 @@ async function undoDelete(
       // 사용자가 휴지통 페이지에서 행 단위로 복원 시 RestoreConflictDialog 가 트리거됨.
       toast.error('원위치에 같은 이름의 항목이 있어 복원에 실패했습니다 — 휴지통에서 다른 이름으로 복원할 수 있습니다')
     } else {
-      toast.error('복원에 실패했습니다')
+      toast.error(messageForError(err, '복원에 실패했습니다'))
     }
   }
 }
