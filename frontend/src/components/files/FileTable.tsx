@@ -25,13 +25,15 @@ import { buildWorkspacePath, type WorkspaceLocator } from '@/lib/workspacePath'
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
 import type { FileItem } from '@/types/file'
 
-const ROW_HEIGHT = 40
+// 디자인 토큰 `--row-h` 와 동일 (globals.css L48 = 34px). variant override 시 값이 달라져도
+// 가상화 estimate 만 영향 — 실제 row 높이는 FileRow `h-[var(--row-h)]` 가 자동 추종.
+const ROW_HEIGHT = 34
 
 // Grid 가상화 (M16V) — row(카드 1줄) 추정 높이 + auto-fill 산식 입력값.
 // 카드 내부: p-3(24) + icon36 + mt-2(8) + name 2-line(~32) + mt-1(4) + meta(14) + border ≈ 124~140
 // row gap-3(12) 포함 → 168px estimate. 가변 높이는 v1.x.
 const CARD_ROW_HEIGHT = 168
-const GRID_MIN_COL_WIDTH = 140
+const GRID_MIN_COL_WIDTH = 172
 const GRID_GAP = 12
 
 // 현 M5 단계 — 5열 유지 (M7에서 체크박스/액션 컬럼 추가 시 재매핑)

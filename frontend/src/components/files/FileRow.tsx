@@ -112,7 +112,7 @@ export function FileRow({
           : undefined
       }
       tabIndex={isFocused ? 0 : -1}
-      className={`${gridCols} min-h-[var(--row-h)] h-10 select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
+      className={`${gridCols} h-[var(--row-h)] select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
       title={dropTitle}
       onClick={(e) => {
         if (isPending) return
