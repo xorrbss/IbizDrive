@@ -53,6 +53,12 @@ public interface TeamMembershipRepository
     long countByTeamIdAndRole(@Param("team") UUID teamId, @Param("role") TeamMembership.Role role);
 
     /**
+     * 특정 팀의 총 멤버 수 — admin team list/detail summary용 (T8).
+     */
+    @Query("SELECT COUNT(m) FROM TeamMembership m WHERE m.id.teamId = :team")
+    long countByTeamId(@Param("team") UUID teamId);
+
+    /**
      * 특정 팀의 모든 멤버십을 반환한다.
      *
      * <p>반환 순서는 미지정 — 순서가 필요한 경우 호출자가 정렬.
