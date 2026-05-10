@@ -95,11 +95,23 @@ public class SecurityConfig {
         return Clock.systemUTC();
     }
 
+    /**
+     * CSRF 실패를 명시적 403 + JSON body로 매핑하는 핸들러. {@link CsrfAwareAccessDeniedHandler} 참고.
+     *
+     * <p>이 빈은 {@link #securityFilterChain}의 {@code exceptionHandling().accessDeniedHandler(...)} 와이어링에 사용되며,
+     * SecurityConfig를 {@code @Import}하는 모든 슬라이스 테스트에 자동 노출되어 별도 import 부담을 없앤다.
+     */
+    @Bean
+    public CsrfAwareAccessDeniedHandler csrfAwareAccessDeniedHandler() {
+        return new CsrfAwareAccessDeniedHandler();
+    }
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http,
                                                    CsrfTokenRepository csrfRepo,
                                                    SecurityContextRepository securityContextRepository,
-                                                   SessionValidityFilter sessionValidityFilter) throws Exception {
+                                                   SessionValidityFilter sessionValidityFilter,
+                                                   CsrfAwareAccessDeniedHandler csrfAwareAccessDeniedHandler) throws Exception {
         // 평문 토큰 (XOR mask 미적용) — docs/02 §7.1 double-submit 계약과 일치.
         // Spring Security 6 default(XorCsrfTokenRequestAttributeHandler)는 BREACH 가드를 위해
         // 토큰을 XOR-masked로 변환. 우리는 cookie/header 동등 비교 단순화 위해 plain handler 채택.
@@ -140,8 +152,12 @@ public class SecurityConfig {
                 .requestMatchers("/api/auth/password/forgot").permitAll()
                 .requestMatchers("/api/auth/password/reset").permitAll()
                 .anyRequest().authenticated())
+            // accessDeniedHandler — CsrfFilter가 자체적으로 사용. CSRF 실패 시 sendError(403) 대신
+            // 직접 JSON body를 작성하여 Spring Boot ErrorPage forward(/error → 익명 인증 실패 → 빈 401)
+            // 위장 흐름을 차단한다. {@link CsrfAwareAccessDeniedHandler} 참고.
             .exceptionHandling(eh -> eh
-                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED)))
+                .authenticationEntryPoint(new HttpStatusEntryPoint(HttpStatus.UNAUTHORIZED))
+                .accessDeniedHandler(csrfAwareAccessDeniedHandler))
             // formLogin·httpBasic 모두 비활성화. 자체 AuthController(A1.3)가 인증 처리.
             .formLogin(f -> f.disable())
             .httpBasic(b -> b.disable())

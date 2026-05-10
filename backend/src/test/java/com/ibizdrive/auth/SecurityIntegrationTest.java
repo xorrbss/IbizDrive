@@ -57,10 +57,13 @@ class SecurityIntegrationTest {
     }
 
     @Test
-    void postWithoutCsrf_returns403() throws Exception {
+    void postWithoutCsrf_returns403CsrfMismatch() throws Exception {
         // 임의 mutation 경로 — endpoint 매핑 전에 CSRF 필터가 처리.
+        // {@link CsrfAwareAccessDeniedHandler}가 sendError 대신 직접 JSON body를 작성하여
+        // ErrorPage forward(/error → 빈 401) 위장 흐름을 차단한다 (T1-finding 회귀 가드).
         mvc.perform(post("/api/folders").contentType("application/json").content("{}"))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("CSRF_MISMATCH"));
     }
 
     @Test
