@@ -291,7 +291,10 @@ class CrossWorkspaceFileMoveE2ETest {
             .as("login should succeed for %s", email)
             .isEqualTo(HttpStatus.OK);
         String session = extractCookie(login, "SESSION");
+        // Spring Security CSRF: POST 요청은 X-CSRF-Token 헤더 + XSRF-TOKEN cookie 둘 다 필요.
+        // 헤더 빠지면 CsrfFilter가 403 — AuthAuditE2ETest.csrfWithSession 패턴과 동형.
         HttpHeaders h = new HttpHeaders();
+        h.add("X-CSRF-Token", csrf.getFirst("X-CSRF-Token"));
         h.add(HttpHeaders.COOKIE,
             csrf.getFirst(HttpHeaders.COOKIE) + "; SESSION=" + session);
         return h;
