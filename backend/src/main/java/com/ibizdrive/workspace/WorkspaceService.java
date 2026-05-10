@@ -58,13 +58,24 @@ public class WorkspaceService {
             .filter(d -> d.isActive() && d.getRootFolderId() != null)
             .map(DepartmentWorkspace::new);
 
-        List<UUID> teamIds = memRepo.findByUserId(userId).stream()
+        List<TeamMembership> memberships = memRepo.findByUserId(userId);
+        List<UUID> teamIds = memberships.stream()
             .map(TeamMembership::getTeamId).toList();
 
-        List<TeamWorkspace> teams = teamIds.isEmpty() ? List.of()
-            : teamRepo.findAllById(teamIds).stream()
+        // DIAGNOSTIC: temporary logging to identify which step returns empty in CI
+        System.out.println("[findForUser-DBG] userId=" + userId
+            + " memberships.size=" + memberships.size()
+            + " teamIds=" + teamIds);
+
+        List<com.ibizdrive.team.Team> teamsRaw = teamIds.isEmpty() ? List.of()
+            : teamRepo.findAllById(teamIds);
+        System.out.println("[findForUser-DBG] teamsRaw.size=" + teamsRaw.size()
+            + " rootFolderIds=" + teamsRaw.stream().map(com.ibizdrive.team.Team::getRootFolderId).toList());
+
+        List<TeamWorkspace> teams = teamsRaw.stream()
                 .filter(t -> t.getRootFolderId() != null)
                 .map(TeamWorkspace::new).toList();
+        System.out.println("[findForUser-DBG] final teams.size=" + teams.size());
 
         return new WorkspaceListing(dept, teams);
     }
