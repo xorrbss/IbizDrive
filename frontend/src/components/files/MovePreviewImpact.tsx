@@ -45,7 +45,7 @@ export function MovePreviewImpact({ data, isPending }: Props) {
       </ul>
       {data.nameConflict && (
         <div className="text-danger font-medium">
-          이름 충돌: "{data.nameConflict}" 항목이 이미 존재합니다
+          이름 충돌: &quot;{data.nameConflict}&quot; 항목이 이미 존재합니다
         </div>
       )}
     </div>

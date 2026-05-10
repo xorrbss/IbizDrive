@@ -70,7 +70,7 @@ class ShareRepositorySubtreeTest {
         UUID otherShare = seedShare("folder", otherFolder, subject, actor, "edit", false);
 
         UUID revoker = seedUser("rev@t");
-        Timestamp now = Timestamp.from(java.time.Instant.now());
+        java.time.Instant now = java.time.Instant.now();
         int revoked = shareRepo.revokeByIds(List.of(share1, share2), revoker, now);
         assertThat(revoked).isEqualTo(2);
 

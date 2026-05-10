@@ -43,6 +43,7 @@ const itemFolder: TrashItem = {
 
 // mockTree kept for reference; TrashTable now uses tree=undefined (Tasks 17+ 대기).
 // originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백으로 표시됨.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const _mockTree = {
   id: 'root',
   parentId: null,

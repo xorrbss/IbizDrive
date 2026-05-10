@@ -24,6 +24,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -541,7 +542,7 @@ class FolderMutationServiceTest {
      */
     private Folder insertRootFolder(String name, UUID ownerId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(Instant.now());
         UUID scopeId = UUID.randomUUID();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
