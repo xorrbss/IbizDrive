@@ -14,10 +14,10 @@ export function TeamMemberTable({
     <table className="w-full text-[13px]">
       <thead className="text-fg-muted text-[12px]">
         <tr>
-          <th className="text-left py-2 px-3">이름</th>
-          <th className="text-left py-2 px-3">역할</th>
-          <th className="text-left py-2 px-3">가입일</th>
-          {canManage && <th className="text-right py-2 px-3">액션</th>}
+          <th scope="col" className="text-left py-2 px-3">이름</th>
+          <th scope="col" className="text-left py-2 px-3">역할</th>
+          <th scope="col" className="text-left py-2 px-3">가입일</th>
+          {canManage && <th scope="col" className="text-right py-2 px-3">액션</th>}
         </tr>
       </thead>
       <tbody>

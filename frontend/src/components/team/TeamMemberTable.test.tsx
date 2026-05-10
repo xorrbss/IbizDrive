@@ -13,7 +13,7 @@ const M2: TeamMember = {
 }
 
 describe('TeamMemberTable', () => {
-  it('renders 3 columns and member rows', () => {
+  it('renders header + member rows (canManage=true → 4 columns, 2 members)', () => {
     render(
       <TeamMemberTable
         members={[M1, M2]}
