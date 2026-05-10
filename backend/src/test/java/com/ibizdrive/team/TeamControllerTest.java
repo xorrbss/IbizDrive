@@ -9,6 +9,8 @@ import com.ibizdrive.config.SecurityConfig;
 import com.ibizdrive.team.dto.TeamCreateRequest;
 import com.ibizdrive.team.dto.TeamMemberInviteRequest;
 import com.ibizdrive.team.dto.TeamMemberResponse;
+import com.ibizdrive.team.dto.TeamMemberRoleUpdateRequest;
+import org.mockito.Mockito;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -37,6 +39,7 @@ import static org.springframework.security.test.web.servlet.request.SecurityMock
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -233,6 +236,68 @@ class TeamControllerTest {
             .andExpect(status().isForbidden());
 
         verify(teamService, never()).listMembers(any());
+    }
+
+    @Test
+    void changeRole_returns204_whenOwner() throws Exception {
+        UUID teamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID targetUserId = UUID.randomUUID();
+        IbizDriveUserDetails principal = principalForUser(actorId);
+
+        when(teamAuthz.isOwner(eq(teamId), any())).thenReturn(true);
+
+        TeamMemberRoleUpdateRequest req = new TeamMemberRoleUpdateRequest(TeamMembership.Role.OWNER);
+
+        mvc.perform(patch("/api/teams/" + teamId + "/members/" + targetUserId)
+                .with(user(principal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(req)))
+            .andExpect(status().isNoContent());
+
+        verify(teamService).changeRole(eq(teamId), eq(targetUserId),
+            eq(TeamMembership.Role.OWNER), eq(actorId));
+    }
+
+    @Test
+    void changeRole_returns400_whenLastOwner() throws Exception {
+        UUID teamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID targetUserId = UUID.randomUUID();
+        IbizDriveUserDetails principal = principalForUser(actorId);
+
+        when(teamAuthz.isOwner(eq(teamId), any())).thenReturn(true);
+        Mockito.doThrow(new LastOwnerRequiredException(teamId))
+            .when(teamService).changeRole(any(), any(), any(), any());
+
+        TeamMemberRoleUpdateRequest req = new TeamMemberRoleUpdateRequest(TeamMembership.Role.MEMBER);
+
+        mvc.perform(patch("/api/teams/" + teamId + "/members/" + targetUserId)
+                .with(user(principal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(req)))
+            .andExpect(status().isBadRequest())
+            .andExpect(jsonPath("$.error.code").value("TEAM_OWNER_REQUIRED"));
+    }
+
+    @Test
+    void changeRole_returns403_whenNonOwner() throws Exception {
+        UUID teamId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+        UUID targetUserId = UUID.randomUUID();
+        IbizDriveUserDetails principal = principalForUser(actorId);
+
+        when(teamAuthz.isOwner(eq(teamId), any())).thenReturn(false);
+
+        TeamMemberRoleUpdateRequest req = new TeamMemberRoleUpdateRequest(TeamMembership.Role.MEMBER);
+
+        mvc.perform(patch("/api/teams/" + teamId + "/members/" + targetUserId)
+                .with(user(principal)).with(csrf())
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(objectMapper.writeValueAsBytes(req)))
+            .andExpect(status().isForbidden());
+
+        verify(teamService, never()).changeRole(any(), any(), any(), any());
     }
 
     private IbizDriveUserDetails principalForUser(UUID userId) {

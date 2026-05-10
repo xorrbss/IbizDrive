@@ -3,6 +3,7 @@ package com.ibizdrive.team;
 import com.ibizdrive.team.dto.TeamCreateRequest;
 import com.ibizdrive.team.dto.TeamMemberInviteRequest;
 import com.ibizdrive.team.dto.TeamMemberResponse;
+import com.ibizdrive.team.dto.TeamMemberRoleUpdateRequest;
 import com.ibizdrive.team.dto.TeamResponse;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
@@ -12,6 +13,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -32,6 +34,7 @@ import java.util.UUID;
  *   <li>{@code POST /api/teams/{teamId}/members} — invite (OWNER만)</li>
  *   <li>{@code DELETE /api/teams/{teamId}/members/{userId}} — remove (OWNER 또는 자기 자신)</li>
  *   <li>{@code GET /api/teams/{teamId}/members} — list members (팀 멤버만)</li>
+ *   <li>{@code PATCH /api/teams/{teamId}/members/{userId}} — change role (OWNER만)</li>
  * </ul>
  */
 @RestController
@@ -78,5 +81,16 @@ public class TeamController {
     @PreAuthorize("@teamAuthz.isMember(#teamId, principal)")
     public ResponseEntity<List<TeamMemberResponse>> listMembers(@PathVariable UUID teamId) {
         return ResponseEntity.ok(svc.listMembers(teamId));
+    }
+
+    @PatchMapping("/{teamId}/members/{userId}")
+    @PreAuthorize("@teamAuthz.isOwner(#teamId, principal)")
+    public ResponseEntity<Void> changeRole(@PathVariable UUID teamId,
+                                           @PathVariable UUID userId,
+                                           @Valid @RequestBody TeamMemberRoleUpdateRequest req,
+                                           @AuthenticationPrincipal IbizDriveUserDetails principal) {
+        UUID actor = principal.getUser().getId();
+        svc.changeRole(teamId, userId, req.role(), actor);
+        return ResponseEntity.noContent().build();
     }
 }
