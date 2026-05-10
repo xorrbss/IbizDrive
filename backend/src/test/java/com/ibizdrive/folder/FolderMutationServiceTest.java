@@ -265,19 +265,23 @@ class FolderMutationServiceTest {
     }
 
     @Test
-    void move_toRoot_setsParentNull() {
-        // V13/Task 24: child→root(null) move는 service.move 계약상 허용 (Task 25에서 cross-scope
-        // 가드를 별도 도입). 본 테스트는 audit 발행 + parentId=NULL 전이만 검증.
+    void move_toRoot_violatesRootPerScopeUniqueIndex() {
+        // Plan A V14 (idx_folders_root_per_scope) — workspace당 root folder 단 하나만 허용.
+        // child→root(null) move는 동일 scope에 두 번째 root를 만들어 partial unique index를 위반한다.
+        // spec §1.3: "root folder는 workspace lifecycle (Task 16/20)이 만드는 유일한 경로". service.move로
+        // root 생성/이동은 허용되지 않는다. DB가 진실의 출처 (CLAUDE.md §3 원칙 6).
         UUID owner = insertUser("m2@test", "m2");
         Folder root = insertRootFolder("RootM2", owner);
         Folder parent = service.create(root.getId(), "ParentM2", owner, "standard", owner);
         Folder child = service.create(parent.getId(), "ChildM2", owner, "standard", owner);
         reset(auditService);
 
-        Folder moved = service.move(child.getId(), null, owner);
-
-        assertThat(moved.getParentId()).isNull();
-        verifyAuditEmitted(AuditEventType.FOLDER_MOVED, child.getId(), owner);
+        // V14 partial unique (parent_id IS NULL AND deleted_at IS NULL on (scope_type, scope_id))는
+        // saveAndFlush 시점에 DataIntegrityViolationException으로 발현. 호출자(controller)는 v1.x에서
+        // 일반 conflict envelope으로 매핑 — 본 테스트는 DB-level 가드 발현만 검증.
+        assertThatThrownBy(() -> service.move(child.getId(), null, owner))
+            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+        verify(auditService, never()).record(any());
     }
 
     @Test
