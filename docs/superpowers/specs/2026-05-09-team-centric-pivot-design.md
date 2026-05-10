@@ -366,6 +366,7 @@ share_grant_max(scope=A, target=B) =
 - workspace는 URL이 소유 (CLAUDE.md §3 원칙 1).
 - `parts[0]`는 여전히 `folderId`(해시), 나머지는 SEO/canonical용 slug. 기존 catch-all + canonical redirect 패턴 유지.
 - slug → id 매핑 server lookup. 충돌 시 short-id suffix.
+- **MVP slug = workspace UUID** (Plan B / Plan E 구현 — `frontend/src/lib/workspacePath.ts` 주석 + `ClientDeptTrashWrapper.tsx`/`ClientTeamTrashWrapper.tsx` 참조). SEO slug + server-side resolver 도입은 v1.x++.
 
 ### 5.2 신규 API 엔드포인트
 

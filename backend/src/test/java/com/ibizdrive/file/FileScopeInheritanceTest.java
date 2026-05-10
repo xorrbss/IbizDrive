@@ -23,6 +23,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.ByteArrayInputStream;
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -140,7 +141,7 @@ class FileScopeInheritanceTest {
      */
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
             "scope_type, scope_id, created_at, updated_at) " +

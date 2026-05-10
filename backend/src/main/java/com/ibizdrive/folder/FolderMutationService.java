@@ -58,11 +58,16 @@ import java.util.UUID;
  * IP/User-Agent는 {@link WebRequestContextHolder}로 현재 HTTP 요청에서 추출 — 비-HTTP 컨텍스트
  * (스케줄러 등)에서는 자연스럽게 null.
  *
- * <p><b>archived 팀 차단 (spec §2.2/§5.4 — Plan A T3)</b>: 5개 write 진입점
+ * <p><b>archived 팀 차단 (spec §2.2/§5.4 — Plan A T3 + Plan E T4)</b>: 5개 write 진입점
  * (create/rename/move/delete/restore)은 target/parent fetch 직후 mutation 직전에
  * {@link TeamArchiveGuard#assertNotArchived(ScopeType, java.util.UUID)}를 호출해
  * archived 팀의 콘텐츠를 read-only로 강제한다. {@code TEAM_ARCHIVED} (HTTP 423) 변환은
  * {@link com.ibizdrive.common.error.GlobalExceptionHandler}.
+ *
+ * <p>Plan E T4 — {@link #restore(UUID, UUID, String)}는 archive guard 직후 cross-scope mismatch
+ * (original parent가 다른 workspace로 이동된 상태) 검증을 추가해
+ * {@link FolderRestoreConflictException.Reason#SCOPE_MISMATCH} ({@code RESTORE_CONFLICT} HTTP 409 +
+ * {@code reason=scope_mismatch})를 던진다.
  */
 @Service
 @Transactional
@@ -85,7 +90,10 @@ public class FolderMutationService {
     private final TrashRetentionProperties retention;
     /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
     private final CrossWorkspaceMoveService crossWorkspaceMoveService;
-    /** spec §2.2/§5.4 — archived 팀 scope writes 차단. */
+    /**
+     * 5개 write 진입점(create/rename/move/delete/restore)에서 archived 팀 콘텐츠 변경을 차단
+     * (spec §2.2/§5.4). Plan E T4에서 restore에 cross-scope mismatch 검증을 추가.
+     */
     private final TeamArchiveGuard teamArchiveGuard;
 
     public FolderMutationService(FolderRepository folderRepository,
@@ -496,8 +504,9 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNotNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("trashed folder not found: " + folderId));
 
-        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. soft-deleted row의 scope_type/scope_id는
-        // V13 NOT NULL 제약으로 preserve되므로 target.scope로 그대로 검증.
+        // Plan E T4 / spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. soft-deleted row의
+        // scope_type/scope_id는 V13 NOT NULL 제약으로 preserve되므로 target.scope로 그대로 검증.
+        // name conflict / cross-scope mismatch 검사 이전에 단락 — 시도 자체가 write.
         teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         UUID originalParentSnapshot = target.getOriginalParentId();
@@ -507,9 +516,26 @@ public class FolderMutationService {
         if (restoreParentId != null) {
             // 원래 parent가 활성인지 확인. soft-deleted parent로의 복원은 불허 — 사용자가 parent부터
             // 복원해야 한다는 UX 강제 (자기 자신만 복원 정책의 일관성).
-            folderRepository.findByIdAndDeletedAtIsNull(restoreParentId)
+            Folder restoreParent = folderRepository.findByIdAndDeletedAtIsNull(restoreParentId)
                 .orElseThrow(() -> new FolderNotFoundException(
                     "original parent is not active: " + restoreParentId));
+            // Plan E T4 — cross-scope mismatch: original parent가 활성이지만 다른 workspace로
+            // 이동된 경우 (cross-workspace move 후 또는 데이터 재배치 후 발생 가능). 복원 시 자식이
+            // 원래 workspace를 떠나면 §1.2 invariant 위반이므로 차단. wire body의 reason='scope_mismatch'.
+            // details map의 키는 "reason" / "resourceId" 회피 (handler가 silent overwrite — T3 reviewer 권고).
+            if (restoreParent.getScopeType() != target.getScopeType()
+                    || !restoreParent.getScopeId().equals(target.getScopeId())) {
+                Map<String, Object> mismatch = new LinkedHashMap<>();
+                mismatch.put("expectedScopeType", target.getScopeType().dbValue());
+                mismatch.put("expectedScopeId", target.getScopeId().toString());
+                mismatch.put("actualScopeType", restoreParent.getScopeType().dbValue());
+                mismatch.put("actualScopeId", restoreParent.getScopeId().toString());
+                throw new FolderRestoreConflictException(
+                    FolderRestoreConflictException.Reason.SCOPE_MISMATCH,
+                    target.getId(),
+                    "original parent moved to a different workspace",
+                    mismatch);
+            }
         }
 
         // newName 정규화 (지정 시) — rename 패턴 미러.

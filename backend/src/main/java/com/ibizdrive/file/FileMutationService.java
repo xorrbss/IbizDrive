@@ -77,7 +77,10 @@ public class FileMutationService {
     private final TrashRetentionProperties retention;
     /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
     private final CrossWorkspaceMoveService crossWorkspaceMoveService;
-    /** spec §2.2/§5.4 — archived 팀 scope writes 차단. */
+    /**
+     * 4개 write 진입점(rename/move/delete/restore)에서 archived 팀 콘텐츠 변경을 차단 (spec §2.2/§5.4).
+     * Plan E T5에서 restore 진입점 + cross-scope mismatch 검증을 추가.
+     */
     private final TeamArchiveGuard teamArchiveGuard;
 
     public FileMutationService(FileRepository fileRepository,
@@ -299,8 +302,21 @@ public class FileMutationService {
      *       다이얼로그의 inline alert 로 분기.</li>
      * </ul>
      *
+     * <p><b>archived 팀 차단 (Plan E T5 — spec §2.2/§5.4)</b>: target lock 직후, original folder 검증
+     * 이전에 {@link TeamArchiveGuard#assertNotArchived}를 호출해 archived 팀 콘텐츠 복원을 차단한다
+     * ({@link com.ibizdrive.team.TeamArchivedException}, HTTP 423 {@code TEAM_ARCHIVED}).
+     * V13 NOT NULL 제약으로 soft-deleted row의 scope 정보가 보존되므로 target.scope로 그대로 검증.
+     *
+     * <p><b>cross-scope mismatch (Plan E T5 — spec §3.4/§5.2/§5.3)</b>: original folder가 다른
+     * workspace로 이동된 경우(cross-workspace 데이터 재배치 후 발생 가능), 복원하면 자식이 원래
+     * workspace를 떠나 §1.2 invariant 위반. {@link FileRestoreConflictException.Reason#SCOPE_MISMATCH}
+     * (envelope {@code RESTORE_CONFLICT} HTTP 409 + body {@code reason='scope_mismatch'})로 차단.
+     *
      * @throws FileNotFoundException        fileId 가 휴지통 파일이 아님 (이미 활성 또는 미존재 또는 originalFolder 부재)
-     * @throws FileRestoreConflictException newName 미지정 + 원본 이름이 원위치에서 충돌
+     * @throws FolderNotFoundException      original folder 가 활성이 아님 (Plan E T5 — T4 패턴 답습)
+     * @throws com.ibizdrive.team.TeamArchivedException scope=TEAM 이고 해당 Team 이 archived 상태
+     * @throws FileRestoreConflictException newName 미지정 + 원본 이름이 원위치에서 충돌,
+     *                                      또는 cross-scope mismatch ({@code SCOPE_MISMATCH})
      * @throws FileNameConflictException    newName 지정 + 새 이름이 원위치에서 충돌
      */
     public FileItem restore(UUID fileId, UUID actorId) {
@@ -312,7 +328,9 @@ public class FileMutationService {
 
         FileItem target = fileRepository.lockByIdAndDeletedAtIsNotNull(fileId)
             .orElseThrow(() -> new FileNotFoundException("trashed file not found: " + fileId));
-        // spec §2.2 — archived 팀 scope의 휴지통 복원 차단. (2-arg overload는 본 메서드에 위임.)
+        // Plan E T5 / spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. soft-deleted row의
+        // scope_type/scope_id는 V13 NOT NULL 제약으로 preserve되므로 target.scope로 그대로 검증.
+        // name conflict / cross-scope mismatch 검사 이전에 단락 — 시도 자체가 write.
         teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
 
         UUID originalFolderId = target.getOriginalFolderId();
@@ -322,9 +340,28 @@ public class FileMutationService {
                 "trashed file has no original folder snapshot: " + fileId);
         }
         // 원래 폴더가 여전히 활성인지 확인. soft-deleted 폴더로의 복원은 불허.
-        folderRepository.findByIdAndDeletedAtIsNull(originalFolderId)
-            .orElseThrow(() -> new FileNotFoundException(
+        // Plan E T5 — T4 패턴 답습: original folder lookup 결과를 후속 cross-scope 검증에 재사용.
+        // Active 폴더 부재는 FolderNotFoundException으로 통일 (T4 reviewer 인정한 NOT_FOUND UX 일치).
+        Folder originalFolder = folderRepository.findByIdAndDeletedAtIsNull(originalFolderId)
+            .orElseThrow(() -> new FolderNotFoundException(
                 "original folder is not active: " + originalFolderId));
+        // Plan E T5 — cross-scope mismatch: original folder가 활성이지만 다른 workspace로
+        // 이동된 경우 (cross-workspace 데이터 재배치 후 발생 가능). 복원 시 자식이 원래 workspace를
+        // 떠나면 §1.2 invariant 위반이므로 차단. wire body의 reason='scope_mismatch'.
+        // details map의 키는 "reason" / "resourceId" 회피 (handler가 silent overwrite — T3 reviewer 권고).
+        if (originalFolder.getScopeType() != target.getScopeType()
+                || !originalFolder.getScopeId().equals(target.getScopeId())) {
+            Map<String, Object> mismatch = new LinkedHashMap<>();
+            mismatch.put("expectedScopeType", target.getScopeType().dbValue());
+            mismatch.put("expectedScopeId", target.getScopeId().toString());
+            mismatch.put("actualScopeType", originalFolder.getScopeType().dbValue());
+            mismatch.put("actualScopeId", originalFolder.getScopeId().toString());
+            throw new FileRestoreConflictException(
+                FileRestoreConflictException.Reason.SCOPE_MISMATCH,
+                target.getId(),
+                "original folder moved to a different workspace",
+                mismatch);
+        }
 
         // newName 정규화 (지정 시) — rename 패턴 미러.
         String oldDisplay = target.getName();

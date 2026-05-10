@@ -958,15 +958,23 @@ export const api = {
   // ──────────────────────────────────────────────────────────────────
 
   /**
-   * 휴지통 목록 조회. backend는 사용자 DELETE 권한 후처리 결과만 반환 (ADR #32).
+   * 워크스페이스 범위 휴지통 목록 조회 (Plan E T7). backend는 사용자 DELETE 권한 후처리 결과만 반환 (ADR #32).
+   * scopeType + scopeId 필수 — backend `GET /api/trash?scopeType&scopeId` 필수 파라미터와 1:1 대응.
    * cursor는 직전 응답의 nextCursor를 그대로 echo back. type 미지정 = file+folder 양쪽.
    */
-  async getTrash(opts: { cursor?: string; type?: TrashItemType } = {}): Promise<TrashPage> {
-    const params = new URLSearchParams()
+  async getTrash(opts: {
+    scopeType: 'department' | 'team'
+    scopeId: string
+    cursor?: string
+    type?: TrashItemType
+  }): Promise<TrashPage> {
+    const params = new URLSearchParams({
+      scopeType: opts.scopeType,
+      scopeId: opts.scopeId,
+    })
     if (opts.cursor) params.set('cursor', opts.cursor)
     if (opts.type) params.set('type', opts.type)
-    const qs = params.toString()
-    const url = qs ? `/api/trash?${qs}` : '/api/trash'
+    const url = `/api/trash?${params.toString()}`
     const res = await fetch(url, {
       method: 'GET',
       credentials: 'include',
@@ -1686,17 +1694,23 @@ async function buildApiError(res: Response, fallbackMessage: string): Promise<Er
     status: number
     code?: string
     reason?: string
+    details?: Record<string, unknown>
   }
   err.status = res.status
   try {
     const body = (await res.json()) as {
-      error?: { code?: string }
+      error?: { code?: string; details?: Record<string, unknown> }
       code?: string
       reason?: string
+      details?: Record<string, unknown>
     }
     if (body?.error?.code) err.code = body.error.code
     else if (body?.code) err.code = body.code
     if (body?.reason) err.reason = body.reason
+    // Plan E T13: RESTORE_CONFLICT 등 envelope `details` (예: { reason, resourceId, ... })를
+    // UX layer 분기에 사용 — 둘 중 어느 위치든 우선 노출.
+    const details = body?.error?.details ?? body?.details
+    if (details && typeof details === 'object') err.details = details
   } catch {
     // 본문이 없거나 JSON이 아니면 status만으로 충분 (audit 패턴 일관)
   }

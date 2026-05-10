@@ -5,6 +5,8 @@ import { api } from './api'
  * M9.1 — 휴지통 API client (docs/02 §7.11, ADR #32) wire 계약 검증.
  * `api.audit.test.ts` 패턴 mirror — vi.stubGlobal('fetch', ...)로 fetch URL/method/credentials/응답 변환만 검증.
  * 페이지네이션/권한 후처리/cascade 같은 비즈니스 로직은 backend TrashControllerTest 책임.
+ *
+ * Plan E T7: scopeType + scopeId 필수 파라미터로 변경.
  */
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -30,19 +32,32 @@ describe('api.getTrash', () => {
     vi.unstubAllGlobals()
   })
 
-  it('cursor/type 미지정 시 /api/trash 그대로 + credentials include', async () => {
-    await api.getTrash()
+  it('scopeType+scopeId 필수 파라미터로 /api/trash?scopeType=…&scopeId=… + credentials include', async () => {
+    await api.getTrash({ scopeType: 'department', scopeId: 'dept-1' })
     expect(fetchMock).toHaveBeenCalledTimes(1)
     const [url, init] = fetchMock.mock.calls[0]
-    expect(url).toBe('/api/trash')
+    const u = new URL(url, 'http://x')
+    expect(u.pathname).toBe('/api/trash')
+    expect(u.searchParams.get('scopeType')).toBe('department')
+    expect(u.searchParams.get('scopeId')).toBe('dept-1')
     expect(init).toMatchObject({ method: 'GET', credentials: 'include' })
   })
 
+  it('team scope — scopeType=team 전달', async () => {
+    await api.getTrash({ scopeType: 'team', scopeId: 't-1' })
+    const [url] = fetchMock.mock.calls[0]
+    const u = new URL(url, 'http://x')
+    expect(u.searchParams.get('scopeType')).toBe('team')
+    expect(u.searchParams.get('scopeId')).toBe('t-1')
+  })
+
   it('cursor + type 모두 쿼리 파라미터로 전달', async () => {
-    await api.getTrash({ cursor: 'abc==', type: 'folder' })
+    await api.getTrash({ scopeType: 'department', scopeId: 'dept-1', cursor: 'abc==', type: 'folder' })
     const [url] = fetchMock.mock.calls[0]
     const u = new URL(url, 'http://x')
     expect(u.pathname).toBe('/api/trash')
+    expect(u.searchParams.get('scopeType')).toBe('department')
+    expect(u.searchParams.get('scopeId')).toBe('dept-1')
     expect(u.searchParams.get('cursor')).toBe('abc==')
     expect(u.searchParams.get('type')).toBe('folder')
   })
@@ -71,7 +86,7 @@ describe('api.getTrash', () => {
         nextCursor: 'next-page-token',
       }),
     )
-    const r = await api.getTrash()
+    const r = await api.getTrash({ scopeType: 'department', scopeId: 'dept-1' })
     expect(r.items).toHaveLength(2)
     expect(r.items[0].originalParentId).toBe('folder-x')
     expect(r.items[1].originalParentId).toBeNull()
@@ -81,13 +96,15 @@ describe('api.getTrash', () => {
 
   it('마지막 페이지 nextCursor 누락은 null로 폴백', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ items: [] }))
-    const r = await api.getTrash()
+    const r = await api.getTrash({ scopeType: 'department', scopeId: 'dept-1' })
     expect(r.nextCursor).toBeNull()
   })
 
   it('비-OK 응답은 status 필드 surface', async () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({}, 401))
-    await expect(api.getTrash()).rejects.toMatchObject({ status: 401 })
+    await expect(
+      api.getTrash({ scopeType: 'department', scopeId: 'dept-1' }),
+    ).rejects.toMatchObject({ status: 401 })
   })
 })
 

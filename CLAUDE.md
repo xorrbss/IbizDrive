@@ -51,7 +51,7 @@ app/               Next.js App Router
 | 업로드 UI/로직 | `docs/01-frontend-design.md` §9, `docs/02-backend-data-model.md` §6.1 |
 | 검색 | `docs/01-frontend-design.md` §10 |
 | 키보드/접근성 | `docs/01-frontend-design.md` §12 |
-| 휴지통 | `docs/01-frontend-design.md` §13, `docs/02-backend-data-model.md` §6.5 |
+| 휴지통 (workspace 분리: `/trash/d/*`, `/trash/t/*`) | `docs/01-frontend-design.md` §13, `docs/02-backend-data-model.md` §6.5 / §7.11, spec `2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` |
 | 권한 (프론트) | `docs/01-frontend-design.md` §14 |
 | 실시간 동기화 | `docs/01-frontend-design.md` §15 |
 | DB 스키마 | `docs/02-backend-data-model.md` §2 |

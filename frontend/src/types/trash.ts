@@ -29,6 +29,31 @@ export interface TrashPage {
   nextCursor: string | null
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// Plan E T13 — RestoreConflict reason 분기.
+//
+// backend `RESTORE_CONFLICT` envelope `details.reason` 와 1:1 매핑 (T3).
+// - `name_conflict` — 원위치에 같은 이름의 항목이 이미 있음 (v1.x 기존 분기).
+// - `scope_mismatch` — 원위치 폴더가 다른 workspace로 이동되어 복원 불가.
+// ───────────────────────────────────────────────────────────────────────────
+
+export type RestoreConflictReason = 'name_conflict' | 'scope_mismatch'
+
+/**
+ * RestoreConflictDialog 분기에 필요한 페이로드.
+ * backend `RESTORE_CONFLICT` envelope `details.*` 의 프론트 표현.
+ */
+export interface RestoreConflictPayload {
+  reason: RestoreConflictReason
+  /** 충돌 대상 resource id (folder/file id). backend `details.resourceId`. */
+  resourceId?: string
+  // scope_mismatch 시 추가 컨텍스트 (관리자 문의용 메타) — backend `details.*`에서 echo.
+  expectedScopeType?: 'department' | 'team'
+  expectedScopeId?: string
+  actualScopeType?: 'department' | 'team'
+  actualScopeId?: string
+}
+
 // Wave 2 T9 — admin global trash (spec §4.4)
 export interface AdminTrashItem {
   id: string

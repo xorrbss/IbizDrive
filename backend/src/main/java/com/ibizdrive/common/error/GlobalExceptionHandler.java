@@ -19,6 +19,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Set;
@@ -88,11 +89,19 @@ public class GlobalExceptionHandler {
      *
      * <p>docs/02 §8 line 1221에 등록된 {@code RESTORE_CONFLICT} envelope code. {@code RENAME_CONFLICT}와
      * 분리한 이유: frontend가 "이름 변경 후 복원 제안" 흐름으로 분기 (rename은 RenameDialog 재요청).
+     *
+     * <p>Plan E T3 — {@code details.reason} ({@code name_conflict} / {@code scope_mismatch}) +
+     * {@code details.resourceId}(있을 때) + 추가 {@code details} 항목을 wire body에 노출.
      */
     @ExceptionHandler(FolderRestoreConflictException.class)
     public ResponseEntity<ApiError> handleFolderRestoreConflict(FolderRestoreConflictException ex) {
+        Map<String, Object> data = new HashMap<>(ex.getDetails());
+        data.put("reason", ex.getReason().name().toLowerCase());
+        if (ex.getResourceId() != null) {
+            data.put("resourceId", ex.getResourceId());
+        }
         return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(ApiError.of("RESTORE_CONFLICT", "동일 위치에 같은 이름의 폴더가 존재해 복원할 수 없습니다", null));
+            .body(ApiError.of("RESTORE_CONFLICT", ex.getMessage(), data));
     }
 
     /**
@@ -103,11 +112,19 @@ public class GlobalExceptionHandler {
      * {@code FileNameConflictException} (envelope {@code RENAME_CONFLICT}) 와 분리한 이유:
      * RESTORE_CONFLICT 는 "원본 이름 그대로 복원"의 충돌, RENAME_CONFLICT 는
      * rename/move/restore-with-name 의 충돌 (frontend UX 가 다름).
+     *
+     * <p>Plan E T3 — {@code details.reason} ({@code name_conflict} / {@code scope_mismatch}) +
+     * {@code details.resourceId}(있을 때) + 추가 {@code details} 항목을 wire body에 노출.
      */
     @ExceptionHandler(FileRestoreConflictException.class)
     public ResponseEntity<ApiError> handleFileRestoreConflict(FileRestoreConflictException ex) {
+        Map<String, Object> data = new HashMap<>(ex.getDetails());
+        data.put("reason", ex.getReason().name().toLowerCase());
+        if (ex.getResourceId() != null) {
+            data.put("resourceId", ex.getResourceId());
+        }
         return ResponseEntity.status(HttpStatus.CONFLICT)
-            .body(ApiError.of("RESTORE_CONFLICT", "동일 위치에 같은 이름의 파일이 존재해 복원할 수 없습니다", null));
+            .body(ApiError.of("RESTORE_CONFLICT", ex.getMessage(), data));
     }
 
     /**

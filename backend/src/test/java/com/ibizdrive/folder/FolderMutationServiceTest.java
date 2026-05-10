@@ -24,6 +24,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -74,19 +75,19 @@ class FolderMutationServiceTest {
             return mock(AuditService.class);
         }
 
+        @Bean com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard(com.ibizdrive.team.TeamRepository teamRepo) {
+            return new com.ibizdrive.team.TeamArchiveGuard(teamRepo);
+        }
+
         @Bean FolderMutationService folderMutationService(FolderRepository repo,
                                                           FileRepository fileRepo,
                                                           AuditService audit,
                                                           ObjectMapper mapper,
-                                                          com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard) {
+                                                          com.ibizdrive.team.TeamArchiveGuard guard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30),
                 mock(CrossWorkspaceMoveService.class),
-                teamArchiveGuard);
-        }
-
-        @Bean com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard(com.ibizdrive.team.TeamRepository teamRepository) {
-            return new com.ibizdrive.team.TeamArchiveGuard(teamRepository);
+                guard);
         }
     }
 
@@ -269,7 +270,10 @@ class FolderMutationServiceTest {
     void move_toRoot_throwsBadRequest() {
         // spec §1.3 — root 폴더는 workspace lifecycle만 생성/소유 (V13 partial unique
         // idx_folders_root_per_scope가 scope당 root 1개 강제). 일반 폴더의 null parent 이동은
-        // service 진입에서 IllegalArgumentException으로 거부.
+        // FolderMutationService.move 진입에서 IllegalArgumentException으로 거부 (PR #142,
+        // commit db32a9d). 본 PR(이전: V14 unique index를 통한 DB-level fail + FolderNameConflict
+        // wrap)에서 master의 service-level pre-check로 정렬 — 더 이른 거부 + 더 명확한 wire
+        // (BAD_REQUEST). DB index는 여전히 backstop 역할.
         UUID owner = insertUser("m2@test", "m2");
         Folder root = insertRootFolder("RootM2", owner);
         Folder parent = service.create(root.getId(), "ParentM2", owner, "standard", owner);
@@ -548,7 +552,7 @@ class FolderMutationServiceTest {
      */
     private Folder insertRootFolder(String name, UUID ownerId) {
         UUID id = UUID.randomUUID();
-        OffsetDateTime now = OffsetDateTime.now();
+        OffsetDateTime now = OffsetDateTime.now(ZoneOffset.UTC);
         UUID scopeId = UUID.randomUUID();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
