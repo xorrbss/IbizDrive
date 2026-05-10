@@ -2440,6 +2440,71 @@ PATCH /api/teams/{teamId}/members/{userId}  (Plan F T6)
 
 **근거**: spec `2026-05-09-team-centric-pivot-design.md` §1.5, §2.2, §5.
 
+#### 7.16.1 팀 admin 메타 (V16 — design-refresh-admin T8)
+
+`/api/teams` 와 별도로 admin 콘솔 전용 endpoint. 디자인 핸드오프 2026-05-10
+`admin-teams.jsx` (TeamsListPanel/TeamDetail/CreateTeamModal) 페어.
+
+| Method | Path | Guard | TX | Errors |
+|---|---|---|---|---|
+| GET | `/api/admin/teams` | `hasRole('ADMIN')` | ro | 401, 403 |
+| GET | `/api/admin/teams/{id}` | `hasRole('ADMIN')` | ro | 401, 403, 404 NOT_FOUND |
+| PATCH | `/api/admin/teams/{id}` | `hasRole('ADMIN')` | tx | 400 VALIDATION_ERROR, 401, 403, 404, 409 TEAM_CONFLICT |
+| DELETE | `/api/admin/teams/{id}` | `hasRole('ADMIN')` | tx | 401, 403, 404 |
+| POST | `/api/admin/teams/{id}/restore` | `hasRole('ADMIN')` | tx | 401, 403, 404 |
+
+```text
+GET /api/admin/teams
+  Response: 200 [
+    AdminTeamSummaryResponse {
+      id, name, description?, color, leadId, memberCount,
+      archived: bool, createdAt
+    }
+  ]
+  Notes:
+    - active + archived 모두 반환. ORDER BY createdAt DESC.
+    - memberCount는 별도 query (count) — admin scale (< 1000 팀) 가정.
+
+GET /api/admin/teams/{id}
+  Response: 200 AdminTeamDetailResponse {
+    id, name, description?, color, leadId,
+    visibility, rootFolderId, memberCount,
+    archived, archivedAt?, archivedBy?,
+    createdBy, createdAt, updatedAt
+  }
+
+PATCH /api/admin/teams/{id}
+  Body: { name?, description?, color?, leadId? }   (모두 nullable, 모두 null이면 400)
+  Response: 200 AdminTeamDetailResponse
+  Errors:
+    400 VALIDATION_ERROR — 빈 PATCH body, color hex 형식 위반,
+                           leadId가 팀 멤버 아님 (AdminBadPatchException)
+    409 TEAM_CONFLICT — 같은 normalized name 활성 팀 존재
+  Notes:
+    - description blank → null 로 정규화.
+    - 변경된 필드 wire 이름이 audit_log.afterState.changedFields에 기록
+      (예: "name,description,color"). 변경 없음 → audit emit 없음.
+
+DELETE /api/admin/teams/{id}
+  Response: 204
+  Notes:
+    - soft archive (TeamService.archive 위임). TEAM_ARCHIVED audit 재사용.
+    - 멤버십과 폴더는 보존 (archive = read-only).
+
+POST /api/admin/teams/{id}/restore
+  Response: 204
+  Notes:
+    - archived 팀 복원 (TeamService.restore 위임). TEAM_RESTORED audit.
+    - 동일 normalized name 활성 팀 존재 시 409.
+```
+
+**Schema (V16)**:
+- `teams.color` VARCHAR(7) NOT NULL DEFAULT `#5B7FCC`, CHECK `^#[0-9A-Fa-f]{6}$`.
+- `teams.lead_id` UUID NOT NULL FK `users(id)`. 기존 row backfill = `created_by`.
+
+**근거**: design handoff 2026-05-10 `admin-teams.jsx`. dev-doc
+`dev/active/design-refresh-admin-2026-05-10/`.
+
 ---
 
 ## 8. 에러 코드 표준

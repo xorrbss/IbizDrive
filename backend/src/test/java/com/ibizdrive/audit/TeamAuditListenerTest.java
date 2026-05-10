@@ -8,6 +8,7 @@ import com.ibizdrive.team.TeamMemberRemovedEvent;
 import com.ibizdrive.team.TeamMemberRoleChangedEvent;
 import com.ibizdrive.team.TeamMembership;
 import com.ibizdrive.team.TeamRestoredEvent;
+import com.ibizdrive.team.TeamUpdatedEvent;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -150,6 +151,25 @@ class TeamAuditListenerTest {
         assertThat(recorded.actorId()).isEqualTo(actor);
         assertThat(recorded.beforeState()).isNull();
         assertThat(recorded.afterState()).isNull();
+        assertThat(recorded.metadata()).isNull();
+    }
+
+    @Test
+    void onTeamUpdated_recordsAuditWithChangedFieldsInAfterState() {
+        UUID teamId = UUID.randomUUID();
+        UUID actor = UUID.randomUUID();
+
+        listener.onTeamUpdated(new TeamUpdatedEvent(teamId, actor, "name,description,color"));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+        AuditEvent recorded = captor.getValue();
+        assertThat(recorded.eventType()).isEqualTo(AuditEventType.TEAM_UPDATED);
+        assertThat(recorded.targetType()).isEqualTo(AuditTargetType.TEAM);
+        assertThat(recorded.targetId()).isEqualTo(teamId);
+        assertThat(recorded.actorId()).isEqualTo(actor);
+        assertThat(recorded.afterState()).contains("\"changedFields\":\"name,description,color\"");
+        assertThat(recorded.beforeState()).isNull();
         assertThat(recorded.metadata()).isNull();
     }
 

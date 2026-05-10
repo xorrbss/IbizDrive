@@ -80,8 +80,9 @@ public enum AuditEventType {
     SYSTEM_PURGE_EXECUTED("system.purge.executed"),
     STORAGE_ORPHAN_CLEANED("storage.orphan.cleaned"),
 
-    // 팀 (6)
+    // 팀 (7)
     TEAM_CREATED("team.created"),
+    TEAM_UPDATED("team.updated"),
     TEAM_MEMBER_ADDED("team.member.added"),
     TEAM_MEMBER_REMOVED("team.member.removed"),
     TEAM_MEMBER_ROLE_CHANGED("team.member.role_changed"),

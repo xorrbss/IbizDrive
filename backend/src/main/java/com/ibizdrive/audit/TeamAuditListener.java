@@ -173,6 +173,29 @@ public class TeamAuditListener {
     }
 
     /**
+     * {@link com.ibizdrive.team.TeamUpdatedEvent} 수신 →
+     * {@link AuditEventType#TEAM_UPDATED} audit row 생성. T8 admin PATCH 전용.
+     *
+     * <p>변경된 필드 목록을 {@code afterState.changedFields}에 wire 이름으로 기록 — 실제 before/after
+     * 값은 audit row에 옮기지 않고 Team 엔티티 현재 상태 + 호출자 입력으로 재구성 가능 (KISS).
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTeamUpdated(com.ibizdrive.team.TeamUpdatedEvent event) {
+        Map<String, Object> after = new LinkedHashMap<>();
+        after.put("changedFields", event.changedFields());
+        emit(new AuditEvent(
+            AuditEventType.TEAM_UPDATED,
+            event.actorId(),
+            null, null,
+            AuditTargetType.TEAM,
+            event.teamId(),
+            null,
+            toJson(after),
+            null
+        ));
+    }
+
+    /**
      * {@link TeamRestoredEvent} 수신 → {@link AuditEventType#TEAM_RESTORED} audit row 생성.
      *
      * <p>restore 이벤트 자체가 신호이므로 before/afterState 모두 null.

@@ -162,6 +162,128 @@ class TeamTest {
             .hasMessageContaining("now");
     }
 
+    // ==================== V16 admin metadata (T8-P3) ====================
+
+    @Test
+    void backwardCompatConstructor_setsDefaultColorAndLeadIdToCreator() {
+        UUID creator = UUID.randomUUID();
+        Team team = new Team(
+            UUID.randomUUID(), "Eng", "eng", null,
+            Team.Visibility.PRIVATE, creator, OffsetDateTime.now()
+        );
+        assertThat(team.getColor()).isEqualTo(Team.DEFAULT_COLOR);
+        assertThat(team.getLeadId()).isEqualTo(creator);
+    }
+
+    @Test
+    void fullConstructor_acceptsExplicitColorAndLead() {
+        UUID creator = UUID.randomUUID();
+        UUID lead = UUID.randomUUID();
+        Team team = new Team(
+            UUID.randomUUID(), "Eng", "eng", "팀 설명",
+            "#C16A8B", lead,
+            Team.Visibility.PRIVATE, creator, OffsetDateTime.now()
+        );
+        assertThat(team.getColor()).isEqualTo("#C16A8B");
+        assertThat(team.getLeadId()).isEqualTo(lead);
+        assertThat(team.getCreatedBy()).isEqualTo(creator);
+    }
+
+    @Test
+    void fullConstructor_rejectsInvalidColor() {
+        UUID creator = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now();
+        assertThatThrownBy(() -> new Team(
+            UUID.randomUUID(), "Eng", "eng", null,
+            "blue", creator,
+            Team.Visibility.PRIVATE, creator, now
+        )).isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("hex");
+    }
+
+    @Test
+    void fullConstructor_rejectsNullLeadId() {
+        UUID creator = UUID.randomUUID();
+        OffsetDateTime now = OffsetDateTime.now();
+        assertThatThrownBy(() -> new Team(
+            UUID.randomUUID(), "Eng", "eng", null,
+            "#5B7FCC", null,
+            Team.Visibility.PRIVATE, creator, now
+        )).isInstanceOf(IllegalArgumentException.class)
+          .hasMessageContaining("leadId");
+    }
+
+    @Test
+    void changeColor_acceptsValidHex() {
+        Team team = newTeam("Eng");
+        team.changeColor("#abcdef");
+        assertThat(team.getColor()).isEqualTo("#abcdef");
+        team.changeColor("#5BA08A");
+        assertThat(team.getColor()).isEqualTo("#5BA08A");
+    }
+
+    @Test
+    void changeColor_rejectsInvalidFormats() {
+        Team team = newTeam("Eng");
+        assertThatThrownBy(() -> team.changeColor(null))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> team.changeColor("blue"))
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> team.changeColor("#fff"))   // shorthand 미허용
+            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> team.changeColor("5B7FCC")) // # 누락
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void assignLead_setsLeadId_rejectsNull() {
+        Team team = newTeam("Eng");
+        UUID newLead = UUID.randomUUID();
+        team.assignLead(newLead);
+        assertThat(team.getLeadId()).isEqualTo(newLead);
+
+        assertThatThrownBy(() -> team.assignLead(null))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("leadId");
+    }
+
+    @Test
+    void updateDescription_normalizesNullBlankAndTrims() {
+        Team team = newTeam("Eng");
+
+        team.updateDescription("  설명 텍스트  ");
+        assertThat(team.getDescription()).isEqualTo("설명 텍스트");
+
+        team.updateDescription(null);
+        assertThat(team.getDescription()).isNull();
+
+        team.updateDescription("");
+        assertThat(team.getDescription()).isNull();
+
+        team.updateDescription("   ");
+        assertThat(team.getDescription()).isNull();
+    }
+
+    @Test
+    void updateDescription_rejectsTooLong() {
+        Team team = newTeam("Eng");
+        String longDesc = "x".repeat(1001);
+        assertThatThrownBy(() -> team.updateDescription(longDesc))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("1000");
+    }
+
+    @Test
+    void touchUpdatedAt_setsField_rejectsNull() {
+        Team team = newTeam("Eng");
+        OffsetDateTime later = team.getUpdatedAt().plusSeconds(60);
+        team.touchUpdatedAt(later);
+        assertThat(team.getUpdatedAt()).isEqualTo(later);
+
+        assertThatThrownBy(() -> team.touchUpdatedAt(null))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     private static Team newTeam(String name) {
         return new Team(
             UUID.randomUUID(),

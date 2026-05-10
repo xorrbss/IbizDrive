@@ -6,10 +6,10 @@ Last Updated: 2026-05-10
 
 | Phase | 트랙 | 상태 | 게이트 |
 |---|---|---|---|
-| ~~T7-P1~~ | ~~CSS 어댑터 + 레이아웃 골격~~ | ✅ 완료 (2026-05-10) | ✅ G-T7-1 |
-| T7-P2 | 라우트 추가/리다이렉트 | ⏳ pending (deferred — 사용자 결정) | G-T7-2 |
-| **T8-P3** | **Backend admin team endpoints** | 🟢 next (사용자 승인 후) | G-T8-1 |
-| T8-P4 | Frontend `/admin/teams` 구현 | ⏳ pending | G-T8-2 |
+| ~~T7-P1~~ | ~~CSS 어댑터 + 레이아웃 골격~~ | ✅ PR #154 머지 | ✅ G-T7-1 |
+| T7-P2 | 라우트 추가/리다이렉트 | ⏳ pending (deferred) | G-T7-2 |
+| ~~T8-P3~~ | ~~Backend admin team endpoints~~ | ✅ 완료 (2026-05-10) | ✅ G-T8-1 |
+| **T8-P4** | **Frontend `/admin/teams` 구현** | 🟢 next (PR 머지 후) | G-T8-2 |
 
 ## T7 — Phase 1: CSS 어댑터 + 레이아웃 골격 ✅
 

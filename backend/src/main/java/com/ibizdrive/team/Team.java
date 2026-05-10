@@ -81,6 +81,14 @@ public class Team {
     @Column(name = "visibility", nullable = false, length = 20)
     private String visibilityRaw;
 
+    /** 7-char hex (#RRGGBB) — V16 CHECK가 enforce. UI swatch (admin-teams.jsx CreateTeamModal). */
+    @Column(name = "color", nullable = false, length = 7)
+    private String color;
+
+    /** 단일 designated team lead — UI label용 (멤버십 role과 독립). FK users(id), V16에서 NOT NULL. */
+    @Column(name = "lead_id", nullable = false)
+    private UUID leadId;
+
     @Column(name = "root_folder_id")
     private UUID rootFolderId;
 
@@ -99,20 +107,48 @@ public class Team {
     @Column(name = "updated_at", nullable = false)
     private OffsetDateTime updatedAt;
 
+    /** V16 default — admin-teams.jsx TEAM_COLORS[0]. */
+    public static final String DEFAULT_COLOR = "#5B7FCC";
+
+    private static final java.util.regex.Pattern COLOR_PATTERN =
+        java.util.regex.Pattern.compile("^#[0-9A-Fa-f]{6}$");
+
     protected Team() {
         // JPA
     }
 
     /**
-     * 신규 팀 생성. service layer가 호출 — id/normalizedName/timestamp는 호출자가 결정한다.
-     *
-     * @throws IllegalArgumentException name이 null/blank/100자 초과, 또는 visibility/createdBy null
+     * 신규 팀 생성 (backward-compat 7-arg) — color는 {@link #DEFAULT_COLOR}, leadId는 createdBy로
+     * 기본 설정. 기존 호출자(TeamService.create)와 단위 테스트가 그대로 사용한다.
      */
     public Team(
         UUID id,
         String name,
         String normalizedName,
         String description,
+        Visibility visibility,
+        UUID createdBy,
+        OffsetDateTime createdAt
+    ) {
+        this(id, name, normalizedName, description, DEFAULT_COLOR, createdBy,
+            visibility, createdBy, createdAt);
+    }
+
+    /**
+     * 신규 팀 생성 (full 9-arg) — service layer가 호출. id/normalizedName/color/leadId/timestamp는
+     * 호출자가 결정한다.
+     *
+     * @param color 7-char hex (#RRGGBB) — V16 CHECK enforce
+     * @param leadId 단일 designated lead (보통 = createdBy 또는 명시 지정)
+     * @throws IllegalArgumentException name이 null/blank/100자 초과, color 형식 위반, 또는 필수 인자 null
+     */
+    public Team(
+        UUID id,
+        String name,
+        String normalizedName,
+        String description,
+        String color,
+        UUID leadId,
         Visibility visibility,
         UUID createdBy,
         OffsetDateTime createdAt
@@ -132,15 +168,31 @@ public class Team {
         if (createdAt == null) {
             throw new IllegalArgumentException("createdAt must not be null");
         }
+        if (leadId == null) {
+            throw new IllegalArgumentException("leadId must not be null");
+        }
+        validateColor(color);
         // rename으로 name 검증 + 할당
         this.id = id;
         this.normalizedName = normalizedName;
         this.description = description;
+        this.color = color;
+        this.leadId = leadId;
         this.visibilityRaw = visibility.dbValue();
         this.createdBy = createdBy;
         this.createdAt = createdAt;
         this.updatedAt = createdAt;
         rename(name);
+    }
+
+    private static void validateColor(String color) {
+        if (color == null) {
+            throw new IllegalArgumentException("color must not be null");
+        }
+        if (!COLOR_PATTERN.matcher(color).matches()) {
+            throw new IllegalArgumentException(
+                "color must match #RRGGBB hex format (got: " + color + ")");
+        }
     }
 
     public UUID getId() {
@@ -165,6 +217,14 @@ public class Team {
 
     public String getDescription() {
         return description;
+    }
+
+    public String getColor() {
+        return color;
+    }
+
+    public UUID getLeadId() {
+        return leadId;
     }
 
     public Visibility getVisibility() {
@@ -296,5 +356,63 @@ public class Team {
             throw new IllegalStateException("rootFolderId already set: " + this.rootFolderId);
         }
         this.rootFolderId = rootFolderId;
+    }
+
+    /**
+     * 팀 description 변경 — null 또는 blank는 null로 정규화. 호출자(서비스)가 audit emit.
+     * V12 schema는 description을 nullable로 두므로 null/empty 허용. updatedAt은 service가 갱신.
+     *
+     * <p>최대 길이 검증은 V12 컬럼 길이 제약(TEXT, 무제한)에 의존하지 않고 application 레벨에서
+     * 1000자 가드 — 디자인 admin-teams.jsx CreateTeamModal "한 줄로 설명" 의도 + DB 폭주 방지.
+     *
+     * @throws IllegalArgumentException newDescription 길이가 1000자 초과
+     */
+    public void updateDescription(String newDescription) {
+        String normalized = (newDescription == null || newDescription.isBlank())
+            ? null : newDescription.trim();
+        if (normalized != null && normalized.length() > 1000) {
+            throw new IllegalArgumentException("description must be at most 1000 characters");
+        }
+        this.description = normalized;
+    }
+
+    /**
+     * 팀 color 변경 (#RRGGBB hex). V16 CHECK가 DB에서 강제하지만 도메인 메서드도 형식 검증.
+     *
+     * @throws IllegalArgumentException newColor가 null 또는 #RRGGBB 형식이 아님
+     */
+    public void changeColor(String newColor) {
+        validateColor(newColor);
+        this.color = newColor;
+    }
+
+    /**
+     * 팀 lead 변경 — 단일 designated lead. 멤버십 role(OWNER/MEMBER)과 독립.
+     *
+     * <p>호출자(AdminTeamService)는 newLeadId가 해당 팀 멤버인지 검증할 책임. 도메인 메서드는
+     * non-null 검증만 한다.
+     *
+     * @throws IllegalArgumentException newLeadId가 null
+     */
+    public void assignLead(UUID newLeadId) {
+        if (newLeadId == null) {
+            throw new IllegalArgumentException("leadId must not be null");
+        }
+        this.leadId = newLeadId;
+    }
+
+    /**
+     * updatedAt을 명시적으로 갱신 — service layer가 mutation 후 호출.
+     *
+     * <p>rename/changeVisibility/updateDescription/changeColor/assignLead는 의도적으로 updatedAt을
+     * 직접 갱신하지 않는다 (service가 트랜잭션 시점에 일괄 갱신해야 archive/restore와 일관).
+     *
+     * @throws IllegalArgumentException now가 null
+     */
+    public void touchUpdatedAt(OffsetDateTime now) {
+        if (now == null) {
+            throw new IllegalArgumentException("now must not be null");
+        }
+        this.updatedAt = now;
     }
 }
