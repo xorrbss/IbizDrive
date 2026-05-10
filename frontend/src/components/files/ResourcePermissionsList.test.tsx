@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
@@ -23,6 +23,17 @@ vi.mock('@/lib/api', () => ({
     listResourcePermissions: (...args: unknown[]) =>
       listResourcePermissionsMock(...args),
   },
+}))
+
+// Phase D 통합 — GrantPermissionDialog 본체는 별도 테스트(GrantPermissionDialog.test.tsx)가
+// 책임. 본 파일은 trigger button + open prop wire만 검증하므로 stub으로 단순화.
+vi.mock('./GrantPermissionDialog', () => ({
+  GrantPermissionDialog: ({ open, onClose }: { open: boolean; onClose: () => void }) =>
+    open ? (
+      <div role="dialog" data-testid="grant-dialog-stub" aria-modal="true">
+        <button type="button" onClick={onClose}>닫기-스텁</button>
+      </div>
+    ) : null,
 }))
 
 import { ResourcePermissionsList } from './ResourcePermissionsList'
@@ -156,5 +167,54 @@ describe('ResourcePermissionsList (M8.1)', () => {
     await waitFor(() => {
       expect(listResourcePermissionsMock).toHaveBeenCalledWith('folder', 'fld1')
     })
+  })
+
+  // ─── Phase D 통합 — "권한 부여" 버튼 + GrantPermissionDialog wire ───
+  it('Phase D: admin 보유 + data → "권한 부여" 버튼 노출 + aria-haspopup', async () => {
+    getEffectivePermissionsMock.mockResolvedValue(['PERMISSION_ADMIN'])
+    listResourcePermissionsMock.mockResolvedValue([])
+    wrap(<ResourcePermissionsList resourceType="file" id="f1" />)
+
+    const btn = await screen.findByRole('button', { name: '권한 부여' })
+    expect(btn.getAttribute('aria-haspopup')).toBe('dialog')
+    expect(btn.getAttribute('aria-expanded')).toBe('false')
+    // dialog는 닫혀 있어 stub 미렌더
+    expect(screen.queryByTestId('grant-dialog-stub')).toBeNull()
+  })
+
+  it('Phase D: 버튼 클릭 → dialog open + aria-expanded=true', async () => {
+    getEffectivePermissionsMock.mockResolvedValue(['PERMISSION_ADMIN'])
+    listResourcePermissionsMock.mockResolvedValue([])
+    wrap(<ResourcePermissionsList resourceType="file" id="f1" />)
+
+    const btn = await screen.findByRole('button', { name: '권한 부여' })
+    fireEvent.click(btn)
+
+    expect(screen.getByTestId('grant-dialog-stub')).toBeTruthy()
+    expect(btn.getAttribute('aria-expanded')).toBe('true')
+  })
+
+  it('Phase D: admin 미보유 → 버튼/다이얼로그 모두 미노출 (회귀 가드)', async () => {
+    getEffectivePermissionsMock.mockResolvedValue(['READ', 'DOWNLOAD'])
+    wrap(<ResourcePermissionsList resourceType="file" id="f1" />)
+    await waitFor(() => {
+      expect(getEffectivePermissionsMock).toHaveBeenCalled()
+    })
+    await new Promise((r) => setTimeout(r, 30))
+    expect(screen.queryByRole('button', { name: '권한 부여' })).toBeNull()
+    expect(screen.queryByTestId('grant-dialog-stub')).toBeNull()
+  })
+
+  it('Phase D: error 상태 → 버튼 미노출 (loading/error 동안 trigger 차단)', async () => {
+    getEffectivePermissionsMock.mockResolvedValue(['PERMISSION_ADMIN'])
+    const err = new Error('forbidden') as Error & { status: number }
+    err.status = 403
+    listResourcePermissionsMock.mockRejectedValue(err)
+    wrap(<ResourcePermissionsList resourceType="file" id="f1" />)
+
+    await waitFor(() => {
+      expect(screen.getByRole('alert').textContent).toMatch(/불러올 수 없습니다/)
+    })
+    expect(screen.queryByRole('button', { name: '권한 부여' })).toBeNull()
   })
 })
