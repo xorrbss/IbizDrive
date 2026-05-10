@@ -20,3 +20,17 @@ export interface TeamResponse {
   createdAt: string
   archivedAt: string | null
 }
+
+export type TeamMemberRole = 'OWNER' | 'MEMBER'
+
+export interface TeamMember {
+  userId: string
+  displayName: string
+  email: string
+  role: TeamMemberRole
+  joinedAt: string
+}
+
+export interface TeamMemberRoleUpdateRequest {
+  role: TeamMemberRole
+}

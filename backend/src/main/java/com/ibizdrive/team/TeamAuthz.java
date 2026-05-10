@@ -39,6 +39,17 @@ public class TeamAuthz {
         return isOwner(teamId, principal);
     }
 
+    /**
+     * principal이 team의 멤버인지 (role 무관) — Plan F T4.
+     *
+     * <p>{@code GET /api/teams/{teamId}/members} 권한 가드용. spec §3.2.
+     */
+    public boolean isMember(UUID teamId, Object principal) {
+        UUID userId = principalUserId(principal);
+        if (userId == null) return false;
+        return memRepo.findById(new TeamMembershipId(teamId, userId)).isPresent();
+    }
+
     private UUID principalUserId(Object principal) {
         if (principal instanceof IbizDriveUserDetails uds) {
             return uds.getUser().getId();
