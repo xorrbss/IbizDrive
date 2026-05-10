@@ -1,14 +1,19 @@
 'use client'
+import { useState } from 'react'
 import { useResourcePermissions } from '@/hooks/useResourcePermissions'
 import { usePermission } from '@/hooks/usePermission'
+import { GrantPermissionDialog } from './GrantPermissionDialog'
 import type { PermissionListItem, Preset } from '@/types/permission'
 
 /**
- * 리소스에 부여된 grant 목록 — RightPanel 권한 탭의 PermissionsTab 하위 (M8.1).
+ * 리소스에 부여된 grant 목록 — RightPanel 권한 탭의 PermissionsTab 하위 (M8.1 + Phase D).
  *
- * BE `GET /api/{folders|files}/:id/permissions` (docs/02 §7.10) 결과를 read-only 로 노출.
- * grant/revoke UI 는 후속 트랙. PERMISSION_ADMIN 보유자에게만 보임 — 미보유자에게는
- * 컴포넌트 자체가 null (UX 조건부 렌더, 보안은 BE `@PreAuthorize` 가 책임 — 원칙 #10).
+ * BE `GET /api/{folders|files}/:id/permissions` (docs/02 §7.10) 결과를 노출. PERMISSION_ADMIN
+ * 보유자에게만 보임 — 미보유자에게는 컴포넌트 자체가 null (UX 조건부 렌더, 보안은
+ * BE `@PreAuthorize` 가 책임 — 원칙 #10).
+ *
+ * <p>Phase D (2026-05-11): 헤더에 "권한 부여" 버튼 추가. 클릭 → {@link GrantPermissionDialog}.
+ * 다이얼로그는 admin 보유 + (data | empty) 상태에서만 트리거 노출 — loading/error 동안 숨김.
  *
  * UI 패턴은 A16 SharesTable (`role="grid"` + aria-rowcount/rowindex + 4상태) 동형.
  * 가상화 미적용 — BE 가 단일 리소스의 grant 수가 작다는 가정 (페이지네이션 X).
@@ -25,19 +30,43 @@ export function ResourcePermissionsList({
   const flags = usePermission(id)
   const isAdmin = flags.PERMISSION_ADMIN
   const query = useResourcePermissions(resourceType, id, { enabled: isAdmin })
+  // 다이얼로그 open 상태는 본 섹션이 owns — admin 가드 안에 갇혀 있으므로 외부 hoist 불필요.
+  const [grantOpen, setGrantOpen] = useState(false)
 
   // PERMISSION_ADMIN 미보유 — 섹션 자체를 숨김 (UX 가드).
   if (!isAdmin) return null
+
+  // loading/error 동안 trigger 숨김 — 데이터 미해결 상태에서 부여하면 invalidate 후 화면 깜빡임.
+  const canGrant = !query.isLoading && !query.isError
 
   return (
     <section
       aria-label="권한 부여 목록"
       className="mt-4 border-t border-border pt-3"
     >
-      <h3 className="px-3 text-[11px] uppercase tracking-[0.04em] font-medium text-fg-muted mb-2">
-        부여된 권한
-      </h3>
+      <div className="flex items-center justify-between px-3 mb-2">
+        <h3 className="text-[11px] uppercase tracking-[0.04em] font-medium text-fg-muted">
+          부여된 권한
+        </h3>
+        {canGrant && (
+          <button
+            type="button"
+            onClick={() => setGrantOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={grantOpen}
+            className="h-6 px-2 rounded text-[11px] font-medium text-accent hover:bg-surface-2 focus:outline-none focus:ring-1 focus:ring-accent"
+          >
+            권한 부여
+          </button>
+        )}
+      </div>
       <ResourcePermissionsBody query={query} />
+      <GrantPermissionDialog
+        resource={resourceType}
+        resourceId={id}
+        open={grantOpen}
+        onClose={() => setGrantOpen(false)}
+      />
     </section>
   )
 }
