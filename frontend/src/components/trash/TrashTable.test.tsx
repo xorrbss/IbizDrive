@@ -41,17 +41,9 @@ const itemFolder: TrashItem = {
   originalParentId: null,
 }
 
-// mockTree kept for reference; TrashTable now uses tree=undefined (Tasks 17+ 대기).
-// originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백으로 표시됨.
-const _mockTree = {
-  id: 'root',
-  parentId: null,
-  name: 'root',
-  slug: '',
-  children: [
-    { id: 'p1', parentId: 'root', name: '영업팀', slug: '영업팀', children: [] },
-  ],
-}
+// TrashTable currently uses tree=undefined → originalParentId 있어도 "원위치 폴더
+// 삭제됨" 폴백으로 표시. tree prop 활용 시점(Tasks 17+ 대기)에 mockTree fixture는
+// git 히스토리에서 복원 가능 — 현재는 lint 회피 위해 dead-code 제거.
 
 function setHook(opts: {
   isLoading?: boolean
