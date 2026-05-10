@@ -16,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -84,6 +85,9 @@ class LoginCsrfRegressionIntegrationTest {
     @Autowired
     private PasswordEncoder passwordEncoder;
 
+    @Autowired
+    private JdbcTemplate jdbc;
+
     private static final String EMAIL = "csrf-guard@example.com";
     private static final String PW = "Sup3rSecret_Pw_12";
 
@@ -92,6 +96,10 @@ class LoginCsrfRegressionIntegrationTest {
         // JDK HttpURLConnection은 401/403 응답 시 streaming POST body 재전송 불가 → Apache HttpClient 5로 교체.
         rest.getRestTemplate().setRequestFactory(new HttpComponentsClientHttpRequestFactory());
 
+        // audit_log를 users보다 먼저 비운다. 성공 login 시나리오가 actor_id=user.id 인 audit row를 INSERT하므로
+        // 다음 테스트의 userRepository.deleteAll()이 audit_log_actor_id_fkey FK 위반으로 실패한다
+        // (AuthAuditE2ETest와 동일 패턴, docs/02 §6.5 audit_log append-only).
+        jdbc.update("DELETE FROM audit_log");
         userRepository.deleteAll();
         userRepository.save(new User(
             UUID.randomUUID(),
