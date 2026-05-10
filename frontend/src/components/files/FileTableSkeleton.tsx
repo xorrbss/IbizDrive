@@ -7,7 +7,7 @@ export function FileTableSkeleton() {
         {Array.from({ length: 8 }).map((_, i) => (
           <div
             key={i}
-            className="grid grid-cols-[28px_1fr_110px_130px_90px] gap-3 items-center h-10 animate-pulse"
+            className="grid grid-cols-[28px_1fr_110px_130px_90px] gap-3 items-center h-[var(--row-h)] animate-pulse"
             aria-hidden
           >
             <div className="w-5 h-5 bg-surface-2 rounded" />

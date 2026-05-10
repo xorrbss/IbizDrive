@@ -11,6 +11,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { useMoveBulk } from '@/hooks/useMoveBulk'
+import { messageForError } from '@/lib/errors'
 import { MoveDragOverlay } from './MoveDragOverlay'
 import { parseFolderDroppableId, type MoveDragData } from './types'
 
@@ -23,7 +24,8 @@ export function DndProvider({ children }: { children: React.ReactNode }) {
   const [activeData, setActiveData] = useState<MoveDragData | null>(null)
   const moveBulk = useMoveBulk({
     onSuccess: (vars) => toast.success(`${vars.items.length}개 항목을 이동했습니다`),
-    onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
+    onError: (err) =>
+      toast.error(messageForError(err, '이동에 실패했습니다. 다시 시도해 주세요.')),
   })
 
   const sensors = useSensors(

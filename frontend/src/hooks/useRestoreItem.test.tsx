@@ -39,13 +39,13 @@ describe('useRestoreItem', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(api.restoreFile).toHaveBeenCalledWith('f1')
     expect(api.restoreFolder).not.toHaveBeenCalled()
-    // afterRestore — trash + search + folderTree + filesListPrefix(p1)
+    // afterRestore — trash + search + folderChildren prefix + filesListPrefix(p1)
     const calls = invalidateSpy.mock.calls.map((c) => c[0])
     expect(calls).toEqual(
       expect.arrayContaining([
         { queryKey: qk.trash() },
         { queryKey: qk.search() },
-        { queryKey: qk.folderTree() },
+        { queryKey: [...qk.all, 'folders', 'children'] },
         { queryKey: qk.filesListPrefix('p1') },
       ]),
     )

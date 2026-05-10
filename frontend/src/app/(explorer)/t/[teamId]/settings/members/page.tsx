@@ -1,0 +1,6 @@
+import { ClientMembersPage } from './ClientMembersPage'
+
+export default async function Page({ params }: { params: Promise<{ teamId: string }> }) {
+  const { teamId } = await params
+  return <ClientMembersPage teamId={teamId} />
+}

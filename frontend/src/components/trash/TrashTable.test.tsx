@@ -4,12 +4,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { TrashTable } from './TrashTable'
 import { useTrashList } from '@/hooks/useTrashList'
-import { useFolderTree } from '@/hooks/useFolderTree'
 import { usePermission } from '@/hooks/usePermission'
 import type { TrashItem } from '@/types/trash'
 
 vi.mock('@/hooks/useTrashList', () => ({ useTrashList: vi.fn() }))
-vi.mock('@/hooks/useFolderTree', () => ({ useFolderTree: vi.fn() }))
 vi.mock('@/hooks/usePermission', () => ({ usePermission: vi.fn() }))
 vi.mock('@/hooks/useRestoreItem', () => ({
   useRestoreItem: () => ({ mutate: vi.fn(), isPending: false }),
@@ -43,15 +41,9 @@ const itemFolder: TrashItem = {
   originalParentId: null,
 }
 
-const mockTree = {
-  id: 'root',
-  parentId: null,
-  name: 'root',
-  slug: '',
-  children: [
-    { id: 'p1', parentId: 'root', name: '영업팀', slug: '영업팀', children: [] },
-  ],
-}
+// TrashTable currently uses tree=undefined → originalParentId 있어도 "원위치 폴더
+// 삭제됨" 폴백으로 표시. tree prop 활용 시점(Tasks 17+ 대기)에 mockTree fixture는
+// git 히스토리에서 복원 가능 — 현재는 lint 회피 위해 dead-code 제거.
 
 function setHook(opts: {
   isLoading?: boolean
@@ -74,51 +66,50 @@ function setHook(opts: {
 describe('TrashTable', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    ;(useFolderTree as ReturnType<typeof vi.fn>).mockReturnValue({ data: mockTree })
     ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: true })
   })
 
   it('isLoading → 로딩 상태', () => {
     setHook({ isLoading: true })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByText('로딩…')).toBeTruthy()
   })
 
   it('isError → 에러 alert', () => {
     setHook({ isError: true })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByRole('alert').textContent).toMatch(/불러올 수 없습니다/)
   })
 
   it('items가 비어있으면 Empty 메시지', () => {
     setHook({ items: [] })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByText('휴지통이 비어있습니다')).toBeTruthy()
   })
 
-  it('items 렌더 + 원위치 path 표시 + aria-rowcount', () => {
+  it('items 렌더 + aria-rowcount (tree=undefined → path 폴백)', () => {
     setHook({ items: [itemFile, itemFolder] })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     const grid = screen.getByRole('grid', { name: '휴지통 항목' })
     // header(1) + rows(2)
     expect(grid.getAttribute('aria-rowcount')).toBe('3')
     expect(screen.getByText('제안서.pdf')).toBeTruthy()
     expect(screen.getByText('계약서')).toBeTruthy()
-    // file은 originalParentId='p1' → '내 드라이브 / 영업팀'
-    expect(screen.getByText('내 드라이브 / 영업팀')).toBeTruthy()
+    // tree=undefined → originalParentId가 있으면 "원위치 폴더 삭제됨" (Tasks 17+ 대기)
+    expect(screen.getByText('원위치 폴더 삭제됨')).toBeTruthy()
     // folder는 originalParentId=null → '최상위'
     expect(screen.getByText('최상위')).toBeTruthy()
   })
 
-  it('parent가 tree에 없으면 "원위치 폴더 삭제됨" 폴백', () => {
+  it('originalParentId가 있으면 tree=undefined → "원위치 폴더 삭제됨" 폴백', () => {
     const orphan: TrashItem = { ...itemFile, id: 'f2', name: '고아.pdf', originalParentId: 'gone' }
     setHook({ items: [orphan] })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByText('원위치 폴더 삭제됨')).toBeTruthy()
   })
 
@@ -126,7 +117,7 @@ describe('TrashTable', () => {
     setHook({ items: [itemFile] })
     ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: true })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.getByRole('button', { name: '영구 삭제' })).toBeTruthy()
     expect(screen.getByRole('button', { name: '복원' })).toBeTruthy()
   })
@@ -135,8 +126,29 @@ describe('TrashTable', () => {
     setHook({ items: [itemFile] })
     ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue({ PURGE: false })
     const qc = new QueryClient()
-    render(<TrashTable />, { wrapper: wrap(qc) })
+    render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.queryByRole('button', { name: '영구 삭제' })).toBeNull()
     expect(screen.getByRole('button', { name: '복원' })).toBeTruthy()
+  })
+
+  // ─── Plan E T13: archived prop forward ─────────────────────────────────────
+
+  it('archived 미지정 (기본 false) → 복원 버튼 활성', () => {
+    setHook({ items: [itemFile] })
+    const qc = new QueryClient()
+    render(<TrashTable scopeType="team" scopeId="t1" />, { wrapper: wrap(qc) })
+    const btn = screen.getByRole('button', { name: '복원' }) as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+  })
+
+  it('archived=true → TrashRowActions 가 disabled (복원 버튼 비활성 + 툴팁)', () => {
+    setHook({ items: [itemFile] })
+    const qc = new QueryClient()
+    render(<TrashTable scopeType="team" scopeId="t1" archived />, {
+      wrapper: wrap(qc),
+    })
+    const btn = screen.getByRole('button', { name: '복원' }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toBe('archive된 팀의 콘텐츠는 복원할 수 없습니다')
   })
 })

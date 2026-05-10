@@ -14,7 +14,7 @@ export function TopBar() {
   return (
     <div
       role="banner"
-      className="flex items-center justify-between gap-2 h-10 px-3 border-b border-border bg-surface-1"
+      className="flex items-center justify-between gap-2 h-12 px-3 border-b border-border bg-surface-1"
     >
       <SearchBar />
       <div className="flex items-center gap-2">

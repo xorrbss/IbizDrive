@@ -5,6 +5,8 @@ import com.ibizdrive.audit.AuditEvent;
 import com.ibizdrive.audit.AuditEventType;
 import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
+import com.ibizdrive.team.TeamArchiveGuard;
+import com.ibizdrive.team.TeamRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -52,8 +54,11 @@ class FileVersionMutationServiceTest {
         fileRepository = mock(FileRepository.class);
         fileVersionRepository = mock(FileVersionRepository.class);
         auditService = mock(AuditService.class);
+        // 기존 매트릭스는 DEPARTMENT scope fixture만 사용 — TeamArchiveGuard는 가드 내부에서 no-op.
+        // T5 archived-team 회귀는 FileUploadArchivedTeamGuardTest가 별도로 검증.
+        TeamArchiveGuard teamArchiveGuard = new TeamArchiveGuard(mock(TeamRepository.class));
         service = new FileVersionMutationService(
-            fileRepository, fileVersionRepository, auditService, new ObjectMapper());
+            fileRepository, fileVersionRepository, auditService, new ObjectMapper(), teamArchiveGuard);
     }
 
     @Test

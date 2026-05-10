@@ -9,6 +9,7 @@ import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.file.FileRepository;
+import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.trash.TrashRetentionProperties;
 import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -24,6 +25,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -55,6 +57,17 @@ import java.util.UUID;
  * <p><b>actor / 컨텍스트</b>: {@code actorId}는 호출자(controller)가 명시적으로 전달.
  * IP/User-Agent는 {@link WebRequestContextHolder}로 현재 HTTP 요청에서 추출 — 비-HTTP 컨텍스트
  * (스케줄러 등)에서는 자연스럽게 null.
+ *
+ * <p><b>archived 팀 차단 (spec §2.2/§5.4 — Plan A T3 + Plan E T4)</b>: 5개 write 진입점
+ * (create/rename/move/delete/restore)은 target/parent fetch 직후 mutation 직전에
+ * {@link TeamArchiveGuard#assertNotArchived(ScopeType, java.util.UUID)}를 호출해
+ * archived 팀의 콘텐츠를 read-only로 강제한다. {@code TEAM_ARCHIVED} (HTTP 423) 변환은
+ * {@link com.ibizdrive.common.error.GlobalExceptionHandler}.
+ *
+ * <p>Plan E T4 — {@link #restore(UUID, UUID, String)}는 archive guard 직후 cross-scope mismatch
+ * (original parent가 다른 workspace로 이동된 상태) 검증을 추가해
+ * {@link FolderRestoreConflictException.Reason#SCOPE_MISMATCH} ({@code RESTORE_CONFLICT} HTTP 409 +
+ * {@code reason=scope_mismatch})를 던진다.
  */
 @Service
 @Transactional
@@ -75,17 +88,28 @@ public class FolderMutationService {
     private final ObjectMapper objectMapper;
     /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (FileMutationService와 동일 source). */
     private final TrashRetentionProperties retention;
+    /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
+    private final CrossWorkspaceMoveService crossWorkspaceMoveService;
+    /**
+     * 5개 write 진입점(create/rename/move/delete/restore)에서 archived 팀 콘텐츠 변경을 차단
+     * (spec §2.2/§5.4). Plan E T4에서 restore에 cross-scope mismatch 검증을 추가.
+     */
+    private final TeamArchiveGuard teamArchiveGuard;
 
     public FolderMutationService(FolderRepository folderRepository,
                                  FileRepository fileRepository,
                                  AuditService auditService,
                                  ObjectMapper objectMapper,
-                                 TrashRetentionProperties retention) {
+                                 TrashRetentionProperties retention,
+                                 CrossWorkspaceMoveService crossWorkspaceMoveService,
+                                 TeamArchiveGuard teamArchiveGuard) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.retention = retention;
+        this.crossWorkspaceMoveService = crossWorkspaceMoveService;
+        this.teamArchiveGuard = teamArchiveGuard;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -119,6 +143,9 @@ public class FolderMutationService {
         // DB FK가 최종 가드.
         Folder parent = folderRepository.findByIdAndDeletedAtIsNull(parentId)
             .orElseThrow(() -> new FolderNotFoundException("parent folder not found: " + parentId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. parent fetch 직후, normalize/conflict 이전.
+        teamArchiveGuard.assertNotArchived(parent.getScopeType(), parent.getScopeId());
 
         String displayName = NormalizeUtil.normalizeFileName(name);
         String normalizedName = NormalizeUtil.normalizedNameForDedup(name);
@@ -227,6 +254,9 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. no-op 단락 이전 — 시도 자체가 write.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
+
         String newDisplay = NormalizeUtil.normalizeFileName(newName);
         String newNormalized = NormalizeUtil.normalizedNameForDedup(newName);
 
@@ -272,43 +302,77 @@ public class FolderMutationService {
     // ──────────────────────────────────────────────────────────────────
 
     /**
+     * 활성 폴더의 부모를 변경한다 (same-scope 전용 — {@code allowCrossScope=false} 기본값).
+     *
+     * <p>3-arg 오버로드: 기존 호출자(테스트 포함) API 유지 목적. {@link #move(UUID, UUID, UUID, boolean)}으로 위임.
+     */
+    public Folder move(UUID folderId, UUID newParentId, UUID actorId) {
+        return move(folderId, newParentId, actorId, false);
+    }
+
+    /**
      * 활성 폴더의 부모를 변경한다. {@code newParentId == null}이면 root로 이동.
      *
      * <p><b>Same-scope 강제 (spec §1.2, §5.6 — Plan A Task 25)</b>: {@code newParentId}가 non-null일
      * 때 target과 newParent의 {@code (scope_type, scope_id)}가 동일해야 한다. 다르면
-     * {@link CrossScopeMoveException} (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}). 명시적
-     * cross-workspace move는 Plan D scope ({@code allowCrossScope: true} + 영향 미리보기).
+     * {@link CrossScopeMoveException} (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}).
      *
+     * <p><b>Cross-workspace 위임 (Plan D Task 16)</b>: {@code allowCrossScope=true}이고 scope가
+     * 다를 때 {@link CrossWorkspaceMoveService#moveFolder}로 위임. 위임 서비스는 자체적으로
+     * SELECT FOR UPDATE 잠금하므로 본 메서드의 lock과 충돌하지 않음 (Postgres re-entrant locks within same tx).
+     *
+     * <p><b>Root 이동 차단 (spec §1.3 invariant)</b>: {@code newParentId == null}은 거부된다 — root
+     * 폴더는 workspace lifecycle만 생성/소유하며, V14 partial unique index
+     * {@code idx_folders_root_per_scope}가 scope당 root 1개를 강제.
+     *
+     * @param allowCrossScope true이면 cross-workspace move 분기로 위임; false면 기존 same-scope 가드
      * @throws FolderNotFoundException  folderId 또는 newParentId가 활성 폴더가 아님
-     * @throws IllegalArgumentException 자기 자신 또는 자기 자신의 하위 트리로 이동 (cycle)
-     * @throws CrossScopeMoveException  newParent의 scope가 target과 다름 (Plan A: same-scope만)
+     * @throws IllegalArgumentException folderId null, {@code newParentId == null} (root 승격 차단),
+     *                                  또는 자기 자신/자기 하위로의 이동 (cycle)
+     * @throws CrossScopeMoveException  {@code allowCrossScope=false}이고 newParent scope가 다름
      * @throws FolderNameConflictException 새 부모 안에 동일 normalized_name 활성 폴더 존재
      */
-    public Folder move(UUID folderId, UUID newParentId, UUID actorId) {
+    public Folder move(UUID folderId, UUID newParentId, UUID actorId, boolean allowCrossScope) {
         if (folderId == null) throw new IllegalArgumentException("folderId is required");
+        if (newParentId == null) {
+            // spec §1.3 — root는 workspace lifecycle 전용. 일반 폴더의 root 승격은 V13
+            // idx_folders_root_per_scope 위반(scope당 root 1개)으로 DB-level fail이 보장되지만,
+            // service 진입에서 명시 거부해 caller에 명확한 BAD_REQUEST 신호.
+            throw new IllegalArgumentException(
+                "newParentId is required — root folders are workspace-managed only (spec §1.3)");
+        }
 
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
 
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. same-scope 가드가 dst==src를 보장하므로
+        // target.scope 기준 1회 호출이면 newParent도 동일하게 차단된다.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
+
         UUID currentParent = target.getParentId();
-        if (java.util.Objects.equals(currentParent, newParentId)) {
+        if (Objects.equals(currentParent, newParentId)) {
             return target;                                  // short-circuit
         }
 
-        if (newParentId != null) {
-            // 새 부모가 활성인지 확인. cycle 검사를 위해서도 ancestor walk 진입점이 활성이어야 함.
-            Folder newParent = folderRepository.findByIdAndDeletedAtIsNull(newParentId)
-                .orElseThrow(() -> new FolderNotFoundException(
-                    "new parent folder not found: " + newParentId));
-            // Plan A Task 25 — same-scope 가드. newParentId == null (root) 케이스는 §1.2 invariant
-            // 와 충돌하나 본 task는 명시적으로 same-scope 검증만 다룸 (rootless folder 차단은
-            // 별도 트랙). 가드는 mutation 직전, 가장 저렴한 비교부터 (cycle walk 이전) 배치.
-            if (target.getScopeType() != newParent.getScopeType()
-                || !target.getScopeId().equals(newParent.getScopeId())) {
+        // 새 부모가 활성인지 확인. cycle 검사를 위해서도 ancestor walk 진입점이 활성이어야 함.
+        Folder newParent = folderRepository.findByIdAndDeletedAtIsNull(newParentId)
+            .orElseThrow(() -> new FolderNotFoundException(
+                "new parent folder not found: " + newParentId));
+
+        // Plan A Task 25 + Plan D Task 16 — scope 검증.
+        // 같으면: assertNoCycle 진행 (same-scope path).
+        // 다르고 allowCrossScope=true: CrossWorkspaceMoveService 위임 (Plan D Task 16).
+        // 다르고 allowCrossScope=false: CrossScopeMoveException.
+        boolean cross = target.getScopeType() != newParent.getScopeType()
+                     || !target.getScopeId().equals(newParent.getScopeId());
+        if (cross) {
+            if (!allowCrossScope) {
                 throw new CrossScopeMoveException();
             }
-            assertNoCycle(folderId, newParentId);
+            // 위임 — CrossWorkspaceMoveService가 완전한 트랜잭션 경로 수행.
+            return crossWorkspaceMoveService.moveFolder(folderId, newParentId, actorId);
         }
+        assertNoCycle(folderId, newParentId);
 
         if (folderRepository.existsActiveByParentAndNormalizedNameExcludingId(
                 newParentId, target.getNormalizedName(), target.getId())) {
@@ -361,6 +425,9 @@ public class FolderMutationService {
 
         Folder root = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
+
+        // spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. BFS/cascade 이전.
+        teamArchiveGuard.assertNotArchived(root.getScopeType(), root.getScopeId());
 
         // BFS frontier expansion: root → 후손 ids 수집. visited Set은 데이터 corruption 방어.
         // root 자체는 별도 처리(originalParentId 보존 + entity 단 update + saveAndFlush)이므로
@@ -437,6 +504,11 @@ public class FolderMutationService {
         Folder target = folderRepository.lockByIdAndDeletedAtIsNotNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("trashed folder not found: " + folderId));
 
+        // Plan E T4 / spec §2.2/§5.4 — archived 팀 콘텐츠는 read-only. soft-deleted row의
+        // scope_type/scope_id는 V13 NOT NULL 제약으로 preserve되므로 target.scope로 그대로 검증.
+        // name conflict / cross-scope mismatch 검사 이전에 단락 — 시도 자체가 write.
+        teamArchiveGuard.assertNotArchived(target.getScopeType(), target.getScopeId());
+
         UUID originalParentSnapshot = target.getOriginalParentId();
         UUID restoreParentId = originalParentSnapshot != null
             ? originalParentSnapshot
@@ -444,9 +516,26 @@ public class FolderMutationService {
         if (restoreParentId != null) {
             // 원래 parent가 활성인지 확인. soft-deleted parent로의 복원은 불허 — 사용자가 parent부터
             // 복원해야 한다는 UX 강제 (자기 자신만 복원 정책의 일관성).
-            folderRepository.findByIdAndDeletedAtIsNull(restoreParentId)
+            Folder restoreParent = folderRepository.findByIdAndDeletedAtIsNull(restoreParentId)
                 .orElseThrow(() -> new FolderNotFoundException(
                     "original parent is not active: " + restoreParentId));
+            // Plan E T4 — cross-scope mismatch: original parent가 활성이지만 다른 workspace로
+            // 이동된 경우 (cross-workspace move 후 또는 데이터 재배치 후 발생 가능). 복원 시 자식이
+            // 원래 workspace를 떠나면 §1.2 invariant 위반이므로 차단. wire body의 reason='scope_mismatch'.
+            // details map의 키는 "reason" / "resourceId" 회피 (handler가 silent overwrite — T3 reviewer 권고).
+            if (restoreParent.getScopeType() != target.getScopeType()
+                    || !restoreParent.getScopeId().equals(target.getScopeId())) {
+                Map<String, Object> mismatch = new LinkedHashMap<>();
+                mismatch.put("expectedScopeType", target.getScopeType().dbValue());
+                mismatch.put("expectedScopeId", target.getScopeId().toString());
+                mismatch.put("actualScopeType", restoreParent.getScopeType().dbValue());
+                mismatch.put("actualScopeId", restoreParent.getScopeId().toString());
+                throw new FolderRestoreConflictException(
+                    FolderRestoreConflictException.Reason.SCOPE_MISMATCH,
+                    target.getId(),
+                    "original parent moved to a different workspace",
+                    mismatch);
+            }
         }
 
         // newName 정규화 (지정 시) — rename 패턴 미러.

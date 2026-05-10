@@ -88,7 +88,7 @@ describe('useRenameFile', () => {
     expect(useRenameUiStore.getState().isOpen).toBe(false)
   })
 
-  it('폴더 rename 성공 시 folderTree도 invalidate', async () => {
+  it('폴더 rename 성공 시 folderChildren prefix도 invalidate', async () => {
     ;(api.renameFile as ReturnType<typeof vi.fn>).mockResolvedValue({
       id: 'folder_x',
       name: '새이름',
@@ -113,7 +113,7 @@ describe('useRenameFile', () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
 
     const calls = invalidateSpy.mock.calls.map((c) => c[0])
-    expect(calls.some((arg) => JSON.stringify(arg).includes('"tree"'))).toBe(true)
+    expect(calls.some((arg) => JSON.stringify(arg).includes('"children"'))).toBe(true)
   })
 
   it('RENAME_CONFLICT 실패 → setError + 다이얼로그 유지 + unmarkPending', async () => {

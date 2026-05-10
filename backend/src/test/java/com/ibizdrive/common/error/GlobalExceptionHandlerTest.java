@@ -7,6 +7,7 @@ import com.ibizdrive.permission.Preset;
 import com.ibizdrive.share.ShareController;
 import com.ibizdrive.share.ShareExceedsMembershipException;
 import com.ibizdrive.team.LastOwnerRequiredException;
+import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -24,6 +25,7 @@ import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -123,5 +125,22 @@ class GlobalExceptionHandlerTest {
         assertThat(body.code()).isEqualTo("TEAM_OWNER_REQUIRED");
         assertThat(body.message()).isNotBlank();
         assertThat(body.details()).isNull();
+    }
+
+    @Test
+    void handleTeamArchived_returns423WithTeamIdInDetails() {
+        UUID teamId = UUID.randomUUID();
+        TeamArchivedException ex = new TeamArchivedException(teamId);
+
+        ResponseEntity<ApiError> response = handler.handleTeamArchived(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.LOCKED);
+        ApiError.Body body = response.getBody().error();
+        assertThat(body.code()).isEqualTo("TEAM_ARCHIVED");
+        assertThat(body.message()).isNotBlank();
+        assertThat(body.details()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> details = (Map<String, Object>) body.details();
+        assertThat(details).containsEntry("teamId", teamId.toString());
     }
 }

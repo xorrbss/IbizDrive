@@ -17,6 +17,10 @@
 | **캐시 무효화 파급** | 권한 변경 → permissions만 | 권한 변경 → **FolderTree + 하위 리스트 + 버튼 가시성** 전부 |
 | **문자열 정규화** | - | **NFC 정규화 + encodeURIComponent + 검색 normalize 일치** |
 | **검색 견고성** | SearchBar 존재만 | **debounce 300ms + AbortController + placeholderData + 최소 2자** |
+| **URL 구조 (Plan B)** | `/files/[...parts]` (단일 루트) | **`/d/:deptId/[[...parts]]`, `/t/:teamId/[[...parts]]`, `/shared/[[...parts]]`** — workspace prefix 3-route |
+| **사이드바 (Plan B)** | 단일 `FolderTree` | **`SidebarSections` 3-section** (부서 / 팀 / 공유받음) + workspace-per-lazy-tree |
+| **트리 상태 (Plan B)** | `useViewStore` (expandedFolderIds) | **`useSidebarTreeStore`** (persisted, 30일 TTL, collapsedSections) |
+| **DnD 제약 (Plan B)** | workspace 경계 없음 | **same-workspace only** — `MoveDragData.sourceWorkspace` + `isCrossWorkspace` 시각 차단 |
 
 > **MVP 범위**: 업로드는 multipart로 시작, 실시간은 폴링으로 시작. tus/SSE는 v1.x 로드맵. (도메인이 대용량/컴플라이언스면 MVP에 포함 가능 — 15절 참조)
 
@@ -27,12 +31,14 @@
 ### 1.1 진실 출처 규칙
 
 ```text
-현재 "어디"를 보는가 → URL  (folderId가 canonical key)
-현재 "무엇"을 하는가 → Zustand (선택, 드래그, 업로드 큐)
+현재 "어디"를 보는가 → URL  (workspace prefix + folderId가 canonical key — Plan B)
+현재 "무엇"을 하는가 → Zustand (선택, 드래그, 업로드 큐, sidebar expand 상태)
 "사실" 그 자체       → TanStack Query (서버 데이터)
 ```
 
-절대로 서버 데이터를 Zustand에 복제하지 않음. 절대로 URL 정보를 Zustand에 복제하지 않음.
+절대로 서버 데이터를 Zustand에 복제하지 않음. 절대로 URL 정보(workspace/folderId)를 Zustand에 복제하지 않음.
+
+> **Plan B**: workspace root folder ID는 `GET /api/workspaces/me` 응답에서 취득. `VIRTUAL_ROOT_ID('root')` 사용 금지.
 
 ### 1.2 권한 검증 계약
 
@@ -88,33 +94,55 @@ normalizedFileName = NFC.normalize(name).trim().toLowerCase()
 
 ---
 
-## 2. URL 구조 (v3 핵심 변경)
+## 2. URL 구조 (v3 → Plan B workspace prefix)
 
-### 2.1 패턴: `[...parts]` catch-all (folderId + slug hybrid)
+> **Plan B 변경**: `/files/[...parts]` 단일 루트를 폐기하고 workspace prefix 3-route 체계로 전환.
+> `VIRTUAL_ROOT_ID('root')` 개념도 함께 폐기 — workspace root folder ID는 서버가 내려주는 실제 UUID.
+
+### 2.1 패턴: workspace prefix + folderId catch-all (Plan B)
 
 ```text
-/files/[...parts]
-    parts[0]      = folderId    (canonical key, 조회에 사용)
-    parts[1..]    = slug path   (표시용, 가독성/공유용)
+/d/[deptId]/[[...parts]]     → 부서 콘텐츠
+/t/[teamId]/[[...parts]]     → 팀 콘텐츠
+/shared/[[...parts]]         → 공유받은 콘텐츠
+
+parts[0]      = folderId    (canonical key, 조회에 사용)  ← 기존 /files 패턴 유지
+parts[1..]    = slug path   (표시용, 가독성/공유용)
 
 예시:
-    /files/root
-    /files/folder_abc123
-    /files/folder_abc123/영업팀/계약서
+    /d/dept-uuid-123                             (부서 landing — workspace root)
+    /d/dept-uuid-123/folder-abc123               (부서 내 폴더)
+    /d/dept-uuid-123/folder-abc123/영업팀/계약서  (부서 내 폴더 + slug)
+    /t/team-uuid-456/folder-xyz789               (팀 내 폴더)
+    /shared/folder-shared-1/보고서               (공유받은 폴더)
+
+휴지통:
+    /trash/d/:deptSlug                           (부서 휴지통)
+    /trash/t/:teamSlug                           (팀 휴지통)
+
+> ❌ 폐기: /files/[...parts]  — Plan B에서 제거됨.
+```
+
+Next.js App Router 파일 위치:
+```text
+app/(explorer)/
+  d/[deptId]/[[...parts]]/page.tsx
+  t/[teamId]/[[...parts]]/page.tsx
+  shared/[[...parts]]/page.tsx
 ```
 
 ### 2.2 URL 검증 및 canonical redirect
 
 ```text
-요청: /files/folder_abc123/잘못된이름
+요청: /d/dept-uuid/folder_abc123/잘못된이름
 
 1. folderId=folder_abc123 로 폴더 조회 → 실제 path = "영업팀/계약서"
-2. URL slug ≠ 실제 path → 308 redirect → /files/folder_abc123/영업팀/계약서
+2. URL slug ≠ 실제 path → 308 redirect → /d/dept-uuid/folder_abc123/영업팀/계약서
 3. folderId 자체가 없거나 권한 없음 → 404 / 403
 
 이로써:
   ✅ 폴더 이름 변경해도 URL 유효 (folderId가 안정 키)
-  ✅ 링크 공유 시 가독성 있는 URL
+  ✅ 링크 공유 시 가독성 있는 URL + workspace context 명시
   ✅ 동일 이름 폴더 충돌 없음
   ✅ 이동해도 URL 유효 (slug만 갱신)
 ```
@@ -123,7 +151,8 @@ normalizedFileName = NFC.normalize(name).trim().toLowerCase()
 
 | 상태 | 위치 | 예시 |
 |---|---|---|
-| 현재 폴더 | URL path parts[0] | `/files/folder_abc123/...` |
+| 현재 workspace | URL path prefix `/d/:id` or `/t/:id` | `/d/dept-uuid-123/...` |
+| 현재 폴더 | URL path parts[0] (after workspace prefix) | `/d/dept-uuid/folder_abc123/...` |
 | 표시용 slug | URL path parts[1..] | `/영업팀/계약서` |
 | 열린 파일 상세 | URL query `?file=` | `?file=file_xyz789` |
 | 검색어 | URL query `?q=` | `?q=2025계약` |
@@ -131,7 +160,7 @@ normalizedFileName = NFC.normalize(name).trim().toLowerCase()
 | 필터 | URL query `?type=&owner=` | `?type=pdf&owner=me` |
 | 선택된 파일 | Zustand (휘발성) | - |
 | 뷰 모드 | localStorage + Zustand | - |
-| 트리 확장 상태 | localStorage + Zustand | - |
+| 트리 확장 상태 | localStorage + `useSidebarTreeStore` (persisted) | - |
 | 업로드 큐 | Zustand (세션 휘발성) | - |
 
 ### 2.4 한글/유니코드 정규화 정책
@@ -160,21 +189,22 @@ DB 저장:
 
 ## 3. Next.js App Router 폴더 구조
 
+> **Plan B 변경**: `/files/*` 루트 제거 → workspace prefix 3-route 추가. `FolderTree` / `useFolderTree` / `folderPath.ts` 제거.
+
 ```text
 app/
 ├─ layout.tsx                        # 루트 레이아웃 + Providers
 ├─ providers.tsx                     # QueryClient, DndContext, Zustand hydration
 ├─ (explorer)/
 │  ├─ layout.tsx                     # <AppLayout> (TopBar + Sidebar + 컨텐츠)
-│  ├─ files/
-│  │  ├─ page.tsx                    # /files → redirect("/files/root")
-│  │  └─ [...parts]/
-│  │     ├─ page.tsx                 # 폴더 뷰 + canonical redirect 처리
-│  │     ├─ loading.tsx              # <FileTableSkeleton />
-│  │     ├─ error.tsx                # <FileTableError />
-│  │     └─ not-found.tsx
+│  ├─ d/[deptId]/[[...parts]]/
+│  │  └─ page.tsx                    # 부서 폴더 뷰 + canonical redirect 처리
+│  ├─ t/[teamId]/[[...parts]]/
+│  │  └─ page.tsx                    # 팀 폴더 뷰 + canonical redirect 처리
+│  ├─ shared/[[...parts]]/
+│  │  └─ page.tsx                    # 공유받은 폴더 뷰
 │  ├─ trash/
-│  │  └─ page.tsx                    # <TrashView />
+│  │  └─ page.tsx                    # <TrashView /> (workspace 탭 포함)
 │  ├─ shares/
 │  │  └─ page.tsx                    # 받은 공유 (F4, with-me)
 │  └─ search/
@@ -182,14 +212,17 @@ app/
 └─ api/
    └─ (proxy routes)
 
-# ❌ @rightPanel parallel route 제거됨.
+# ❌ @rightPanel parallel route 제거됨 (v3부터).
+# ❌ /files/[...parts] 루트 제거됨 (Plan B — workspace prefix 체계로 전환).
 # RightPanel은 ContentArea 내부 컴포넌트로, ?file= query param을 구독.
 
 src/
 ├─ components/
 │  ├─ layout/         (AppLayout, TopBar, Sidebar, ContentArea)
+│  ├─ sidebar/        (SidebarSections, WorkspaceSection, WorkspaceFolderTree,
+│  │                   SharedWithMeSection, FolderTreeNode, TeamCreateButton, TeamCreateDialog)
+│  ├─ dnd/            (DndProvider, types.ts, useFolderDroppable — cross-workspace guard)
 │  ├─ files/          (FileTable, FileRow, FileContextMenu, BulkActionBar)
-│  ├─ folders/        (FolderTree, FolderNode, Breadcrumb)
 │  ├─ upload/         (UploadOverlay, UploadQueue, UploadItem, DropZone)
 │  ├─ detail/         (RightPanel, VersionList, ActivityTimeline)
 │  ├─ permission/     (PermissionModal, PermissionTable)
@@ -197,15 +230,19 @@ src/
 │  ├─ empty/          (EmptyFolder, EmptyTrash, EmptySearch)
 │  └─ ui/             (primitives)
 ├─ stores/
-│  ├─ selection.ts    (선택 슬라이스)
-│  ├─ view.ts         (뷰 모드, 정렬, 트리 확장)
-│  ├─ upload.ts       (업로드 큐)
-│  └─ dnd.ts          (드래그 상태)
+│  ├─ selection.ts      (선택 슬라이스)
+│  ├─ sidebarTree.ts    (트리 확장 + section collapsed — persisted, 30일 TTL)  ← Plan B
+│  ├─ upload.ts         (업로드 큐)
+│  └─ dnd.ts            (드래그 상태)
+│  # ❌ view.ts 제거됨 (Plan B — 트리 확장은 sidebarTree.ts로 이전)
 ├─ hooks/
-│  ├─ useCurrentFolder.ts   (URL → folderId + 검증)
-│  ├─ useOpenFile.ts        (?file= 동기화)
+│  ├─ useCurrentFolder.ts       (URL → folderId + 검증)
+│  ├─ useCurrentWorkspace.ts    (URL → workspace kind + id)  ← Plan B
+│  ├─ useWorkspaces.ts          (GET /api/workspaces/me)      ← Plan B
+│  ├─ useFolderChildren.ts      (lazy per-folder children)    ← Plan B
+│  ├─ useExpandPathOnNavigate.ts (URL change → sidebar auto-expand)  ← Plan B
+│  ├─ useOpenFile.ts            (?file= 동기화)
 │  ├─ useFiles.ts
-│  ├─ useFolderTree.ts
 │  ├─ useFileDetail.ts
 │  ├─ useVersions.ts
 │  ├─ useUpload.ts
@@ -213,12 +250,14 @@ src/
 │  ├─ useKeyboardNav.ts
 │  ├─ useRealtimeSync.ts
 │  └─ useSearch.ts
+│  # ❌ useFolderTree.ts 제거됨 (Plan B — lazy WorkspaceFolderTree로 대체)
 ├─ lib/
 │  ├─ queryKeys.ts          (중앙 쿼리 키 팩토리)
 │  ├─ api/                  (fetch wrappers, AbortController 지원)
 │  ├─ normalize.ts          (NFC 정규화, search normalize)
-│  ├─ folderPath.ts         (canonical URL 생성)
+│  ├─ workspacePath.ts      (buildWorkspacePath + parseWorkspaceUrl)  ← Plan B
 │  └─ permissions.ts        (can() 헬퍼)
+│  # ❌ folderPath.ts 제거됨 (Plan B — workspacePath.ts로 대체)
 └─ types/
    ├─ file.ts
    ├─ folder.ts
@@ -227,7 +266,9 @@ src/
 
 ---
 
-## 4. 컴포넌트 트리 (v3 정비)
+## 4. 컴포넌트 트리 (v3 → Plan B workspace pivot)
+
+> **Plan B 변경**: `<FolderTree />` 단일 컴포넌트 → `<SidebarSections>` 3-section 구조로 교체.
 
 ```text
 <AppLayout>
@@ -236,8 +277,17 @@ src/
  │   └─ <UserMenu />
  ├─ <MainArea>
  │   ├─ <Sidebar>
- │   │   ├─ <QuickAccess />
- │   │   ├─ <FolderTree />      ← URL folderId에서 active 판단
+ │   │   ├─ <SidebarSections>          ← Plan B: 3-section shell (replaces FolderTree)
+ │   │   │   ├─ Section 1: 내 부서
+ │   │   │   │   └─ <WorkspaceSection kind="department">
+ │   │   │   │       └─ <WorkspaceFolderTree>   ← lazy per-workspace expand
+ │   │   │   │           └─ <FolderTreeNode>    ← droppable (dnd-kit)
+ │   │   │   ├─ Section 2: 내 팀 (N)
+ │   │   │   │   ├─ <WorkspaceSection kind="team">  (×N, archived 시각)
+ │   │   │   │   │   └─ <WorkspaceFolderTree>
+ │   │   │   │   └─ <TeamCreateButton>         ← "[+ 새 팀 만들기]" CTA
+ │   │   │   └─ Section 3: 공유받음
+ │   │   │       └─ <SharedWithMeSection>      ← flat MVP (출처 workspace 그룹핑)
  │   │   └─ <TrashLink />
  │   └─ <ContentArea>
  │       ├─ <Breadcrumb />      ← folder API data에서 derive
@@ -261,6 +311,13 @@ src/
      ├─ <PermissionModal />
      └─ <DeleteConfirmDialog />
 ```
+
+**빈 상태 처리**:
+- 부서 미배정: Section 1에 "부서 미배정 — 관리자에게 문의" 텍스트만 표시
+- 팀 0개: Section 2에 `<TeamCreateButton>` CTA만 표시
+- 공유받음 0개: `<SharedWithMeSection>` 섹션 자체 hide
+
+**archived 팀**: `WorkspaceSection` + `WorkspaceFolderTree`에서 `archived` prop → dim + 🔒 아이콘, read-only 진입.
 
 ---
 
@@ -328,38 +385,52 @@ export const useSelectionStore = create<SelectionState>((set, get) => ({
 > 상세: `docs/superpowers/specs/2026-04-25-m4-selection-bulkactionbar-design.md` §2.1, §2.2
 
 
-### 5.2 View slice (persisted)
+### 5.2 SidebarTree slice (persisted) — Plan B
+
+> **Plan B 변경**: `useViewStore` (stores/view.ts) 의 `expandedFolderIds` 역할을 `useSidebarTreeStore`가 대체.
+> `useViewStore`는 뷰 모드·정렬처럼 콘텐츠 영역 UI 상태만 유지하도록 범위 축소 (또는 필요 없으면 제거).
+> `VIRTUAL_ROOT_ID('root')` 초기값 제거 — workspace root는 서버에서 받은 UUID로 초기화.
 
 ```ts
-// stores/view.ts
+// stores/sidebarTree.ts
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import type { SidebarSectionKind } from '@/lib/workspacePath'
 
-type ViewState = {
-  mode: 'list' | 'grid'
-  density: 'comfortable' | 'compact'
+const THIRTY_DAYS = 30 * 24 * 3600 * 1000
+
+interface SidebarTreeState {
+  /** 펼쳐진 폴더 ID 집합 — workspace 전역 (folder UUID는 항상 unique). */
   expandedFolderIds: string[]
-  setMode: (m: 'list' | 'grid') => void
-  toggleExpanded: (id: string) => void
+  /** 접힌 section 목록 — 'department' | 'team' | 'shared'. 기본 모두 펼침. */
+  collapsedSections: SidebarSectionKind[]
+  /** 마지막 상태 변경 타임스탬프 (ms). 30일 초과 시 persist migrate에서 reset. */
+  lastWriteAt: number
+
+  toggleFolder: (id: string) => void
+  expandFolder: (id: string) => void
+  collapseFolder: (id: string) => void
+  toggleSection: (kind: SidebarSectionKind) => void
 }
 
-export const useViewStore = create<ViewState>()(
+export const useSidebarTreeStore = create<SidebarTreeState>()(
   persist(
     (set) => ({
-      mode: 'list',
-      density: 'comfortable',
-      expandedFolderIds: ['root'],
-      setMode: (mode) => set({ mode }),
-      toggleExpanded: (id) => set((s) => ({
-        expandedFolderIds: s.expandedFolderIds.includes(id)
-          ? s.expandedFolderIds.filter((x) => x !== id)
-          : [...s.expandedFolderIds, id]
-      })),
+      expandedFolderIds: [],
+      collapsedSections: [],
+      lastWriteAt: Date.now(),
+      // ... actions
     }),
-    { name: 'explorer-view' }
-  )
+    {
+      name: 'sidebar-tree-state:v1',
+      version: 1,
+      migrate: migrateSidebarTree, // 30일 초과 → reset
+    },
+  ),
 )
 ```
+
+**30일 TTL**: `migrateSidebarTree(persisted)` — `lastWriteAt` 기준 30일 초과 시 전체 상태 초기값으로 reset (stale expand 상태 누적 방지).
 
 ### 5.3 Upload slice
 
@@ -423,56 +494,98 @@ type DnDState = {
 
 ### 6.1 쿼리 키 팩토리
 
+> **Plan B 변경**:
+> - `folderTree()` 제거 → 단일 flat tree 폐기. 사이드바는 `folderChildren` lazy per-workspace 패턴으로 전환.
+> - `folderPath()` 제거 → `workspacePath.ts`의 `buildWorkspacePath` 로 대체.
+> - `workspaces.me()` 신규 — `GET /api/workspaces/me` (부서+팀+공유받은 root 한 번에).
+> - `folderChildren(scopeType, scopeId, parentId)` 신규 — lazy sidebar tree 노드별.
+> - `teams.all()` 신규 — 팀 목록 (팀 생성/변경 후 무효화).
+> - `invalidations.afterTeamChanged()` 신규 — `workspaces.me()` 무효화.
+
 ```ts
 // lib/queryKeys.ts
 export const qk = {
   all: ['explorer'] as const,
 
   folders: () => [...qk.all, 'folders'] as const,
-  folderTree: () => [...qk.folders(), 'tree'] as const,
+  // ❌ folderTree() 제거됨 (Plan B)
+  // ❌ folderPath() 제거됨 (Plan B — workspacePath.ts 사용)
   folder: (id: string) => [...qk.folders(), 'detail', id] as const,
-  folderPath: (id: string) => [...qk.folders(), 'path', id] as const,  // breadcrumb용
 
   files: () => [...qk.all, 'files'] as const,
   /** sort/dir 포함 정확한 단일 키 — direct cache read/write 시 사용. */
   filesInFolder: (folderId: string, sort: SortKey, dir: 'asc' | 'desc') =>
     [...qk.files(), 'list', folderId, sort, dir] as const,
-  /** sort/dir 변종 일괄 무효화용 prefix 키 (Wave 2 T6 — 서버가 진실 원칙). */
+  /** sort/dir 변종 일괄 무효화용 prefix 키 (서버가 진실 원칙). */
   filesListPrefix: (folderId: string) => [...qk.files(), 'list', folderId] as const,
   fileDetail: (id: string) => [...qk.files(), 'detail', id] as const,
-  versions: (fileId: string) => [...qk.files(), 'versions', fileId] as const,
-  activity: (fileId: string) => [...qk.files(), 'activity', fileId] as const,
+  fileVersions: (fileId: string) => [...qk.files(), 'versions', fileId] as const,
+  fileActivity: (fileId: string, page: number, pageSize: number) =>
+    [...qk.files(), 'activity', fileId, page, pageSize] as const,
 
-  permissions: (nodeId: string) => [...qk.all, 'permissions', nodeId] as const,
+  permissions: (nodeId?: string) => /* effective or node */ [...qk.all, 'permissions', nodeId] as const,
   effectivePermissions: () => [...qk.all, 'permissions', 'effective'] as const,
 
-  search: (q: string, filters: Filters) => [...qk.all, 'search', q, filters] as const,
+  search: () => [...qk.all, 'search'] as const,
+  /** prefix 키 — invalidate 매트릭스에서 사용 (afterDelete/afterRestore/afterPurge). */
   trash: () => [...qk.all, 'trash'] as const,
+  /**
+   * workspace scope 별 휴지통 listing 키 (Plan E T6, 2026-05-10).
+   * backend `GET /api/trash?scopeType&scopeId` 필수 파라미터와 1:1 대응.
+   * invalidate 시 `qk.trash()` prefix 매칭이면 전체 scope 일괄 갱신.
+   */
+  trashList: (scopeType: 'department' | 'team', scopeId: string) =>
+    [...qk.trash(), 'list', scopeType, scopeId] as const,
 
   // F4: shares (by-me/with-me)
   shares: () => [...qk.all, 'shares'] as const,
   sharesByMe: () => [...qk.shares(), 'by-me'] as const,
   sharesWithMe: () => [...qk.shares(), 'with-me'] as const,
+
+  // ── Workspaces (Plan B, spec §5.2) ──────────────────────────────────────
+  workspaces: {
+    all: () => [...qk.all, 'workspaces'] as const,
+    /** GET /api/workspaces/me — 부서(1) + 팀(N) + 공유받은 root 리스트 한 번에. */
+    me: () => [...qk.all, 'workspaces', 'me'] as const,
+  },
+
+  /**
+   * 사이드바 트리 lazy children — spec §4.5 §3.
+   * scopeType + scopeId 포함 — 동일 parentId가 부서/팀 간 우연 일치에도 캐시 분리.
+   * prefix: ['explorer', 'folders', 'children']
+   */
+  folderChildren: (scopeType: 'department' | 'team', scopeId: string, parentId: string) =>
+    [...qk.all, 'folders', 'children', scopeType, scopeId, parentId] as const,
+
+  // ── Teams (Plan B, spec §5.2) ────────────────────────────────────────────
+  teams: {
+    /** 내가 속한 팀 목록. afterTeamChanged 무효화 대상. */
+    all: () => [...qk.all, 'teams'] as const,
+  },
 } as const
 ```
 
-### 6.2 무효화 매트릭스 (v3 파급 범위 반영)
+### 6.2 무효화 매트릭스 (Plan B 업데이트)
+
+> **Plan B 변경**: `folderTree()` → `[...qk.all, 'folders', 'children']` prefix 일괄 무효화로 교체.
+> `afterTeamChanged` 헬퍼 신규 추가.
 
 | 액션 | 낙관적 업데이트 | invalidate |
 |---|---|---|
-| **파일 업로드 성공** | `filesInFolder(target)` prepend | `folderTree()` |
+| **파일 업로드 성공** | `filesInFolder(target)` prepend | `folderChildren` prefix 전체 |
 | **파일 이름 변경** | `fileDetail(id)`, 리스트 내 아이템 | - |
-| **폴더 생성** | ❌ (단순화 — KISS) | 완료 후: `filesListPrefix(parentId)`, `folderTree()`, `folder(parentId)` (helper: `invalidations.afterFolderCreated`) |
-| **파일 이동** | ❌ (파괴적) | 완료 후: `filesInFolder(from)`, `filesInFolder(to)`, `folderTree()`, `fileDetail(id)` |
-| **파일 삭제 (휴지통)** | ❌ (파괴적) | 완료 후: `filesInFolder(from)`, `trash()`, `folderTree()` |
-| **휴지통 복원** | ❌ | 완료 후: `trash()`, `filesInFolder(restored.parent)`, `folderTree()` |
-| **영구 삭제** | ❌ | 완료 후: `trash()` |
-| **폴더 삭제** | ❌ | 완료 후: `folderTree()`, 하위 `filesInFolder(*)` `removeQueries`, `trash()` |
+| **폴더 생성** | ❌ (단순화 — KISS) | 완료 후: `filesListPrefix(parentId)`, `folderChildren` prefix 전체, `folder(parentId)` (`invalidations.afterFolderCreated`) |
+| **파일 이동** | ❌ (파괴적) | 완료 후: `filesListPrefix(from)`, `filesListPrefix(to)`, `folderChildren` prefix 전체, `fileDetail(id)` (`invalidations.afterFilesMoved`) |
+| **파일 삭제 (휴지통)** | ❌ (파괴적) | 완료 후: `filesListPrefix(from)`, `trash()`, `folderChildren` prefix 전체 (`invalidations.afterDelete`) |
+| **휴지통 복원** | ❌ | 완료 후: `trash()`, `filesListPrefix(parent)`, `folderChildren` prefix 전체 (`invalidations.afterRestore`) |
+| **영구 삭제** | ❌ | 완료 후: `trash()` (`invalidations.afterPurge`) |
+| **폴더 삭제** | ❌ | 완료 후: `folderChildren` prefix 전체, 하위 `filesListPrefix(*)` `removeQueries`, `trash()` |
 | **권한 변경** | ❌ | **광역 무효화** (6.3절 참조) |
-| **새 버전 업로드** | ❌ (current_version_id 바뀜) | 완료 후: `versions(fileId)`, `fileDetail(id)`, `activity(id)` |
+| **새 버전 업로드** | ❌ (current_version_id 바뀜) | 완료 후: `fileVersions(fileId)`, `fileDetail(id)`, `fileActivity(id, ...)` |
 | **즐겨찾기 토글** | 리스트 아이템 플래그 | `quickAccess()` |
-| **공유 생성 (F4)** | ❌ | 완료 후: `shares()` (by-me/with-me 동시) |
-| **공유 해제 (F4)** | ❌ | 완료 후: `shares()` (by-me/with-me 동시) |
+| **공유 생성 (F4)** | ❌ | 완료 후: `shares()` (by-me/with-me 동시) (`invalidations.afterShareCreate`) |
+| **공유 해제 (F4)** | ❌ | 완료 후: `shares()` (by-me/with-me 동시) (`invalidations.afterShareRevoke`) |
+| **팀 생성/멤버 변경** | ❌ | 완료 후: `workspaces.me()` (`invalidations.afterTeamChanged`) |
 | **SSE 이벤트 수신** | 이벤트 타입별 처리 | 폴백: 관련 리스트 invalidate |
 
 ### 6.3 권한 변경 시 광역 무효화
@@ -492,8 +605,8 @@ export function useChangePermission() {
       // 2. 유효 권한 캐시 (usePermission 훅)
       qc.invalidateQueries({ queryKey: qk.effectivePermissions() })
 
-      // 3. FolderTree (안 보이던 폴더 보이거나, 보이던 폴더 사라짐)
-      qc.invalidateQueries({ queryKey: qk.folderTree() })
+      // 3. 사이드바 folderChildren 전체 (안 보이던 폴더 보이거나, 보이던 폴더 사라짐)
+      qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] })
 
       // 4. 현재 폴더 리스트 (읽기 권한 변경 시 일부 파일이 사라지거나 나타남)
       qc.invalidateQueries({ queryKey: qk.files() })
@@ -522,11 +635,45 @@ queryCache: new QueryCache({
 
 ---
 
-## 7. DnD 설계 (업로드 vs 이동 분리)
+## 7. DnD 설계 (업로드 vs 이동 분리 + cross-workspace 제약)
 
 두 개의 DnD 컨텍스트는 **이벤트 소스가 다름**:
 - **OS → 브라우저** (업로드): 네이티브 `dragenter/dragover/drop`, `e.dataTransfer.types.includes('Files')`
 - **브라우저 내부** (이동): dnd-kit 이벤트
+
+> **Plan B 추가**: DnD 이동은 **same-workspace only**. cross-workspace hover 시 드롭 차단 + 시각 피드백.
+> 공유받음(`shared`) 섹션은 drop 대상 불가 (re-share 금지).
+
+### 7.1 MoveDragData — sourceWorkspace 필드 (Plan B)
+
+```ts
+// components/dnd/types.ts
+export type MoveDragData = {
+  type: 'move-files'
+  ids: string[]
+  sourceFolderId: string
+  /** ids 중 폴더인 것만. self/descendant 판정에 사용. */
+  containsFolderIds: string[]
+  /**
+   * 드래그 출발 workspace 정보. droppable이 cross-workspace 여부 판정에 사용 (Plan B).
+   * shared에서 드래그하는 경우 kind='shared', id=null.
+   */
+  sourceWorkspace: { kind: 'department' | 'team' | 'shared'; id: string | null }
+}
+```
+
+### 7.2 useFolderDroppable — isCrossWorkspace + isSharedTarget (Plan B)
+
+`useFolderDroppable(droppableId, targetWorkspace?)` 반환값:
+- `isCrossWorkspace`: `sourceWorkspace`와 `targetWorkspace` 불일치 시 true → 드롭 차단 + 시각 피드백
+- `isSharedTarget`: target이 `shared` 섹션 폴더 → 항상 드롭 차단 (re-share 금지)
+- `isInvalid`: self/descendant drop 차단 (기존)
+
+**시각 피드백**:
+- cross-workspace hover: 🚫 아이콘 overlay + 툴팁 "다른 workspace로 이동 불가. 컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요"
+- shared target hover: 동일 🚫 + 툴팁 "공유받은 폴더로는 이동할 수 없습니다"
+
+### 7.3 DnD 컨텍스트 + AppLayout
 
 ```tsx
 // components/layout/AppLayout.tsx
@@ -550,6 +697,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   )
 }
 ```
+
+### 7.1 cross-workspace drop 차단 (Plan D §5.6)
+
+dnd-kit `onDragEnd` 핸들러에서 source와 drop target의 `workspaceId`가 다르면 **drop 차단 + 사용자 안내**:
+
+- **토스트**: "🚫 다른 workspace로 이동 불가"
+- **툴팁 / 토스트 부가 설명**: "컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요"
+- 드래그 시각적 피드백: drop target 위에 커서 있을 때 `data-cross-workspace` 속성 → CSS `cursor: not-allowed` + 반투명 오버레이
+
+실제 cross-workspace 이동은 컨텍스트 메뉴 → `MoveToWorkspaceDialog` → `POST /api/folders/{id}/move` (`allowCrossScope: true`) 경로만 허용 (백엔드 서버 409 `ERR_CROSS_SCOPE_MOVE` 가드와 이중 방어).
+
+> frontend 구현 활성화 시점: Plan B `WorkspaceFolderTree` 머지 후 별도 트랙 (Plan D Phase 7).
 
 ---
 
@@ -822,16 +981,31 @@ files.purge_after      : 영구 삭제 예정 (deleted_at + 30일)
 
 ### 13.2 UX
 
-- `/trash` 전용 페이지, Sidebar 하단 `<TrashLink />`
+- **URL** (Plan E, 2026-05-10 — workspace split, spec `2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` §2.1):
+  - `/trash` — redirect handler. 클라이언트에서 `useWorkspaces()` 응답을 보고 `router.replace`:
+    - 부서 보유 → `/trash/d/:deptId` (MVP slug = workspace UUID, `workspacePath.ts` 주석 참조)
+    - 부서 미보유 + 팀 N개 → 첫 활성 팀 우선, 없으면 첫 archived 팀 → `/trash/t/:teamId`
+    - workspace 0 → `<EmptyWorkspacesState />` ("참여 중인 workspace가 없어 휴지통에 접근할 수 없습니다. 관리자에게 문의해 주세요.")
+  - `/trash/d/:deptSlug` — 부서 휴지통 (탭 활성화: 부서)
+  - `/trash/t/:teamSlug` — 팀 휴지통 (탭 활성화: 해당 팀; archived 팀도 진입 가능)
+- **사이드바**: 단일 진입점 `<TrashLink />` href=`/trash` 그대로 (Plan B 구현). workspace별 휴지통은 사이드바에 노출하지 않고 탭 페이지에서 전환.
+- **TrashWorkspaceTabs** (`components/trash/TrashWorkspaceTabs.tsx`, Plan E T12): 가로 탭 바.
+  - 부서 1개 + 본인 팀 N개. archived 팀은 `opacity-60` + `🔒` prefix (clickable, listing 정상).
+  - active 탭은 URL `useParams` 기반 (`aria-selected`).
+  - source: `useWorkspaces()` (Plan B `GET /api/workspaces/me`).
+- **archived 팀 페이지**: 페이지 상단 alert "이 팀은 archive되어 콘텐츠 복원이 불가능합니다." + `<TrashRowActions>` 의 복원 버튼 `disabled` (Plan E T13). 보안은 backend `TeamArchiveGuard`(`423 TEAM_ARCHIVED`) 가 책임 — UX 가드일 뿐.
 - 행 액션: **원위치로 복원**, **영구 삭제**
 - 삭제 직후 토스트의 **"되돌리기"** 버튼 (5초)
-- **RESTORE_CONFLICT 다이얼로그** (v1.x M9 후속): 행 복원 시 원위치에 동일 이름 활성 항목이 있어 backend 가 409 `RESTORE_CONFLICT` 를 반환하면 `<RestoreConflictDialog />` 가 열려 사용자에게 새 이름을 입력받는다. 기본 제안은 `suggestRestoreName(name, type)` (file 은 `report.pdf` → `report (1).pdf`, folder 는 `Reports` → `Reports (1)`). 사용자 입력 후 `useRestoreItem.mutate({ ..., newName })` 가 backend `POST /api/{files|folders}/{id}/restore` body `{ name }` 로 재요청. 새 이름이 또 충돌하면 `RENAME_CONFLICT` envelope → 다이얼로그 inline alert 로 표시 (다이얼로그 유지). 다른 코드는 toast.error + 닫기.
+- **RESTORE_CONFLICT 다이얼로그** (v1.x M9 + Plan E T13 reason 분기): 행 복원 시 backend 가 409 `RESTORE_CONFLICT` envelope 을 반환하면 `<RestoreConflictDialog />` 가 열린다. body `details.reason` 으로 두 분기:
+  - **`name_conflict`** (v1.x 기존): 원위치에 동일 이름 활성 항목 → 사용자에게 새 이름 입력. 기본 제안 `suggestRestoreName(name, type)` (file `report.pdf` → `report (1).pdf`, folder `Reports` → `Reports (1)`). 입력 후 `useRestoreItem.mutate({ ..., newName })` → backend body `{ name }` 로 재요청. 또 충돌 시 `RENAME_CONFLICT` → 다이얼로그 inline alert (유지). 다른 코드는 toast.error + 닫기.
+  - **`scope_mismatch`** (Plan E T13 신규): 원위치 폴더가 다른 workspace 로 cross-workspace move (Plan D) 된 상태 → rename 으로 해결 불가. read-only 메시지 ("`'<name>'` 의 원위치가 다른 workspace로 이동되어 복원할 수 없습니다. 관리자에게 문의해 주세요.") + 닫기 버튼만 노출.
+  - body `details` 추가 키: `expectedScopeType` / `expectedScopeId` / `actualScopeType` / `actualScopeId` (scope_mismatch 시). frontend 는 분기 메시지에만 사용 — 표시 X.
 - BulkActionBar Undo 의 다건 복원 충돌은 다이얼로그 미적용 (v1.x 후속) — toast.error 메시지가 휴지통 페이지에서 행 단위 복원으로 안내.
 
 > **Backend endpoints** (docs/02 §7.11):
-> - `GET /api/trash?cursor=&type=` — list. queryKey `qk.trash()` (§6.1).
-> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6). v1.x 부터 optional body `{ name?: string }` — `name` 미지정 시 원본 이름 그대로 복원, 충돌 envelope `RESTORE_CONFLICT`. `name` 지정 시 NFC 정규화 + UNIQUE 재검사, 충돌 envelope `RENAME_CONFLICT`.
-> - `DELETE /api/trash/:type/:id` — manual purge, ADMIN only (A8, ADR #32).
+> - `GET /api/trash?scopeType={department|team}&scopeId={uuid}&cursor=&type=` — list (Plan E T2). `scopeType` / `scopeId` **필수** — 누락 시 `422 VALIDATION_ERROR`. queryKey `qk.trashList(scopeType, scopeId)` (§6.1, Plan E T6 — 기존 무인자 `qk.trash()` 는 prefix 키로 invalidate 시 그대로 사용 가능).
+> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6). v1.x 부터 optional body `{ name?: string }` — `name` 미지정 시 원본 이름 그대로 복원, 충돌 envelope `RESTORE_CONFLICT` (`reason='name_conflict'`). `name` 지정 시 NFC 정규화 + UNIQUE 재검사, 충돌 envelope `RENAME_CONFLICT`. Plan E T4/T5 추가 검증: archived 팀 차단 (`423 TEAM_ARCHIVED`) + cross-workspace 원위치 mismatch (`409 RESTORE_CONFLICT` `reason='scope_mismatch'`).
+> - `DELETE /api/trash/:type/:id` — manual purge, ADMIN only (A8, ADR #32, Plan E 변경 없음).
 > - bulk `DELETE /api/trash`는 미구현 — `purge.expired` 배치(A7) 자동 처리.
 
 ```tsx
@@ -1179,8 +1353,9 @@ function handleEvent(qc: QueryClient, env: SseEnvelope) {
   }
 
   if (FOLDER_EVENTS.includes(type)) {
-    // 폴더 이벤트 — 트리 + 해당 폴더 상세 + 부모 폴더의 자식 목록 무효화
-    qc.invalidateQueries({ queryKey: qk.folderTree() })
+    // 폴더 이벤트 — 사이드바 children 전체 + 해당 폴더 상세 + 부모 폴더의 자식 목록 무효화
+    // Plan B: qk.folderTree() 대신 folderChildren prefix 전체 무효화
+    qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] })
     scope.folderIds.forEach((fid) => {
       qc.invalidateQueries({ queryKey: qk.folder(fid) })
       qc.invalidateQueries({ queryKey: qk.filesInFolder(fid), exact: false })
@@ -1191,8 +1366,9 @@ function handleEvent(qc: QueryClient, env: SseEnvelope) {
   if (PERMISSION_EVENTS.includes(type)) {
     const p = payload as { resource: 'folder' | 'file'; resourceId: string }
     qc.invalidateQueries({ queryKey: qk.effectivePermissions(p.resourceId) })
-    // 권한 변경은 가시성에도 영향 — 트리 + 목록 무효화
-    qc.invalidateQueries({ queryKey: qk.folderTree() })
+    // 권한 변경은 가시성에도 영향 — 사이드바 children 전체 + 목록 무효화
+    // Plan B: qk.folderTree() 대신 folderChildren prefix 전체 무효화
+    qc.invalidateQueries({ queryKey: [...qk.all, 'folders', 'children'] })
     scope.folderIds.forEach((fid) =>
       qc.invalidateQueries({ queryKey: qk.filesInFolder(fid), exact: false }),
     )
@@ -1205,8 +1381,8 @@ function handleEvent(qc: QueryClient, env: SseEnvelope) {
 | 이벤트 그룹 | 무효화되는 쿼리 키 |
 |---|---|
 | `FILE_*` | `qk.filesInFolder(scope.folderIds[i])` (각각), `qk.file(payload.fileId)` |
-| `FOLDER_*` | `qk.folderTree()`, `qk.folder(scope.folderIds[i])`, `qk.filesInFolder(scope.folderIds[i])` |
-| `PERMISSION_*` | `qk.effectivePermissions(payload.resourceId)`, `qk.folderTree()`, `qk.filesInFolder(scope.folderIds[i])` |
+| `FOLDER_*` | `[...qk.all, 'folders', 'children']` (prefix 전체), `qk.folder(scope.folderIds[i])`, `qk.filesInFolder(scope.folderIds[i])` |
+| `PERMISSION_*` | `qk.effectivePermissions(payload.resourceId)`, `[...qk.all, 'folders', 'children']` (prefix 전체), `qk.filesInFolder(scope.folderIds[i])` |
 
 > `FILE_MOVED` / `FOLDER_MOVED`는 `scope.folderIds`에 source + target이 함께 들어옴 — 양쪽 무효화 자동.
 
@@ -1286,128 +1462,89 @@ type AuditEntry = {
 
 ---
 
-## 17. 코드 템플릿 — 우선순위 1 (folderId 중심 라우팅)
+## 17. 코드 템플릿 — workspace pivot 라우팅 (Plan B)
 
-### 17.1 루트 리다이렉트
+> **Plan B 변경**: §17.1~17.3은 기존 `/files/[...parts]` 기반 템플릿에서 workspace prefix 체계로 교체.
+> `FolderTree` / `useFolderTree` / `folderPath.ts` / `useViewStore.expandedFolderIds` 모두 폐기.
+> `VIRTUAL_ROOT_ID('root')` 사용 금지.
 
-```tsx
-// app/files/page.tsx
-import { redirect } from 'next/navigation'
-export default function FilesRootPage() {
-  redirect('/files/root')
-}
-```
-
-### 17.2 Catch-all 라우트 + canonical redirect
+### 17.1 workspace prefix catch-all 라우트 (Plan B)
 
 ```tsx
-// app/(explorer)/files/[...parts]/page.tsx
-import { redirect, notFound } from 'next/navigation'
-import { api } from '@/lib/api'
-import { buildCanonicalPath } from '@/lib/folderPath'
+// app/(explorer)/d/[deptId]/[[...parts]]/page.tsx  (팀: t/[teamId]/[[...parts]])
+'use client'
+import { useParams } from 'next/navigation'
 import { FileTable } from '@/components/files/FileTable'
-import { Toolbar } from '@/components/layout/Toolbar'
-import { BulkActionBar } from '@/components/files/BulkActionBar'
 import { Breadcrumb } from '@/components/folders/Breadcrumb'
+import { BulkActionBar } from '@/components/files/BulkActionBar'
 import { RightPanel } from '@/components/detail/RightPanel'
 
-type SearchParams = {
-  sort?: string
-  dir?: 'asc' | 'desc'
-  file?: string
-  q?: string
-}
-
-export default async function FilesPage({
-  params,
-  searchParams,
-}: {
-  params: { parts: string[] }
-  searchParams: SearchParams
-}) {
-  const [folderId, ...providedSlug] = params.parts
-
-  // 서버에서 folder 조회 (권한 체크 포함, 403이면 notFound 또는 forbidden)
-  const folder = await api.getFolder(folderId).catch(() => null)
-  if (!folder) notFound()
-
-  // Canonical URL 검증
-  const canonicalSlug = folder.path   // 서버가 돌려주는 정규 path
-  const providedPath = providedSlug.join('/')
-  const canonicalPath = buildCanonicalPath(folderId, canonicalSlug)
-  const currentPath = `/files/${params.parts.join('/')}`
-
-  if (currentPath !== canonicalPath) {
-    // slug 불일치 → canonical로 308 redirect
-    const qs = new URLSearchParams(searchParams as any).toString()
-    redirect(`${canonicalPath}${qs ? `?${qs}` : ''}`)
-  }
-
-  const sort = (searchParams.sort ?? 'name') as SortKey
-  const dir = searchParams.dir ?? 'asc'
+export default function DeptFilesPage() {
+  const { deptId, parts } = useParams<{ deptId: string; parts?: string[] }>()
+  const folderId = parts?.[0] ?? null  // workspace landing: null
+  // canonical redirect 는 서버 컴포넌트에서 처리 (ClientFilesPage 참조)
 
   return (
     <>
-      <Breadcrumb folderId={folderId} />
-      <Toolbar />
+      <Breadcrumb />
       <BulkActionBar />
-      <FileTable folderId={folderId} sort={sort} dir={dir} />
-      {searchParams.file && <RightPanel fileId={searchParams.file} />}
+      <FileTable folderId={folderId ?? deptId} />
+      {/* RightPanel: ?file= query param 구독 */}
     </>
   )
 }
 ```
 
-### 17.3 canonical path 헬퍼
+실제 구현 파일: `frontend/src/app/(explorer)/d/[deptId]/[[...parts]]/page.tsx` 및 `ClientFilesPage.tsx`.
+
+### 17.2 workspace path 헬퍼 (Plan B — folderPath.ts 대체)
 
 ```ts
-// lib/folderPath.ts
-export function buildCanonicalPath(
-  folderId: string,
-  slugPath: string[]   // 서버가 돌려주는 정규 segment 배열, NFC 정규화됨
-): string {
-  const encoded = slugPath.map(encodeURIComponent).join('/')
-  return encoded
-    ? `/files/${folderId}/${encoded}`
-    : `/files/${folderId}`
+// lib/workspacePath.ts
+export type SidebarSectionKind = 'department' | 'team' | 'shared'
+
+export type WorkspaceLocator =
+  | { kind: 'department' | 'team'; workspaceId: string }
+  | { kind: 'shared' }
+
+export interface ParsedWorkspaceUrl {
+  section: SidebarSectionKind
+  workspaceId: string | null   // shared는 null
+  folderId: string | null      // workspace landing은 null
+  slugPath: string[]
 }
 
-export function getFolderIdFromParts(parts: string[]): string | null {
-  return parts[0] ?? null
-}
+/**
+ * workspace + folderId + slugPath → URL 문자열 생성.
+ *
+ * 예시:
+ *   buildWorkspacePath({ kind: 'department', workspaceId: 'dept-1' }, 'folder-abc', ['영업팀', '계약서'])
+ *   // → "/d/dept-1/folder-abc/%EC%98%81%EC%97%85%ED%8C%80/%EA%B3%84%EC%95%BD%EC%84%9C"
+ */
+export function buildWorkspacePath(
+  loc: WorkspaceLocator,
+  folderId: string | null,
+  slugPath: string[],
+): string
+
+/**
+ * pathname → ParsedWorkspaceUrl. 매칭 실패 시 null.
+ *
+ * 예시:
+ *   parseWorkspaceUrl('/d/dept-1/folder-abc/영업팀')
+ *   // → { section: 'department', workspaceId: 'dept-1', folderId: 'folder-abc', slugPath: ['영업팀'] }
+ */
+export function parseWorkspaceUrl(pathname: string): ParsedWorkspaceUrl | null
 ```
 
-### 17.4 useCurrentFolder
+실제 구현 파일: `frontend/src/lib/workspacePath.ts`.
 
-```ts
-// hooks/useCurrentFolder.ts
-'use client'
-import { useParams } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
-import { qk } from '@/lib/queryKeys'
-import { api } from '@/lib/api'
+### 17.3 useCurrentFolder (workspace params 적용)
 
-export function useCurrentFolder() {
-  const params = useParams<{ parts?: string[] }>()
-  const folderId = params.parts?.[0] ?? 'root'
+`parts?.[0]`은 여전히 folderId. workspace landing(`/d/:deptId` 만)에서는 `parts`가 없어 `folderId=null` →
+workspace root folder ID를 `GET /api/workspaces/me` 응답의 `department.rootFolderId`에서 취득.
 
-  const { data, isLoading, error } = useQuery({
-    queryKey: qk.folder(folderId),
-    queryFn: () => api.getFolder(folderId),
-    staleTime: 60_000,
-  })
-
-  return {
-    folderId,
-    folder: data,
-    breadcrumb: data?.breadcrumb ?? [],  // 서버가 derive해서 돌려줌
-    isLoading,
-    error,
-  }
-}
-```
-
-### 17.5 useOpenFile (RightPanel query param 동기화)
+### 17.4 useOpenFile (RightPanel query param 동기화)
 
 ```ts
 // hooks/useOpenFile.ts
@@ -1440,133 +1577,32 @@ export function useOpenFile() {
 }
 ```
 
-### 17.6 FolderTree (folderId로 active 판단)
+### 17.5 WorkspaceFolderTree (lazy expand — FolderTree 대체)
 
 ```tsx
-// components/folders/FolderTree.tsx
-'use client'
-import Link from 'next/link'
-import { useCurrentFolder } from '@/hooks/useCurrentFolder'
-import { useFolderTree } from '@/hooks/useFolderTree'
-import { useViewStore } from '@/stores/view'
-import { buildCanonicalPath } from '@/lib/folderPath'
-
-export function FolderTree() {
-  const { data: tree, isLoading } = useFolderTree()
-  const { folderId: activeId } = useCurrentFolder()
-
-  if (isLoading) return <FolderTreeSkeleton />
-  if (!tree) return null
-
-  return (
-    <nav aria-label="폴더 트리">
-      <FolderNode node={tree} activeId={activeId} depth={0} pathAcc={[]} />
-    </nav>
-  )
-}
-
-function FolderNode({
-  node, activeId, depth, pathAcc,
-}: {
-  node: FolderNodeType
-  activeId: string
-  depth: number
-  pathAcc: string[]
-}) {
-  const { expandedFolderIds, toggleExpanded } = useViewStore()
-  const isExpanded = expandedFolderIds.includes(node.id)
-  const isActive = activeId === node.id
-  const nextPath = node.id === 'root' ? [] : [...pathAcc, node.slug]
-  const href = buildCanonicalPath(node.id, nextPath)
-
-  return (
-    <div>
-      <div
-        className={`flex items-center gap-1 px-2 py-1 rounded hover:bg-muted ${
-          isActive ? 'bg-accent text-accent-foreground' : ''
-        }`}
-        style={{ paddingLeft: depth * 12 + 8 }}
-      >
-        {node.children?.length ? (
-          <button
-            onClick={() => toggleExpanded(node.id)}
-            aria-label={isExpanded ? '접기' : '펼치기'}
-            aria-expanded={isExpanded}
-          >
-            {isExpanded ? '▾' : '▸'}
-          </button>
-        ) : (
-          <span className="w-4" />
-        )}
-        <Link href={href} className="flex-1 truncate">📁 {node.name}</Link>
-      </div>
-      {isExpanded && node.children?.map((child) => (
-        <FolderNode
-          key={child.id}
-          node={child}
-          activeId={activeId}
-          depth={depth + 1}
-          pathAcc={nextPath}
-        />
-      ))}
-    </div>
-  )
-}
+// components/sidebar/WorkspaceFolderTree.tsx
+// - useFolderChildren(scopeType, workspaceId, parentId) 로 lazy 자식 조회
+// - useSidebarTreeStore.expandedFolderIds / toggleFolder 로 expand 상태 관리
+// - 링크: buildWorkspacePath({ kind, workspaceId }, folderId, slugPath)
+// - 드롭 대상: useFolderDroppable(droppableId, { kind, id: workspaceId })
+//   → isCrossWorkspace / isSharedTarget 시각 피드백 표시
 ```
+
+실제 구현 파일: `frontend/src/components/sidebar/WorkspaceFolderTree.tsx`.
+
+### 17.6 SidebarSections (3-section shell)
+
+실제 구현 파일: `frontend/src/components/sidebar/SidebarSections.tsx`.
+섹션 구성: 부서(`WorkspaceSection`) + 팀 N개(`WorkspaceSection[]`) + 공유받음(`SharedWithMeSection`).
 
 ### 17.7 Breadcrumb (folder API data에서 derive)
 
 ```tsx
 // components/folders/Breadcrumb.tsx
-'use client'
-import Link from 'next/link'
-import { useCurrentFolder } from '@/hooks/useCurrentFolder'
-import { buildCanonicalPath } from '@/lib/folderPath'
-
-export function Breadcrumb() {
-  const { breadcrumb, isLoading } = useCurrentFolder()
-  if (isLoading) return <BreadcrumbSkeleton />
-
-  return (
-    <nav aria-label="Breadcrumb" className="flex items-center gap-1 text-sm">
-      {breadcrumb.map((c, i) => {
-        const href = buildCanonicalPath(c.id, c.slugPath)
-        const last = i === breadcrumb.length - 1
-        return (
-          <span key={c.id} className="flex items-center gap-1">
-            {i > 0 && <span className="text-muted-foreground">/</span>}
-            {last ? (
-              <span className="font-medium">{c.name}</span>
-            ) : (
-              <Link href={href} className="hover:underline">{c.name}</Link>
-            )}
-          </span>
-        )
-      })}
-    </nav>
-  )
-}
+// buildWorkspacePath 를 사용해 링크 생성 (folderPath.ts → workspacePath.ts 교체)
 ```
 
-### 17.8 useFolderTree
-
-```ts
-// hooks/useFolderTree.ts
-import { useQuery } from '@tanstack/react-query'
-import { qk } from '@/lib/queryKeys'
-import { api } from '@/lib/api'
-
-export function useFolderTree() {
-  return useQuery({
-    queryKey: qk.folderTree(),
-    queryFn: api.getFolderTree,
-    staleTime: 60_000,
-    gcTime: 10 * 60_000,
-  })
-}
-```
-
-### 17.9 Providers
+### 17.8 Providers
 
 ```tsx
 // app/providers.tsx
@@ -1633,6 +1669,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 14 | **Visual Identity** | TopBar(검색/테마 토글/아바타) + Lucide 아이콘 도입 + FileRow 밀도 재조정 + StatusBar 하단. M13 토큰 위에서 JSX 추가 |
 | 15 | **Layout Extras** | SortChip(정렬 드롭다운) + ViewSwitch(List/Grid 토글) + StorageBar(사이드바 하단) + RightPanel 탭(세부정보/버전/활동/권한) |
 | 16 | **Grid View** | FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글. 본체 closed 2026-04-29 (PR #16). 가상화 closed 2026-05-01 (M16V follow-up: `useGridColumns` + row 단위 `useVirtualizer` + 키보드 scrollToIndex `Math.floor(idx/columns)` 매핑). v1.x 잔여: 2D 키보드 wrap / DnD / 썸네일 / 가변 높이. |
+| M_team-pivot-frontend-foundation | **Team-Centric Pivot — Plan B Frontend Foundation** (진행 중, 2026-05-09~) | workspace prefix 3-route (`/d/*`, `/t/*`, `/shared/*`) + SidebarSections 3-section shell + WorkspaceFolderTree lazy expand + useSidebarTreeStore persisted + DnD same-workspace 제약 + buildWorkspacePath + qk.workspaces.me/folderChildren/teams.all + afterTeamChanged invalidation. 브랜치: `feat/team-centric-pivot-plan-b-frontend`. |
 | v1.x | **tus 재개 업로드** | UploadStore 계약 유지, 훅만 교체 |
 | v1.x | **SSE 실시간 동기화** | `file.created` 등 이벤트 반영, 폴백 폴링 |
 
@@ -1640,13 +1677,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
 ## 19. 최상위 원칙 (리마인더)
 
-1. **URL folderId가 canonical**, slug는 표시용 → canonical redirect로 안정성.
+1. **URL이 workspace + folder를 소유한다** (Plan B 갱신). `/d/:workspaceId/[folderId/slug...]` 형태로 workspace 컨텍스트와 folderId 모두 URL에서 도출. Zustand에 workspace/folderId 복제 금지. `VIRTUAL_ROOT_ID('root')` 폐기 — workspace root는 서버 UUID.
 2. **RightPanel은 query param** (`?file=xxx`) 일관 사용. parallel route 쓰지 않음.
 3. **프론트 권한은 UX용, 백엔드가 보안의 최종 방어**. 403은 일급 에러.
 4. **낙관적 업데이트는 비파괴적 액션만**. 파괴적 액션(이동/삭제/권한)은 pending 상태 처리.
 5. **같은 folderId + normalizedFileName = 동일 파일**. NFC + lowercase 정규화 일관 적용.
 6. **문자열 정규화는 프론트/백엔드 동일 함수**. `files.normalized_name` 컬럼.
-7. **DnD 컨텍스트 두 개는 절대 섞지 않음** (OS→브라우저 / 브라우저 내부).
+7. **DnD 컨텍스트 두 개는 절대 섞지 않음** (OS→브라우저 / 브라우저 내부). DnD 이동은 same-workspace only — cross-workspace는 컨텍스트 메뉴 전용.
 8. **가상화에는 `aria-rowcount/rowindex` 필수**.
 9. **삭제는 휴지통 + 5초 Undo + 30일 보관**. 즉시 영구 삭제는 관리자만.
 10. **감사 로그는 사용자 activity와 분리**. 도메인에 따라 MVP 포함 여부 결정.

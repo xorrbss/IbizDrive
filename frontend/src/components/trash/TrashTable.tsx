@@ -1,9 +1,15 @@
 'use client'
 import { useTrashList } from '@/hooks/useTrashList'
-import { useFolderTree } from '@/hooks/useFolderTree'
 import { findFolderPath } from '@/lib/folderTreeUtils'
 import { TrashRowActions } from './TrashRowActions'
 import type { TrashItem } from '@/types/trash'
+import type { FolderNode } from '@/types/folder'
+
+// TODO: [BLOCKED]
+//   violated: 기존 구조 우선
+//   reason: useFolderTree (flat tree) 제거됨. Plan B lazy per-workspace tree (Tasks 17+) 미구현.
+//   required_change: Tasks 17+ 구현 후 per-workspace tree로 원위치 path 표시 복원.
+//   현재: tree=undefined → originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백 (안전 degradation).
 
 /**
  * 휴지통 테이블 (M9.3). 단순 list (MVP는 가상화 없음 — 휴지통은 일반적으로 ≤ 수백건).
@@ -14,9 +20,17 @@ import type { TrashItem } from '@/types/trash'
 const GRID_COLS =
   'grid grid-cols-[1fr_60px_180px_140px_140px_160px] gap-3 items-center px-4'
 
-export function TrashTable() {
-  const query = useTrashList()
-  const tree = useFolderTree().data
+// scope props (scopeType/scopeId) 는 ClientWorkspaceTrashPage 가 라우트 파라미터에서 추출해 전달한다.
+// archived prop (Plan E T13): archive된 team scope 일 때 행 액션의 복원 버튼을 비활성화한다.
+export function TrashTable(props: {
+  scopeType: 'department' | 'team'
+  scopeId: string
+  /** archive된 workspace 여부 — `TrashRowActions.disabled` 로 forward (Plan E T13). */
+  archived?: boolean
+}) {
+  const { scopeType, scopeId, archived = false } = props
+  const query = useTrashList({ scopeType, scopeId })
+  const tree: FolderNode | undefined = undefined // Tasks 17+: per-workspace lazy tree
 
   if (query.isLoading) {
     return (
@@ -102,7 +116,7 @@ export function TrashTable() {
                 {formatDate(it.purgeAfter)}
               </span>
               <span role="gridcell">
-                <TrashRowActions item={it} />
+                <TrashRowActions item={it} disabled={archived} />
               </span>
             </div>
           )

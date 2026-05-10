@@ -53,6 +53,228 @@ Plan C — share grant matrix에 'team' 추가 + §4.2 cap (sharer 멤버권 ≥
 
 ---
 
+## 2026-05-10 세션 — 🎯 team-centric-pivot Plan F (Team Member Management)
+
+### 범위
+
+사내 시스템 일상 운영 gap 마무리: 팀 OWNER가 UI로 멤버 목록 조회 / 초대 / 역할 변경 / 제거.
+backend는 service에 이미 있는 메서드 1:1 wire (신규 도메인 zero). 18 task 자율 실행 (subagent-driven).
+
+### 변경 핵심 (commit 순서)
+
+**Phase 1 backend (T1~T6)**:
+- `76f44d8` / `c870503` T1 `TeamMemberResponse` + `TeamMemberRoleUpdateRequest` DTO + `@BeforeAll/@AfterAll` ValidatorFactory 정합화
+- `dbed262` T2 `TeamMembershipRepository.findMembersWithUser` (JPQL constructor projection — entity 매핑 추가 없이 read-only JOIN)
+- `438a812` / `addeae2` T3 `TeamService.listMembers` + 클린 imports
+- `d266dbd` T4 `TeamAuthz.isMember`
+- `b451c24` / `d65d5d9` T5 `TeamController GET /members` + 테스트 imports 정합화
+- `349765f` / `aa38025` T6 `TeamController PATCH /members/{userId}` + static-import doThrow
+
+**Phase 2 frontend foundation (T7~T9)**:
+- `64f394d` T7 `qk.teams.detail/members` + `invalidations.afterTeamMembersChanged` + `TeamMember`/`TeamMemberRole` types
+- `1b87f74` T8 `api.{getTeamMembers, inviteTeamMember, removeTeamMember, changeTeamMemberRole}` + 5 fetch-mock tests
+- `d3164d5` T9 `useTeamMembers` (read)
+
+**Phase 3 frontend mutations (T10~T12)**:
+- `b5baece` T10 `useInviteTeamMember`
+- `27ed064` T11 `useRemoveTeamMember` (+ 400 TEAM_OWNER_REQUIRED skip-invalidate test)
+- `76a8479` T12 `useChangeTeamMemberRole`
+
+**Phase 4 frontend UI (T13~T17)**:
+- `ab61c32` / `07dcfcc` T13 `TeamMemberTable` (3 col + actions, scope=col a11y)
+- `0b47e2d` T14 `InviteMemberDialog` (UserSearchCombobox 재사용)
+- `f347f90` T15 `ChangeRoleDialog` + `RemoveMemberDialog` + `errors.ts` 신규 (TEAM_OWNER_REQUIRED 등 28 상수)
+- `0f4e0c8` T16 `/t/{teamId}/settings/members` 라우트 + `ClientMembersPage`
+- `c1e61f7` T17 `WorkspaceSection` 설정 link (hover-revealed, team-only)
+
+**Phase 5 closure (T18)**: 본 commit (docs/02 §7.16 + progress.md + PR)
+
+### 검증
+
+- backend: T1~T6 신규 테스트 13건 + 기존 회귀 zero (`./gradlew test --tests "com.ibizdrive.team.*"`)
+- frontend: 1079 테스트 ALL PASS, typecheck exit 0
+- 수동 확인 deferred — co-session 충돌 우려로 dev server 미기동, 머지 후 검증
+
+### YAGNI 명시 제외 (사용자 요청: "꼭 필요한 기능만, 사내라 디테일 과잉 금지")
+
+- 팀 archive/restore UI — 사내 빈도 매우 낮음
+- 일괄 invite (CSV) — 한 번 클릭으로 충분
+- 멤버 검색/필터링 — 30명 미만 팀 가정
+- 멤버 활동 로그 페이지 — admin audit 페이지로 충분
+- archive 가드 — 데이터 플레인은 team-archive-write-enforcement 트랙
+
+### 다른 트랙과의 관계
+
+- Plan C (PR #140 share team subject) / Plan D (PR #138 cross-workspace move) / Plan E (trash split, 미시작) / team-archive-write-enforcement: **파일 영역 disjoint** — 머지 순서 무관.
+- `errors.ts` was untracked in main repo; Plan F included it because dialogs need `TEAM_OWNER_REQUIRED`. Plan C will likely have minor merge with this file (different lines, no overlap).
+
+### 다음 세션 컨텍스트
+
+- 머지 후 dev server 수동 검증 (settings/members 진입 → invite → role 변경 → remove → last-OWNER 강등 차단)
+- Plan C 충돌 해결 진행
+
+---
+
+## 2026-05-10 — 🎯 team-centric-pivot Plan E 완료 (휴지통 workspace 분리)
+
+### 범위
+6 phase / 15 task. 휴지통을 workspace 단위(부서/팀)로 분리. backend listing endpoint scope 필수화 + restore 진입에 archive guard + cross-scope mismatch. frontend는 `/trash` redirect → `/trash/d/:deptSlug` `/trash/t/:teamSlug` 라우트 + `TrashWorkspaceTabs` 가로 탭.
+
+### 변경 핵심 (commit 별 1줄)
+
+**Phase 1 — Backend listing scope filter:**
+- `c08556c` T1 findTrashedPageByScope native query (Folder/File repo, scope_type/scope_id 필터)
+- `779b16e` T2 GET /api/trash scopeType/scopeId 필수 + WorkspaceMembershipResolver 가드 (ADMIN bypass) + dbValue() lowercase wire 회귀 가드
+
+**Phase 2 — Backend restore guards:**
+- `26080d8` T3 RestoreConflictException Reason enum (NAME_CONFLICT/SCOPE_MISMATCH) + GlobalExceptionHandler body.reason 노출
+- `637c3dd` (cherry-pick from team-archive-write-enforcement T1+T2) TeamArchivedException + TeamArchiveGuard helper
+- `e7fb4d9` T4 FolderMutationService.restore archive guard + cross-scope mismatch + AdminTrashService Folder catch 분기
+- `d989eba` T5 FileMutationService.restore archive guard + cross-scope mismatch + AdminTrashService File catch 분기 + TeamArchivedException 통합 catch
+
+**Phase 3 — Frontend queryKey + 훅:**
+- `82de0af` T6 qk.trashList(scopeType, scopeId) 시그니처 (qk.trash() prefix 그대로 → invalidations 영향 0)
+- `a8fac02` T7 useTrashList + api.getTrash scope 시그니처 + ClientTrashPage 임시 placeholder (TODO BLOCKED)
+
+**Phase 4 — Frontend 라우트:**
+- `d2908fa` T8 ClientWorkspaceTrashPage shared component
+- `4cd6942` T9 /trash/d/[deptSlug] route
+- `5a7cfab` T10 /trash/t/[teamSlug] route
+- `2a9ddfd` T11 /trash redirect handler + EmptyWorkspacesState (ClientTrashPage 삭제, TODO BLOCKED 해소)
+
+**Phase 5 — Frontend UX:**
+- `7ddf20a` T12 TrashWorkspaceTabs 가로 탭 (archived dim+🔒)
+- `9560d34` T13 TrashRowActions disabled prop + RestoreConflictDialog reason 분기 + buildApiError details 노출
+
+**Phase 6 — Docs sync:**
+- `0713936` T14 docs/01 §13/§6.1, docs/02 §6.5/§7.5/§7.6/§7.11/§8, docs/03 §3.5, CLAUDE.md §2, plan-e design §5.1 정밀화
+
+### 검증
+- backend: ./gradlew :backend:test BUILD SUCCESSFUL (Testcontainers 통합 테스트는 Docker 미가용 시 SKIP, Plan A 패턴)
+- frontend: pnpm typecheck && pnpm lint GREEN, 1111 tests PASS / 149 files
+- AdminTrashService bulk restore catch chain 통합: Folder/File RESTORE_CONFLICT (NAME_CONFLICT/SCOPE_MISMATCH switch) + TeamArchivedException → TEAM_ARCHIVED 별개 wire code
+
+### 핵심 결정
+- queryKey: `qk.trash()` prefix 유지 (invalidations 영향 0), `qk.trashList(scopeType, scopeId)`만 변경
+- 권한: Plan A `WorkspaceMembershipResolver` membership step 자동 평가 (TEAM MEMBER+ DELETE 묵시) + listing 진입 시 workspace 멤버십 fast-fail 가드 (ADMIN bypass) + ADR #32 row-level DELETE 후처리 그대로
+- 신규 에러 코드 0 — RESTORE_CONFLICT body.reason ('name_conflict' / 'scope_mismatch') 분기 추가만, errors.ts 무변경
+- TeamArchiveGuard cherry-pick 18935d2 활용 (다른 worktree team-archive-write-enforcement T1+T2)
+- AdminTrashController 이미 분리 — admin 글로벌 trash 처리 작업 0
+- MVP slug = workspace UUID (Plan B 정합)
+
+### 미통합 / 후속
+- T7 reviewer I1 (TrashTable scope props → usePermission 전달 X) — 별도 트랙 권장 (usePermission 변경은 spec architecture 영역)
+- team-archive-write-enforcement T1+T2 cherry-pick 활용 시 머지 시점에 정합화 필요 (해당 트랙이 본 worktree 이전에 머지되면 자동 통합, 후이면 conflict 또는 follow-up commit으로 cleanup)
+- 휴지통 30일 retention 정책 변경 UI는 별도 트랙 (#108 + #114 페어)
+
+### 다음 세션 컨텍스트
+- Plan C #140 / Plan D #138 머지 후 본 plan과의 통합 검증 (cross-workspace mismatch 시나리오 실제 발생 가능)
+- spec §4.2 useTrash 훅 처리 open question — T7에서 useTrashList로 명명 결정 (별도 closure 노트 불필요, 본 entry로 명시)
+
+### 블로커
+- 없음
+
+---
+
+## 2026-05-10 — Plan D PR #138 CI 안정화 (rounds 3~7) + master 머지 (PR #138 머지)
+
+### 범위
+Plan D PR #138의 CI 실패 14건을 5 라운드에 걸쳐 해소. Plan D 고유 실패 0건 달성. 마지막에 origin/master(PR #142 + PR #141 머지 포함)를 본 브랜치에 머지.
+
+### 해결한 카테고리
+1. **테스트 fixture 스키마 정합** (round 3): files INSERT의 `storage_key` 컬럼 (file_versions에만 존재) 제거 5곳, `idx_permissions_unique` 회피용 subject 분리, `shares.folder_id` FK용 `seedFolder` 헬퍼 도입, FileMutationServiceTest move tests의 same-scope guard 호환 (sibling fixture).
+2. **Production 버그 — entity scope revert** (round 3): `CrossWorkspaceMoveService.moveFile/moveFolder`의 step 3 native @Modifying `updateScopeBatch` 후 stale entity로 `saveAndFlush` → JPA dirty-check가 stale scope를 DB에 되돌림. `assignScope(dest)` 동기화로 해결.
+3. **Production 버그 — moveFolder root constraint** (round 5): step 3 batch update 시 source가 아직 root(parent_id NULL)인 채 dest scope로 변경 → V14 `idx_folders_root_per_scope` 위반. parent_id 변경을 step 3 전으로 이동.
+4. **E2E loginAs CSRF** (round 4): `loginAs`가 `X-CSRF-Token` 헤더를 빠뜨려 POST 요청이 403. `csrf.getFirst("X-CSRF-Token")` 추가.
+5. **E2E ScopeRef wire key** (round 5b): 테스트가 `scope.scopeId`로 query했으나 DTO record는 `{type, id}` (spec §5.3 wire format) → `scope.id`로 변경.
+6. **Mockito @Primary 빈 + @BeforeEach reset** (rounds 6~7): `@DataJpaTest` 컨텍스트는 `ApplicationContext`도 `ApplicationEventPublisher` 구현체로 등록 → `@Bean` mock과 모호성. `@Primary` 부여 + 테스트 간 invocation 누적 회피용 reset.
+7. **master 머지 (round 8)**: PR #142 (Instant→OffsetDateTime JDBC binding fix + reject move-to-root) + PR #141 (TeamArchiveGuard) 가 master에 머지된 후 본 브랜치에 흡수. FileMutationService/FolderMutationService 생성자에 TeamArchiveGuard 파라미터 추가 (compose both Plan D + master). 9 파일 conflict resolve.
+
+### PR 상태
+- mergeable: MERGEABLE
+- master 머지 후 모든 잔존 회귀(FolderMutationServiceTest.move_toRoot_setsParentNull, TeamPivotEndToEndTest) 자연 해소 예상.
+
+---
+
+## 2026-05-10 세션 — Plan A 라인 follow-on: ERR_TEAM_ARCHIVED Write Enforcement
+
+### 완료
+- [team-archive-enforcement] **T1+T2** TeamArchivedException + TeamArchiveGuard + GlobalExceptionHandler 423 → `TEAM_ARCHIVED` 매핑 (commit 18935d2)
+- [team-archive-enforcement] **T3** FolderMutationService 5 진입점 가드 (create/rename/move/delete/restore-3arg) + FolderArchivedTeamGuardTest (10 cases) (commit de99427)
+- [team-archive-enforcement] **T4** FileMutationService 4 진입점 가드 (rename/move/delete/restore-3arg) + FileArchivedTeamGuardTest (8 cases) (commit 510caa7)
+- [team-archive-enforcement] **T5** FileUploadService.upload + FileVersionMutationService.restoreVersion 가드 + FileUploadArchivedTeamGuardTest (4 cases) (commit 0ee3fe8)
+- [team-archive-enforcement] **T6** docs/02 §8 `TEAM_ARCHIVED` row "예약" 마커 제거 (정상 운영 항목으로 전환)
+- [team-archive-enforcement] dev-docs bootstrap + closure (dev/active → dev/completed)
+
+### 범위
+spec §2.2 archive lifecycle ("archived 팀 콘텐츠 read-only") + §5.4 (`ERR_TEAM_ARCHIVED 423`)에서 docs/02 §8 "예약" 항목으로만 선언되어 있던 enforcement 계약을 실제 동작하는 백엔드 가드로 닫음. archived 팀 소속 폴더/파일에 대한 모든 write API → HTTP 423 + envelope code `TEAM_ARCHIVED` + `details.teamId`. read 경로(GET, download)는 그대로 허용.
+
+11개 진입점 모두 `TeamArchiveGuard.assertNotArchived(scopeType, scopeId)` 단일 helper로 차단. DEPARTMENT scope는 helper에서 short-circuit (no-op) — 부서 deactivate는 별도 정책.
+
+### 다음 세션 컨텍스트
+- **CrossWorkspaceMoveService TEAM_ARCHIVED 가드** — Plan D 머지 후 (PR #138). 본 세션 미커버. cross-workspace move의 source/destination 양쪽 archive 검증 필요.
+- **프론트 423 토스트 wiring** — Plan B 머지(PR #139) 후 `errors.ts` `TEAM_ARCHIVED` 상수와 mutation hook의 onError에서 토스트 표시. UX 측면.
+- **archived 팀 read-only UI 시각** — spec §4.5(9) "archived 팀 dim + 🔒". 사이드바/탐색기에서 archived 팀 콘텐츠는 read-only 모드로 진입. 별도 frontend task.
+
+---
+
+## 2026-05-09 — 🎯 team-centric-pivot Plan D 완료 (cross-workspace move backend)
+
+### 범위
+spec §5.6 cross-workspace folder/file 이동을 backend(트랜잭션 + invariant) + frontend(컨텍스트 메뉴 + dialog)로 활성화.
+backend(Phase 1~6 + Finalize)는 이번 PR에서 완료. frontend Phase 7은 Plan B의 `WorkspaceFolderTree` 머지 후 별도 트랙으로 진행.
+
+### 변경 핵심
+- `CrossWorkspaceMoveService` (subtree scope update + permissions cleanup + shares revoke + invariant assert + Spring ApplicationEvent publish)
+- `MovePreviewService` (멱등 영향 계산)
+- `/move/preview` endpoint (folder + file)
+- `/move`에 `allowCrossScope` body 추가 (default false → 기존 same-scope 가드 유지)
+- 신규 envelope: `ERR_DEST_WORKSPACE_DENIED` (403), `ERR_INVALID_DESTINATION` (400). 기존 `ERR_CROSS_SCOPE_MOVE` 매핑 wire-up 정상화 (Plan A 잔여)
+- 신규 audit event: `folder.moved.cross_workspace`, `file.moved.cross_workspace`
+- `CrossWorkspaceMoveCompletedEvent` (SSE는 v1.x 이월)
+- frontend `types/audit.ts` 두 wire 멤버 추가
+
+### 결정/편차
+- subtree permissions 보존 옵션 → v1.x 이월 (spec §5.6 KISS 명시)
+- SSE 실 전송 → v1.x 이월 (이벤트 publish hook만 도입)
+- destination=root 직접 이동 차단 (`ERR_INVALID_DESTINATION`) — spec §1.3 정합
+- ADMIN preset cross-workspace 절대 금지(§4.2 강한 형태) → 본 plan에서 추가 분기 불필요. permissions 전체 삭제 후 destination 멤버십 기본권만 적용되어 ADMIN cross 부여 경로 차단.
+- V6 `shares.permission_id ON DELETE CASCADE` 발견 — Task 18 implementer가 `revokedShareCount`를 step 4(perm delete) 전에 capture하도록 조정. 결과적으로 active shares 0 invariant은 cascade로 자연 만족, audit metadata는 정확.
+
+### 블로커
+- 없음.
+
+---
+
+## 2026-05-09 세션 — Plan B (Frontend Foundation)
+
+### 완료
+- [team-pivot-fe] workspaces 타입 + api + queryKeys + useWorkspaces (Tasks 1~4)
+- [team-pivot-fe] workspacePath builder/parser + useCurrentWorkspace + useCurrentFolder refactor (Tasks 5~7)
+- [team-pivot-fe] /d/[dept], /t/[team], /shared/* 라우트 + ClientFilesPage variants + root redirect (Tasks 8~12)
+- [team-pivot-fe] Breadcrumb workspace head crumb (Task 13)
+- [team-pivot-fe] SidebarSections + WorkspaceSection + WorkspaceFolderTree + lazy children (Tasks 14~22)
+- [team-pivot-fe] SharedWithMeSection (flat MVP) + empty states + archived hook (Tasks 23~24)
+- [team-pivot-fe] TeamCreateButton + Dialog + useCreateTeam (Task 25)
+- [team-pivot-fe] DnD same-workspace constraint + visual feedback (Tasks 27~29)
+- [team-pivot-fe] /files/* + folderPath.ts + FolderTree.tsx + view.ts + getFolderTree() 폐기 (Tasks 12, 16, 22)
+- [team-pivot-fe] MoveFolderDialog lazy-tree 회복 (Phase 6 follow-up — `MoveFolderTree` 신규)
+- [team-pivot-fe] docs/01 + CLAUDE.md 동기화 (Tasks 30~31)
+- [team-pivot-fe] code review 1차 fix — `/files` redirect stub 복구, SidebarSectionKind dedupe, Breadcrumb canonical builder, TeamCreateDialog try/catch + Escape, FolderTreeNode/MoveFolderTree 에러 상태, getFolder dead virtual-root 제거
+
+### 다음 세션 컨텍스트
+- 공유받음 출처 workspace 그룹핑은 backend가 shares-with-me에 source workspace 메타 노출 후 — Plan C와 함께
+- archived 팀 dim/[보관됨]은 backend Team archive endpoint(Plan A2)와 함께 활성
+- /trash workspace별 분리 페이지(탭 UI)는 Plan E
+- TrashTable 원위치 path display는 backend가 trash item DTO에 originalPath 노출하면 정합 (현재 fallback "원위치 폴더 삭제됨")
+- folderTreeUtils.ts는 MoveFolderDialog 재작성 후 orphan — Plan C/D 따라 정리 가능
+
+### PR
+- PR #139 — `feat/team-centric-pivot-plan-b-frontend`
+- 34 commits ahead of origin/master, 1057+ tests pass
+
+---
+
 ## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
 
 ### 범위 (이전 세션 핸드오프 후 추가분)

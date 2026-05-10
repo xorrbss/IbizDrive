@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest'
+import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { renderHook } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
@@ -6,6 +6,11 @@ import { useDragPayload } from './useDragPayload'
 import { useSelectionStore } from '@/stores/selection'
 import { qk } from '@/lib/queryKeys'
 import type { FileItem } from '@/types/file'
+
+// useCurrentWorkspace → usePathname(next/navigation) 의존. workspace URL로 고정.
+vi.mock('next/navigation', () => ({
+  usePathname: vi.fn(() => '/t/team-1/folder-root'),
+}))
 
 const mockFiles: FileItem[] = [
   { id: 'a', name: 'A', type: 'file', mimeType: null, size: 0, updatedAt: '', updatedBy: '', parentId: 'root' },
@@ -68,5 +73,14 @@ describe('useDragPayload', () => {
       wrapper: makeWrapper(qc),
     })
     expect(result.current.sourceFolderId).toBe('root')
+  })
+
+  it('sourceWorkspace는 현재 URL workspace 컨텍스트로 채워진다', () => {
+    const qc = setupQc()
+    const { result } = renderHook(() => useDragPayload('a', 'root'), {
+      wrapper: makeWrapper(qc),
+    })
+    // vi.mock에서 usePathname → '/t/team-1/folder-root' → team workspace
+    expect(result.current.sourceWorkspace).toEqual({ kind: 'team', id: 'team-1' })
   })
 })

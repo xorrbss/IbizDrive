@@ -470,6 +470,11 @@
 > **사용자 검색 (`/api/users/search`, ADR #35)**: `isAuthenticated()` 공개 — 사용자 명단 자체가 trust boundary 내부 정보(ADR #18 admin-invitation only 등록). share subject picker가 ADMIN 외 EDIT 보유자에게도 노출되어야 하므로 ROLE 가드 부적절.
 >
 > **부서 검색 (`/api/departments/search`, ADR #37)**: 동일 정책 — `isAuthenticated()` 공개. 부서 명단도 trust boundary 내부 정보. A14와 동형.
+>
+> **휴지통 (workspace 분리, Plan E 2026-05-10)** — spec `2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` §5.1, docs/02 §7.11:
+> - `GET /api/trash?scopeType&scopeId`: `isAuthenticated()` + workspace 멤버십 fast-fail 가드 (Plan A `WorkspaceMembershipResolver` membership step 이 `PermissionResolver` 내부에서 자동 평가 — TEAM MEMBER+ → DELETE 묵시 권한, DEPT 멤버는 explicit grant 만). 비멤버 `403 PERMISSION_DENIED`, ADMIN bypass. row 별 DELETE 후처리는 ADR #32 그대로 유지.
+> - `POST /api/{files,folders}/:id/restore`: 기존 PermissionResolver + workspace 멤버십 묵시 권한. 추가로 archive guard (`423 TEAM_ARCHIVED`, Plan E T4/T5 — TeamArchiveGuard.assertNotArchived) + cross-workspace 원위치 mismatch (`409 RESTORE_CONFLICT` `reason='scope_mismatch'`).
+> - `DELETE /api/trash/:type/:id`: ADR #32 ADMIN only — Plan E 변경 없음.
 
 `@PreAuthorize` 표현식 패턴:
 

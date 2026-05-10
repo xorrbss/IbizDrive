@@ -7,6 +7,8 @@ import com.ibizdrive.folder.dto.FolderDto;
 import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
 import com.ibizdrive.folder.dto.MoveFolderRequest;
+import com.ibizdrive.folder.dto.MovePreviewRequest;
+import com.ibizdrive.folder.dto.MovePreviewResponse;
 import com.ibizdrive.folder.dto.RenameFolderRequest;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
@@ -72,11 +74,14 @@ public class FolderController {
 
     private final FolderMutationService folderMutationService;
     private final FolderQueryService folderQueryService;
+    private final MovePreviewService movePreviewService;
 
     public FolderController(FolderMutationService folderMutationService,
-                            FolderQueryService folderQueryService) {
+                            FolderQueryService folderQueryService,
+                            MovePreviewService movePreviewService) {
         this.folderMutationService = folderMutationService;
         this.folderQueryService = folderQueryService;
+        this.movePreviewService = movePreviewService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -191,17 +196,26 @@ public class FolderController {
     /**
      * 폴더 이동. {@code targetParentId == null}이면 root로 이동 — SpEL 삼항이 ROLE ADMIN으로 분기 (ADR #30).
      *
+     * <p>{@code allowCrossScope: true} 시 cross-workspace move 경로로 분기 (Plan D §5.6).
+     * 이 경우 source 폴더의 EDIT+SHARE와 destination 폴더의 UPLOAD가 추가로 요구된다.
+     *
      * <p>cycle/자기 자신/후손 검사는 service의 {@code IllegalArgumentException}으로 처리되어 400으로 매핑.
-     * docs/02 §7.5의 별도 코드(MOVE_INTO_SELF/MOVE_INTO_DESCENDANT)로의 분리는 후속 세션 (frontend errors mirror 정련 시점).
      */
     @PostMapping("/{id}/move")
-    @PreAuthorize("hasPermission(#id, 'folder', 'MOVE') and (#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))")
+    @PreAuthorize("hasPermission(#id, 'folder', 'MOVE') and ("
+        + "#req.targetParentId == null ? hasRole('ADMIN') : "
+        + "(#req.allowCrossScopeOrFalse() ? "
+            + "(hasPermission(#id, 'folder', 'EDIT') and hasPermission(#id, 'folder', 'SHARE') and hasPermission(#req.targetParentId, 'folder', 'UPLOAD')) : "
+            + "hasPermission(#req.targetParentId, 'folder', 'EDIT')"
+        + ")"
+        + ")")
     public ResponseEntity<Map<String, FolderDto>> move(
         @PathVariable("id") UUID id,
         @RequestBody @Valid MoveFolderRequest req,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        Folder moved = folderMutationService.move(id, req.targetParentId(), principal.getUser().getId());
+        Folder moved = folderMutationService.move(
+            id, req.targetParentId(), principal.getUser().getId(), req.allowCrossScopeOrFalse());
         return ResponseEntity.ok(Map.of("folder", FolderDto.from(moved)));
     }
 
@@ -245,5 +259,26 @@ public class FolderController {
         String newName = body != null ? body.name() : null;
         Folder restored = folderMutationService.restore(id, principal.getUser().getId(), newName);
         return ResponseEntity.ok(Map.of("folder", FolderDto.from(restored)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // POST /api/folders/{id}/move/preview
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * spec §5.6 — cross-workspace move 다이얼로그 진입 시 영향 미리보기 (idempotent).
+     *
+     * <p>SpEL 가드: source 폴더 {@code EDIT+SHARE} (share 정리 동반).
+     */
+    @PostMapping("/{id}/move/preview")
+    @PreAuthorize("hasPermission(#id, 'folder', 'EDIT') and hasPermission(#id, 'folder', 'SHARE')")
+    public ResponseEntity<MovePreviewResponse> movePreview(
+        @PathVariable("id") UUID id,
+        @RequestBody @Valid MovePreviewRequest req,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        return ResponseEntity.ok(
+            movePreviewService.previewFolder(id, req.destinationFolderId(), principal.getUser().getId())
+        );
     }
 }

@@ -15,6 +15,8 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
+import com.ibizdrive.team.dto.TeamMemberResponse;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @DataJpaTest
@@ -82,6 +84,34 @@ class TeamMembershipRepositoryTest {
         assertThat(members).hasSize(2);
         assertThat(members).extracting(TeamMembership::getUserId)
             .containsExactlyInAnyOrder(user1, user2);
+    }
+
+    @Test
+    void findMembersWithUser_returnsJoinedDtoOrderedByJoinedAt() {
+        UUID u1 = persistUser("alice@example.com", "Alice");
+        UUID u2 = persistUser("bob@example.com", "Bob");
+        UUID team = persistTeam("Plan F Team", "plan-f-team", u1);
+
+        OffsetDateTime t0 = OffsetDateTime.now();
+        em.persist(new TeamMembership(team, u1, TeamMembership.Role.OWNER, null, t0));
+        em.persist(new TeamMembership(team, u2, TeamMembership.Role.MEMBER, u1, t0.plusSeconds(60)));
+        em.flush();
+
+        List<TeamMemberResponse> members = repo.findMembersWithUser(team);
+
+        assertThat(members).hasSize(2);
+        assertThat(members.get(0).userId()).isEqualTo(u1);
+        assertThat(members.get(0).displayName()).isEqualTo("Alice");
+        assertThat(members.get(0).email()).isEqualTo("alice@example.com");
+        assertThat(members.get(0).role()).isEqualTo(TeamMembership.Role.OWNER);
+        assertThat(members.get(1).userId()).isEqualTo(u2);
+        assertThat(members.get(1).displayName()).isEqualTo("Bob");
+        assertThat(members.get(1).role()).isEqualTo(TeamMembership.Role.MEMBER);
+    }
+
+    @Test
+    void findMembersWithUser_emptyForUnknownTeam() {
+        assertThat(repo.findMembersWithUser(UUID.randomUUID())).isEmpty();
     }
 
     private UUID persistUser(String email, String displayName) {

@@ -1,5 +1,5 @@
 import { Suspense } from 'react'
-import { FolderTree } from '@/components/folders/FolderTree'
+import { SidebarSections } from '@/components/sidebar/SidebarSections'
 import { TrashLink } from '@/components/trash/TrashLink'
 import { SharesLink } from '@/components/shares/SharesLink'
 import { DndProvider } from '@/components/dnd/DndProvider'
@@ -25,7 +25,7 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
               />
               <span className="text-[14px] font-semibold tracking-tight text-fg">IbizDrive</span>
             </div>
-            <FolderTree />
+            <SidebarSections />
             <div className="mt-auto pt-2 border-t border-border">
               <SharesLink />
               <TrashLink />
