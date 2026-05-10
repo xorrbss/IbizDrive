@@ -136,14 +136,14 @@ export interface AdminPermissionPage {
  *
  * 백엔드 {@link com.ibizdrive.permission.dto.GrantPermissionRequest} 미러 — 변경 시 양쪽 동시 갱신.
  *
- * - `subject.type`: V5 schema CHECK (user/department/role/everyone). 'role'은 backend가 persist 가능하나
- *   MVP 평가 미사용 (docs/03 §3.4). 본 wrapper는 4종 모두 송신을 지원 — 호출자가 phase 별로 노출 분기.
- * - `subject.id`: 'everyone'일 때만 null. 'user'/'department'는 UUID 문자열, 'role'은 enum 문자열.
+ * - `subject.type`: USER/DEPARTMENT/EVERYONE 3종만. ROLE/TEAM은 backend `PermissionRepository.findEffective`가
+ *   매칭하지 않아 grant row를 INSERT해도 평가되지 않음(docs/03 §3.4.3). v2.x backlog (docs/01 §14.5.4 callout).
+ * - `subject.id`: 'everyone'일 때만 null. 'user'/'department'는 UUID 문자열.
  * - `preset`: `Preset` 5값 lower-case (read/upload/edit/share/admin). `AdminPreset`(4값)과 분리.
  * - `expiresAt`: ISO-8601, undefined = 무기한.
  */
 export interface GrantPermissionRequest {
-  subject: { type: 'user' | 'department' | 'role' | 'everyone'; id: string | null }
+  subject: { type: 'user' | 'department' | 'everyone'; id: string | null }
   preset: Preset
   expiresAt?: string
 }

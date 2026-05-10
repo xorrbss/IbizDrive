@@ -1170,13 +1170,15 @@ async grantPermission(
 
 ```ts
 interface GrantPermissionRequest {
-  subject: { type: 'user' | 'department' | 'role' | 'everyone'; id: string | null }
+  subject: { type: 'user' | 'department' | 'everyone'; id: string | null }
   preset: 'read' | 'upload' | 'edit' | 'share' | 'admin'
   expiresAt?: string  // ISO 8601 datetime, undefined = 무기한
 }
 ```
 
-backend `Preset.from(wire)` lower-case 매칭 (`backend/permission/Preset.java`). `subject.id`는 EVERYONE 시 null, ROLE 시 enum 문자열 (`'MEMBER' | 'AUDITOR' | 'ADMIN'`), USER/DEPARTMENT 시 UUID.
+backend `Preset.from(wire)` lower-case 매칭 (`backend/permission/Preset.java`). `subject.id`는 EVERYONE 시 null, USER/DEPARTMENT 시 UUID.
+
+**ROLE/TEAM subject 제외 — v2.x backlog**: backend `permissions.subject_id` 컬럼이 UUID이고 `PermissionRepository.findEffective`가 `subject_type IN ('user', 'everyone', 'department')`만 매칭하므로(docs/03 §3.4.3) ROLE/TEAM grant row는 INSERT돼도 평가되지 않는다. spec/impl 정합 위해 wire 타입에서도 제외. ROLE/TEAM 평가 도입은 backend resolver 확장이 선결(별도 트랙).
 
 #### 14.5.5 Subject 분기
 
@@ -1185,9 +1187,10 @@ backend `Preset.from(wire)` lower-case 매칭 (`backend/permission/Preset.java`)
 | `everyone` | radio (default) | `{ type:'everyone', id: null }` |
 | `user` | UserSearchCombobox (A14, debounce 300ms + minLen 2) | `{ type:'user', id: selectedUser.id }` |
 | `department` | DepartmentSearchCombobox (A16) | `{ type:'department', id: selectedDept.id }` |
-| `role` | select (MEMBER/AUDITOR/ADMIN) | `{ type:'role', id: 'ADMIN' }` |
 
-ROLE 선택 시 backend persist는 `subject_type='role'`, `subject_id` 컬럼은 enum 문자열로 저장 (V5 schema 검토 — 기존 ShareDialog는 ROLE 미지원이지만 permissions 테이블은 지원).
+**v2.x backlog (Phase C 미포함)**:
+- `role` (MEMBER/AUDITOR/ADMIN) — backend가 INSERT는 허용(V5 CHECK)하나 평가 미도입(`PermissionResolver`/`findEffective` 미참조). 도입 시 backend resolver 확장 + UUID-encoded role enum 매핑 또는 `subject_id` 타입 분리(별도 트랙).
+- `team` — Plan C에서 `shares` endpoint에 추가됐으나 `permissions` grant 평가는 여전히 user/dept/everyone만. team folder 권한은 `WorkspaceMembershipResolver`(membership-기반)로 자동 부여되므로 grant row 별도 부여 불필요.
 
 #### 14.5.6 Preset 라벨 (한국어)
 
@@ -1225,12 +1228,12 @@ onSuccess: () => {
 본 spec(§14.5)은 **Phase A — 설계만(2026-05-09)**. 후속 phase 진척:
 
 - **Phase B (2026-05-11 완료)**: `api.grantPermission` + `useGrantPermission` + `GrantPermissionDialog` 골격 (subject = `everyone` 만, preset/expiresAt 포함). 회귀 가드 vitest 18건. ResourcePermissionsList 미연결 — Phase D까지 dead code 상태.
-- **Phase C (대기)**: subject 분기 (UserSearchCombobox 재사용 + DepartmentSearchCombobox 재사용 + ROLE select).
+- **Phase C (대기)**: subject 분기 (USER + DEPARTMENT만 — UserSearchCombobox 재사용 + DepartmentSearchCombobox 재사용). ROLE/TEAM은 평가 미도입이라 v2.x backlog로 분리(§14.5.4 callout).
 - **Phase D (대기)**: `ResourcePermissionsList` 통합 ("권한 부여" 버튼 + 가드: `usePermission().admin` true 시 노출).
 
 #### 14.5.10 결정/편차
 
-- **Subject 4종 모두 지원** (USER/DEPARTMENT/ROLE/EVERYONE) — backend 모두 persist 가능. ShareDialog는 ROLE 미지원이지만 permissions 테이블은 지원 (Preset/grant 정책이 share grant와 schema 분리).
+- **Subject 3종만 지원 (USER/DEPARTMENT/EVERYONE)** — Phase A spec은 4종(USER/DEPT/ROLE/EVERYONE)으로 작성됐으나 Phase B 완료 후 spec/impl 정합 검증에서 ROLE/TEAM grant가 backend에서 평가되지 않음을 확인(`PermissionRepository.findEffective`가 user/everyone/department만 매칭, docs/03 §3.4.3). **2026-05-11 spec 정정** — ROLE/TEAM은 v2.x backlog로 분리, wire 타입과 UI에서 모두 제외(§14.5.4 callout). ROLE 평가 도입 시 backend resolver 확장이 선결.
 - **단일 다이얼로그 (별도 검색 모달 없음)** — KISS, ShareDialog와 동질 UX. 사용자 검색은 인라인 dropdown.
 - **admin/permissions 페이지 전역 grant 미도입** — resource picker (folder tree + file search) 대형 컴포넌트 → v2.x. 단일 자원 grant는 RightPanel에서 충분.
 - **Preset 5값 (SHARE 포함)** — ShareDialog와 분리. 자원 권한 grant는 share-grant 가능까지 포함하므로 5값 모두 노출.

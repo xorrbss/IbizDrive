@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-05-11 — grant-permission-spec-phase-c-realign (ROLE/TEAM subject 제외 정정)
+
+### 범위
+
+Phase B 종료 직후 Phase C 진입 사전 검증에서 spec/impl 불일치 발견. 원래 다음 트랙 후보였던 "backend SubjectRef.id String 완화"가 실제로는 무효한 처방임이 드러나, docs-only 정정으로 pivot.
+
+### 발견된 불일치
+
+- `docs/01 §14.5.4`: `subject.type`을 `'user' | 'department' | 'role' | 'everyone'` 4종으로 명시.
+- backend reality:
+  1. `permissions.subject_id`는 `UUID NOT NULL` (V5 마이그레이션). 'role' subject id로 제안됐던 enum 문자열('MEMBER'/'AUDITOR'/'ADMIN')은 UUID 컬럼에 저장 불가.
+  2. `PermissionRepository.findEffective` 쿼리는 `subject_type IN ('user', 'everyone', 'department')`만 매칭(`PermissionRepository.java:84-94`). 'role' grant row는 INSERT돼도 `PermissionResolver`가 무시.
+  3. `AdminPermissionRowResponse.java:14` 주석에도 명시: `'role' → subject_id의 UUID text (V5 schema artifact, MVP 평가 미사용)`.
+  4. 'team' subject도 동일 — Plan C에서 share endpoint에 'team' 추가됐으나 grant 평가는 여전히 user/dept/everyone만. team folder 권한은 `WorkspaceMembershipResolver`가 membership 기반으로 자동 부여(별도 경로).
+
+### 변경 핵심 (docs + 1 type 좁히기)
+
+- `docs/01 §14.5.4` wire body 타입: `'user' | 'department' | 'everyone'`로 축소 + ROLE/TEAM 제외 사유 callout (`docs/03 §3.4.3` 참조).
+- `docs/01 §14.5.5` Subject 분기 표: 'role' 행 제거. v2.x backlog 항목으로 분리 (ROLE/TEAM 도입 시 backend resolver 확장이 선결).
+- `docs/01 §14.5.9` Phase 분할: Phase C 범위 = USER + DEPARTMENT만.
+- `docs/01 §14.5.10` 결정/편차: "Subject 4종" → "Subject 3종" 정정 + 2026-05-11 정정 사유 명기.
+- `frontend/src/types/permission.ts` `GrantPermissionRequest` interface: type union 축소 (`'user' | 'department' | 'everyone'`) + Javadoc 갱신.
+
+backend 무변경, Phase B 회귀 가드 vitest 18건 무영향 (Phase B는 'everyone'만 송신).
+
+### 검증
+
+- `pnpm --filter frontend typecheck` exit 0.
+- `pnpm --filter frontend lint` exit 0.
+- `pnpm --filter frontend test --run` 회귀 zero (Phase B 18건 + 기타 모두 PASS).
+
+### 결정/편차
+
+- **원래 제안한 "backend SubjectRef.id String 완화" 폐기** — 진단은 맞았으나 처방이 틀림. DB 컬럼이 UUID이고 evaluator가 user/dept/everyone만 보므로 String 완화로도 ROLE/TEAM 평가 불가능. 정확한 fix는 spec 정정 + backend resolver 확장(별도 트랙).
+- **Type 좁히기 동반** — spec에서 빼면서 wire 타입에서도 빼야 contract drift 회피. Phase B 골격은 'everyone'만 송신하므로 타입 축소가 회귀 zero.
+- **`docs/03 §3.4.3` 무수정** — 원래 truth-of-source. spec §14.5에서 backlink만 추가.
+
+### 다음 세션 컨텍스트
+
+- **Phase C** 진입 가능 — USER + DEPARTMENT subject picker만 구현. UserSearchCombobox/DepartmentSearchCombobox 재사용 (ShareDialog와 동형). 회귀 가드 vitest 추가.
+- **ROLE/TEAM grant 평가 도입 (v2.x backlog)** — backend resolver 확장 + UUID-encoded role enum 매핑 또는 `subject_id` 타입 분리 + `PermissionRepository.findEffective` 쿼리 확장. 별도 트랙으로 분리.
+- v1.x backlog 잔여: 휴지통 보존 정책 mutation UI / quota mutation UI / 2인 승인 framework 실 구현 / progress streaming / CSRF helper 일관화 sweep.
+
+---
+
 ## 2026-05-11 — grant-permission-dialog Phase B (api wrapper + hook + dialog 골격, 18 회귀 가드)
 
 ### 범위
