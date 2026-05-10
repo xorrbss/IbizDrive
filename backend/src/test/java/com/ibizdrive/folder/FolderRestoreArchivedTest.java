@@ -6,6 +6,8 @@ import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.team.TeamRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -83,6 +85,7 @@ class FolderRestoreArchivedTest {
     @Autowired private FolderMutationService service;
     @Autowired private FolderRepository folderRepository;
     @Autowired private JdbcTemplate jdbc;
+    @PersistenceContext private EntityManager em;
 
     @Test
     void restore_archivedTeamScope_throwsTeamArchived() {
@@ -151,11 +154,17 @@ class FolderRestoreArchivedTest {
         return id;
     }
 
-    /** Team을 archived 상태로 전환. archived_at + archived_by NOT NULL 동시 update. */
+    /** Team을 archived 상태로 전환. archived_at + archived_by NOT NULL 동시 update.
+     *  raw JDBC UPDATE는 JPA L1 캐시를 무효화하지 못한다. service.restore가 TeamArchiveGuard를 통해
+     *  Team을 lookup할 때 stale (active) 캐시 hit이 발생하면 guard가 short-circuit되어 예외 미발생.
+     *  flush + clear로 영속성 컨텍스트를 비워 다음 lookup이 DB에서 신선한 archived row를 읽도록 강제.
+     *  peer pattern: {@link com.ibizdrive.file.FileRestoreArchivedTest#softDeleteFile}. */
     private void archiveTeam(UUID teamId, UUID actorId) {
         jdbc.update(
             "UPDATE teams SET archived_at = NOW(), archived_by = ?, updated_at = NOW() WHERE id = ?",
             actorId, teamId
         );
+        em.flush();
+        em.clear();
     }
 }

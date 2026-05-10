@@ -3,6 +3,7 @@ import { useRestoreItem } from '@/hooks/useRestoreItem'
 import { usePurgeTrashItem } from '@/hooks/usePurgeTrashItem'
 import { usePermission } from '@/hooks/usePermission'
 import { useRestoreConflictUiStore } from '@/stores/restoreConflictUi'
+import { messageForError } from '@/lib/errors'
 import { toast } from 'sonner'
 import type { RestoreConflictPayload, TrashItem } from '@/types/trash'
 
@@ -51,7 +52,7 @@ export function TrashRowActions({
               payload,
             })
           } else {
-            toast.error(`'${item.name}' 복원 실패`)
+            toast.error(messageForError(err, `'${item.name}' 복원 실패`))
           }
         },
       },
