@@ -361,6 +361,28 @@ export const invalidations = {
   },
 
   /**
+   * 자원-level 권한 grant 후 무효화 (grant-permission-dialog Phase B, docs/01 §14.5.8).
+   *
+   * <p>3종 invalidate:
+   * - `qk.resourcePermissions(resource, resourceId)` — RightPanel 권한 탭 (자원별 grant 목록)
+   * - `qk.adminPermissions()` — /admin/permissions viewer 전체 갱신
+   * - `qk.permissions(resourceId)` — useEffectivePermissions 자기 권한 (운영자가 자기에게 부여 시 즉시 UI 갱신)
+   *
+   * <p>share-create와 달리 단일 helper 없이 prefix 무효화 셋을 묶음 — 의미가 다른 3 keyspace.
+   */
+  afterPermissionGrant(
+    qc: QueryClient,
+    resource: 'folder' | 'file',
+    resourceId: string,
+  ): Promise<void> {
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: qk.resourcePermissions(resource, resourceId) }),
+      qc.invalidateQueries({ queryKey: qk.adminPermissions() }),
+      qc.invalidateQueries({ queryKey: qk.permissions(resourceId) }),
+    ]).then(() => undefined)
+  },
+
+  /**
    * 공유 revoke 후 무효화 (F4).
    * - shares() prefix 단일. by-me 목록에서 즉시 제거 + 받은 사람 with-me도 갱신.
    */
