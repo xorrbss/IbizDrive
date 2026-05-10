@@ -1,11 +1,23 @@
 // frontend/src/test/setup.ts
-import { afterEach, vi } from 'vitest'
+import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
 // globals: false 설정이라 @testing-library/react 자동 cleanup이 동작하지 않음.
 // 각 test 후 DOM을 정리해 문서 레벨 리스너/렌더 잔재가 누적되지 않도록 한다.
 afterEach(() => {
   cleanup()
+})
+
+// ─── 전역 XSRF-TOKEN cookie 기본값 ──────────────────────────────────────────
+//
+// csrf-helper-sweep(2026-05-11) 이후 모든 mutation은 `await ensureCsrfToken()`을 호출한다.
+// `ensureCsrfToken`은 cookie가 없으면 `/api/auth/csrf` GET으로 부트스트랩하므로 fetch
+// mock의 응답 큐를 의도치 않게 소비할 수 있다. 테스트별로 cookie를 set하지 않은
+// 기존 테스트의 회귀를 막기 위해 setup에서 기본 토큰을 깔아준다.
+//
+// 개별 테스트가 cookie 부재 동작을 검증해야 하면 beforeEach에서 직접 unset하면 된다.
+beforeEach(() => {
+  document.cookie = 'XSRF-TOKEN=test-csrf-default; path=/'
 })
 
 // ─── 전역 sonner mock ───────────────────────────────────────────────────────

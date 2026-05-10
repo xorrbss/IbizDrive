@@ -108,14 +108,14 @@ export const api = {
    * CSRF double-submit — mutation endpoints 공통 정책 (createFolder 참조).
    */
   async createTeam(req: TeamCreateRequest): Promise<TeamResponse> {
-    const csrf = readCookie('XSRF-TOKEN')
+    const csrf = await ensureCsrfToken()
     const res = await fetch('/api/teams', {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
+        'X-CSRF-TOKEN': csrf,
       },
       body: JSON.stringify(req),
     })
@@ -144,7 +144,7 @@ export const api = {
    * Plan F T8 — 팀 멤버 초대 ({@code POST /api/teams/{teamId}/members}). idempotent.
    */
   async inviteTeamMember(teamId: string, userId: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}/members`, {
       method: 'POST',
       credentials: 'include',
@@ -164,7 +164,7 @@ export const api = {
    * OWNER 제거 시도 시 last-OWNER 가드 → 400 TEAM_OWNER_REQUIRED.
    */
   async removeTeamMember(teamId: string, userId: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(
       `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
       {
@@ -187,7 +187,7 @@ export const api = {
     userId: string,
     role: TeamMemberRole,
   ): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(
       `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
       {
@@ -393,7 +393,7 @@ export const api = {
    * 권한은 backend `hasPermission(#fileId, 'file', 'EDIT')` — READ만 보유한 사용자는 403.
    */
   async restoreVersion(fileId: string, versionId: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(
       `/api/files/${encodeURIComponent(fileId)}/versions/${encodeURIComponent(versionId)}/restore`,
       {
@@ -415,7 +415,7 @@ export const api = {
   // file/folder를 판별해 본 함수와 softDeleteFolder를 분기 호출한다 (backend는 bulk endpoint
   // 미제공, ADR #32 §운영 노트). 응답은 204 NO_CONTENT라 본문 무시.
   async softDeleteFile(id: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/files/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',
@@ -429,7 +429,7 @@ export const api = {
   },
 
   async softDeleteFolder(id: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}`, {
       method: 'DELETE',
       credentials: 'include',
@@ -457,7 +457,7 @@ export const api = {
       type === 'folder'
         ? `/api/folders/${encodeURIComponent(id)}/move`
         : `/api/files/${encodeURIComponent(id)}/move`
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(url, {
       method: 'POST',
       credentials: 'include',
@@ -510,7 +510,7 @@ export const api = {
     const url = isFolder
       ? `/api/folders/${encodeURIComponent(id)}`
       : `/api/files/${encodeURIComponent(id)}`
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(url, {
       method: 'PATCH',
       credentials: 'include',
@@ -564,14 +564,14 @@ export const api = {
     // CSRF double-submit — 누락 시 backend SecurityFilter가 PermissionEvaluator 도달 전 403.
     // 다른 mutation들과 동일 패턴(rename/move/share 등). 운영자가 ADMIN role임에도
     // "폴더를 만들 권한이 없습니다"로 표시되던 회귀 (UI는 403을 권한 메시지로 매핑).
-    const csrf = readCookie('XSRF-TOKEN')
+    const csrf = await ensureCsrfToken()
     const res = await fetch('/api/folders', {
       method: 'POST',
       credentials: 'include',
       headers: {
         'Content-Type': 'application/json',
         Accept: 'application/json',
-        ...(csrf ? { 'X-CSRF-TOKEN': csrf } : {}),
+        'X-CSRF-TOKEN': csrf,
       },
       body: JSON.stringify({ parentId, name: name.trim() }),
     })
@@ -620,6 +620,10 @@ export const api = {
     xhr.withCredentials = true
     // CSRF 토큰: 로그인 후 XSRF-TOKEN 쿠키가 항상 존재. 타 mutation들과 동일 정책 (login/logout 참고).
     // 누락 시 Spring CSRF 필터가 403 반환 → uploadErrors가 "권한 없음"으로 오해 매핑되는 회귀 방지.
+    //
+    // XHR 경로는 sync 시그니처(`uploadFile`이 동기적으로 XMLHttpRequest 반환)라 `await ensureCsrfToken()`을
+    // 쓸 수 없다. 이 콜사이트는 csrf-helper-sweep의 의도적 예외 — 업로드는 사용자가 인증된 세션 중에만
+    // 발생하므로 cookie 부트스트랩이 필요한 cold-start 경로는 사실상 없음.
     const csrf = readCookie('XSRF-TOKEN')
     if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
     xhr.send(form)
@@ -1096,7 +1100,7 @@ export const api = {
    * 새 이름으로 복원, 충돌 시 'RENAME_CONFLICT' (다이얼로그 inline alert).
    */
   async restoreFile(id: string, opts?: { newName?: string }): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/files/${encodeURIComponent(id)}/restore`, {
       method: 'POST',
       credentials: 'include',
@@ -1117,7 +1121,7 @@ export const api = {
    * 휴지통 폴더 복원. opts.newName 동일 시맨틱 (RESTORE_CONFLICT vs RENAME_CONFLICT 분기는 file 과 동일).
    */
   async restoreFolder(id: string, opts?: { newName?: string }): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/folders/${encodeURIComponent(id)}/restore`, {
       method: 'POST',
       credentials: 'include',
@@ -1139,7 +1143,7 @@ export const api = {
    * 응답 204 NO_CONTENT.
    */
   async purgeTrashItem(type: TrashItemType, id: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(
       `/api/trash/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
       {
@@ -1182,7 +1186,7 @@ export const api = {
    * 응답 204 NO_CONTENT. 이미 revoked된 share는 404로 폴백 (멱등).
    */
   async revokeShare(shareId: string): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/shares/${encodeURIComponent(shareId)}`, {
       method: 'DELETE',
       credentials: 'include',
@@ -1653,7 +1657,7 @@ export const api = {
    * `@PreAuthorize("hasRole('ADMIN')")` (진실 출처) — 프론트 hook 가드는 UX용.
    */
   async adminToggleCron(key: string, enabled: boolean): Promise<void> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(`/api/admin/system/cron/${encodeURIComponent(key)}`, {
       method: 'PUT',
       credentials: 'include',
@@ -1762,7 +1766,7 @@ export const api = {
     resourceId: string,
     body: GrantPermissionRequest,
   ): Promise<PermissionListItem> {
-    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const csrf = await ensureCsrfToken()
     const res = await fetch(
       `/api/${resource}s/${encodeURIComponent(resourceId)}/permissions`,
       {
@@ -1910,7 +1914,7 @@ async function postShareCreate(
   req: ShareCreateRequest,
   errorLabel: string,
 ): Promise<ShareDto[]> {
-  const csrf = readCookie('XSRF-TOKEN') ?? ''
+  const csrf = await ensureCsrfToken()
   const res = await fetch(path, {
     method: 'POST',
     credentials: 'include',
@@ -2078,7 +2082,7 @@ export async function adminBulkTrash(
   action: import('@/types/trash').AdminTrashBulkAction,
   items: import('@/types/trash').AdminTrashBulkItem[],
 ): Promise<import('@/types/trash').AdminTrashBulkResponse> {
-  const csrf = readCookie('XSRF-TOKEN') ?? ''
+  const csrf = await ensureCsrfToken()
   const res = await fetch('/api/admin/trash/bulk', {
     method: 'POST',
     credentials: 'include',

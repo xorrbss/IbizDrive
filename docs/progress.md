@@ -5,6 +5,90 @@
 
 ---
 
+## 2026-05-11 — csrf-helper-sweep (`readCookie('XSRF-TOKEN')` → `await ensureCsrfToken()` 일관화)
+
+### 범위
+
+`api.ts`의 mutation 콜사이트에서 CSRF 토큰 조회가 두 패턴으로 나뉘어 있던 sleeping inconsistency 정리.
+- `readCookie('XSRF-TOKEN') ?? ''` (sync, 16+ 사이트) — cookie 없으면 빈 문자열 → backend 403.
+- `await ensureCsrfToken()` (async, bootstrap fallback 12 사이트) — cookie 없으면 `/api/auth/csrf` GET으로 부트스트랩.
+
+후자가 cold-start 안전하므로 mutation 사이트 전부 후자로 통일.
+
+### 변경 핵심
+
+- `frontend/src/lib/api.ts` 18 콜사이트 변경:
+  - `const csrf = readCookie('XSRF-TOKEN') ?? ''` × 16 → `const csrf = await ensureCsrfToken()` (replace_all 일괄)
+  - `createTeam`/`createFolder` (2): `readCookie + ...(csrf ? {} : {})` 조건부 spread → `ensureCsrfToken + 항상 헤더 포함` (ensureCsrfToken은 SSR 시 '' 반환 → harmless)
+- `uploadFile` XHR (1 사이트, line 623) **의도적 예외**: XHR sync 시그니처라 `await` 불가. 인라인 주석으로 sweep 예외 사유 명기. 업로드는 인증된 세션 중에만 발생하므로 cold-start 경로 사실상 부재.
+- `ensureCsrfToken` 본체(line 1996/1999)의 readCookie는 helper 내부 — 그대로 유지.
+
+backend 무변경, 컴포넌트 무변경. 18 콜사이트 모두 이미 `async` 함수 내부라 시그니처 변경 없음.
+
+### 검증
+
+- `pnpm --filter frontend typecheck` exit 0.
+- `pnpm --filter frontend lint` exit 0.
+- `pnpm --filter frontend test --run` 회귀 zero (예상) — 기존 테스트는 `document.cookie = 'XSRF-TOKEN=...'`로 cookie 직접 set, `ensureCsrfToken`이 readCookie로 즉시 반환하므로 fetch bootstrap 미발생, 기존 spy 기대치 무영향.
+
+### 결정/편차
+
+- **upload XHR 예외 유지** — async 시그니처 도입은 useUpload 호출자 변경 필요 → 본 sweep 범위 초과. 인라인 주석으로 의도 명기.
+- **conditional spread 제거** — `ensureCsrfToken`이 빈 문자열이라도 반환 보장하므로 `...(csrf ? {} : {})` 패턴 불필요. 단순화 + 일관성.
+- **테스트 setup.ts에 전역 XSRF-TOKEN cookie 기본값 추가** — `ensureCsrfToken`이 cookie 부재 시 `/api/auth/csrf` GET fetch를 trigger하면, 기존 fetch mock의 응답 큐를 의도치 않게 소비. 결과적으로 mutation 본 fetch가 undefined → `Cannot read properties of undefined (reading 'ok')`. 7 test 파일(shares/trash/versions/moveFiles/adminTrashBulk/renameFile/adminToggleCron) 회귀 발생. 해결: `frontend/src/test/setup.ts`의 beforeEach에 `document.cookie = 'XSRF-TOKEN=test-csrf-default; path=/'` 추가 — 모든 테스트가 ensureCsrfToken을 통과해도 fetch bootstrap 미발생. cookie 부재 동작 검증이 필요한 테스트는 개별 unset 가능.
+
+### 다음 세션 컨텍스트
+
+- 본 sweep으로 cold-session에서 mutation 시 403 회귀 가능성 제거.
+- v1.x backlog 잔여: 휴지통 보존 정책 mutation UI / quota mutation UI / 2인 승인 framework 실 구현 / progress streaming / GrantPermissionDialog v2.x ROLE/TEAM 도입(backend resolver 확장 선결).
+- 다음 트랙 후보: 휴지통 보존 정책 mutation UI (큰 트랙, spec부터) 또는 stale worktree 정리 (housekeeping).
+
+---
+
+## 2026-05-11 — grant-permission-dialog Phase C+D (subject 분기 + ResourcePermissionsList 통합)
+
+### 범위
+
+PR #157 Phase B + PR #162 spec realign 후속. Phase C(subject 라디오 + Combobox 재사용)와 Phase D(`ResourcePermissionsList` 통합)를 단일 PR로 병행 — co-session 협업.
+
+### 변경 핵심
+
+**Phase C (`GrantPermissionDialog.tsx`)**:
+- `subjectType` state 추가 (`'everyone' | 'user' | 'department'`).
+- 라디오 3종 + 조건부 `UserSearchCombobox`(A14)/`DepartmentSearchCombobox`(A16) 재사용.
+- 라디오 전환 시 다른 subject 선택 reset.
+- 미선택 + submit → inline alert 차단.
+- ROLE/TEAM은 PR #162 spec realign 결정대로 v2.x backlog (§14.5.4 callout).
+
+**Phase D (`ResourcePermissionsList.tsx`)**:
+- 헤더 우측 "권한 부여" 버튼 (`aria-haspopup="dialog"`, `aria-expanded` sync).
+- `useState open` + `GrantPermissionDialog` 마운트 — 다이얼로그 첫 사용자 가시화.
+- 가드: `usePermission().PERMISSION_ADMIN` 보유 + `!isLoading && !isError` (loading/error 동안 trigger 차단, invalidate 후 깜빡임 방지).
+
+**회귀 가드 vitest** (누적):
+- `GrantPermissionDialog.test.tsx`: Phase B 7 + Phase C 9 = 16 (라디오 노출 2 / 미선택 inline 2 / 분기 body shape 2 / radio 전환 reset 1 / 400 1 / generic fallback 1).
+- `ResourcePermissionsList.test.tsx`: Phase D 3 (버튼 클릭 → dialog open / admin 미보유 시 트리거 미노출 / error 시 트리거 미노출). dialog 본체는 stub으로 격리, trigger wire만 검증.
+
+### 검증
+
+- `pnpm --filter frontend typecheck` exit 0.
+- `pnpm --filter frontend lint` exit 0.
+- `pnpm --filter frontend test --run src/components/files/` 118/118 PASS.
+
+### 결정/편차
+
+- **Phase C와 D를 단일 PR로 병행** — Phase D는 Phase C 골격(subject 라디오) 완성 후에야 사용자 가시 가치가 있어 분리 인센티브 약함.
+- **co-session 협업 모델** — 같은 worktree(`grant-perm-c`)에서 다른 세션이 Phase D 동시 작업. dev/process로 working files 선언, GrantPermissionDialog.test.tsx만 양쪽 추가 형태로 머지. `ResourcePermissionsList.tsx`는 co-session 단독, `GrantPermissionDialog.tsx`는 본 세션 단독. 양쪽 모두 typecheck/lint/test 통과 후 합본 commit (PR #163).
+- **ResourcePermissionsList.test.tsx에서 dialog stub** — GrantPermissionDialog 본체 행위는 별도 파일이 책임, Phase D 통합 테스트는 trigger wire에 집중.
+
+### 다음 세션 컨텍스트
+
+- 다이얼로그가 첫 사용자 가시화 — 운영자 SQL/ShareDialog 우회 unblock.
+- 후속 트랙(별도 PR로): csrf-helper-sweep (`readCookie` vs `ensureCsrfToken` 분기 통일).
+- v2.x backlog: ROLE/TEAM grant 평가 (backend `PermissionRepository.findEffective` 확장 선결).
+
+---
+
 ## 2026-05-11 — grant-permission-spec-phase-c-realign (ROLE/TEAM subject 제외 정정)
 
 ### 범위
