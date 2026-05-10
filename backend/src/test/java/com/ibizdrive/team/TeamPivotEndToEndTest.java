@@ -15,7 +15,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
-import org.springframework.transaction.annotation.Transactional;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
@@ -37,14 +36,16 @@ import static org.assertj.core.api.Assertions.assertThat;
  *   <li>PermissionResolver.isGranted — workspace membership 기반 묵시적 권한</li>
  * </ol>
  *
- * <p><b>note</b>: TeamAuditListener는 {@code @TransactionalEventListener(AFTER_COMMIT)}이므로
- * {@code @Transactional} 테스트(rollback)에서는 발화하지 않는다. audit row 검증은 별도
- * non-{@code @Transactional} 통합 테스트에서 수행 (Plan A2 또는 Phase 11 후속).
+ * <p><b>note</b>: 본 클래스는 {@code @Transactional}을 의도적으로 사용하지 않는다 —
+ * {@code FolderMutationService.create}의 {@code FOLDER_CREATED} audit이 직접
+ * {@code REQUIRES_NEW} 트랜잭션으로 commit하는데, 테스트 tx의 raw JDBC user INSERT가
+ * 미commit 상태라 {@code audit_log_actor_id_fkey} FK 위반이 발생함. 각 테스트는
+ * unique UUID 사용 + Testcontainers 컨테이너가 매 run마다 fresh PG라 데이터 누수 무관.
+ * Plan D의 {@code CrossWorkspaceMoveE2ETest} 등 다른 E2E 테스트와 동일 패턴.
  */
 @SpringBootTest
 @AutoConfigureTestDatabase(replace = AutoConfigureTestDatabase.Replace.NONE)
 @Testcontainers(disabledWithoutDocker = true)
-@Transactional
 class TeamPivotEndToEndTest {
 
     @Container

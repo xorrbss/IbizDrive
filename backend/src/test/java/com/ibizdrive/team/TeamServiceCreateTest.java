@@ -37,6 +37,8 @@ class TeamServiceCreateTest {
         svc = new TeamService(teamRepo, memRepo, folderService, events);
 
         when(teamRepo.findActiveByNormalizedName(any())).thenReturn(Optional.empty());
+        // Default save stub: return the same instance (TeamService captures merged return — see fix at TeamService:78).
+        when(teamRepo.save(any(Team.class))).thenAnswer(inv -> inv.getArgument(0));
         // Default folderService stub: return a stub Folder with a fresh id.
         when(folderService.createRootForScope(any(), any(), any(), anyString()))
             .thenAnswer(inv -> stubRootFolder(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
