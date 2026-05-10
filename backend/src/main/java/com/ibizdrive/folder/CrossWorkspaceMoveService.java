@@ -159,6 +159,9 @@ public class CrossWorkspaceMoveService {
         }
 
         // step 6: parent_id 변경
+        // NOTE: step 3 native @Modifying updateScopeBatch가 DB의 source folder scope를 갱신했지만
+        // in-memory entity는 stale. saveAndFlush가 stale scope를 덮어쓰지 않도록 새 값으로 동기화.
+        source.assignScope(destination.getScopeType(), destination.getScopeId());
         source.setParentId(destination.getId());
         source.setUpdatedAt(now);
         folderRepo.saveAndFlush(source);
@@ -283,6 +286,10 @@ public class CrossWorkspaceMoveService {
         }
 
         // step 6: folder_id 변경
+        // NOTE: step 3 native @Modifying updateScopeBatch가 DB의 scope_type/scope_id를 갱신했지만
+        // in-memory entity는 stale 상태. saveAndFlush가 JPA dirty-check로 모든 컬럼을 UPDATE에 포함하면
+        // stale scope가 DB의 새 값을 덮어쓴다 → invariant 실패. 명시적으로 entity scope를 새 값으로 동기화.
+        source.assignScope(destination.getScopeType(), destination.getScopeId());
         source.setFolderId(destinationFolderId);
         source.setUpdatedAt(now);
         fileRepo.saveAndFlush(source);

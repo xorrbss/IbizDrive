@@ -83,9 +83,10 @@ class MovePreviewServiceTest {
             grandchildInA, childInA, actor, scopeA, now, now);
 
         // 1 file inside grandchild
+        // V5: files 테이블에 storage_key 컬럼 없음 (file_versions에만 존재). fixture는 minimal NOT NULL만 채운다.
         UUID fileId = UUID.randomUUID();
-        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'a.txt', 'a.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
-            fileId, grandchildInA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'a.txt', 'a.txt', ?, 0, 'text/plain', 'department', ?, ?, ?)",
+            fileId, grandchildInA, actor, scopeA, now, now);
 
         // 1 permission on grandchild
         jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",

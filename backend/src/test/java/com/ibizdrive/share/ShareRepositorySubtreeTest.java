@@ -43,14 +43,15 @@ class ShareRepositorySubtreeTest {
     void findsActiveSharesByResourceIds() {
         UUID actor = seedUser("a8a@t");
         UUID subject = seedUser("a8s@t");
-        UUID folder1 = UUID.randomUUID();
-        UUID folder2 = UUID.randomUUID();
-        UUID otherFolder = UUID.randomUUID();
+        UUID subject2 = seedUser("a8s2@t"); // V5 idx_permissions_unique — 같은 folder1에 두 share 두려면 subject 분리
+        UUID folder1 = seedFolder(actor, "f8a");
+        UUID folder2 = seedFolder(actor, "f8b");
+        UUID otherFolder = seedFolder(actor, "f8c");
 
-        // Active share on folder1, active share on folder2, revoked share on folder1, share on otherFolder.
+        // Active share on folder1, active share on folder2, revoked share on folder1 (다른 subject), share on otherFolder.
         seedShare("folder", folder1, subject, actor, "edit", false);
         seedShare("folder", folder2, subject, actor, "read", false);
-        seedShare("folder", folder1, subject, actor, "edit", true);                  // revoked
+        seedShare("folder", folder1, subject2, actor, "edit", true);                 // revoked, 다른 subject
         seedShare("folder", otherFolder, subject, actor, "edit", false);             // out of set
 
         List<Share> active = shareRepo.findActiveByResourceIn("folder", List.of(folder1, folder2));
@@ -61,13 +62,14 @@ class ShareRepositorySubtreeTest {
     @Transactional
     void revokeByIdsUpdatesRowsAndIsReflectedInQuery() {
         UUID actor = seedUser("rb1@t");
-        UUID subject = seedUser("rb2@t");
-        UUID folder = UUID.randomUUID();
-        UUID otherFolder = UUID.randomUUID();
+        UUID subject1 = seedUser("rb2a@t");
+        UUID subject2 = seedUser("rb2b@t"); // V5 idx_permissions_unique — 같은 folder에 두 share 두려면 subject 분리
+        UUID folder = seedFolder(actor, "frb1");
+        UUID otherFolder = seedFolder(actor, "frb2");
 
-        UUID share1 = seedShare("folder", folder, subject, actor, "edit", false);
-        UUID share2 = seedShare("folder", folder, subject, actor, "read", false);
-        UUID otherShare = seedShare("folder", otherFolder, subject, actor, "edit", false);
+        UUID share1 = seedShare("folder", folder, subject1, actor, "edit", false);
+        UUID share2 = seedShare("folder", folder, subject2, actor, "read", false);
+        UUID otherShare = seedShare("folder", otherFolder, subject1, actor, "edit", false);
 
         UUID revoker = seedUser("rev@t");
         java.time.Instant now = java.time.Instant.now();
@@ -85,6 +87,24 @@ class ShareRepositorySubtreeTest {
     private UUID seedUser(String email) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", id, email, email);
+        return id;
+    }
+
+    /**
+     * V6 shares.folder_id REFERENCES folders(id) — share INSERT 전에 폴더 row가 실제로 존재해야 한다.
+     * V13 scope_type/scope_id NOT NULL — fixture root는 fake department scope를 가진다.
+     * V14 idx_folders_root_per_scope (parent_id IS NULL AND deleted_at IS NULL) UNIQUE (scope_type, scope_id) —
+     *     호출마다 새 scope_id 사용해 root 충돌 회피.
+     */
+    private UUID seedFolder(UUID ownerId, String name) {
+        UUID id = UUID.randomUUID();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
+        UUID scopeId = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id, created_at, updated_at) " +
+            "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'department', ?, ?, ?)",
+            id, name, name.toLowerCase(), name.toLowerCase(), ownerId, scopeId, now, now);
         return id;
     }
 

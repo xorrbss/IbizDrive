@@ -97,12 +97,13 @@ class CrossWorkspaceMoveServiceFileTest {
     }
 
     private UUID insertFile(UUID folderId, String name, UUID ownerId, String scopeType, UUID scopeId) {
+        // V5: files 테이블에 storage_key 컬럼 없음 (file_versions에만 존재). minimal NOT NULL만 채운다.
         UUID id = UUID.randomUUID();
         Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) "
-            + "VALUES (?, ?, ?, ?, ?, 0, 'text/plain', ?, ?, ?, ?, ?)",
-            id, folderId, name, name, ownerId, UUID.randomUUID().toString(), scopeType, scopeId, now, now
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, scope_type, scope_id, created_at, updated_at) "
+            + "VALUES (?, ?, ?, ?, ?, 0, 'text/plain', ?, ?, ?, ?)",
+            id, folderId, name, name, ownerId, scopeType, scopeId, now, now
         );
         return id;
     }
@@ -124,10 +125,11 @@ class CrossWorkspaceMoveServiceFileTest {
 
         UUID fileId = UUID.randomUUID();
         Timestamp now = Timestamp.from(java.time.Instant.now());
+        // V5: files 테이블에 storage_key 컬럼 없음 (file_versions에만 존재).
         jdbc.update(
-            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) "
-            + "VALUES (?, ?, 'f18.txt', 'f18.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
-            fileId, rootA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+            "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, scope_type, scope_id, created_at, updated_at) "
+            + "VALUES (?, ?, 'f18.txt', 'f18.txt', ?, 0, 'text/plain', 'department', ?, ?, ?)",
+            fileId, rootA, actor, scopeA, now, now);
 
         // Permission + share on file
         UUID permId = UUID.randomUUID();

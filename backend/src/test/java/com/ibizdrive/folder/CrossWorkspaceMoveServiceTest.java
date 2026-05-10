@@ -174,8 +174,10 @@ class CrossWorkspaceMoveServiceTest {
     void rejectsSameScopeMove() {
         UUID actor = insertUser("same-scope");
         UUID scope = UUID.randomUUID();
-        UUID sourceFolder = insertFolder(null, "src-ss-" + UUID.randomUUID(), actor, "department", scope);
-        UUID destFolder   = insertFolder(null, "dst-ss-" + UUID.randomUUID(), actor, "department", scope);
+        // V14 idx_folders_root_per_scope: 같은 scope에 root는 하나뿐 — sibling으로 src/dst 구성.
+        UUID rootSS = insertFolder(null, "root-ss-" + UUID.randomUUID(), actor, "department", scope);
+        UUID sourceFolder = insertFolder(rootSS, "src-ss-" + UUID.randomUUID(), actor, "department", scope);
+        UUID destFolder   = insertFolder(rootSS, "dst-ss-" + UUID.randomUUID(), actor, "department", scope);
 
         // same scopeType + scopeId → should reject before permission check
         assertThatThrownBy(() -> service.moveFolder(sourceFolder, destFolder, actor))
@@ -203,8 +205,9 @@ class CrossWorkspaceMoveServiceTest {
             grandchildInA, childInA, actor, scopeA, now, now);
 
         UUID fileId = UUID.randomUUID();
-        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '12.txt', '12.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
-            fileId, grandchildInA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+        // V5: files 테이블에 storage_key 컬럼 없음 (file_versions에만 존재).
+        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '12.txt', '12.txt', ?, 0, 'text/plain', 'department', ?, ?, ?)",
+            fileId, grandchildInA, actor, scopeA, now, now);
 
         when(permissionResolver.resolveFor(actor, "folder", childInA))
             .thenReturn(java.util.EnumSet.of(Permission.EDIT, Permission.SHARE));
@@ -241,8 +244,9 @@ class CrossWorkspaceMoveServiceTest {
             grandchildInA, childInA, actor, scopeA, now, now);
 
         UUID fileId = UUID.randomUUID();
-        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '13.txt', '13.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
-            fileId, grandchildInA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+        // V5: files 테이블에 storage_key 컬럼 없음.
+        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '13.txt', '13.txt', ?, 0, 'text/plain', 'department', ?, ?, ?)",
+            fileId, grandchildInA, actor, scopeA, now, now);
 
         // Permissions: 1 on grandchild folder, 1 on file
         jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
@@ -361,8 +365,9 @@ class CrossWorkspaceMoveServiceTest {
             grandchildInA, childInA, actor, scopeA, now, now);
 
         UUID fileId = UUID.randomUUID();
-        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '15b.txt', '15b.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",
-            fileId, grandchildInA, actor, UUID.randomUUID().toString(), scopeA, now, now);
+        // V5: files 테이블에 storage_key 컬럼 없음.
+        jdbc.update("INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, '15b.txt', '15b.txt', ?, 0, 'text/plain', 'department', ?, ?, ?)",
+            fileId, grandchildInA, actor, scopeA, now, now);
 
         // Permission + share on the subtree (will be cleared by steps 4/5 before invariant check)
         UUID permId = UUID.randomUUID();
