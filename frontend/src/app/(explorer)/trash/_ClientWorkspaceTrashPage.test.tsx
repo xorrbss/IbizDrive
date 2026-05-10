@@ -15,6 +15,17 @@ vi.mock('@/components/trash/TrashTable', () => ({
   ),
 }))
 
+// TrashWorkspaceTabs: activeScope 전달 확인 + 내부 훅 격리
+vi.mock('@/components/trash/TrashWorkspaceTabs', () => ({
+  TrashWorkspaceTabs: (props: { activeScope: { type: string; id: string } }) => (
+    <div
+      data-testid="trash-workspace-tabs"
+      data-scope-type={props.activeScope.type}
+      data-scope-id={props.activeScope.id}
+    />
+  ),
+}))
+
 function wrap(node: ReactNode) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
@@ -96,5 +107,21 @@ describe('ClientWorkspaceTrashPage', () => {
       ),
     )
     expect(screen.queryByRole('alert')).toBeNull()
+  })
+
+  it('TrashWorkspaceTabs가 마운트되고 activeScope가 올바르게 전달된다', () => {
+    render(
+      wrap(
+        <ClientWorkspaceTrashPage
+          scopeType="team"
+          scopeId="team-42"
+          workspaceName="개발팀"
+        />,
+      ),
+    )
+    const tabs = screen.getByTestId('trash-workspace-tabs')
+    expect(tabs).toBeTruthy()
+    expect(tabs.getAttribute('data-scope-type')).toBe('team')
+    expect(tabs.getAttribute('data-scope-id')).toBe('team-42')
   })
 })

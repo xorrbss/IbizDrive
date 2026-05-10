@@ -1,11 +1,11 @@
 'use client'
 import { TrashTable } from '@/components/trash/TrashTable'
+import { TrashWorkspaceTabs } from '@/components/trash/TrashWorkspaceTabs'
 
 /**
  * scope-aware 휴지통 공유 컴포넌트 (Plan E T8).
  * /trash/d/[deptSlug] (T9), /trash/t/[teamSlug] (T10) 양쪽 라우트 페이지가 재사용.
  *
- * - T12: TrashWorkspaceTabs 추가 예정 (props 변경 없음)
  * - T13: restoreDisabled / archived prop → TrashTable로 전달 예정
  */
 export function ClientWorkspaceTrashPage(props: {
@@ -18,7 +18,7 @@ export function ClientWorkspaceTrashPage(props: {
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      {/* T12에서 TrashWorkspaceTabs 추가 예정 */}
+      <TrashWorkspaceTabs activeScope={{ type: scopeType, id: scopeId }} />
       <div className="px-6 py-4">
         <h1 className="text-2xl font-semibold">{workspaceName} 휴지통</h1>
         {archived && (
