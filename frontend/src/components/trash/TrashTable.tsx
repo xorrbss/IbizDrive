@@ -20,12 +20,16 @@ import type { FolderNode } from '@/types/folder'
 const GRID_COLS =
   'grid grid-cols-[1fr_60px_180px_140px_140px_160px] gap-3 items-center px-4'
 
-// T8 will replace this component with ClientWorkspaceTrashPage that receives scope from route params.
+// scope props (scopeType/scopeId) 는 ClientWorkspaceTrashPage 가 라우트 파라미터에서 추출해 전달한다.
+// archived prop (Plan E T13): archive된 team scope 일 때 행 액션의 복원 버튼을 비활성화한다.
 export function TrashTable(props: {
   scopeType: 'department' | 'team'
   scopeId: string
+  /** archive된 workspace 여부 — `TrashRowActions.disabled` 로 forward (Plan E T13). */
+  archived?: boolean
 }) {
-  const query = useTrashList(props)
+  const { scopeType, scopeId, archived = false } = props
+  const query = useTrashList({ scopeType, scopeId })
   const tree: FolderNode | undefined = undefined // Tasks 17+: per-workspace lazy tree
 
   if (query.isLoading) {
@@ -112,7 +116,7 @@ export function TrashTable(props: {
                 {formatDate(it.purgeAfter)}
               </span>
               <span role="gridcell">
-                <TrashRowActions item={it} />
+                <TrashRowActions item={it} disabled={archived} />
               </span>
             </div>
           )

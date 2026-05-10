@@ -41,17 +41,9 @@ const itemFolder: TrashItem = {
   originalParentId: null,
 }
 
-// mockTree kept for reference; TrashTable now uses tree=undefined (Tasks 17+ 대기).
-// originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백으로 표시됨.
-const _mockTree = {
-  id: 'root',
-  parentId: null,
-  name: 'root',
-  slug: '',
-  children: [
-    { id: 'p1', parentId: 'root', name: '영업팀', slug: '영업팀', children: [] },
-  ],
-}
+// 참고: TrashTable은 현재 tree=undefined (Tasks 17+ 대기) — originalParentId가 있어도
+// "원위치 폴더 삭제됨" 폴백으로 표시. lazy per-workspace tree 도입 후 다시 mockTree fixture로
+// path 표시 검증이 필요하면 git history에서 fixture 복원 가능.
 
 function setHook(opts: {
   isLoading?: boolean
@@ -137,5 +129,26 @@ describe('TrashTable', () => {
     render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
     expect(screen.queryByRole('button', { name: '영구 삭제' })).toBeNull()
     expect(screen.getByRole('button', { name: '복원' })).toBeTruthy()
+  })
+
+  // ─── Plan E T13: archived prop forward ─────────────────────────────────────
+
+  it('archived 미지정 (기본 false) → 복원 버튼 활성', () => {
+    setHook({ items: [itemFile] })
+    const qc = new QueryClient()
+    render(<TrashTable scopeType="team" scopeId="t1" />, { wrapper: wrap(qc) })
+    const btn = screen.getByRole('button', { name: '복원' }) as HTMLButtonElement
+    expect(btn.disabled).toBe(false)
+  })
+
+  it('archived=true → TrashRowActions 가 disabled (복원 버튼 비활성 + 툴팁)', () => {
+    setHook({ items: [itemFile] })
+    const qc = new QueryClient()
+    render(<TrashTable scopeType="team" scopeId="t1" archived />, {
+      wrapper: wrap(qc),
+    })
+    const btn = screen.getByRole('button', { name: '복원' }) as HTMLButtonElement
+    expect(btn.disabled).toBe(true)
+    expect(btn.title).toBe('archive된 팀의 콘텐츠는 복원할 수 없습니다')
   })
 })

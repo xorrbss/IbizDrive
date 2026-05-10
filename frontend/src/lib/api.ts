@@ -1694,17 +1694,23 @@ async function buildApiError(res: Response, fallbackMessage: string): Promise<Er
     status: number
     code?: string
     reason?: string
+    details?: Record<string, unknown>
   }
   err.status = res.status
   try {
     const body = (await res.json()) as {
-      error?: { code?: string }
+      error?: { code?: string; details?: Record<string, unknown> }
       code?: string
       reason?: string
+      details?: Record<string, unknown>
     }
     if (body?.error?.code) err.code = body.error.code
     else if (body?.code) err.code = body.code
     if (body?.reason) err.reason = body.reason
+    // Plan E T13: RESTORE_CONFLICT 등 envelope `details` (예: { reason, resourceId, ... })를
+    // UX layer 분기에 사용 — 둘 중 어느 위치든 우선 노출.
+    const details = body?.error?.details ?? body?.details
+    if (details && typeof details === 'object') err.details = details
   } catch {
     // 본문이 없거나 JSON이 아니면 status만으로 충분 (audit 패턴 일관)
   }

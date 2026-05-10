@@ -6,7 +6,8 @@ import { TrashWorkspaceTabs } from '@/components/trash/TrashWorkspaceTabs'
  * scope-aware 휴지통 공유 컴포넌트 (Plan E T8).
  * /trash/d/[deptSlug] (T9), /trash/t/[teamSlug] (T10) 양쪽 라우트 페이지가 재사용.
  *
- * - T13: restoreDisabled / archived prop → TrashTable로 전달 예정
+ * Plan E T13 — `archived` prop 을 TrashTable 로 forward 해 행별 복원 버튼을
+ * 비활성화한다. 보안은 backend TeamArchiveGuard 가 책임 — 본 prop 은 UX 가드.
  */
 export function ClientWorkspaceTrashPage(props: {
   scopeType: 'department' | 'team'
@@ -30,8 +31,7 @@ export function ClientWorkspaceTrashPage(props: {
           </div>
         )}
       </div>
-      {/* T13에서 restoreDisabled 또는 archived prop을 TrashTable로 전달 예정 */}
-      <TrashTable scopeType={scopeType} scopeId={scopeId} />
+      <TrashTable scopeType={scopeType} scopeId={scopeId} archived={archived} />
     </div>
   )
 }
