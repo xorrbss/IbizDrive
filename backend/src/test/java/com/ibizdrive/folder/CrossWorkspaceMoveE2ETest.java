@@ -223,8 +223,9 @@ class CrossWorkspaceMoveE2ETest {
         assertThat(scope)
             .as("moved folder should expose scope block")
             .isNotNull();
-        assertThat(scope.get("scopeId"))
-            .as("moved folder's scopeId should equal scopeB (%s)", scopeB)
+        // ScopeRef DTO record: { type, id } — JSON key는 'id' (not 'scopeId'). spec §5.3 wire format.
+        assertThat(scope.get("id"))
+            .as("moved folder's scope.id should equal scopeB (%s)", scopeB)
             .isEqualTo(scopeB.toString());
 
         // ── 3. Post-conditions ───────────────────────────────────────────

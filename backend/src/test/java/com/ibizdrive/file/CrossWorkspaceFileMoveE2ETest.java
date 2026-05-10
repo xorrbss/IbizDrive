@@ -221,14 +221,15 @@ class CrossWorkspaceFileMoveE2ETest {
             .as("moved file's folderId should equal rootB (%s)", rootB)
             .isEqualTo(rootB.toString());
 
-        // 2b. file.scope.scopeId should equal scopeB
+        // 2b. file.scope.id should equal scopeB
+        // ScopeRef DTO record: { type, id } — JSON key는 'id' (not 'scopeId'). spec §5.3 wire format.
         @SuppressWarnings("unchecked")
         Map<String, Object> scope = (Map<String, Object>) fileEnvelope.get("scope");
         assertThat(scope)
             .as("moved file should expose scope block")
             .isNotNull();
-        assertThat(scope.get("scopeId"))
-            .as("moved file's scopeId should equal scopeB (%s)", scopeB)
+        assertThat(scope.get("id"))
+            .as("moved file's scope.id should equal scopeB (%s)", scopeB)
             .isEqualTo(scopeB.toString());
 
         // ── 3. Post-conditions ───────────────────────────────────────────
