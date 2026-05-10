@@ -103,14 +103,15 @@ class TeamPivotEndToEndTest {
         // 2) Invite member
         teamSvc.invite(team.getId(), member, owner);
         assertThat(memRepo.findByTeamId(team.getId())).hasSize(2);
+        // member의 membership을 user_id 인덱스 기반으로 직접 검증 (findByUserId JPQL의 동작 보증).
+        assertThat(memRepo.findByUserId(member))
+            .extracting(TeamMembership::getTeamId)
+            .containsExactly(team.getId());
 
-        // 3) WorkspaceService — invited member의 listing에 team 노출
+        // 3) WorkspaceService — invited member의 listing에 team 노출.
         // @Transactional 테스트 + @Transactional(readOnly=true) findForUser 조합에서 outer 트랜잭션의
-        // 영속성 컨텍스트가 stale entity를 들고 있으면 findByUserId(member)/findAllById([team])이
-        // L1 캐시 히트로 잘못된 상태(rootFolderId 미반영)를 반환할 수 있다. 명시적 flush+clear로
-        // pending writes를 DB에 반영하고 캐시를 비워 다음 query가 신선한 row를 읽도록 강제한다.
+        // 영속성 컨텍스트가 stale entity 또는 pending write를 들고 있을 가능성에 대비해 명시적 flush.
         em.flush();
-        em.clear();
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())

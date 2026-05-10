@@ -277,10 +277,12 @@ class FolderMutationServiceTest {
         reset(auditService);
 
         // V14 partial unique (parent_id IS NULL AND deleted_at IS NULL on (scope_type, scope_id))는
-        // saveAndFlush 시점에 DataIntegrityViolationException으로 발현. 호출자(controller)는 v1.x에서
-        // 일반 conflict envelope으로 매핑 — 본 테스트는 DB-level 가드 발현만 검증.
+        // saveAndFlush 시점에 DataIntegrityViolationException으로 발현 → FolderMutationService.move의
+        // catch 블록 (line 337-340)이 FolderNameConflictException으로 wrap (RENAME_CONFLICT envelope).
+        // wire 매핑이 이미 conflict로 통일돼 있으므로 호출자 관점에서 일관됨. v1.x에서 별도 reason
+        // 분기는 미도입 (root_per_scope 위반은 service-level pre-check 도입 시 분리 가능 — follow-up).
         assertThatThrownBy(() -> service.move(child.getId(), null, owner))
-            .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+            .isInstanceOf(FolderNameConflictException.class);
         verify(auditService, never()).record(any());
     }
 
