@@ -9,8 +9,7 @@ import java.util.UUID;
 /**
  * {@code GET /api/teams/{teamId}/members} response item — Plan F T1.
  *
- * <p>JPQL constructor projection이 직접 인스턴스화하므로 record 컴팩트 생성자에 검증 없음 —
- * spec §3.4 참조.
+ * <p>JPQL constructor projection이 직접 인스턴스화하므로 record 컴팩트 생성자에 검증을 두지 않는다.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record TeamMemberResponse(
