@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-05-11 — grant-permission-dialog Phase B (api wrapper + hook + dialog 골격, 18 회귀 가드)
+
+### 범위
+
+`docs/01 §14.5` Phase A spec(2026-05-09) 후속 — Phase B 골격 진입. backend `POST /api/{folders|files}/{id}/permissions` (PermissionController#grant, 2026-04~)이 완비된 상태에서 frontend api wrapper · 훅 · 다이얼로그 골격 · 회귀 가드만 추가. ResourcePermissionsList 통합과 USER/DEPT/ROLE 분기는 Phase D/C로 분리.
+
+### 변경 핵심 (commit 후보)
+
+- `frontend/src/types/permission.ts` — `GrantPermissionRequest` interface 추가 (subject 4종 모두 지원, backend SubjectRef 1:1 미러).
+- `frontend/src/lib/api.ts` — `api.grantPermission(resource, resourceId, body)` 메서드 (createFolder의 `readCookie('XSRF-TOKEN')` 패턴 답습, `Map<String, PermissionDto>` unwrap).
+- `frontend/src/lib/queryKeys.ts` — `invalidations.afterPermissionGrant(qc, resource, resourceId)` 헬퍼 (3종 prefix 무효화: resourcePermissions / adminPermissions / permissions).
+- `frontend/src/hooks/useGrantPermission.ts` — useMutation 래퍼, onSuccess afterPermissionGrant, onError pass-through.
+- `frontend/src/components/files/GrantPermissionDialog.tsx` — Phase B 골격: subject = `everyone` 고정(라디오 미노출), preset select 5값, expiresAt datetime-local, 409 inline alert, 403/404 toast+close.
+- 회귀 가드 vitest 18건:
+  - `api.grantPermission.test.ts` (8) — POST 메서드, URL(folder/file), CSRF, body shape, expiresAt ISO, 409/403/404/400 envelope.
+  - `useGrantPermission.test.tsx` (3) — invalidate 3종 호출, file resource 분기, error pass-through.
+  - `GrantPermissionDialog.test.tsx` (7) — open=false 미렌더, preset 5옵션, submit body, expiresAt 변환, 409 inline alert, 403/404 toast+close.
+- `docs/01 §14.5` Status 갱신 (Phase B 완료) + §14.5.9 Phase 분할 진척 마크.
+
+### 검증
+
+- `pnpm --filter frontend typecheck` exit 0.
+- `pnpm --filter frontend lint` exit 0.
+- `pnpm --filter frontend test --run` 167 file / 1196/1196 PASS — 신규 18 + 기존 회귀 zero.
+
+### 결정/편차
+
+- **CSRF helper 선택** — adjacent `adminRevokePermission`은 `ensureCsrfToken` (async + bootstrap fallback) 사용, 본 트랙은 createFolder/createTeam 패턴인 `readCookie('XSRF-TOKEN') ?? ''` 답습. resource grant는 ResourcePermissionsList 진입 후 호출되므로 cookie bootstrap이 이미 완료된 상태 — async helper 불필요. KISS.
+- **NaN expiresAt 가드 제거** — 초기 구현은 `Number.isNaN(d.getTime())` 후 inline alert. datetime-local input은 브라우저가 형식을 강제하므로 dead code 판단 → 단일 표현식 `expiresAtLocal ? new Date(expiresAtLocal).toISOString() : undefined`로 축약. 형식 오류는 backend 400 → submitError fallback 처리. YAGNI 적용.
+- **invalidations 헬퍼 추가** — afterShareCreate 패턴 답습. Phase B 단일 caller지만 spec §6.1 "queryKeys.ts가 invalidation의 single source" 정합 위해 helper 도입.
+- **Phase B 골격 dead code** — Phase D 통합 전까지 GrantPermissionDialog 호출자 없음. spec §14.5.9가 phase 분할을 명시하므로 의도된 결과. lint/typecheck 통과 확인.
+- **Korean wording fix (self-review)** — "권한 부여 권한이 없습니다" → "권한을 부여할 권한이 없습니다" (이중 명사 회피).
+
+### 다음 세션 컨텍스트 (Phase C/D 후속 트랙)
+
+- **Phase C** — subject 분기. `SubjectPicker` 컴포넌트 (USER/DEPARTMENT/ROLE/EVERYONE 라디오), UserSearchCombobox/DepartmentSearchCombobox 재사용, ROLE select(MEMBER/AUDITOR/ADMIN). 다만 backend `SubjectRef.id`가 UUID 타입이라 'role' subject id는 enum 문자열 → backend deserialize 실패 위험. backend 측 SubjectRef를 String으로 완화 또는 별도 path 분리 필요(spec §14.5.5 검토 항목).
+- **Phase D** — `ResourcePermissionsList`에 "권한 부여" 버튼 (`usePermission().admin === true` 가드) + GrantPermissionDialog trigger. Phase D 진입 시 Phase B 골격이 처음으로 호출자와 연결됨.
+- **Phase B 호출자 미연결 dead code 상태** — code review에서 "호출자가 없으면 왜 머지?"라는 지적 가능. Phase 분할 문서(§14.5.9)와 progress.md로 의도 명시.
+- v1.x backlog 잔여: 휴지통 보존 정책 mutation UI / quota mutation UI / 2인 승인 framework 실 구현 / progress streaming.
+
+---
+
 ## 2026-05-10 — team-centric-pivot Plan C 종료 (share endpoint subject_type='team' + §4.2 멤버십 cap)
 
 ### 범위

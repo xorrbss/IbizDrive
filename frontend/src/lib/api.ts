@@ -4,6 +4,7 @@ import type { AuditLogEntry, AuditLogFilters, AuditLogPage } from '@/types/audit
 import type {
   AdminPermissionFilters,
   AdminPermissionPage,
+  GrantPermissionRequest,
   Permission,
   PermissionListItem,
 } from '@/types/permission'
@@ -1645,6 +1646,47 @@ export const api = {
     if (!res.ok) {
       throw await buildApiError(res, `adminRevokePermission failed: ${res.status}`)
     }
+  },
+
+  /**
+   * `POST /api/{resource}s/{resourceId}/permissions` — resource-level 권한 grant
+   * (docs/01 §14.5.3, docs/02 §7.10). PERMISSION_ADMIN 보유자만 호출 가능 (backend `@PreAuthorize`).
+   *
+   * <p>resource는 단수형 'folder'|'file' — 호출 시 backend path는 복수형으로 직렬화 (PermissionController 동형).
+   *
+   * <p>응답 {@code 201 { permission: PermissionDto }} → {@link PermissionListItem} 단일 row 반환.
+   * 4xx envelope은 {@link buildApiError}가 status/code 매핑 후 throw:
+   * - 400 VALIDATION_ERROR — preset/expiresAt 형식 오류, subject 누락
+   * - 403 PERMISSION_DENIED — 운영자가 PERMISSION_ADMIN 미보유
+   * - 404 NOT_FOUND — 자원 자체 미존재 (race)
+   * - 409 PERMISSION_CONFLICT — 동일 (resource, subject) 중복 grant (V5 unique 인덱스 위반)
+   *
+   * <p>CSRF 헤더 필수 (다른 mutation 동형). createFolder 동일 readCookie 패턴.
+   */
+  async grantPermission(
+    resource: 'folder' | 'file',
+    resourceId: string,
+    body: GrantPermissionRequest,
+  ): Promise<PermissionListItem> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const res = await fetch(
+      `/api/${resource}s/${encodeURIComponent(resourceId)}/permissions`,
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+          'X-CSRF-TOKEN': csrf,
+        },
+        body: JSON.stringify(body),
+      },
+    )
+    if (!res.ok) {
+      throw await buildApiError(res, `grantPermission failed: ${res.status}`)
+    }
+    const env = (await res.json()) as { permission: PermissionListItem }
+    return env.permission
   },
 }
 

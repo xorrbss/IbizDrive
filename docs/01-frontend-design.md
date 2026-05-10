@@ -1108,9 +1108,11 @@ export function usePermission(nodeId?: string) {
   `{id, fileId|null, folderId|null, permissionId, sharedBy, message|null, expiresAt|null, createdAt, revokedAt|null, revokedBy|null, subjectType, subjectId|null, preset, subjectName|null}` — active 행에서 revoked* 항상 null. A13에서 backend가 `permissions` row를 join해 `subjectType`/`subjectId`/`preset` 3 필드를 surface. **A16(ADR #37)**에서 `subjectName` 추가 — user→display_name, department→name, everyone/lookup miss → null.
 - **SharesTable** (`components/shares/SharesTable.tsx`): with-me 목록. A13에서 컬럼 4열로 복원: `항목 | 공유한 사람 | 권한 | 만료`. preset은 한국어 라벨(읽기/업로드/편집/관리). 항목 셀은 file/folder 아이콘 분기(`folderId !== null`).
 
-### 14.5 GrantPermissionDialog (v1.x backlog — spec 단계, 2026-05-09)
+### 14.5 GrantPermissionDialog (v1.x — Phase B 완료 2026-05-11)
 
-> **Status: spec 작성, 실 구현 v1.x phase B/C/D.** Backend `POST /api/{folders|files}/{id}/permissions` (`PermissionController#grant`)는 완비 — Phase A1.4 grant endpoint(2026-04~). Frontend는 **api wrapper + 다이얼로그 + subject picker** 미구현 상태로 운영자가 SQL 직접 INSERT 또는 ShareDialog로 우회 사용 중.
+> **Status: Phase A spec(2026-05-09) + Phase B 골격(2026-05-11) 완료. 실 통합은 Phase C/D 대기.**
+> Backend `POST /api/{folders|files}/{id}/permissions` (`PermissionController#grant`)는 완비 — Phase A1.4 grant endpoint(2026-04~).
+> Phase B에서 **api wrapper + useGrantPermission + GrantPermissionDialog 골격(`subject = everyone`만)** + 회귀 가드 vitest 18건 추가. 호출자 미연결 상태(Phase D 통합 대기) — 운영자 우회(SQL/ShareDialog)는 Phase D까지 유지.
 
 #### 14.5.1 Scope
 
@@ -1220,11 +1222,11 @@ onSuccess: () => {
 
 #### 14.5.9 Phase 분할
 
-본 spec(§14.5)은 **Phase A — 설계만**. 후속 phase는 별도 트랙:
+본 spec(§14.5)은 **Phase A — 설계만(2026-05-09)**. 후속 phase 진척:
 
-- **Phase B**: `api.grantPermission` + `useGrantPermission` + `GrantPermissionDialog` 골격 (subject = `everyone` 만, preset/expiresAt 포함). 회귀 가드 vitest.
-- **Phase C**: subject 분기 (UserSearchCombobox 재사용 + DepartmentSearchCombobox 재사용 + ROLE select).
-- **Phase D**: `ResourcePermissionsList` 통합 ("권한 부여" 버튼 + 가드: `usePermission().admin` true 시 노출).
+- **Phase B (2026-05-11 완료)**: `api.grantPermission` + `useGrantPermission` + `GrantPermissionDialog` 골격 (subject = `everyone` 만, preset/expiresAt 포함). 회귀 가드 vitest 18건. ResourcePermissionsList 미연결 — Phase D까지 dead code 상태.
+- **Phase C (대기)**: subject 분기 (UserSearchCombobox 재사용 + DepartmentSearchCombobox 재사용 + ROLE select).
+- **Phase D (대기)**: `ResourcePermissionsList` 통합 ("권한 부여" 버튼 + 가드: `usePermission().admin` true 시 노출).
 
 #### 14.5.10 결정/편차
 
