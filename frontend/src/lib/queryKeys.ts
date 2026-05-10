@@ -171,6 +171,13 @@ export const qk = {
     size?: number
   }) => [...qk.adminPermissions(), 'list', filters] as const,
 
+  // ── 관리자 팀 (admin-teams, T8 design-refresh-admin Phase 4) ──
+  adminTeams: {
+    all: () => [...qk.all, 'admin', 'teams'] as const,
+    list: () => [...qk.all, 'admin', 'teams', 'list'] as const,
+    detail: (id: string) => [...qk.all, 'admin', 'teams', 'detail', id] as const,
+  },
+
   // ── 관리자 글로벌 휴지통 (admin-global-trash, Wave 2 T9, docs/02 §7.x) ──
   adminTrash: () => [...qk.all, 'admin', 'trash'] as const,
   /**
@@ -420,5 +427,28 @@ export const invalidations = {
       qc.invalidateQueries({ queryKey: qk.teams.members(teamId) }),
       qc.invalidateQueries({ queryKey: qk.workspaces.me() }),
     ]).then(() => undefined)
+  },
+
+  /**
+   * Admin 팀 변경 후 무효화 (admin-teams, T8 Phase 4).
+   *
+   * <p>list + 해당 detail 모두 무효화. 멤버 변경(invite/remove/role)은 별도
+   * {@link afterTeamMembersChanged}로 처리 — 멤버 카운트 갱신을 위해 list/detail도
+   * 같이 갱신될 필요가 있으나, 이 헬퍼는 admin team metadata mutation
+   * (update/archive/restore) 한정. memberCount 표시는 detail이 stale될 수 있음 —
+   * 본 페이지에서 멤버 picker mutation 후 list/detail도 함께 invalidate되도록
+   * 호출자가 두 헬퍼를 모두 호출하거나, memberCount 갱신은 staleTime 경과 후
+   * refetchOnWindowFocus로 충분.
+   */
+  afterAdminTeamChanged(qc: QueryClient, teamId?: string): Promise<void> {
+    const tasks: Promise<unknown>[] = [
+      qc.invalidateQueries({ queryKey: qk.adminTeams.list() }),
+    ]
+    if (teamId) {
+      tasks.push(qc.invalidateQueries({ queryKey: qk.adminTeams.detail(teamId) }))
+    } else {
+      tasks.push(qc.invalidateQueries({ queryKey: qk.adminTeams.all() }))
+    }
+    return Promise.all(tasks).then(() => undefined)
   },
 } as const
