@@ -105,13 +105,15 @@ SPRING_DATASOURCE_USERNAME=postgres \
 SPRING_DATASOURCE_PASSWORD=postgres \
 ./gradlew bootRun
 
-# 4. login 401 재현 (별 터미널)
+# 4. login 호출 (별 터미널)
+# backend는 헤더 이름 X-CSRF-Token을 기대 (Spring 기본값 X-XSRF-TOKEN과 다름).
+# T2 closure 이전엔 잘못된 헤더가 빈 401로 위장되었으나, 이제 403 + {"code":"CSRF_MISMATCH"} 반환.
 curl -s -c /tmp/c.txt http://localhost:8080/api/auth/csrf > /dev/null
 T=$(grep XSRF-TOKEN /tmp/c.txt | awk '{print $7}')
 curl -i -s -b /tmp/c.txt -X POST http://localhost:8080/api/auth/login \
-  -H "Content-Type: application/json" -H "X-XSRF-TOKEN: $T" \
+  -H "Content-Type: application/json" -H "X-CSRF-Token: $T" \
   -d '{"email":"preview@local.test","password":"PreviewPass123"}'
-# → HTTP 401, Content-Length: 0
+# → HTTP 200 + LoginResponse + Set-Cookie SESSION (정상 로그인)
 ```
 
 기존 가입된 계정 (preview DB 안에 있는 사용자):
@@ -123,7 +125,7 @@ curl -i -s -b /tmp/c.txt -X POST http://localhost:8080/api/auth/login \
 | `design@test.local` | `DesignPass123` | MEMBER |
 | `preview@local.test` | `PreviewPass123` | MEMBER |
 
-(전부 login 시 401)
+(T2 closure 이전 빠른 재개 안내가 잘못된 헤더 `X-XSRF-TOKEN`을 사용해 빈 401로 위장됐었음 — 정합 헤더 `X-CSRF-Token`로 호출하면 4개 계정 모두 200)
 
 ## Backlinks
 
