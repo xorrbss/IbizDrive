@@ -8,6 +8,8 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.workspace.WorkspaceListing;
 import com.ibizdrive.workspace.WorkspaceService;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -81,6 +83,9 @@ class TeamPivotEndToEndTest {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @PersistenceContext
+    private EntityManager em;
+
     @Test
     void teamCreate_invite_childFolder_membershipPermissions_workEndToEnd() {
         UUID owner = persistUser("e2e-owner@t", "e2e-owner");
@@ -100,6 +105,12 @@ class TeamPivotEndToEndTest {
         assertThat(memRepo.findByTeamId(team.getId())).hasSize(2);
 
         // 3) WorkspaceService — invited member의 listing에 team 노출
+        // @Transactional 테스트 + @Transactional(readOnly=true) findForUser 조합에서 outer 트랜잭션의
+        // 영속성 컨텍스트가 stale entity를 들고 있으면 findByUserId(member)/findAllById([team])이
+        // L1 캐시 히트로 잘못된 상태(rootFolderId 미반영)를 반환할 수 있다. 명시적 flush+clear로
+        // pending writes를 DB에 반영하고 캐시를 비워 다음 query가 신선한 row를 읽도록 강제한다.
+        em.flush();
+        em.clear();
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())
