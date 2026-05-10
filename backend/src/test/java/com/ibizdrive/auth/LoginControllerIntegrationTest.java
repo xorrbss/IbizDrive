@@ -220,12 +220,20 @@ class LoginControllerIntegrationTest {
             .andExpect(jsonPath("$.user.mustChangePassword").value(true));
     }
 
+    /**
+     * CSRF 미제공 → {@link CsrfAwareAccessDeniedHandler}가 직접 403 + {@code {"code":"CSRF_MISMATCH"}} 응답.
+     *
+     * <p>본 테스트는 status뿐 아니라 body도 검증한다. 이전 버전(status만 검사)은 MockMvc가 Spring Boot
+     * ErrorPage forward를 흉내내지 않아 production이 빈 401을 반환하는 사이에도 PASS하던
+     * false-positive였다 (T1-finding §시나리오 A 참조). body assert가 회귀 가드 역할.
+     */
     @Test
-    void login_withoutCsrf_returns403() throws Exception {
+    void login_withoutCsrf_returns403CsrfMismatch() throws Exception {
         mvc.perform(post("/api/auth/login")
                 .contentType("application/json")
                 .content(body(EMAIL, VALID_PW)))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("CSRF_MISMATCH"));
     }
 
     private String body(String email, String password) throws Exception {

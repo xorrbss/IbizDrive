@@ -108,10 +108,15 @@ class AuthMeLogoutIntegrationTest {
             .andExpect(cookie().path("SESSION", "/"));
     }
 
+    /**
+     * CSRF 미제공 → {@link CsrfAwareAccessDeniedHandler}가 직접 403 + {@code {"code":"CSRF_MISMATCH"}}.
+     * status뿐 아니라 body도 검증 (T1-finding 회귀 가드).
+     */
     @Test
-    void logout_authenticatedWithoutCsrf_returns403() throws Exception {
+    void logout_authenticatedWithoutCsrf_returns403CsrfMismatch() throws Exception {
         mvc.perform(post("/api/auth/logout").with(user(principal)))
-            .andExpect(status().isForbidden());
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("CSRF_MISMATCH"));
     }
 
     @Test
