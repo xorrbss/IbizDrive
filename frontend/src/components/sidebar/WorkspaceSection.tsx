@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { WorkspaceFolderTree } from './WorkspaceFolderTree'
 
 export function WorkspaceSection({
@@ -17,14 +18,20 @@ export function WorkspaceSection({
   archived?: boolean
 }) {
   return (
-    <div className={archived ? 'opacity-60' : undefined}>
+    <div className={archived ? 'opacity-60 group' : 'group'}>
       {archived && (
-        <span
-          aria-label="보관됨"
-          className="ml-2 text-[11px] text-fg-muted font-medium"
-        >
+        <span aria-label="보관됨" className="ml-2 text-[11px] text-fg-muted font-medium">
           [보관됨]
         </span>
+      )}
+      {kind === 'team' && !archived && (
+        <Link
+          href={`/t/${workspaceId}/settings/members`}
+          className="float-right opacity-0 group-hover:opacity-100 text-[11px] text-fg-muted hover:underline"
+          aria-label={`${title} 팀 설정`}
+        >
+          설정
+        </Link>
       )}
       <WorkspaceFolderTree
         kind={kind}
