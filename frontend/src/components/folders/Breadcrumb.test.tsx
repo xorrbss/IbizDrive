@@ -142,4 +142,30 @@ describe('Breadcrumb (F5.3 folder share entry)', () => {
     render(<Breadcrumb />, { wrapper: wrap(qc) })
     expect(screen.getByText('내 드라이브')).toBeTruthy()
   })
+
+  // 회귀 가드: workspace pivot 이후 backend breadcrumb은 workspace root부터 시작.
+  // 기존 코드 `breadcrumb.slice(1)`은 root id를 두 번 포함시켜 React key 중복 warning을 일으켰다.
+  // headCrumb.id 기반 filter로 root entry를 명시적으로 제거해야 한다.
+  it('backend breadcrumb이 workspace root부터 시작 → root id 중복 없이 두 항목만 렌더', () => {
+    ;(useCurrentFolder as ReturnType<typeof vi.fn>).mockReturnValue({
+      folderId: 'fld-2',
+      breadcrumb: [
+        { id: 'root-dept', name: 'workspace root (server name)', slugPath: [] },
+        { id: 'fld-2', name: '문서함', slugPath: ['mungseohan'] },
+      ],
+      isLoading: false,
+    })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue(ALL_FALSE)
+
+    const qc = new QueryClient()
+    const { container } = render(<Breadcrumb />, { wrapper: wrap(qc) })
+
+    // displayCrumbs는 [headCrumb('영업부'), '문서함'] 두 항목. root id 중복 없음.
+    const items = container.querySelectorAll('nav[aria-label="Breadcrumb"] > span')
+    expect(items.length).toBe(2)
+    // workspace head는 backend가 보내준 'workspace root (server name)'이 아닌 useWorkspaces.name으로 교체.
+    expect(screen.getByText('영업부')).toBeTruthy()
+    expect(screen.getByText('문서함')).toBeTruthy()
+    expect(screen.queryByText('workspace root (server name)')).toBeNull()
+  })
 })
