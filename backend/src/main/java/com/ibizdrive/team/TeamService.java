@@ -5,11 +5,13 @@ import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderMutationService;
 import com.ibizdrive.folder.ScopeType;
+import com.ibizdrive.team.dto.TeamMemberResponse;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -284,7 +286,7 @@ public class TeamService {
      * @throws IllegalArgumentException teamId가 null
      */
     @Transactional(readOnly = true)
-    public java.util.List<com.ibizdrive.team.dto.TeamMemberResponse> listMembers(UUID teamId) {
+    public List<TeamMemberResponse> listMembers(UUID teamId) {
         if (teamId == null) {
             throw new IllegalArgumentException("teamId must not be null");
         }

@@ -14,7 +14,6 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 class TeamServiceListMembersTest {
@@ -27,10 +26,10 @@ class TeamServiceListMembersTest {
 
     @BeforeEach
     void setUp() {
-        teamRepo = mock(TeamRepository.class);
-        memRepo = mock(TeamMembershipRepository.class);
-        folderService = mock(FolderMutationService.class);
-        events = mock(ApplicationEventPublisher.class);
+        teamRepo = Mockito.mock(TeamRepository.class);
+        memRepo = Mockito.mock(TeamMembershipRepository.class);
+        folderService = Mockito.mock(FolderMutationService.class);
+        events = Mockito.mock(ApplicationEventPublisher.class);
         svc = new TeamService(teamRepo, memRepo, folderService, events);
     }
 
