@@ -5,6 +5,49 @@
 
 ---
 
+## 2026-05-11 — 🏁 grant-permission-dialog 트랙 종료 (Phase B → C → D 전 phase 완료, dev-docs archive)
+
+### 범위
+
+권한 부여 다이얼로그 트랙의 모든 phase가 master에 도달. 본 closure PR은 **dev-docs archive** + **progress.md 정리 + Phase B/C/D 완료 마커** 단일 책임. 코드 0줄.
+
+### 트랙 closure 표
+
+| Phase | PR | 머지 | 산출물 |
+|---|---|---|---|
+| A — spec 설계 | (no PR, docs only) | 2026-05-09 | `docs/01 §14.5` 신규 (architecture, wire body, error envelope, phase 분할) |
+| B — api/hook/Dialog 골격 | #157 | 2026-05-10 | `api.grantPermission` + `useGrantPermission` + `GrantPermissionDialog` (subject=`everyone`) + 회귀 가드 18건 |
+| (spec realign) | #162 | 2026-05-10 | ROLE/TEAM subject v2.x backlog 분리 (spec/impl 정합) |
+| C — subject 분기 | #163 (codepath 81c55e4) | 2026-05-11 | `everyone`/`user`/`department` 라디오 + `UserSearchCombobox`(A14) + `DepartmentSearchCombobox`(A16) 재사용 + 회귀 가드 9건 (누적 16건) |
+| D — `ResourcePermissionsList` 통합 | #163 | 2026-05-11 | 헤더 우측 "권한 부여" 버튼(`aria-haspopup`/`aria-expanded`) + `useState` open + dialog 마운트, 가드: PERMISSION_ADMIN + `!isLoading && !isError` + 회귀 가드 3건 |
+
+본 closure PR은 archive만 — dev-docs 2건을 `dev/active/` → `dev/completed/`로 이동:
+
+- `dev/active/grant-permission-dialog-phase-b/` → `dev/completed/grant-permission-dialog-phase-b/`
+- `dev/active/grant-permission-dialog-phase-cd/` → `dev/completed/grant-permission-dialog-phase-cd/`
+
+`dev/completed/grant-permission-dialog-phase-cd/grant-permission-dialog-phase-cd-plan.md` front matter `status: in_progress` → `completed` + `merged: PR #163` 마커.
+
+### 검증
+
+- 코드 0줄 — typecheck/lint/test 무관.
+- `git diff --stat` 결과: `docs/progress.md` + dev-docs 6 rename만.
+- 회귀 영향: 0 (이전 PR #163 CI green: frontend vitest + backend junit 둘 다 SUCCESS).
+
+### 결정/편차
+
+- **Phase B archive를 같이 처리** — Phase B(PR #157) 머지 후 별도 archive PR 미생성 상태로 dev/active에 잔존. closure 단위 일관성을 위해 본 PR에서 함께 이동.
+- **새 ADR 미신설** — Phase A spec(2026-05-09)이 이미 §14.5에 결정 박힘. closure는 운영 정리.
+- **Co-session 협업 기록** — Phase C/D 본체(81c55e4)는 co-session이 푸시 (memory `feedback_co_session_collab` 패턴). 본 트랙은 closure만 본 세션이 마무리.
+
+### v1.x backlog 잔여 (트랙 외)
+
+- **ROLE/TEAM grant 평가 도입** — backend `PermissionRepository.findEffective` 쿼리 확장 + `PermissionResolver` 분기 + `subject_id` UUID-encoded role enum 또는 컬럼 분리. v2.x backlog (§14.5.4 callout).
+- **admin/permissions 페이지 전역 grant** — resource picker(folder tree + file search) 컴포넌트 신규 작성 필요. v2.x.
+- **Dialog modal stacking** — ShareDialog와 동시 동작 시 z-index/focus trap 회귀 spot-check (현재 양 다이얼로그 동시 열림 경로 부재).
+
+---
+
 ## 2026-05-11 — grant-permission-spec-phase-c-realign (ROLE/TEAM subject 제외 정정)
 
 ### 범위

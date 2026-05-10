@@ -1,10 +1,13 @@
 ---
 task: grant-permission-dialog Phase C 테스트 보강 + Phase D 통합
-status: in_progress
+status: completed
 created: 2026-05-11
+completed: 2026-05-11
+merged: PR #163 (2026-05-11 02:42 KST)
 spec: docs/01-frontend-design.md §14.5 (Phase A 2026-05-09, Phase B 2026-05-11, Phase C UI 머지 2026-05-11)
 branch: feat/grant-permission-dialog-phase-c
-worktree: C:/project/IbizDrive/.claude/worktrees/grant-perm-c
+worktree: C:/project/IbizDrive/.claude/worktrees/grant-perm-c (제거됨)
+result: vitest 회귀 가드 누적 GrantPermissionDialog 16 + ResourcePermissionsList 10 그린, typecheck/lint exit 0, CI 통과
 ---
 
 # Plan — GrantPermissionDialog Phase C 테스트 + Phase D 통합
