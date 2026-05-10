@@ -37,6 +37,10 @@ class TeamServiceCreateTest {
         svc = new TeamService(teamRepo, memRepo, folderService, events);
 
         when(teamRepo.findActiveByNormalizedName(any())).thenReturn(Optional.empty());
+        // production code (post-fix)는 t = repo.save(t)로 반환된 managed entity를 사용해
+        // attachRootFolder 호출 — JPA merge가 NEW instance를 반환하므로 dirty check를 위해 필수.
+        // mock은 input entity를 그대로 반환해 production 흐름을 모방.
+        when(teamRepo.save(any())).thenAnswer(inv -> inv.getArgument(0));
         // Default folderService stub: return a stub Folder with a fresh id.
         when(folderService.createRootForScope(any(), any(), any(), anyString()))
             .thenAnswer(inv -> stubRootFolder(inv.getArgument(0), inv.getArgument(1), inv.getArgument(2)));
