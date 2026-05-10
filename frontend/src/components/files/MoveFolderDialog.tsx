@@ -6,6 +6,7 @@ import { useMoveUiStore } from '@/stores/moveUi'
 import { useMoveBulk } from '@/hooks/useMoveBulk'
 import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
 import { useWorkspaces } from '@/hooks/useWorkspaces'
+import { messageForError } from '@/lib/errors'
 import { qk } from '@/lib/queryKeys'
 import { MoveFolderTree } from './MoveFolderTree'
 import type { FileItem } from '@/types/file'
@@ -21,7 +22,8 @@ export function MoveFolderDialog() {
     // hook-level 콜백 — 다이얼로그가 mount된 동안 호출되어야 sonner 토스트가 보장됨.
     // close()는 mutate 직후로, hook-level onSuccess/onError는 mutation 완료 후 실행됨.
     onSuccess: (vars) => toast.success(`${vars.items.length}개 항목을 이동했습니다`),
-    onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
+    onError: (err) =>
+      toast.error(messageForError(err, '이동에 실패했습니다. 다시 시도해 주세요.')),
   })
   // backend file/folder 분기 — 캐시에서 type을 조회 (handleDelete와 동일 패턴).
   // sort/dir 무관하게 sourceFolderId 캐시 prefix를 스캔 — sortParams hook 의존 회피.
