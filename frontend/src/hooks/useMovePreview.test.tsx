@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useMoveFolderPreview, useMoveFilePreview } from './useMovePreview'
 import * as apiMove from '@/lib/api.move'
+import type { MovePreviewResponse } from '@/lib/api.move'
 
 vi.mock('@/lib/api.move', () => ({
   previewFolderMove: vi.fn(),
@@ -20,7 +21,7 @@ function makeWrapper(qc: QueryClient) {
   return Wrapper
 }
 
-const mockPreviewResponse = {
+const mockPreviewResponse: MovePreviewResponse = {
   itemCount: 2,
   removedPermissions: [],
   revokedShares: [],
