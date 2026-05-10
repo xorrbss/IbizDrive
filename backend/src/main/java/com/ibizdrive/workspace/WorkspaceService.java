@@ -4,6 +4,8 @@ import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.team.TeamMembership;
 import com.ibizdrive.team.TeamMembershipRepository;
 import com.ibizdrive.team.TeamRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,6 +29,8 @@ import java.util.UUID;
  */
 @Service
 public class WorkspaceService {
+
+    private static final Logger log = LoggerFactory.getLogger(WorkspaceService.class);
 
     private final DepartmentRepository deptRepo;
     private final TeamRepository teamRepo;
@@ -62,20 +66,20 @@ public class WorkspaceService {
         List<UUID> teamIds = memberships.stream()
             .map(TeamMembership::getTeamId).toList();
 
-        // DIAGNOSTIC: temporary logging to identify which step returns empty in CI
-        System.out.println("[findForUser-DBG] userId=" + userId
-            + " memberships.size=" + memberships.size()
-            + " teamIds=" + teamIds);
+        // DIAGNOSTIC: temporary SLF4J logging to identify which step returns empty in CI
+        log.warn("[findForUser-DBG] userId={} memberships.size={} teamIds={}",
+            userId, memberships.size(), teamIds);
 
         List<com.ibizdrive.team.Team> teamsRaw = teamIds.isEmpty() ? List.of()
             : teamRepo.findAllById(teamIds);
-        System.out.println("[findForUser-DBG] teamsRaw.size=" + teamsRaw.size()
-            + " rootFolderIds=" + teamsRaw.stream().map(com.ibizdrive.team.Team::getRootFolderId).toList());
+        log.warn("[findForUser-DBG] teamsRaw.size={} rootFolderIds={}",
+            teamsRaw.size(),
+            teamsRaw.stream().map(com.ibizdrive.team.Team::getRootFolderId).toList());
 
         List<TeamWorkspace> teams = teamsRaw.stream()
                 .filter(t -> t.getRootFolderId() != null)
                 .map(TeamWorkspace::new).toList();
-        System.out.println("[findForUser-DBG] final teams.size=" + teams.size());
+        log.warn("[findForUser-DBG] final teams.size={}", teams.size());
 
         return new WorkspaceListing(dept, teams);
     }
