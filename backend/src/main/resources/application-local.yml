@@ -1,0 +1,30 @@
+# Local dev profile — `./gradlew bootRun` 시 build.gradle.kts가 자동으로 활성한다.
+#
+# 활성화 방법:
+#   - 기본: `./gradlew bootRun`               # build.gradle.kts default
+#   - 명시: `SPRING_PROFILES_ACTIVE=local`    # 다른 실행 진입점 (e.g. java -jar)
+#
+# 본 파일이 하는 것:
+#   1. dev preview DB로 default datasource 변경
+#      (`DB_URL` / `DB_USERNAME` / `DB_PASSWORD` 환경변수로 override 가능,
+#       Spring 표준 `SPRING_DATASOURCE_URL` 등도 property source priority로 그대로 동작).
+#   2. Spring Security DEBUG 로깅 활성
+#      (dev-preview-stabilization F1 — `/api/auth/login` 빈 body 401 진단 흔적).
+#
+# 본 파일이 하지 않는 것:
+#   - 운영 cron 활성 (application-prod.yml 책임)
+#   - 세션 쿠키 Secure 강제 (HTTP local 가정)
+#   - 사용자 자격 시드 (별도 seed.sql 또는 signup flow)
+#
+# 참조: docs/local-dev.md
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/ibizdrive_design_preview}
+    username: ${DB_USERNAME:postgres}
+    password: ${DB_PASSWORD:postgres}
+
+logging:
+  level:
+    # dev-preview-stabilization T1 진단용. T1 결과 따라 유지/축소 재평가.
+    org.springframework.security: DEBUG

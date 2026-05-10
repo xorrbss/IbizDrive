@@ -80,3 +80,15 @@ tasks.withType<Test> {
         showStackTraces = true
     }
 }
+
+// dev convenience: `./gradlew bootRun` 만으로 application-local.yml이 자동 적용된다.
+// SPRING_PROFILES_ACTIVE 환경변수 또는 `-Dspring.profiles.active=...` 가 명시되어 있으면
+// 그쪽이 우선 — prod 등 다른 profile 회귀 경로를 막지 않기 위함.
+// 참조: backend/src/main/resources/application-local.yml, docs/local-dev.md
+tasks.named("bootRun", org.springframework.boot.gradle.tasks.run.BootRun::class.java) {
+    if (System.getenv("SPRING_PROFILES_ACTIVE") == null &&
+        System.getProperty("spring.profiles.active") == null
+    ) {
+        systemProperty("spring.profiles.active", "local")
+    }
+}
