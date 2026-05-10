@@ -1,5 +1,6 @@
 package com.ibizdrive.team;
 
+import com.ibizdrive.team.dto.TeamMemberResponse;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -63,4 +64,23 @@ public interface TeamMembershipRepository
      */
     @Query("SELECT m FROM TeamMembership m WHERE m.id.teamId = :team")
     List<TeamMembership> findByTeamId(@Param("team") UUID teamId);
+
+    /**
+     * 팀 멤버 목록을 user 정보(displayName, email)와 함께 DTO로 직접 반환한다 — Plan F T2.
+     *
+     * <p>JPQL constructor projection으로 entity 측 User 매핑 추가 없이 read-only JOIN.
+     * spec docs/superpowers/specs/2026-05-10-team-centric-pivot-plan-f-team-member-mgmt-design.md §3.4.
+     *
+     * @param teamId 조회할 팀 ID (null 불가)
+     * @return TeamMemberResponse list — joinedAt 오름차순. team이 없거나 멤버가 없으면 빈 리스트.
+     */
+    @Query("""
+        SELECT new com.ibizdrive.team.dto.TeamMemberResponse(
+            m.id.userId, u.displayName, u.email, m.role, m.joinedAt
+        )
+        FROM TeamMembership m, com.ibizdrive.user.User u
+        WHERE m.id.teamId = :team AND m.id.userId = u.id
+        ORDER BY m.joinedAt ASC
+        """)
+    List<TeamMemberResponse> findMembersWithUser(@Param("team") UUID teamId);
 }
