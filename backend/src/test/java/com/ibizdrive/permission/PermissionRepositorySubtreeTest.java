@@ -11,7 +11,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 
@@ -48,13 +48,13 @@ class PermissionRepositorySubtreeTest {
         UUID folder1 = UUID.randomUUID();
         UUID folder2 = UUID.randomUUID();
         UUID otherFolder = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
 
         // active grants on folder1 (1) and folder2 (1), 1 expired on folder1, 1 on otherFolder (excluded).
         jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
             UUID.randomUUID(), folder1, subject, granter, now);
         jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'read', ?, ?, ?)",
-            UUID.randomUUID(), folder1, subject, granter, Instant.now().minusSeconds(3600), now);
+            UUID.randomUUID(), folder1, subject, granter, new Timestamp(System.currentTimeMillis() - 3_600_000L), now);
         jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
             UUID.randomUUID(), folder2, subject, granter, now);
         jdbc.update("INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) VALUES (?, 'folder', ?, 'user', ?, 'edit', ?, NULL, ?)",
@@ -75,7 +75,7 @@ class PermissionRepositorySubtreeTest {
 
         UUID folder = UUID.randomUUID();
         UUID otherFolder = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
 
         UUID folderGrant1 = UUID.randomUUID();
         UUID folderGrant2 = UUID.randomUUID();

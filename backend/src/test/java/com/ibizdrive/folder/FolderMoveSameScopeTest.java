@@ -17,7 +17,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -132,7 +132,7 @@ class FolderMoveSameScopeTest {
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
             "scope_type, scope_id, created_at, updated_at) " +

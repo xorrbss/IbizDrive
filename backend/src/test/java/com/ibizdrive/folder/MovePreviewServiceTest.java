@@ -22,7 +22,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,7 +76,7 @@ class MovePreviewServiceTest {
 
         UUID childInA = UUID.randomUUID();
         UUID grandchildInA = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub', 'sub', 'sub', ?, 'standard', 'department', ?, ?, ?)",
             childInA, rootA, actor, scopeA, now, now);
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'gc', 'gc', 'gc', ?, 'standard', 'department', ?, ?, ?)",
@@ -112,7 +112,7 @@ class MovePreviewServiceTest {
         UUID root = insertFakeRoot(actor, "department", scope);
         UUID parent = UUID.randomUUID();
         UUID child = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'p', 'p', 'p', ?, 'standard', 'department', ?, ?, ?)",
             parent, root, actor, scope, now, now);
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'c', 'c', 'c', ?, 'standard', 'department', ?, ?, ?)",
@@ -124,7 +124,7 @@ class MovePreviewServiceTest {
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, 'standard', ?, ?, ?, ?)",
             id, "root-" + id, "root-" + id, "root-" + id, ownerId, scopeType, scopeId, now, now

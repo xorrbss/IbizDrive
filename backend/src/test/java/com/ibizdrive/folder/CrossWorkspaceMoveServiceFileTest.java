@@ -21,7 +21,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.EnumSet;
 import java.util.UUID;
 
@@ -87,7 +87,7 @@ class CrossWorkspaceMoveServiceFileTest {
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) "
             + "VALUES (?, NULL, ?, ?, ?, ?, 'standard', ?, ?, ?, ?)",
@@ -98,7 +98,7 @@ class CrossWorkspaceMoveServiceFileTest {
 
     private UUID insertFile(UUID folderId, String name, UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) "
             + "VALUES (?, ?, ?, ?, ?, 0, 'text/plain', ?, ?, ?, ?, ?)",
@@ -123,7 +123,7 @@ class CrossWorkspaceMoveServiceFileTest {
         UUID rootB = insertFakeRoot(actor, "department", scopeB);
 
         UUID fileId = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO files(id, folder_id, name, normalized_name, owner_id, size_bytes, mime_type, storage_key, scope_type, scope_id, created_at, updated_at) "
             + "VALUES (?, ?, 'f18.txt', 'f18.txt', ?, 0, 'text/plain', ?, 'department', ?, ?, ?)",

@@ -12,7 +12,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.List;
 import java.util.UUID;
 
@@ -70,7 +70,7 @@ class ShareRepositorySubtreeTest {
         UUID otherShare = seedShare("folder", otherFolder, subject, actor, "edit", false);
 
         UUID revoker = seedUser("rev@t");
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         int revoked = shareRepo.revokeByIds(List.of(share1, share2), revoker, now);
         assertThat(revoked).isEqualTo(2);
 
@@ -91,7 +91,7 @@ class ShareRepositorySubtreeTest {
     private UUID seedShare(String resourceType, UUID resourceId, UUID subjectId, UUID sharedBy,
                            String preset, boolean revoked) {
         UUID permId = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, preset, granted_by, expires_at, created_at) "
             + "VALUES (?, ?, ?, 'user', ?, ?, ?, NULL, ?)",
@@ -104,7 +104,7 @@ class ShareRepositorySubtreeTest {
             jdbc.update(
                 "INSERT INTO shares(id, " + col + ", permission_id, shared_by, expires_at, revoked_at, revoked_by, created_at) "
               + "VALUES (?, ?, ?, ?, NULL, ?, ?, ?)",
-                shareId, resourceId, permId, sharedBy, Instant.now(), sharedBy, now);
+                shareId, resourceId, permId, sharedBy, new Timestamp(System.currentTimeMillis()), sharedBy, now);
         } else {
             jdbc.update(
                 "INSERT INTO shares(id, " + col + ", permission_id, shared_by, expires_at, revoked_at, revoked_by, created_at) "

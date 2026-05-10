@@ -20,7 +20,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.sql.Timestamp;
 import java.util.EnumSet;
 import java.util.UUID;
 
@@ -96,7 +96,7 @@ class CrossWorkspaceMoveServiceTest {
 
     private UUID insertFolder(UUID parentId, String name, UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         if (parentId == null) {
             jdbc.update(
                 "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) "
@@ -196,7 +196,7 @@ class CrossWorkspaceMoveServiceTest {
 
         UUID childInA = UUID.randomUUID();
         UUID grandchildInA = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub12', 'sub12', 'sub12', ?, 'standard', 'department', ?, ?, ?)",
             childInA, rootA, actor, scopeA, now, now);
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'gc12', 'gc12', 'gc12', ?, 'standard', 'department', ?, ?, ?)",
@@ -234,7 +234,7 @@ class CrossWorkspaceMoveServiceTest {
 
         UUID childInA = UUID.randomUUID();
         UUID grandchildInA = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub13', 'sub13', 'sub13', ?, 'standard', 'department', ?, ?, ?)",
             childInA, rootA, actor, scopeA, now, now);
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'gc13', 'gc13', 'gc13', ?, 'standard', 'department', ?, ?, ?)",
@@ -277,7 +277,7 @@ class CrossWorkspaceMoveServiceTest {
         UUID rootB = insertFakeRoot(actor, "department", scopeB);
 
         UUID childInA = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub14', 'sub14', 'sub14', ?, 'standard', 'department', ?, ?, ?)",
             childInA, rootA, actor, scopeA, now, now);
 
@@ -324,7 +324,7 @@ class CrossWorkspaceMoveServiceTest {
         UUID rootB = insertFakeRoot(actor, "department", scopeB);
 
         UUID childInA = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub15a', 'sub15a', 'sub15a', ?, 'standard', 'department', ?, ?, ?)",
             childInA, rootA, actor, scopeA, now, now);
 
@@ -354,7 +354,7 @@ class CrossWorkspaceMoveServiceTest {
 
         UUID childInA = UUID.randomUUID();
         UUID grandchildInA = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'sub15b', 'sub15b', 'sub15b', ?, 'standard', 'department', ?, ?, ?)",
             childInA, rootA, actor, scopeA, now, now);
         jdbc.update("INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, ?, 'gc15b', 'gc15b', 'gc15b', ?, 'standard', 'department', ?, ?, ?)",
@@ -395,7 +395,7 @@ class CrossWorkspaceMoveServiceTest {
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        Timestamp now = Timestamp.from(java.time.Instant.now());
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, scope_type, scope_id, created_at, updated_at) VALUES (?, NULL, ?, ?, ?, ?, 'standard', ?, ?, ?, ?)",
             id, "root-" + id, "root-" + id, "root-" + id, ownerId, scopeType, scopeId, now, now
