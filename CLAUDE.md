@@ -68,6 +68,7 @@ app/               Next.js App Router
 | 관리자 페이지 | `docs/04-admin-operations.md` §2~§10 (스켈레톤) |
 | 배치 작업 | `docs/04-admin-operations.md` §13 |
 | 사내 베타 운영 런북 (Wave 2 closure) | `docs/04-admin-operations.md` §15 |
+| 로컬 dev preview 셋업 (frontend·backend·DB·시드·트러블슈팅) | `docs/local-dev.md` |
 
 ### 큰 문서 접근 전략
 
