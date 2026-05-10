@@ -127,8 +127,8 @@ class CrossWorkspaceFileMoveE2ETest {
         // ── Team A ──────────────────────────────────────────────────────
         scopeA = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO teams(id, name, normalized_name, visibility, created_by) VALUES (?, ?, ?, 'internal', ?)",
-            scopeA, "Team Alpha", "teamalpha", actorId
+            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, lead_id) VALUES (?, ?, ?, 'internal', ?, ?)",
+            scopeA, "Team Alpha", "teamalpha", actorId, actorId
         );
 
         rootA = UUID.randomUUID();
@@ -145,8 +145,8 @@ class CrossWorkspaceFileMoveE2ETest {
         // ── Team B ──────────────────────────────────────────────────────
         scopeB = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO teams(id, name, normalized_name, visibility, created_by) VALUES (?, ?, ?, 'internal', ?)",
-            scopeB, "Team Beta", "teambeta", actorId
+            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, lead_id) VALUES (?, ?, ?, 'internal', ?, ?)",
+            scopeB, "Team Beta", "teambeta", actorId, actorId
         );
 
         rootB = UUID.randomUUID();

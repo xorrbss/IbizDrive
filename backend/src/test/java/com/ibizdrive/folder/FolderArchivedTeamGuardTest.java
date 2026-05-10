@@ -273,10 +273,10 @@ class FolderArchivedTeamGuardTest {
         // 본 테스트는 매번 random uuid suffix로 충돌 회피.
         String normName = "team-" + id.toString().substring(0, 8);
         jdbc.update(
-            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, "
+            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, lead_id, "
                 + "archived_at, archived_by, created_at, updated_at) "
-                + "VALUES (?, ?, ?, 'private', ?, ?, ?, ?, ?)",
-            id, normName, normName, createdBy,
+                + "VALUES (?, ?, ?, 'private', ?, ?, ?, ?, ?, ?)",
+            id, normName, normName, createdBy, createdBy,
             archived ? now : null,
             archived ? createdBy : null,
             now, now

@@ -137,9 +137,9 @@ class FolderRestoreArchivedTest {
     private UUID insertActiveTeam(String name, String normalizedName, UUID createdBy) {
         UUID id = UUID.randomUUID();
         jdbc.update(
-            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, created_at, updated_at) " +
-            "VALUES (?, ?, ?, 'private', ?, NOW(), NOW())",
-            id, name, normalizedName, createdBy);
+            "INSERT INTO teams(id, name, normalized_name, visibility, created_by, lead_id, created_at, updated_at) " +
+            "VALUES (?, ?, ?, 'private', ?, ?, NOW(), NOW())",
+            id, name, normalizedName, createdBy, createdBy);
         return id;
     }
 
