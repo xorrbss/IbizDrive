@@ -1493,6 +1493,100 @@ export const api = {
     return (await res.json()) as AdminDepartmentSummary
   },
 
+  // ── Admin teams (admin-teams, T8 design-refresh-admin Phase 4) ───────
+
+  /**
+   * `GET /api/admin/teams` — admin 팀 목록 (active + archived).
+   *
+   * <p>backend는 평탄한 {@code List<AdminTeamSummaryResponse>} 반환 — Spring Page 미사용
+   * (디자인의 좌측 list panel UX는 일괄 fetch + client-side 검색).
+   */
+  async adminListTeams(): Promise<AdminTeamSummary[]> {
+    const res = await fetch('/api/admin/teams', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminListTeams failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminTeamSummary[]
+  },
+
+  /**
+   * `GET /api/admin/teams/{id}` — admin 팀 단건 상세.
+   */
+  async adminGetTeam(id: string): Promise<AdminTeamDetail> {
+    const res = await fetch(`/api/admin/teams/${encodeURIComponent(id)}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminGetTeam failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminTeamDetail
+  },
+
+  /**
+   * `PATCH /api/admin/teams/{id}` — name/description/color/leadId 변경.
+   *
+   * <p>최소 1개 필드 필수 — 모두 비면 backend 400 VALIDATION_ERROR.
+   * <p>409 TEAM_CONFLICT — rename 시 normalized name 충돌.
+   * <p>400 — leadId가 멤버가 아니거나 color 형식 불일치.
+   */
+  async adminUpdateTeam(id: string, body: AdminTeamPatch): Promise<AdminTeamDetail> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/admin/teams/${encodeURIComponent(id)}`, {
+      method: 'PATCH',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify(body),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminUpdateTeam failed: ${res.status}`)
+    }
+    return (await res.json()) as AdminTeamDetail
+  },
+
+  /**
+   * `DELETE /api/admin/teams/{id}` — archive (soft).
+   *
+   * <p>응답 204 No Content.
+   */
+  async adminArchiveTeam(id: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/admin/teams/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminArchiveTeam failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * `POST /api/admin/teams/{id}/restore` — archive 복원.
+   *
+   * <p>응답 204 No Content. 409 TEAM_CONFLICT — 복원 시 같은 normalized name 활성 팀 존재.
+   */
+  async adminRestoreTeam(id: string): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/admin/teams/${encodeURIComponent(id)}/restore`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminRestoreTeam failed: ${res.status}`)
+    }
+  },
+
   /**
    * `PATCH /api/admin/departments/:id` — admin 부서 부분 수정 (admin-department-crud).
    *
@@ -1755,6 +1849,56 @@ export interface AdminUserPatchBody {
   role?: 'MEMBER' | 'AUDITOR' | 'ADMIN'
   isActive?: boolean
   displayName?: string
+}
+
+/**
+ * Admin team list 항목. backend `AdminTeamSummaryResponse` 1:1 mirror —
+ * admin-teams (T8 design-refresh-admin Phase 4).
+ */
+export interface AdminTeamSummary {
+  id: string
+  name: string
+  description: string | null
+  color: string
+  leadId: string
+  memberCount: number
+  archived: boolean
+  createdAt: string
+}
+
+/**
+ * Admin team detail 응답. backend `AdminTeamDetailResponse` 1:1 mirror.
+ *
+ * <p>`visibility`는 backend `Team.Visibility.dbValue()` lowercase ('private' | 'internal').
+ */
+export interface AdminTeamDetail {
+  id: string
+  name: string
+  description: string | null
+  color: string
+  leadId: string
+  visibility: 'private' | 'internal'
+  rootFolderId: string | null
+  memberCount: number
+  archived: boolean
+  archivedAt: string | null
+  archivedBy: string | null
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+/**
+ * Admin team PATCH body — backend `AdminTeamPatchRequest` 1:1 mirror.
+ *
+ * <p>모두 optional이지만 최소 하나는 채워야 한다 (backend 400). leadId는
+ * 현재 팀 멤버여야 한다 — 아니면 backend 400.
+ */
+export interface AdminTeamPatch {
+  name?: string
+  description?: string
+  color?: string
+  leadId?: string
 }
 
 /**
