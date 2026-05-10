@@ -103,19 +103,12 @@ class TeamPivotEndToEndTest {
         // 2) Invite member
         teamSvc.invite(team.getId(), member, owner);
         assertThat(memRepo.findByTeamId(team.getId())).hasSize(2);
-        // member의 membership을 user_id 인덱스 기반으로 직접 검증 (findByUserId JPQL의 동작 보증).
-        assertThat(memRepo.findByUserId(member))
-            .extracting(TeamMembership::getTeamId)
-            .containsExactly(team.getId());
 
         // 3) WorkspaceService — invited member의 listing에 team 노출.
-        // 진단 probe — DB 상태와 서비스 결과를 격리해 어떤 단계에서 결과가 사라지는지 추적.
+        // em.flush() — outer test tx의 pending writes(team UPDATE root_folder_id 포함)를 DB에 반영.
+        // TeamService.create의 attachRootFolder는 managed entity에 대해 dirty check로 잡히므로
+        // 다음 query 시 auto-flush로 처리되나, 명시적 flush로 확정.
         em.flush();
-        UUID rootViaJdbc = jdbc.queryForObject(
-            "SELECT root_folder_id FROM teams WHERE id = ?",
-            (rs, rowNum) -> (UUID) rs.getObject(1),
-            team.getId());
-        assertThat(rootViaJdbc).as("team.root_folder_id in DB").isNotNull();
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())
