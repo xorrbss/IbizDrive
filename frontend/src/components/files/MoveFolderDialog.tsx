@@ -15,6 +15,7 @@ import { qk } from '@/lib/queryKeys'
 import {
   ERR_DEST_WORKSPACE_DENIED,
   ERR_INVALID_DESTINATION,
+  messageForError,
 } from '@/lib/errors'
 import { MoveFolderTree } from './MoveFolderTree'
 import { MovePreviewImpact } from './MovePreviewImpact'
@@ -34,7 +35,7 @@ function decodeWsOption(value: string): { kind: 'department' | 'team'; id: strin
   return { kind, id }
 }
 
-/** 에러 code → 사용자 메시지 매핑 */
+/** 에러 code → 사용자 메시지 매핑 (Plan D codes + master TEAM_ARCHIVED 통합). */
 function mapMoveError(err: unknown): string {
   const code = (err as { code?: string })?.code
   if (code === ERR_DEST_WORKSPACE_DENIED) {
@@ -46,7 +47,8 @@ function mapMoveError(err: unknown): string {
   if (code === 'RENAME_CONFLICT') {
     return '이름 충돌: 대상 폴더에 같은 이름의 항목이 있습니다'
   }
-  return '이동에 실패했습니다. 다시 시도해 주세요.'
+  // master messageForError 위임 — TEAM_ARCHIVED 등 generic 매퍼.
+  return messageForError(err, '이동에 실패했습니다. 다시 시도해 주세요.')
 }
 
 export function MoveFolderDialog() {
@@ -71,7 +73,7 @@ export function MoveFolderDialog() {
   // ─── Hooks ──────────────────────────────────────────────────────────────────
   const moveBulk = useMoveBulk({
     onSuccess: (vars) => toast.success(`${vars.items.length}개 항목을 이동했습니다`),
-    onError: () => toast.error('이동에 실패했습니다. 다시 시도해 주세요.'),
+    onError: (err) => toast.error(mapMoveError(err)),
   })
 
   const folderPreview = useMoveFolderPreview()

@@ -3,6 +3,7 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useRestoreConflictUiStore } from '@/stores/restoreConflictUi'
 import { useRestoreItem } from '@/hooks/useRestoreItem'
+import { messageForError } from '@/lib/errors'
 import { suggestRestoreName } from '@/lib/restoreNameSuggest'
 
 /**
@@ -76,7 +77,7 @@ export function RestoreConflictDialog() {
           } else if (code === 'VALIDATION_ERROR') {
             setError(message ?? '이름 형식이 올바르지 않습니다')
           } else {
-            toast.error('복원에 실패했습니다')
+            toast.error(messageForError(err, '복원에 실패했습니다'))
             close()
           }
         },
