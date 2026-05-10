@@ -99,7 +99,11 @@ class TeamPivotEndToEndTest {
         teamSvc.invite(team.getId(), member, owner);
         assertThat(memRepo.findByTeamId(team.getId())).hasSize(2);
 
-        // 3) WorkspaceService — invited member의 listing에 team 노출
+        // 3) WorkspaceService — invited member의 listing에 team 노출.
+        // em.flush() — outer test tx의 pending writes(team UPDATE root_folder_id 포함)를 DB에 반영.
+        // TeamService.create의 attachRootFolder는 managed entity에 대해 dirty check로 잡히므로
+        // 다음 query 시 auto-flush로 처리되나, 명시적 flush로 확정.
+        em.flush();
         WorkspaceListing memberListing = wsSvc.findForUser(member);
         assertThat(memberListing.teams())
             .extracting(w -> w.id())
