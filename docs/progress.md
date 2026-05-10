@@ -5,6 +5,68 @@
 
 ---
 
+## 2026-05-10 세션 — 🎯 team-centric-pivot Plan F (Team Member Management)
+
+### 범위
+
+사내 시스템 일상 운영 gap 마무리: 팀 OWNER가 UI로 멤버 목록 조회 / 초대 / 역할 변경 / 제거.
+backend는 service에 이미 있는 메서드 1:1 wire (신규 도메인 zero). 18 task 자율 실행 (subagent-driven).
+
+### 변경 핵심 (commit 순서)
+
+**Phase 1 backend (T1~T6)**:
+- `76f44d8` / `c870503` T1 `TeamMemberResponse` + `TeamMemberRoleUpdateRequest` DTO + `@BeforeAll/@AfterAll` ValidatorFactory 정합화
+- `dbed262` T2 `TeamMembershipRepository.findMembersWithUser` (JPQL constructor projection — entity 매핑 추가 없이 read-only JOIN)
+- `438a812` / `addeae2` T3 `TeamService.listMembers` + 클린 imports
+- `d266dbd` T4 `TeamAuthz.isMember`
+- `b451c24` / `d65d5d9` T5 `TeamController GET /members` + 테스트 imports 정합화
+- `349765f` / `aa38025` T6 `TeamController PATCH /members/{userId}` + static-import doThrow
+
+**Phase 2 frontend foundation (T7~T9)**:
+- `64f394d` T7 `qk.teams.detail/members` + `invalidations.afterTeamMembersChanged` + `TeamMember`/`TeamMemberRole` types
+- `1b87f74` T8 `api.{getTeamMembers, inviteTeamMember, removeTeamMember, changeTeamMemberRole}` + 5 fetch-mock tests
+- `d3164d5` T9 `useTeamMembers` (read)
+
+**Phase 3 frontend mutations (T10~T12)**:
+- `b5baece` T10 `useInviteTeamMember`
+- `27ed064` T11 `useRemoveTeamMember` (+ 400 TEAM_OWNER_REQUIRED skip-invalidate test)
+- `76a8479` T12 `useChangeTeamMemberRole`
+
+**Phase 4 frontend UI (T13~T17)**:
+- `ab61c32` / `07dcfcc` T13 `TeamMemberTable` (3 col + actions, scope=col a11y)
+- `0b47e2d` T14 `InviteMemberDialog` (UserSearchCombobox 재사용)
+- `f347f90` T15 `ChangeRoleDialog` + `RemoveMemberDialog` + `errors.ts` 신규 (TEAM_OWNER_REQUIRED 등 28 상수)
+- `0f4e0c8` T16 `/t/{teamId}/settings/members` 라우트 + `ClientMembersPage`
+- `c1e61f7` T17 `WorkspaceSection` 설정 link (hover-revealed, team-only)
+
+**Phase 5 closure (T18)**: 본 commit (docs/02 §7.16 + progress.md + PR)
+
+### 검증
+
+- backend: T1~T6 신규 테스트 13건 + 기존 회귀 zero (`./gradlew test --tests "com.ibizdrive.team.*"`)
+- frontend: 1079 테스트 ALL PASS, typecheck exit 0
+- 수동 확인 deferred — co-session 충돌 우려로 dev server 미기동, 머지 후 검증
+
+### YAGNI 명시 제외 (사용자 요청: "꼭 필요한 기능만, 사내라 디테일 과잉 금지")
+
+- 팀 archive/restore UI — 사내 빈도 매우 낮음
+- 일괄 invite (CSV) — 한 번 클릭으로 충분
+- 멤버 검색/필터링 — 30명 미만 팀 가정
+- 멤버 활동 로그 페이지 — admin audit 페이지로 충분
+- archive 가드 — 데이터 플레인은 team-archive-write-enforcement 트랙
+
+### 다른 트랙과의 관계
+
+- Plan C (PR #140 share team subject) / Plan D (PR #138 cross-workspace move) / Plan E (trash split, 미시작) / team-archive-write-enforcement: **파일 영역 disjoint** — 머지 순서 무관.
+- `errors.ts` was untracked in main repo; Plan F included it because dialogs need `TEAM_OWNER_REQUIRED`. Plan C will likely have minor merge with this file (different lines, no overlap).
+
+### 다음 세션 컨텍스트
+
+- 머지 후 dev server 수동 검증 (settings/members 진입 → invite → role 변경 → remove → last-OWNER 강등 차단)
+- Plan C 충돌 해결 진행
+
+---
+
 ## 2026-05-10 — 🎯 team-centric-pivot Plan E 완료 (휴지통 workspace 분리)
 
 ### 범위

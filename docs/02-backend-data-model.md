@@ -2389,6 +2389,59 @@ GET /api/departments/search?q=eng&limit=20
 
 ---
 
+### 7.16 팀 (Teams, team-centric-pivot Plan A/A2/F)
+
+팀 워크스페이스 생성·멤버 관리·역할 변경. spec `2026-05-09-team-centric-pivot-design.md` §1, §2, §5.
+
+| Method | Path | Guard | TX | Errors |
+|---|---|---|---|---|
+| POST | `/api/teams` | `isAuthenticated()` | tx | 400 VALIDATION_ERROR, 401 UNAUTHORIZED |
+| POST | `/api/teams/{teamId}/members` | `@teamAuthz.isOwner` | tx | 401, 403, 404 NOT_FOUND |
+| DELETE | `/api/teams/{teamId}/members/{userId}` | `@teamAuthz.isOwnerOrSelf` | tx | 400 TEAM_OWNER_REQUIRED, 401, 403 |
+| GET | `/api/teams/{teamId}/members` | `@teamAuthz.isMember` | ro | 401, 403 |
+| PATCH | `/api/teams/{teamId}/members/{userId}` | `@teamAuthz.isOwner` | tx | 400 TEAM_OWNER_REQUIRED, 401, 403, 404 |
+
+```text
+POST /api/teams
+  Body: { name, description?, visibility? = PRIVATE }
+  Response: 201 TeamResponse { id, name, description?, visibility, rootFolderId, createdAt, archivedAt? }
+  Notes:
+    - Team + 초기 OWNER membership + root folder를 단일 트랜잭션으로 생성 (Plan A T16).
+
+POST /api/teams/{teamId}/members
+  Body: { userId }
+  Response: 201 (idempotent — 이미 멤버면 201로 no-op)
+  Errors:
+    403 PERMISSION_DENIED — actor가 OWNER 아님
+
+DELETE /api/teams/{teamId}/members/{userId}
+  Response: 204
+  Errors:
+    400 TEAM_OWNER_REQUIRED — 마지막 OWNER 제거 시도 (Plan A2 T4)
+    403 PERMISSION_DENIED — OWNER도 아니고 self도 아님
+
+GET /api/teams/{teamId}/members  (Plan F T5)
+  Response: 200 [
+    { userId, displayName, email, role: OWNER|MEMBER, joinedAt }
+  ]
+  Notes:
+    - JPQL constructor projection — TeamMembership × User 조인. ORDER BY joinedAt ASC.
+    - 멤버만 조회 가능. archived team도 조회 가능 (read-only).
+
+PATCH /api/teams/{teamId}/members/{userId}  (Plan F T6)
+  Body: { role: OWNER|MEMBER }
+  Response: 204
+  Errors:
+    400 TEAM_OWNER_REQUIRED — last OWNER → MEMBER 강등 시도 (Plan A2 T3)
+    404 NOT_FOUND — membership 없음
+  Notes:
+    - 같은 role 호출은 idempotent no-op (event 미발행).
+```
+
+**근거**: spec `2026-05-09-team-centric-pivot-design.md` §1.5, §2.2, §5.
+
+---
+
 ## 8. 에러 코드 표준
 
 | HTTP | code | 의미 | 프론트 처리 |
