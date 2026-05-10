@@ -5,6 +5,67 @@
 
 ---
 
+## 2026-05-10 — 🎯 team-centric-pivot Plan E 완료 (휴지통 workspace 분리)
+
+### 범위
+6 phase / 15 task. 휴지통을 workspace 단위(부서/팀)로 분리. backend listing endpoint scope 필수화 + restore 진입에 archive guard + cross-scope mismatch. frontend는 `/trash` redirect → `/trash/d/:deptSlug` `/trash/t/:teamSlug` 라우트 + `TrashWorkspaceTabs` 가로 탭.
+
+### 변경 핵심 (commit 별 1줄)
+
+**Phase 1 — Backend listing scope filter:**
+- `c08556c` T1 findTrashedPageByScope native query (Folder/File repo, scope_type/scope_id 필터)
+- `779b16e` T2 GET /api/trash scopeType/scopeId 필수 + WorkspaceMembershipResolver 가드 (ADMIN bypass) + dbValue() lowercase wire 회귀 가드
+
+**Phase 2 — Backend restore guards:**
+- `26080d8` T3 RestoreConflictException Reason enum (NAME_CONFLICT/SCOPE_MISMATCH) + GlobalExceptionHandler body.reason 노출
+- `637c3dd` (cherry-pick from team-archive-write-enforcement T1+T2) TeamArchivedException + TeamArchiveGuard helper
+- `e7fb4d9` T4 FolderMutationService.restore archive guard + cross-scope mismatch + AdminTrashService Folder catch 분기
+- `d989eba` T5 FileMutationService.restore archive guard + cross-scope mismatch + AdminTrashService File catch 분기 + TeamArchivedException 통합 catch
+
+**Phase 3 — Frontend queryKey + 훅:**
+- `82de0af` T6 qk.trashList(scopeType, scopeId) 시그니처 (qk.trash() prefix 그대로 → invalidations 영향 0)
+- `a8fac02` T7 useTrashList + api.getTrash scope 시그니처 + ClientTrashPage 임시 placeholder (TODO BLOCKED)
+
+**Phase 4 — Frontend 라우트:**
+- `d2908fa` T8 ClientWorkspaceTrashPage shared component
+- `4cd6942` T9 /trash/d/[deptSlug] route
+- `5a7cfab` T10 /trash/t/[teamSlug] route
+- `2a9ddfd` T11 /trash redirect handler + EmptyWorkspacesState (ClientTrashPage 삭제, TODO BLOCKED 해소)
+
+**Phase 5 — Frontend UX:**
+- `7ddf20a` T12 TrashWorkspaceTabs 가로 탭 (archived dim+🔒)
+- `9560d34` T13 TrashRowActions disabled prop + RestoreConflictDialog reason 분기 + buildApiError details 노출
+
+**Phase 6 — Docs sync:**
+- `0713936` T14 docs/01 §13/§6.1, docs/02 §6.5/§7.5/§7.6/§7.11/§8, docs/03 §3.5, CLAUDE.md §2, plan-e design §5.1 정밀화
+
+### 검증
+- backend: ./gradlew :backend:test BUILD SUCCESSFUL (Testcontainers 통합 테스트는 Docker 미가용 시 SKIP, Plan A 패턴)
+- frontend: pnpm typecheck && pnpm lint GREEN, 1111 tests PASS / 149 files
+- AdminTrashService bulk restore catch chain 통합: Folder/File RESTORE_CONFLICT (NAME_CONFLICT/SCOPE_MISMATCH switch) + TeamArchivedException → TEAM_ARCHIVED 별개 wire code
+
+### 핵심 결정
+- queryKey: `qk.trash()` prefix 유지 (invalidations 영향 0), `qk.trashList(scopeType, scopeId)`만 변경
+- 권한: Plan A `WorkspaceMembershipResolver` membership step 자동 평가 (TEAM MEMBER+ DELETE 묵시) + listing 진입 시 workspace 멤버십 fast-fail 가드 (ADMIN bypass) + ADR #32 row-level DELETE 후처리 그대로
+- 신규 에러 코드 0 — RESTORE_CONFLICT body.reason ('name_conflict' / 'scope_mismatch') 분기 추가만, errors.ts 무변경
+- TeamArchiveGuard cherry-pick 18935d2 활용 (다른 worktree team-archive-write-enforcement T1+T2)
+- AdminTrashController 이미 분리 — admin 글로벌 trash 처리 작업 0
+- MVP slug = workspace UUID (Plan B 정합)
+
+### 미통합 / 후속
+- T7 reviewer I1 (TrashTable scope props → usePermission 전달 X) — 별도 트랙 권장 (usePermission 변경은 spec architecture 영역)
+- team-archive-write-enforcement T1+T2 cherry-pick 활용 시 머지 시점에 정합화 필요 (해당 트랙이 본 worktree 이전에 머지되면 자동 통합, 후이면 conflict 또는 follow-up commit으로 cleanup)
+- 휴지통 30일 retention 정책 변경 UI는 별도 트랙 (#108 + #114 페어)
+
+### 다음 세션 컨텍스트
+- Plan C #140 / Plan D #138 머지 후 본 plan과의 통합 검증 (cross-workspace mismatch 시나리오 실제 발생 가능)
+- spec §4.2 useTrash 훅 처리 open question — T7에서 useTrashList로 명명 결정 (별도 closure 노트 불필요, 본 entry로 명시)
+
+### 블로커
+- 없음
+
+---
+
 ## 2026-05-09 세션 — Plan B (Frontend Foundation)
 
 ### 완료

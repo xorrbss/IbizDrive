@@ -307,9 +307,13 @@ Plan A 패턴 따라 Testcontainers 미가용 시 SKIP 처리.
 본 design 단계에선 미확정, 구현(plan) 단계에서 결정:
 
 1. **TeamArchiveGuard helper 사용 vs inline**: 머지 시점 의존. 결정 deadline = restore endpoint 변경 task 진입 시점.
+   - **Resolved (T4/T5)**: cherry-pick `637c3dd`으로 TeamArchiveGuard helper 도입, FolderMutationService/FileMutationService 모두 helper 호출 패턴 채택.
 2. **admin global trash와 endpoint 분리**: 구현 시 grep 결과로 결정. 분리 필요하면 작은 sub-task 추가.
+   - **Resolved (T2)**: AdminTrashController 이미 분리되어 있어 작업 0. TrashController/TrashQueryService만 수정.
 3. **`useTrash` 기존 훅 처리**: rename + reuse vs delete + replace. 호출부 grep 후 결정.
+   - **Resolved (T7)**: `useTrashList`로 rename + scope 파라미터 확장 패턴 채택. `src/hooks/useTrashList.ts`에 통합. 기존 호출부 전체 migration 완료.
 4. **redirect handler의 default workspace 선택 알고리즘**: 부서 → 첫 팀 순. `workspaces.me` 응답이 정렬 보장하는지 확인 필요. 미보장 시 frontend에서 정렬 (createdAt 오름차순 등).
+   - **Resolved (T11)**: 부서 우선 → 없으면 첫 팀으로 client-side 정렬 (workspacePath builder 활용). `workspaces.me` 정렬 미보장이므로 frontend filter 채택.
 
 ---
 
