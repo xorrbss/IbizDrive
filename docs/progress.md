@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-05-10 — Plan D PR #138 CI 안정화 (rounds 3~7)
+
+### 범위
+Plan D PR #138의 CI 실패 14건을 5 라운드에 걸쳐 해소. Plan D 고유 실패 0건 달성.
+
+### 해결한 카테고리
+1. **테스트 fixture 스키마 정합** (round 3): files INSERT의 `storage_key` 컬럼 (file_versions에만 존재) 제거 5곳, `idx_permissions_unique` 회피용 subject 분리, `shares.folder_id` FK용 `seedFolder` 헬퍼 도입, FileMutationServiceTest move tests의 same-scope guard 호환 (sibling fixture).
+2. **Production 버그 — entity scope revert** (round 3): `CrossWorkspaceMoveService.moveFile/moveFolder`의 step 3 native @Modifying `updateScopeBatch` 후 stale entity로 `saveAndFlush` → JPA dirty-check가 stale scope를 DB에 되돌림. `assignScope(dest)` 동기화로 해결.
+3. **Production 버그 — moveFolder root constraint** (round 5): step 3 batch update 시 source가 아직 root(parent_id NULL)인 채 dest scope로 변경 → V14 `idx_folders_root_per_scope` 위반. parent_id 변경을 step 3 전으로 이동.
+4. **E2E loginAs CSRF** (round 4): `loginAs`가 `X-CSRF-Token` 헤더를 빠뜨려 POST 요청이 403. `csrf.getFirst("X-CSRF-Token")` 추가.
+5. **E2E ScopeRef wire key** (round 5b): 테스트가 `scope.scopeId`로 query했으나 DTO record는 `{type, id}` (spec §5.3 wire format) → `scope.id`로 변경.
+6. **Mockito @Primary 빈 + @BeforeEach reset** (rounds 6~7): `@DataJpaTest` 컨텍스트는 `ApplicationContext`도 `ApplicationEventPublisher` 구현체로 등록 → `@Bean` mock과 모호성. `@Primary` 부여 + 테스트 간 invocation 누적 회피용 reset.
+
+### PR 상태
+- mergeable: MERGEABLE
+- mergeStateStatus: UNSTABLE — Plan D 영역 외 master 회귀 2건만 잔존
+  - `FolderMutationServiceTest.move_toRoot_setsParentNull`
+  - `TeamPivotEndToEndTest.teamCreate_invite_childFolder_membershipPermissions_workEndToEnd`
+- 동일 회귀가 PR #141, #143, #144에도 영향 — PR #142 `fix/master-backend-regressions`(다른 세션) 머지 시 본 PR rebase로 자연 해소.
+
+### 다음 세션 컨텍스트
+- PR #138 머지는 사용자 승인 + master CI green 대기.
+- PR #142 머지 후 본 PR rebase → CI green → merge.
+
+---
+
 ## 2026-05-09 — 🎯 team-centric-pivot Plan D 완료 (cross-workspace move backend)
 
 ### 범위
