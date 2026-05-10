@@ -397,9 +397,14 @@
 
 ## 3. 권한 모델 (단일 진실 출처)
 
+> 본 §3은 backend 코드(`com.ibizdrive.permission.*`, `com.ibizdrive.folder.CrossWorkspaceMoveService`)
+> 를 단일 진실 출처로 한다. 모든 표/순서/권한 집합은 코드 라인 reference 와 1:1 대응한다 — 코드가 바뀌면
+> 본 §3 도 같이 갱신.
+
 ### 3.1 권한 enum (Permission)
 
-> ADR #17: 백엔드 권위. 프론트 `src/types/permission.ts`는 1:1 미러 (UX용 게이트만, 보안 아님).
+> ADR #17: 백엔드 권위. 프론트 `src/types/permission.ts`는 1:1 미러 (UX용 게이트만, 보안 아님 — CLAUDE.md §3 원칙 10).
+> 코드: `backend/src/main/java/com/ibizdrive/permission/Permission.java:21-49` (9 값, wire = `name()` UPPER_SNAKE_CASE).
 
 | 권한 | 의미 | 체크 지점 (대표 endpoint) |
 |---|---|---|
@@ -409,97 +414,272 @@
 | `MOVE` | 자기 자신을 이동 | POST `/api/folders/:id/move`, POST `/api/files/:id/move` |
 | `DOWNLOAD` | 다운로드 | GET `/api/files/:id/download` |
 | `DELETE` | 휴지통으로 이동 (soft delete) + 복원 | DELETE `/api/folders/:id`, POST `/api/folders/:id/restore`, 동일한 file/trash endpoint |
-| `SHARE` | 내부 공유 (subject = user/department/role/everyone, ADR #34) | POST `/api/files/:id/share`, POST `/api/folders/:id/share` (A12) |
+| `SHARE` | 내부 공유 (subject = user/department/everyone, ADR #34) | POST `/api/files/:id/share`, POST `/api/folders/:id/share` (A12) |
 | `PERMISSION_ADMIN` | 권한 부여/회수 | POST/DELETE `/api/:resource/:id/permissions` |
-| **`PURGE`** | **영구 삭제 (소프트 → 완전 제거)** | **DELETE `/api/trash/:id`, DELETE `/api/trash`** |
+| **`PURGE`** | **영구 삭제 (소프트 → 완전 제거)** | **DELETE `/api/trash/:type/:id`** |
 | **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* | **Legal Hold 지정/해제** | **POST/DELETE `/api/admin/legal-holds/...`** *(v2.x deferred)* |
 | **`APPROVE_ADMIN_ACTION`** *(v1.x — ADR #47)* | **Pending admin approval secondary 결정** | **POST `/api/admin/approvals/:id/approve`, POST `/api/admin/approvals/:id/reject`** *(v1.x deferred)* |
 
-> `PURGE`는 회복 불가 액션이므로 별도 권한으로 분리. **시스템 ROLE `ADMIN`만 보유** (§3.2.5 참조). `DELETE` 권한이 있어도 `PURGE`는 자동 부여되지 않음.
+> `PURGE`는 회복 불가 액션이므로 별도 권한으로 분리. **시스템 ROLE `ADMIN`만 보유** (§3.2.5 참조). `DELETE` 권한이 있어도 `PURGE`는 자동 부여되지 않음. 코드 검증: `Permission.java:18-19` (Javadoc) + `Preset.java:51` (`ADMIN = complementOf(PURGE)`).
 >
 > `MANAGE_LEGAL_HOLD`는 **시스템 ROLE `ADMIN`만 보유** (PURGE 일관). active hold **조회**는 `AUDITOR`도 가능(read-only). dual-approval 게이트(§6.4 framework, ADR #46/#47) 활성 환경에서는 release 시 secondary admin 별도 승인 필요.
 >
 > `APPROVE_ADMIN_ACTION`은 **시스템 ROLE `ADMIN`만 보유**. self-approval 차단(§6.4.4): secondary ≠ requested_by, role_change 시 secondary ≠ payload.userId. 자기 요청의 list/cancel은 권한 없이 가능, secondary 결정만 본 enum 보유자.
 
-### 3.2 Preset × 권한 매트릭스
+### 3.2 Preset × Permission 매트릭스
+
+> 코드: `backend/src/main/java/com/ibizdrive/permission/Preset.java:26-51` (5 preset, wire = lower-case).
+> `Preset.permissions()` 가 본 표의 단일 진실 — `EnumSet` 기반 불변 집합.
 
 | Preset | READ | UPLOAD | EDIT | MOVE | DOWNLOAD | DELETE | SHARE | PERMISSION_ADMIN | PURGE |
 |---|---|---|---|---|---|---|---|---|---|
-| **read** | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
+| **read**   | ✅ | ❌ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
 | **upload** | ✅ | ✅ | ❌ | ❌ | ✅ | ❌ | ❌ | ❌ | ❌ |
-| **edit** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (자기 것) | ❌ | ❌ | ❌ |
-| **share** | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (자기 것) | ✅ | ❌ | ❌ |
-| **admin** *(노드 admin)* | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (전체) | ✅ | ✅ | ❌ |
-| **system_admin** *(role)* | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (전체) | ✅ | ✅ | ✅ |
+| **edit**   | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ | ❌ |
+| **share**  | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ | ❌ |
+| **admin** *(노드 admin)* | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ❌ |
 
-> `PURGE`는 **노드 admin preset에도 부여하지 않음** — 시스템 전역 ROLE `ADMIN`만 가능. 이중 안전장치: 노드 단위 권한 위임이 영구 삭제로 번지지 않도록.
+> `Preset.MOVE` 컬럼은 enum 보유 여부만 — `DELETE (자기 것)` 등 세부 조건은 service-layer 분기 (`Preset.java:23-24` Javadoc).
+> 본 매트릭스는 V5 CHECK 제약(`PermissionRow` Javadoc, ADR #28 line 22)에서 `share` preset 을 제외한 4종(`read|upload|edit|admin`)만 grant row 로 영속된다 — `PermissionResolver` 가 `Preset.from(row.getPreset())` 시 IllegalArgumentException 을 fail-fast 로 전파(`PermissionResolver.java:96-99`).
+>
+> `PURGE`는 **노드 admin preset에도 부여하지 않음** (`Preset.java:51` `complementOf(PURGE)`) — 시스템 전역 ROLE `ADMIN`만 가능. 이중 안전장치: 노드 단위 권한 위임이 영구 삭제로 번지지 않도록.
 
 #### 3.2.5 시스템 ROLE
 
-| ROLE | 보유 권한 |
+코드: `backend/src/main/java/com/ibizdrive/user/Role.java` (`MEMBER` / `AUDITOR` / `ADMIN`), 평가 헬퍼는 `PermissionService.effectivePermissions(Role)` (`IbizDrivePermissionEvaluator.java:80` 호출).
+
+| ROLE | 보유 권한 (resource 무관, role-only 평가) |
 |---|---|
-| `MEMBER` | 노드별 preset만 적용 (별도 가산 없음) |
+| `MEMBER` | 노드별 preset/멤버십만 적용 (별도 가산 없음) |
 | `AUDITOR` | 모든 노드에 `READ` (감사 페이지 한정 — `/api/admin/*` 일부) + audit_log 조회 |
-| `ADMIN` | 전 노드 admin preset + **`PURGE`** + 사용자 관리 (`PATCH /api/admin/users/:id`) + **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* + **`APPROVE_ADMIN_ACTION`** *(v1.x — ADR #47)* |
+| `ADMIN` | 전 노드 9-permission 전체 (PURGE 포함) + 사용자 관리 (`PATCH /api/admin/users/:id`) + **`MANAGE_LEGAL_HOLD`** *(v2.x — ADR #46)* + **`APPROVE_ADMIN_ACTION`** *(v1.x — ADR #47)* |
 
-### 3.3 Subject 유형
+### 3.3 Subject 유형 + Workspace 멤버십 묵시 권한
 
-- `user`: 개인 (`users.id`)
-- `department`: 부서 (`departments.id`). A16(ADR #37)에서 도메인 도입 — V7 마이그레이션 + `users.department_id` FK. **MVP 매칭은 flat** (LTREE 후손 자동 포함 미사용, v1.x deferred).
-- `role`: 시스템 역할 (`MEMBER` / `AUDITOR` / `ADMIN`) — §3.2.5
-- `everyone`: 전사
+#### 3.3.1 Subject 유형 (명시적 grant)
 
-### 3.4 권한 상속 & 평가
+`permissions.subject_type` 컬럼이 매핑 대상을 식별. 코드: `PermissionRepository.findEffective` (`PermissionRepository.java:88-101`) 의 OR 분기.
 
-- 폴더 → 자식 폴더/파일로 상속 (default)
-- 자식에 명시적 권한 정의 시 → override
-- 계산 로직: 재귀 CTE로 root까지 순회, **deny 우선** (deny가 한 번이라도 나오면 최종 deny) — *(v1 deferred — preset 단일 컬럼만 도입, 명시 deny semantics는 v1.x 이월. ADR #28 참조. v1 evaluator는 explicit grant lookup = "grant 우선"으로 동작.)*
-- `PermissionService.check(userId, resource, resourceId, permission)`이 단일 진입점.
-- **Subject 매칭 (PermissionRepository.findEffective, A16 ADR #37 dept 분기 추가)**: 단일 SQL이 아래 OR 분기로 effective grant 집합을 반환:
-  - `subject_type='user'   AND subject_id=:userId`
-  - `subject_type='everyone' AND subject_id IS NULL`
-  - `subject_type='role'   AND subject_id::text = :role` (role-grant)
-  - `subject_type='department' AND subject_id = (SELECT department_id FROM users WHERE id=:userId AND is_active)` *(A16 추가)*
-  - `users.department_id` NULL → dept 매칭 unmatched(false). 비활성(`is_active=FALSE`) → 동일.
-  - dept 후손 자동 포함은 v1.x deferred (LTREE descendant join).
+- `user`: 개인 (`users.id`).
+- `department`: 부서 (`departments.id`). A16(ADR #37) 도메인 도입 — V7 마이그레이션 + `users.department_id` FK. **MVP 매칭은 flat** — `users.department_id` 직속 매칭만 (LTREE 후손 자동 포함 v1.x 이월).
+- `everyone`: 전사 (`subject_id IS NULL`).
+- ~~`role`~~: 시스템 역할 grant 는 v1.x 이월 (`PermissionRepository.java:30` Javadoc — schema impedance, role 변경 시 grant 무효화 위험으로 ADR #36).
 
-### 3.5 권한 매트릭스 (엔드포인트 × 권한)
+#### 3.3.2 Workspace 멤버십 묵시 권한 (Plan A — team-centric pivot)
 
-각 endpoint의 권한 요구는 **`docs/02-backend-data-model.md §7.4~§7.14` Guard 컬럼**에 명시 (단일 진실 출처). 본 문서는 권한 enum과 preset 정의만 담당, endpoint 매핑은 02 문서 참조.
+스펙 `docs/superpowers/specs/2026-05-09-team-centric-pivot-design.md §3.2`:
+**멤버십 자체가 묵시적 권한** — `permissions` row 를 만들지 않고 `team_memberships` / `users.department_id` 만으로 결정.
+코드: `backend/src/main/java/com/ibizdrive/permission/WorkspaceMembershipResolver.java:52-70`.
 
-> **사용자 검색 (`/api/users/search`, ADR #35)**: `isAuthenticated()` 공개 — 사용자 명단 자체가 trust boundary 내부 정보(ADR #18 admin-invitation only 등록). share subject picker가 ADMIN 외 EDIT 보유자에게도 노출되어야 하므로 ROLE 가드 부적절.
+| Workspace 관계 | 묵시 권한 | 코드 라인 |
+|---|---|---|
+| Department 멤버 (`user.department_id == folder.scope_id`, scope_type=`DEPARTMENT`) | `READ` + `UPLOAD` | `WorkspaceMembershipResolver.java:54-57` |
+| Team `MEMBER` (`team_memberships(team_id, user_id, role='MEMBER')` 존재) | `READ` + `UPLOAD` + `EDIT` | `WorkspaceMembershipResolver.java:68` |
+| Team `OWNER` (`role='OWNER'`) | `READ` + `UPLOAD` + `EDIT` + `DELETE` + `SHARE` | `WorkspaceMembershipResolver.java:66-67` |
+| 비멤버 | (empty) — explicit/share grants 만으로 결정 | `WorkspaceMembershipResolver.java:60` |
+
+> 차이가 시사하는 것:
+> - DEPT 멤버는 자기 부서 콘텐츠를 볼·올릴 수 있지만 **rename/move/delete/share 는 explicit grant 필요** (조직 자료의 무단 변경 차단).
+> - TEAM MEMBER 는 EDIT 까지 묵시 — team 은 협업 단위라 일상 편집이 default.
+> - TEAM OWNER 만 DELETE+SHARE 묵시 — team 외부 노출과 휴지통 이동은 owner 책임.
 >
-> **부서 검색 (`/api/departments/search`, ADR #37)**: 동일 정책 — `isAuthenticated()` 공개. 부서 명단도 trust boundary 내부 정보. A14와 동형.
->
-> **휴지통 (workspace 분리, Plan E 2026-05-10)** — spec `2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` §5.1, docs/02 §7.11:
-> - `GET /api/trash?scopeType&scopeId`: `isAuthenticated()` + workspace 멤버십 fast-fail 가드 (Plan A `WorkspaceMembershipResolver` membership step 이 `PermissionResolver` 내부에서 자동 평가 — TEAM MEMBER+ → DELETE 묵시 권한, DEPT 멤버는 explicit grant 만). 비멤버 `403 PERMISSION_DENIED`, ADMIN bypass. row 별 DELETE 후처리는 ADR #32 그대로 유지.
-> - `POST /api/{files,folders}/:id/restore`: 기존 PermissionResolver + workspace 멤버십 묵시 권한. 추가로 archive guard (`423 TEAM_ARCHIVED`, Plan E T4/T5 — TeamArchiveGuard.assertNotArchived) + cross-workspace 원위치 mismatch (`409 RESTORE_CONFLICT` `reason='scope_mismatch'`).
-> - `DELETE /api/trash/:type/:id`: ADR #32 ADMIN only — Plan E 변경 없음.
+> `MANAGE_LEGAL_HOLD` / `PERMISSION_ADMIN` / `PURGE` 는 어떤 멤버십에도 묵시되지 않음 — 시스템 ROLE `ADMIN` 전속.
 
-`@PreAuthorize` 표현식 패턴:
+### 3.4 평가 알고리즘 (Resolver / Evaluator short-circuit)
+
+전체 흐름은 두 클래스가 분담:
+- **`IbizDrivePermissionEvaluator`** (`backend/src/main/java/com/ibizdrive/permission/IbizDrivePermissionEvaluator.java`) — Spring Security `PermissionEvaluator` 구현. `@PreAuthorize("hasPermission(#id, 'folder', 'READ')")` SpEL 의 backing logic. ROLE 1차 + resource-level 2차.
+- **`PermissionResolver`** (`backend/src/main/java/com/ibizdrive/permission/PermissionResolver.java`) — resource-level 만 담당. explicit/share 1차 + workspace membership 2차.
+
+#### 3.4.1 Evaluator 평가 순서 (`hasPermission` 3-인자형)
+
+`IbizDrivePermissionEvaluator.java:58-100`:
+
+1. **인증 게이트** — `authentication == null` 또는 principal 이 `IbizDriveUserDetails` 가 아니면 즉시 `false` (line 61-67).
+2. **권한 문자열 파싱** — `Permission.from(permission)` 실패 시 SpEL 코드 버그 → `false` (line 69-75). DenyContext 미기록 (스팸 방지).
+3. **ROLE 경로** (A3 보존) — `permissionService.effectivePermissions(role).contains(required)` true 시 즉시 `true` (line 79-82). `ADMIN` → 9 권한 전체, `AUDITOR` → `READ` 전체. **`PURGE` 는 본 경로에서만 grant 가능** (Preset 미포함이므로 resource-level 에서는 절대 부여 안됨).
+4. **Resource-level 경로** — `targetType ∈ {folder, file}` + `targetId` UUID 파싱 가능 시 `PermissionResolver.isGranted` 위임 (line 85-95). 그 외(non-resource SpEL 호출) → 다음 단계.
+5. **최종 deny** — `PermissionDenyContext.record(required, role, rolePerms)` 후 `false` (line 98-99). ThreadLocal 에 기록된 envelope 을 `GlobalExceptionHandler` 가 `403 PERMISSION_DENIED` 본문(`details.required` / `details.have`) 구성에 사용 — §3.8.
+
+#### 3.4.2 Resolver 평가 순서 (`isGranted`)
+
+`PermissionResolver.java:103-115`:
+
+1. **Explicit / share grants** — `PermissionRepository.findEffective(userId, resourceType, resourceId)` 가 반환한 grant 행 union. Preset 평면화로 `required` 포함하면 즉시 `true` short-circuit (`PermissionResolver.java:117-133`).
+2. **Workspace membership grants** — folder/file 의 `(scope_type, scope_id)` 조회 후 `WorkspaceMembershipResolver.resolve` 의 묵시 권한이 `required` 포함하면 `true` (`PermissionResolver.java:135-142`).
+3. **둘 다 deny** → `false`.
+
+> **순서 vs 의미**: 스펙 §3.1 평가 순서는 `ROLE → membership → explicit → shares → deny`. 코드 결과는 set-union(`mem ∪ explicit ∪ shares`)이므로 의미는 동일하나 **비용 최적화로 explicit 을 먼저** 평가한다 — share/explicit 가 흔한 cross-workspace read 경로에서 CTE 1회로 short-circuit, membership 의 추가 scope 조회를 피한다.
+>
+> **A3 vs A4 호환**: SpEL 시그니처(`hasPermission(#id, 'folder', 'EDIT')`)는 ADR #26 으로 고정. A4(`PermissionResolver` 도입) 에서 evaluator 내부만 교체 — 호출처 controller 무영향.
+
+#### 3.4.3 명시적 grant 의 effective 정의 (`PermissionRepository.findEffective`)
+
+코드: `PermissionRepository.java:53-108` (recursive CTE).
+
+1. **상속**: file 의 경우 그 file 자체 grant + folder + 모든 조상 폴더(루트까지). folder 의 경우 그 folder + 조상.
+2. **Subject 매칭** (§3.3.1):
+   - `subject_type='user'   AND subject_id=:userId`
+   - `subject_type='everyone'`
+   - `subject_type='department' AND subject_id = (SELECT department_id FROM users WHERE id=:userId AND deleted_at IS NULL AND is_active=TRUE)`
+   - 비활성/삭제 user → dept 매칭 unmatched.
+3. **만료**: `expires_at IS NULL OR expires_at > NOW()`.
+4. **Soft delete**: `folders.deleted_at IS NOT NULL` 인 조상은 체인에서 제외 — 휴지통 폴더는 권한 상속 경로 끊김.
+5. **Deny semantics**: v1 미지원 (ADR #28). preset 단일 컬럼만, "grant 우선" 의미 — 한 번 매칭되면 권한 보유.
+
+#### 3.4.4 effective 권한 집합 조회 (`/api/permissions/me/effective-permissions`)
+
+코드: `IbizDrivePermissionEvaluator.resolveAll` (`IbizDrivePermissionEvaluator.java:142-168`). `hasPermission` 의 9× 반복 비용을 줄이기 위해:
+
+- `ADMIN` → role 단계에서 모두 grant — `PermissionResolver` 미호출 early return (line 151-155).
+- `resourceType==null || resourceId==null` (role-only 모드) → role 권한만 반환.
+- 그 외 — 9 권한 loop, role 이 이미 grant 한 권한은 skip, `PURGE` 는 Preset 미포함이므로 skip (line 161-162), 나머지는 `permissionResolver.isGranted` 호출.
+- `PermissionDenyContext` 에 기록하지 않음 — read-only 정보 조회는 envelope 미생성.
+
+### 3.5 Cross-workspace 접근 (`shares` 또는 명시 cross-workspace move 만)
+
+스펙 `2026-05-09-team-centric-pivot-design.md §3.4` — 다른 workspace 콘텐츠 접근은 `shares` row **또는** Plan D 의 명시적 cross-workspace move 두 경로로만 가능. workspace 트리는 절대 섞지 않음(소속 명료성 — UI 는 별도 "공유받음" 트리, docs/01 §2 사이드바 3-section).
+
+#### 3.5.1 `shares` 경로
+
+`shares.permission_id` → `permissions(subject_type, subject_id)` 매핑 (`shares` 도 `PermissionRepository.findEffective` CTE 의 grant union 에 자연스럽게 흡수). MVP subject 유형:
+
+| subject_type | 지원 여부 (master) | 비고 |
+|---|---|---|
+| `user`       | ✅ 지원 | `ShareRepository.java:96-111` (with-me lookup). |
+| `department` | ✅ 지원 | A16/ADR #37. share `with-me` 매칭은 v1.x 이월 (`ShareCommandService` 주석). |
+| `everyone`   | ✅ 지원 | ADR #34. |
+| `team`       | ❌ **PR #140 (Plan C, DIRTY) — 미머지** | 본 §3 갱신 시점 master 코드에 없음. 머지 후 §3.5.1 로 흡수. |
+
+- 공유 가능 권한 cap (스펙 §4.2): "공유 권한은 멤버십보다 절대 넓힐 수 없음" — TEAM MEMBER 가 SHARE preset 으로 공유 시 OWNER-only 권한(DELETE) 부여 차단. 본 cap 의 백엔드 validator 도 Plan C 범위.
+- 공유받은 콘텐츠는 별도 "공유받음" 트리 (스펙 §4.3) — workspace 트리에 섞지 않음.
+
+#### 3.5.2 명시 cross-workspace move (Plan D — `CrossWorkspaceMoveService`)
+
+코드: `backend/src/main/java/com/ibizdrive/folder/CrossWorkspaceMoveService.java:46-376`. 단일 `@Transactional` 안에서 7-step:
+
+1. **Source/destination 잠금** — `lockByIdAndDeletedAtIsNull` (PESSIMISTIC_WRITE).
+2. **권한 검증** (`CrossWorkspaceMoveService.java:108-115`, file 경로는 line 248-256):
+   - source: `EDIT` + `SHARE` 동시 보유 — `permissionResolver.resolveFor(actor, 'folder'|'file', sourceId)`.
+   - destination: `UPLOAD` — `permissionResolver.resolveFor(actor, 'folder', destFolderId)`.
+   - 미충족 → `DestWorkspaceDeniedException` → HTTP 403 + `ERR_DEST_WORKSPACE_DENIED` (`GlobalExceptionHandler.java:208`).
+3. **이름 충돌 검사** — `existsActiveByParentAndNormalizedNameExcludingId` / `existsActiveByFolderAndNormalizedNameExcludingId`.
+4. **Source 자신 scope+parent commit** — V14 `idx_folders_root_per_scope` 충돌 회피로 parent 먼저 set 후 scope 갱신 (line 137-143).
+5. **Subtree scope batch update** — folder + file (line 147-150).
+6. **Active share id 수집 → revoke** — V6 `shares.permission_id ON DELETE CASCADE` 때문에 step 7 직전에 수집 (line 152-164).
+7. **명시 권한 hard delete** — subtree 전체. cascade 로 step 6 수집한 share row 도 동시 제거 (line 166-170).
+8. **Invariant assert + event publish** — scope 일관성 / permissions==0 / shares==0 검증, `CrossWorkspaceMoveCompletedEvent` 발행 (line 172-209). 실패 시 `IllegalStateException` → 트랜잭션 롤백.
+
+> **핵심 의도**: cross-workspace move 는 destination workspace 의 멤버십 + 새 grant 로 권한을 **재구축**하도록 강제 — source 의 explicit grant / share 를 새 workspace 로 이전하지 않는다. 이전 workspace 멤버는 묵시 권한이 끊기고, 새 workspace 멤버가 묵시 권한을 얻는다.
+
+기본 same-scope move 경로(`FolderMutationService.move`, `FolderMutationService.java:287-311`)는 `target.scope ≠ newParent.scope` 시 `CrossScopeMoveException` → HTTP 409 + `ERR_CROSS_SCOPE_MOVE` (`GlobalExceptionHandler.java:191-198`). 명시 cross-workspace 는 `allowCrossScope=true` 플래그 + 영향 미리보기(`MovePreviewService`) 필수.
+
+#### 3.5.3 SpEL 분기 — `allowCrossScope` 플래그
+
+controller 단에서도 cross-workspace 권한을 SpEL 로 1차 차단. 코드:
+
+```java
+// FolderController.java:204-208
+@PostMapping("/{id}/move")
+@PreAuthorize("hasPermission(#id, 'folder', 'MOVE') and ("
+  + "#req.targetParentId == null ? hasRole('ADMIN') : "
+  + "(#req.allowCrossScopeOrFalse() ? "
+  + "  (hasPermission(#id, 'folder', 'EDIT') and hasPermission(#id, 'folder', 'SHARE') and hasPermission(#req.targetParentId, 'folder', 'UPLOAD')) : "
+  + "  hasPermission(#req.targetParentId, 'folder', 'EDIT'))")
+
+// FileController.java:120-123 — 동형, file 버전
+@PreAuthorize("hasPermission(#id, 'file', 'MOVE') and ("
+  + "#req.allowCrossScopeOrFalse() ? "
+  + "  (hasPermission(#id, 'file', 'EDIT') and hasPermission(#id, 'file', 'SHARE') and hasPermission(#req.targetFolderId, 'folder', 'UPLOAD')) : "
+  + "  ...)")
+```
+
+SpEL guard 는 controller 진입 차단. `CrossWorkspaceMoveService` 의 step 2 (§3.5.2) 는 service 진입 후 동일 검증을 다시 수행 — defense in depth (CLAUDE.md §3 원칙 10, §3.7).
+
+### 3.6 권한 매트릭스 (action × required permission)
+
+각 endpoint 의 정식 spec 은 **`docs/02-backend-data-model.md §7.4~§7.14` Guard 컬럼**에 명시 (단일 진실 출처). 본 §3.6 은 SpEL 패턴 발췌만 — 새 endpoint 추가 시 docs/02 갱신이 우선.
+
+| Endpoint | SpEL `@PreAuthorize` | 코드 라인 |
+|---|---|---|
+| `GET /api/folders/tree` | `isAuthenticated()` | `FolderController.java:99` |
+| `GET /api/folders/{id}` | `hasPermission(#id, 'folder', 'READ')` | `FolderController.java:112` |
+| `GET /api/folders/{id}/items` | `hasPermission(#id, 'folder', 'READ')` | `FolderController.java:131` |
+| `POST /api/folders` (root) | `hasRole('ADMIN')` | `FolderController.java:151` (parentId==null 분기) |
+| `POST /api/folders` (sub) | `hasPermission(#req.parentId, 'folder', 'EDIT')` | `FolderController.java:151` |
+| `PATCH /api/folders/{id}` | `hasPermission(#id, 'folder', 'EDIT')` | `FolderController.java:182` |
+| `POST /api/folders/{id}/move` (same-scope) | `folder.MOVE` + parent `folder.EDIT` (root → ADMIN) | `FolderController.java:204-208` |
+| `POST /api/folders/{id}/move` (cross-scope, `allowCrossScope=true`) | `folder.MOVE` + source `folder.EDIT`+`SHARE` + dest `folder.UPLOAD` | 동상 |
+| `POST /api/folders/{id}/move/preview` | `hasPermission(#id, 'folder', 'EDIT') and hasPermission(#id, 'folder', 'SHARE')` | `FolderController.java:274` |
+| `DELETE /api/folders/{id}` (휴지통 이동) | `hasPermission(#id, 'folder', 'DELETE')` | `FolderController.java:233` |
+| `POST /api/folders/{id}/restore` | `hasPermission(#id, 'folder', 'DELETE')` | `FolderController.java:253` |
+| `GET /api/files/{id}` | `hasPermission(#id, 'file', 'READ')` | `FileController.java:84` |
+| `PATCH /api/files/{id}` | `hasPermission(#id, 'file', 'EDIT')` | `FileController.java:99` |
+| `POST /api/files/{id}/move` (same-scope) | `file.MOVE` + dest `folder.EDIT` (구체식 docs/02 §7.7) | `FileController.java:121-123` |
+| `POST /api/files/{id}/move` (cross-scope) | `file.MOVE` + source `file.EDIT`+`SHARE` + dest `folder.UPLOAD` | 동상 |
+| `POST /api/files/{id}/move/preview` | `hasPermission(#id, 'file', 'EDIT') and hasPermission(#id, 'file', 'SHARE')` | `FileController.java:186` |
+| `DELETE /api/files/{id}` | `hasPermission(#id, 'file', 'DELETE')` | `FileController.java:144` |
+| `POST /api/files/{id}/restore` | `hasPermission(#id, 'file', 'DELETE')` | `FileController.java:165` |
+| `POST /api/{resource}/{id}/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` | `PermissionController.java:84` |
+| `GET /api/{resource}/{id}/permissions` | `hasPermission(#id, #resource, 'PERMISSION_ADMIN')` | `PermissionController.java:129` |
+| `DELETE /api/permissions/{permissionId}` | `@permissionService.canRevokePermission(#permissionId, principal)` | `PermissionController.java:188` |
+| `GET /api/permissions/me/effective-permissions` | `isAuthenticated()` | `PermissionController.java:160` |
+| `POST /api/files/{fileId}/share` | `hasPermission(#fileId, 'file', 'SHARE')` | `ShareController.java:72` |
+| `POST /api/folders/{folderId}/share` | `hasPermission(#folderId, 'folder', 'SHARE')` | `ShareController.java:98` |
+| `DELETE /api/shares/{shareId}` | `@shareCommandService.canRevoke(#shareId, principal)` (본인 share 또는 ADMIN) | `ShareController.java:124` |
+| `GET /api/shares/by-me`, `with-me` | `isAuthenticated()` | `ShareController.java:141, 160` |
+| `GET /api/trash` | `isAuthenticated()` (+ workspace 멤버십 fast-fail, 비멤버 row 필터) | `TrashController.java:65` |
+| `DELETE /api/trash/{type}/{id}` | `hasRole('ADMIN')` (PURGE 의 유일 경로) | `TrashController.java:125` |
+
+> **사용자 검색 (`/api/users/search`, ADR #35)** / **부서 검색 (`/api/departments/search`, ADR #37)**: `isAuthenticated()` 공개 — 사용자/부서 명단 자체는 trust boundary 내부 정보(ADR #18 admin-invitation only 등록). share subject picker 가 ADMIN 외 EDIT 보유자에게도 노출되어야 하므로 ROLE 가드 부적절.
+>
+> **휴지통 (workspace 분리, Plan E)** — spec `2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` §5.1, docs/02 §7.11:
+> - `GET /api/trash?scopeType&scopeId`: 인증 + workspace 멤버십 가드 (`PermissionResolver` 의 membership step 이 `WorkspaceMembershipResolver` 호출 — TEAM MEMBER+ → DELETE 묵시 권한, DEPT 멤버는 explicit grant 만). 비멤버 `403 PERMISSION_DENIED`, ADMIN bypass.
+> - `POST /api/{files,folders}/:id/restore`: 추가 archive guard (`423 TEAM_ARCHIVED`, `TeamArchiveGuard`) + cross-workspace 원위치 mismatch (`409 RESTORE_CONFLICT` `reason='scope_mismatch'`).
+> - `DELETE /api/trash/{type}/{id}`: ADR #32 ADMIN only — Plan E 변경 없음.
+
+`@PreAuthorize` 표현식 패턴 정리:
 
 ```java
 // 단일 권한
 @PreAuthorize("hasPermission(#id, 'folder', 'READ')")
-public FolderDto getFolder(@PathVariable String id) { ... }
 
-// 복합 권한 (이동: 양쪽 모두)
-@PreAuthorize(
-  "hasPermission(#id, 'file', 'MOVE') and "
-  + "hasPermission(#req.targetFolderId, 'folder', 'EDIT')"
-)
-public FileDto moveFile(@PathVariable String id, @RequestBody MoveRequest req) { ... }
+// 복합 권한 (cross-scope move: 4개 동시)
+@PreAuthorize("hasPermission(#id, 'folder', 'MOVE') and "
+  + "hasPermission(#id, 'folder', 'EDIT') and "
+  + "hasPermission(#id, 'folder', 'SHARE') and "
+  + "hasPermission(#req.targetParentId, 'folder', 'UPLOAD')")
 
-// PURGE는 ROLE 검사 (노드 권한 무시)
+// PURGE는 ROLE 검사 (노드 권한 무시 — Preset 미포함이므로 hasPermission 으로는 절대 통과 못함)
 @PreAuthorize("hasRole('ADMIN')")
-public void purge(@PathVariable String id) { ... }
+
+// service-level helper 위임 (본인 grant 분기가 필요한 경우)
+@PreAuthorize("@shareCommandService.canRevoke(#shareId, principal)")
 ```
 
-### 3.6 403 응답 기준
+### 3.7 백엔드 재검증 정책 (CLAUDE.md §3 원칙 10)
 
-- `PermissionService.check`가 false 반환 → `403 PERMISSION_DENIED` (`docs/02 §8`)
-- 응답 body: `{ error: { code: 'PERMISSION_DENIED', message, details: { required: ['EDIT'], have: ['READ'] } } }`
-- 프론트 핸들러 → 토스트 + `effectivePermissions` 재조회 (캐시된 권한이 stale일 수 있음)
+> **원칙 10**: 파괴적 액션은 백엔드에서 재검증한다. 프론트 권한은 UX용이며 보안이 아니다.
+
+코드 적용 패턴:
+
+1. **SpEL `@PreAuthorize` 가 1차 차단** — controller 진입 시점. 미통과 시 `IbizDrivePermissionEvaluator` 가 `PermissionDenyContext` 기록 후 `AccessDeniedException` → 403.
+2. **Service entry 가 secondary 검증을 다시 수행** (defense in depth). 대표 예:
+   - `CrossWorkspaceMoveService.moveFolder` step 1 (`CrossWorkspaceMoveService.java:108-115`): SpEL 이 source EDIT+SHARE / dest UPLOAD 를 이미 검증했어도 service 안에서 `permissionResolver.resolveFor` 로 다시 평가 — DTO mutation / 동시 grant revoke / SpEL 우회 가능성 차단.
+   - `ShareCommandService.canRevoke` (`ShareController.java:124`): 본인 share 또는 ADMIN 분기를 service helper 가 단일 진실 — controller 의 SpEL 이 같은 helper 를 호출하므로 logic 중복 없이 재검증.
+3. **DB-level 제약을 마지막 안전망**으로 — V5 CHECK (`permissions.preset` 4종), V6 FK ON DELETE CASCADE (shares.permission_id), V14 `idx_folders_root_per_scope` 등이 invariant 위반을 트랜잭션 롤백으로 차단. `CrossWorkspaceMoveService` step 7 의 `IllegalStateException` invariant assert 는 본 안전망의 application-level 보강.
+4. **프론트 권한은 캐시** — `useEffectivePermissions` (docs/01 §14) 가 stale 일 수 있으므로 백엔드 deny 시 `effectivePermissions` 재조회 + 토스트가 정상 흐름. 프론트가 버튼을 disable 했다고 해서 백엔드 검증을 생략해도 된다는 뜻이 절대 아님.
+
+> 자기-grant 경로 예외: `GET /api/permissions/me/effective-permissions` 는 자기 자신의 권한 조회이므로 secondary 검증 없이 `isAuthenticated()` 만 적용. 본인의 권한 분포 노출은 보안 정보 누설이 아님 (`PermissionController.java:148-153` Javadoc).
+
+### 3.8 403 응답 기준
+
+코드: `IbizDrivePermissionEvaluator.java:97-99` (deny context 기록) → `GlobalExceptionHandler.java:32, 50` (403 PERMISSION_DENIED envelope 구성).
+
+- `IbizDrivePermissionEvaluator.hasPermission` 또는 `PermissionResolver.isGranted` 가 false 반환 → `Spring Security AccessDeniedException` → `403 PERMISSION_DENIED` (`docs/02 §8`).
+- 응답 body: `{ error: { code: 'PERMISSION_DENIED', message: '권한이 없습니다', details: { required: ['EDIT'], have: ['READ'] } } }` — `PermissionDenyContext` 가 ThreadLocal 에 1회 기록한 `required` / `have` 가 details 에 실린다.
+- 프론트 핸들러 → 토스트 + `effectivePermissions` 재조회 (캐시된 권한이 stale 일 수 있음).
+- Cross-workspace move 의 권한 부족은 별도 envelope `ERR_DEST_WORKSPACE_DENIED` (403) — `CrossWorkspaceMoveService` 의 source EDIT+SHARE / dest UPLOAD 미충족 시. 일반 PERMISSION_DENIED 와 분리한 이유: frontend 가 destination picker 재입력 흐름으로 분기.
 
 ---
 
