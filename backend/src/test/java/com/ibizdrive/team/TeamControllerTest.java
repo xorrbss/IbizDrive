@@ -8,6 +8,7 @@ import com.ibizdrive.config.MethodSecurityConfig;
 import com.ibizdrive.config.SecurityConfig;
 import com.ibizdrive.team.dto.TeamCreateRequest;
 import com.ibizdrive.team.dto.TeamMemberInviteRequest;
+import com.ibizdrive.team.dto.TeamMemberResponse;
 import com.ibizdrive.user.DbUserDetailsService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
@@ -23,6 +24,7 @@ import org.springframework.security.access.PermissionEvaluator;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
@@ -203,13 +205,12 @@ class TeamControllerTest {
         UUID teamId = UUID.randomUUID();
         UUID userId = UUID.randomUUID();
         IbizDriveUserDetails principal = principalForUser(userId);
-        com.ibizdrive.team.dto.TeamMemberResponse r1 =
-            new com.ibizdrive.team.dto.TeamMemberResponse(
-                userId, "Alice", "a@x.io",
-                TeamMembership.Role.OWNER, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
+        TeamMemberResponse r1 = new TeamMemberResponse(
+            userId, "Alice", "a@x.io",
+            TeamMembership.Role.OWNER, OffsetDateTime.parse("2026-05-10T00:00:00Z"));
 
         when(teamAuthz.isMember(eq(teamId), any())).thenReturn(true);
-        when(teamService.listMembers(eq(teamId))).thenReturn(java.util.List.of(r1));
+        when(teamService.listMembers(eq(teamId))).thenReturn(List.of(r1));
 
         mvc.perform(get("/api/teams/" + teamId + "/members")
                 .with(user(principal)))
