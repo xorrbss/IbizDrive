@@ -182,6 +182,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 같은 normalized name으로 active team 충돌 → 409 TEAM_CONFLICT.
+     *
+     * <p>{@link com.ibizdrive.team.TeamService#create} 와 {@link com.ibizdrive.admin.AdminTeamService#update}
+     * 모두 V12 partial unique {@code idx_teams_name_active}를 service 레벨에서 사전 검사. race window는 DB가 최종.
+     */
+    @ExceptionHandler(com.ibizdrive.team.TeamNameConflictException.class)
+    public ResponseEntity<ApiError> handleTeamNameConflict(com.ibizdrive.team.TeamNameConflictException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("TEAM_CONFLICT", "이미 사용 중인 팀 이름입니다", null));
+    }
+
+    /**
      * 폴더/파일/grant row 등 리소스 미존재 → 404. controller 또는 service 단의 lookup 부재가 일관되게 envelope 매핑.
      */
     @ExceptionHandler(ResourceNotFoundException.class)

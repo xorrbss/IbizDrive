@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-05-10/11 — design-refresh-admin 트랙 완료 (T7 + T8)
+
+### 완료
+- **PR #154** T7-P1 — Admin chrome 8탭 골격
+  - admin.css 921L 이식 (admin/kpi/section-card/admin-table/role-status-chips/
+    dept/storage/cleanup/flags/audit/retention + teams + modal + permissions)
+  - 좌측 AdminSideNav 제거 → 가로 8탭 AdminTabBar (overview/멤버/팀/폴더권한/
+    저장공간/공유정책/감사로그/보관)
+  - 상단 AdminTopHeader + tenant chip
+  - AUDITOR 가시성 유지 — audit 탭만 (wave1.5-auditor-admin-ui-access 답습)
+  - `/admin/teams`, `/admin/sharing` placeholder 페이지
+- **PR #156** T8-P3 — Backend admin team endpoints
+  - V16 schema: `teams.color` (#RRGGBB CHECK) + `teams.lead_id` (FK users,
+    NOT NULL after backfill)
+  - Team 도메인 확장: 9-arg full constructor + 7-arg backward-compat.
+    assignLead/changeColor/updateDescription/touchUpdatedAt
+  - 5 admin endpoints (모두 `hasRole('ADMIN')`):
+    - `GET /api/admin/teams` (list with memberCount)
+    - `GET /api/admin/teams/{id}` (detail)
+    - `PATCH /api/admin/teams/{id}` (name/description/color/leadId)
+    - `DELETE /api/admin/teams/{id}` (soft archive — TeamService.archive 위임)
+    - `POST /api/admin/teams/{id}/restore` (un-archive)
+  - 새 `AuditEventType.TEAM_UPDATED` + `TeamUpdatedEvent` +
+    `TeamAuditListener.onTeamUpdated`
+- **PR #158** T8-P4 — Frontend `/admin/teams` 풀
+  - hooks 8종 (`useAdminTeams*`) + `qk.adminTeams.{all,list,detail}` +
+    `invalidations.afterAdminTeamChanged`
+  - Components: TeamsListPanel, TeamDetail, CreateTeamModal, EditTeamModal,
+    MemberPickerModal, Avatars
+  - multi-step create (POST /api/teams → invite members → PATCH metadata)
+  - AUDITOR read-only 게이팅
+  - 40 tests 신규 (5 파일)
+- **현재 PR** T8 closure
+  - `AdminTeamControllerTest` slice 19 tests — 200/204/400/401/403/404/409 매트릭스
+  - `GlobalExceptionHandler` — `TeamNameConflictException` → 409 TEAM_CONFLICT
+    매핑 추가 (gap fix; 기존엔 500 fall-through)
+  - dev-doc `dev/active/design-refresh-admin-2026-05-10` → `dev/completed/`
+
+### 다음 세션 컨텍스트
+- **T7-P2** (라우트 rename) — `/admin/users → /admin/members` 등 URL 정리.
+  UX 영향 0 (탭바 isActive prefix가 두 URL 모두 활성). 별도 정리 트랙으로
+  미룸.
+- **T8 follow-on** (필요 시):
+  - Folder grid 풀 구현 — 백엔드 team→folder linkage 추가 후 (현재 placeholder)
+  - Member dept column — `AdminUserSummary` 확장 또는 새 endpoint
+  - Playwright e2e — 등록/멤버 picker/리더 지정/삭제 시나리오
+- **디자인 핸드오프 다른 갭** (gap report `2026-05-10`):
+  - G2 TopBar 3-col grid + 햄버거 — Plan B 영역
+  - G3 SearchBar ⌘K + 폭
+  - G4 FileTable 6열
+  - G5 density 토글
+  - G7 Mobile view (낮은 우선순위)
+
+### 블로커
+- 없음 — design-refresh-admin 트랙 closure.
+
+---
+
 ## 2026-05-11 — grant-permission-dialog Phase B (api wrapper + hook + dialog 골격, 18 회귀 가드)
 
 ### 범위
