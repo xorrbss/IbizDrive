@@ -70,7 +70,12 @@ public class TeamService {
 
         Team t = new Team(teamId, displayName, normalizedName, description,
             visibility, creatorId, now);
-        teamRepo.save(t);
+        // Capture managed instance — Team's @Id is pre-assigned by ctor, so JpaRepository.save()
+        // routes through em.merge() which returns a NEW managed instance. Mutations on the
+        // pre-merge `t` (e.g., attachRootFolder below) wouldn't be tracked by Hibernate, leaving
+        // root_folder_id = NULL in DB. Capturing the merged return ensures subsequent mutations
+        // are dirty-checked and flushed.
+        t = teamRepo.save(t);
 
         // Root folder via FolderMutationService — same outer transaction
         Folder root = folderService.createRootForScope(ScopeType.TEAM, teamId, creatorId, displayName);
