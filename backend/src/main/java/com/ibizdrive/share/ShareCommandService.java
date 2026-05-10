@@ -11,6 +11,9 @@ import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
 import com.ibizdrive.permission.Preset;
+import com.ibizdrive.team.Team;
+import com.ibizdrive.team.TeamRepository;
+import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -67,6 +70,8 @@ public class ShareCommandService {
     private final ShareRepository shareRepository;
     private final UserRepository userRepository;
     private final DepartmentRepository departmentRepository;
+    private final TeamRepository teamRepository;
+    private final ShareGrantCapValidator capValidator;
     private final ApplicationEventPublisher eventPublisher;
 
     public ShareCommandService(FileRepository fileRepository,
@@ -76,6 +81,8 @@ public class ShareCommandService {
                                ShareRepository shareRepository,
                                UserRepository userRepository,
                                DepartmentRepository departmentRepository,
+                               TeamRepository teamRepository,
+                               ShareGrantCapValidator capValidator,
                                ApplicationEventPublisher eventPublisher) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
@@ -84,6 +91,8 @@ public class ShareCommandService {
         this.shareRepository = shareRepository;
         this.userRepository = userRepository;
         this.departmentRepository = departmentRepository;
+        this.teamRepository = teamRepository;
+        this.capValidator = capValidator;
         this.eventPublisher = eventPublisher;
     }
 
@@ -115,6 +124,9 @@ public class ShareCommandService {
 
         FileItem file = fileRepository.findByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new ResourceNotFoundException("file not found: " + fileId));
+
+        // §4.2 cap — 자원의 workspace 기준 sharer 멤버권 ≥ preset. subject 수와 무관하게 1회 검증.
+        capValidator.validate(actorId, file.getScopeType(), file.getScopeId(), preset);
 
         List<ShareDto> created = new ArrayList<>(subjects.size());
         for (ShareCreateRequest.Subject subject : subjects) {
@@ -189,6 +201,9 @@ public class ShareCommandService {
         Folder folder = folderRepository.findByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new ResourceNotFoundException("folder not found: " + folderId));
 
+        // §4.2 cap — 자원의 workspace 기준 sharer 멤버권 ≥ preset. subject 수와 무관하게 1회 검증.
+        capValidator.validate(actorId, folder.getScopeType(), folder.getScopeId(), preset);
+
         List<ShareDto> created = new ArrayList<>(subjects.size());
         for (ShareCreateRequest.Subject subject : subjects) {
             if (subject == null || subject.type() == null) {
@@ -236,12 +251,12 @@ public class ShareCommandService {
 
     /**
      * A16 — subject 표시명 단건 lookup. user → {@code users.display_name}, department → {@code departments.name},
-     * everyone → null. soft-delete 또는 dangling FK 시에도 null 허용 (frontend가 fallback 표시).
+     * team → {@code teams.name}, everyone → null. soft-delete 또는 dangling FK 시에도 null 허용 (frontend가 fallback 표시).
      *
      * <p><b>왜 단건 lookup</b>: 본 메서드는 트랜잭션 당 N=subjects.size() 호출 — 일반 케이스 1~10건. 별도 batch
      * 최적화는 over-engineering (KISS). ShareQueryService(by-me/with-me 페이지)는 대조적으로 batch 사용.
      *
-     * <p>{@code subjectId == null}은 everyone case에서 정상이며 user/department에서는 V5 CHECK가 차단 — 방어적
+     * <p>{@code subjectId == null}은 everyone case에서 정상이며 user/department/team에서는 V5 CHECK가 차단 — 방어적
      * null 반환.
      */
     private String resolveSubjectName(String subjectType, UUID subjectId) {
@@ -251,6 +266,9 @@ public class ShareCommandService {
         }
         if ("department".equals(subjectType)) {
             return departmentRepository.findById(subjectId).map(Department::getName).orElse(null);
+        }
+        if ("team".equals(subjectType)) {
+            return teamRepository.findById(subjectId).map(Team::getName).orElse(null);
         }
         return null;
     }

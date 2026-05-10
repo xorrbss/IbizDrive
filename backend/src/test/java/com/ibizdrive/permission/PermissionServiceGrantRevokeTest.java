@@ -119,6 +119,21 @@ class PermissionServiceGrantRevokeTest {
     }
 
     @Test
+    void grantPermission_teamSubjectTypeAccepted() {
+        when(permissionRepository.saveAndFlush(any(PermissionRow.class)))
+            .thenAnswer(inv -> inv.getArgument(0));
+
+        PermissionRow row = service.grantPermission(
+            "folder", RESOURCE_ID, "team", SUBJECT_ID,
+            Preset.READ, null, ACTOR
+        );
+
+        assertThat(row.getSubjectType()).isEqualTo("team");
+        assertThat(row.getSubjectId()).isEqualTo(SUBJECT_ID);
+        verify(publisher).publishEvent(any(PermissionGrantedEvent.class));
+    }
+
+    @Test
     void grant_everyoneWithSubjectId_throwsBadRequest() {
         assertThatThrownBy(() -> service.grantPermission(
             "folder", RESOURCE_ID, "everyone", SUBJECT_ID, Preset.READ, null, ACTOR))

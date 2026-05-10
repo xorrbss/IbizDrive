@@ -7,9 +7,13 @@ import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionRow;
 import com.ibizdrive.permission.PermissionService;
+import com.ibizdrive.permission.Preset;
+import com.ibizdrive.team.Team;
+import com.ibizdrive.team.TeamRepository;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -35,6 +39,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -71,7 +76,11 @@ class ShareCommandServiceTest {
     @Mock
     DepartmentRepository departmentRepository;
     @Mock
+    TeamRepository teamRepository;
+    @Mock
     ApplicationEventPublisher eventPublisher;
+    @Mock
+    ShareGrantCapValidator capValidator;
 
     @InjectMocks
     ShareCommandService service;
@@ -273,6 +282,34 @@ class ShareCommandServiceTest {
     }
 
     @Test
+    void createShares_teamSubject_resolvesTeamName() {
+        // A16 — subject_type='team' 분기는 teamRepository.findById로 team name resolve.
+        UUID teamId = UUID.randomUUID();
+        UUID grantId = UUID.randomUUID();
+        PermissionRow grant = grantRow(grantId, "team", teamId, "read");
+        when(fileRepository.findByIdAndDeletedAtIsNull(fileId)).thenReturn(Optional.of(file));
+        when(permissionService.grantPermission(eq("file"), eq(fileId), eq("team"),
+            eq(teamId), any(), any(), eq(actorId))).thenReturn(grant);
+        // nested stubbing 회피.
+        Team teamMock = teamWithName("ProjectAlpha");
+        when(teamRepository.findById(teamId)).thenReturn(Optional.of(teamMock));
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("team", teamId)),
+            "read", null, null
+        );
+
+        List<ShareDto> result = service.createShares(fileId, req, actorId);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).subjectType()).isEqualTo("team");
+        assertThat(result.get(0).subjectName()).isEqualTo("ProjectAlpha");
+        // user/department repositories는 team share에서 호출되지 않음.
+        verify(userRepository, never()).findById(any());
+        verify(departmentRepository, never()).findById(any());
+    }
+
+    @Test
     void createShares_userSubjectLookupMiss_returnsNullSubjectName() {
         // A16 — soft-delete 등으로 user를 찾지 못해도 share 생성은 계속 (subjectName=null fallback).
         UUID subjectId = UUID.randomUUID();
@@ -342,6 +379,71 @@ class ShareCommandServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).expiresAt()).isEqualTo(future);
         assertThat(result.get(0).message()).isEqualTo(exact1000);
+    }
+
+    // ── §4.2 cap validation ─────────────────────────────────────────────
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("createShares: sharer 멤버권 < preset이면 ShareExceedsMembershipException")
+    void createShares_sharerExceedsCap_throws() {
+        UUID capFileId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        UUID capActorId = UUID.randomUUID();
+        UUID fileScopeTeamId = UUID.randomUUID();
+
+        FileItem capFile = mock(FileItem.class);
+        when(capFile.getId()).thenReturn(capFileId);
+        when(capFile.getScopeType()).thenReturn(ScopeType.TEAM);
+        when(capFile.getScopeId()).thenReturn(fileScopeTeamId);
+        when(fileRepository.findByIdAndDeletedAtIsNull(capFileId)).thenReturn(Optional.of(capFile));
+
+        // sharer는 file이 속한 team의 MEMBER만 → ADMIN preset 차단.
+        doThrow(new ShareExceedsMembershipException(Preset.ADMIN, Preset.EDIT.permissions()))
+            .when(capValidator).validate(capActorId, ScopeType.TEAM, fileScopeTeamId, Preset.ADMIN);
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("team", teamId)),
+            "admin", null, null
+        );
+
+        assertThatThrownBy(() -> service.createShares(capFileId, req, capActorId))
+            .isInstanceOf(ShareExceedsMembershipException.class);
+
+        verify(permissionService, never()).grantPermission(any(), any(), any(), any(), any(), any(), any());
+        verify(shareRepository, never()).saveAndFlush(any());
+        verify(eventPublisher, never()).publishEvent(any());
+    }
+
+    @Test
+    @org.junit.jupiter.api.DisplayName("createFolderShares: sharer 멤버권 < preset이면 ShareExceedsMembershipException")
+    void createFolderShares_sharerExceedsCap_throws() {
+        UUID capFolderId = UUID.randomUUID();
+        UUID teamId = UUID.randomUUID();
+        UUID capActorId = UUID.randomUUID();
+        UUID folderScopeTeamId = UUID.randomUUID();
+
+        Folder capFolder = mock(Folder.class);
+        when(capFolder.getId()).thenReturn(capFolderId);
+        when(capFolder.getScopeType()).thenReturn(ScopeType.TEAM);
+        when(capFolder.getScopeId()).thenReturn(folderScopeTeamId);
+        when(folderRepository.findByIdAndDeletedAtIsNull(capFolderId)).thenReturn(Optional.of(capFolder));
+
+        // sharer는 folder가 속한 team의 MEMBER만 → ADMIN preset 차단.
+        doThrow(new ShareExceedsMembershipException(Preset.ADMIN, Preset.EDIT.permissions()))
+            .when(capValidator).validate(capActorId, ScopeType.TEAM, folderScopeTeamId, Preset.ADMIN);
+
+        ShareCreateRequest req = new ShareCreateRequest(
+            List.of(new ShareCreateRequest.Subject("team", teamId)),
+            "admin", null, null
+        );
+
+        assertThatThrownBy(() -> service.createFolderShares(capFolderId, req, capActorId))
+            .isInstanceOf(ShareExceedsMembershipException.class);
+
+        // XOR invariant: folderId NOT NULL, fileId NULL (검증 전 abort — grant 미호출).
+        verify(permissionService, never()).grantPermission(any(), any(), any(), any(), any(), any(), any());
+        verify(shareRepository, never()).saveAndFlush(any());
+        verify(eventPublisher, never()).publishEvent(any());
     }
 
     // ── A12 — createFolderShares (folder variant) ────────────────────────
@@ -545,6 +647,13 @@ class ShareCommandServiceTest {
         Department d = mock(Department.class);
         when(d.getName()).thenReturn(name);
         return d;
+    }
+
+    /** A16 — Team mock with name for subjectName lookup tests. */
+    private static Team teamWithName(String name) {
+        Team t = mock(Team.class);
+        when(t.getName()).thenReturn(name);
+        return t;
     }
 
     // ── A10.3 — revokeShare ──────────────────────────────────────────────

@@ -18,11 +18,11 @@ import java.util.UUID;
  * 권한 평가 파이프라인의 첫 단계 — explicit grants/shares 평가 전에 user-workspace 관계만으로
  * 결정되는 default 권한을 노출.
  *
- * <p><b>매핑 규칙</b>:
+ * <p><b>매핑 규칙</b> (단일 진실의 출처: {@link Preset#permissions()}):
  * <ul>
- *   <li>Department 멤버 (user.department_id == scopeId): READ + UPLOAD</li>
- *   <li>Team MEMBER: READ + UPLOAD + EDIT</li>
- *   <li>Team OWNER: READ + UPLOAD + EDIT + DELETE + SHARE</li>
+ *   <li>Department 멤버 (user.department_id == scopeId): {@code Preset.UPLOAD.permissions()}</li>
+ *   <li>Team MEMBER: {@code Preset.EDIT.permissions()}</li>
+ *   <li>Team OWNER: {@code Preset.ADMIN.permissions()}</li>
  *   <li>비멤버: 빈 집합 (default deny — 후속 단계에서 explicit/share grants가 채움)</li>
  * </ul>
  *
@@ -53,7 +53,7 @@ public class WorkspaceMembershipResolver {
         return switch (scopeType) {
             case DEPARTMENT -> userDeptLookup.departmentIdOf(userId)
                 .filter(id -> id.equals(scopeId))
-                .<Set<Permission>>map(id -> EnumSet.of(Permission.READ, Permission.UPLOAD))
+                .<Set<Permission>>map(id -> Preset.UPLOAD.permissions())
                 .orElseGet(() -> EnumSet.noneOf(Permission.class));
             case TEAM -> memRepo.findById(new TeamMembershipId(scopeId, userId))
                 .<Set<Permission>>map(this::permsForRole)
@@ -63,9 +63,8 @@ public class WorkspaceMembershipResolver {
 
     private Set<Permission> permsForRole(TeamMembership m) {
         return switch (m.getRole()) {
-            case OWNER -> EnumSet.of(Permission.READ, Permission.UPLOAD,
-                Permission.EDIT, Permission.DELETE, Permission.SHARE);
-            case MEMBER -> EnumSet.of(Permission.READ, Permission.UPLOAD, Permission.EDIT);
+            case OWNER -> Preset.ADMIN.permissions();
+            case MEMBER -> Preset.EDIT.permissions();
         };
     }
 }

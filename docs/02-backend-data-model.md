@@ -1574,7 +1574,7 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
 ```text
 POST /api/files/:fileId/share                              (ADR #34)
   Guard:    hasPermission(#fileId, 'file', 'SHARE')
-  Request:  { subjects: [{ type: 'user'|'department'|'role'|'everyone', id?: UUID }],
+  Request:  { subjects: [{ type: 'user'|'department'|'role'|'team'|'everyone', id?: UUID }],
               preset:    'read'|'upload'|'edit'|'admin',
               expiresAt? : ISO8601 (미래),
               message?   : string (max 1000) }
@@ -1691,7 +1691,7 @@ GET /api/:resource/:id/permissions                  (M8.0)
             POST 응답의 PermissionDto 는 subjectName=null — 호출자가 필요 시 list 재조회로 표시명 획득.
 
 POST /api/:resource/:id/permissions
-  Request:  { subject: { type: 'user'|'department'|'role'|'everyone', id?: UUID }, preset: 'read'|'upload'|'edit'|'admin', expiresAt? }
+  Request:  { subject: { type: 'user'|'department'|'role'|'team'|'everyone', id?: UUID }, preset: 'read'|'upload'|'edit'|'admin', expiresAt? }
               # subject.id 는 type='everyone' 일 때만 NULL (V5 CHECK 와 일치)
               # preset 은 ADR #28 — 4값 (deny/share 제외, share 는 별도 shares 테이블)
   Response: 201 { permission: PermissionDto }   # PermissionDto.subjectName=null (M8.0)
@@ -2474,6 +2474,7 @@ PATCH /api/teams/{teamId}/members/{userId}  (Plan F T6)
 | 409 | APPROVAL_ALREADY_DECIDED | terminal status(APPROVED/REJECTED/CANCELLED/EXPIRED)에 재결정 시도 (v1.x, ADR #47) | "이미 결정된 요청입니다" 토스트 + 목록 재조회 |
 | 400 | TEAM_OWNER_REQUIRED | 팀에는 최소 한 명의 OWNER가 필요 — 마지막 OWNER 탈퇴/제외 시도 차단 (spec `ERR_TEAM_OWNER_REQUIRED`) | "팀에 최소 한 명의 관리자가 필요합니다" 토스트 |
 | 423 | TEAM_ARCHIVED | archive된 팀의 폴더/파일에 write(create/upload/move/rename/delete/restore/restoreVersion) 시도 (spec `ERR_TEAM_ARCHIVED`). `TeamArchiveGuard.assertNotArchived`가 차단. 활성 진입점: `Folder/FileMutationService.create/move/rename/softDelete/restore` + `FileUploadService` + `FileVersionMutationService` (team-archive-write-enforcement + Plan E T4/T5, 2026-05-10). response body `details.teamId`로 archived 팀 식별. | archived 팀 페이지에서는 frontend가 사전에 버튼 disabled (휴지통 페이지 alert + RestoreRowActions disabled, Plan E T13). 도달 시 "archive된 팀의 콘텐츠는 수정할 수 없습니다" 토스트. |
+| 403 | SHARE_EXCEEDS_MEMBER | sharer 멤버권 < 부여 preset (§4.2 cap). spec `team-centric-pivot-design` §4.2. | "팀 권한 초과: 자신의 권한보다 높은 권한을 부여할 수 없습니다" 토스트 |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |
