@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-05-11 — chore/dev-active-archive (orphan dev-docs 2건 → `dev/completed/`)
+
+### 범위
+
+`dev/active/`에 잔존하던 종료 트랙 dev-docs 2건을 `dev/completed/`로 이동. 코드 0줄, 회귀 0.
+
+### 변경
+
+- `dev/active/dev-preview-stabilization/` → `dev/completed/` (T1·T2 PR #152, T3 PR #153, T4·T6 PR #151, T5 PR #150 — 모두 머지 완료, 트랙 closure 마커 자체 tasks.md에 명시됨)
+- `dev/active/team-centric-pivot-plan-c/` → `dev/completed/` (Plan C 본체 PR #140 머지 완료, 2026-05-10)
+- `dev/active/design-handoff-gap-report-2026-05-10.md`는 잔존 — gap report는 트랙 단위 dev-docs가 아닌 단일 doc, gap 자체는 design-refresh-admin 후속 트랙(T7-P2 등)에서 점진적으로 처리되므로 active 유지가 적절.
+
+### 검증
+
+- 코드 0줄, typecheck/lint/test 무관.
+- `git diff --stat` 결과: rename only (파일 내용 무변경).
+
+### 다음 세션 컨텍스트
+
+- `dev/active/`가 깔끔해져서 다음 세션이 active 트랙 식별 비용 감소.
+- v1.x backlog 잔여(spec 필요): 휴지통 보존 정책 mutation UI / quota mutation UI / 2인 승인 framework / progress streaming / GrantPermissionDialog v2.x ROLE/TEAM grant 평가.
+
+---
+
 ## 2026-05-11 — csrf-helper-sweep (`readCookie('XSRF-TOKEN')` → `await ensureCsrfToken()` 일관화)
 
 ### 범위
