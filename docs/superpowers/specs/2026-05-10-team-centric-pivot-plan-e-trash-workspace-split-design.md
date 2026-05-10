@@ -195,10 +195,12 @@ trash: (scopeType: 'department' | 'team', scopeId: string) =>
 
 | 액션 | 권한 | archived workspace |
 |---|---|---|
-| listing (`GET /api/trash`) | workspace 멤버 (DEPT 매치 또는 TEAM membership) | 통과 (read-only 의미) |
-| restore (`POST /api/{files,folders}/:id/restore`) | 기존 PermissionResolver + workspace 멤버십 묵시 권한 | **차단** (`423 TEAM_ARCHIVED`) |
-| purge (`DELETE /api/trash/:type/:id`) | ADMIN only (ADR #32) | 차단 (write이므로) |
-| Undo (softDelete 직후 토스트) | restore와 동일 | 동일 차단 |
+| listing (`GET /api/trash?scopeType&scopeId`) | listing endpoint 진입 시 workspace 멤버십 fast-fail 가드 (DEPT 매치 또는 TEAM membership row 존재). 비멤버 `403 PERMISSION_DENIED`, **ADMIN bypass**. row 별 DELETE 후처리는 ADR #32 그대로 유지 — 사용자 단위 휴지통은 본인이 DELETE 권한 가진 항목만 노출. | 통과 (read-only 의미 보존, frontend alert + restore disabled) |
+| restore (`POST /api/{files,folders}/:id/restore`) | Plan A `WorkspaceMembershipResolver` membership step 이 `PermissionResolver` 내부에서 자동 평가 — TEAM MEMBER+ → DELETE 묵시 권한, DEPT 멤버는 explicit grant 만. 추가로 archive guard (`423 TEAM_ARCHIVED`, Plan E T4/T5 — TeamArchiveGuard.assertNotArchived) + cross-workspace 원위치 mismatch (`409 RESTORE_CONFLICT` `reason='scope_mismatch'`). | **차단** (`423 TEAM_ARCHIVED`) |
+| purge (`DELETE /api/trash/:type/:id`) | ADMIN only (ADR #32, Plan E 변경 없음) | 차단 (write 이므로) |
+| Undo (softDelete 직후 토스트) | restore 와 동일 — `useRestoreItem` 재사용 | 동일 차단 |
+
+> **ADR #32 정합성**: row 별 DELETE 후처리(per-row `hasPermission(id, type, 'DELETE')`)는 본 plan 에서 그대로 유지. workspace 멤버십 가드는 listing endpoint 진입 시 1회 실행되는 fast-fail 추가 layer 일 뿐 — 결과 row 필터링은 기존 ADR #32 매커니즘 그대로 사용.
 
 ### 5.2 archived workspace 처리
 
