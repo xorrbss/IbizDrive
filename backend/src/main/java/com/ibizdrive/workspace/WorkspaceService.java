@@ -4,8 +4,6 @@ import com.ibizdrive.department.DepartmentRepository;
 import com.ibizdrive.team.TeamMembership;
 import com.ibizdrive.team.TeamMembershipRepository;
 import com.ibizdrive.team.TeamRepository;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,8 +28,6 @@ import java.util.UUID;
 @Service
 public class WorkspaceService {
 
-    private static final Logger log = LoggerFactory.getLogger(WorkspaceService.class);
-
     private final DepartmentRepository deptRepo;
     private final TeamRepository teamRepo;
     private final TeamMembershipRepository memRepo;
@@ -55,32 +51,20 @@ public class WorkspaceService {
      * @param userId 조회 대상 사용자
      * @return department + teams listing — 둘 다 비어있을 수 있음
      */
-    @Transactional
+    @Transactional(readOnly = true)
     public WorkspaceListing findForUser(UUID userId) {
         Optional<DepartmentWorkspace> dept = userDeptLookup.departmentIdOf(userId)
             .flatMap(deptRepo::findById)
             .filter(d -> d.isActive() && d.getRootFolderId() != null)
             .map(DepartmentWorkspace::new);
 
-        List<TeamMembership> memberships = memRepo.findByUserId(userId);
-        List<UUID> teamIds = memberships.stream()
+        List<UUID> teamIds = memRepo.findByUserId(userId).stream()
             .map(TeamMembership::getTeamId).toList();
 
-        List<com.ibizdrive.team.Team> teamsRaw = teamIds.isEmpty() ? List.of()
-            : teamRepo.findAllById(teamIds);
-
-        List<TeamWorkspace> teams = teamsRaw.stream()
+        List<TeamWorkspace> teams = teamIds.isEmpty() ? List.of()
+            : teamRepo.findAllById(teamIds).stream()
                 .filter(t -> t.getRootFolderId() != null)
                 .map(TeamWorkspace::new).toList();
-
-        // DIAG: throw on empty result with non-empty memberships to surface state in CI test failure stack
-        if (teams.isEmpty() && !memberships.isEmpty()) {
-            throw new IllegalStateException("[findForUser-DBG] userId=" + userId
-                + " memberships.size=" + memberships.size()
-                + " teamIds=" + teamIds
-                + " teamsRaw.size=" + teamsRaw.size()
-                + " rootFolderIds=" + teamsRaw.stream().map(com.ibizdrive.team.Team::getRootFolderId).toList());
-        }
 
         return new WorkspaceListing(dept, teams);
     }
