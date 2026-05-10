@@ -16,6 +16,16 @@ const nextConfig: NextConfig = {
       },
     ]
   },
+  // T7-P2 라우트 rename — 디자인 핸드오프 2026-05-10 admin 영역 URL 정리.
+  // 기존 URL은 영구(308) redirect — 북마크/외부 링크 보존.
+  async redirects() {
+    return [
+      { source: '/admin/users', destination: '/admin/members', permanent: true },
+      { source: '/admin/users/:path*', destination: '/admin/members/:path*', permanent: true },
+      { source: '/admin/audit/logs', destination: '/admin/audit', permanent: true },
+      { source: '/admin/trash/policy', destination: '/admin/retention', permanent: true },
+    ]
+  },
 };
 
 export default nextConfig;
