@@ -5,6 +5,8 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.storage.StorageClient;
+import com.ibizdrive.team.TeamArchiveGuard;
+import com.ibizdrive.team.TeamRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -20,7 +22,7 @@ import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
 import java.io.ByteArrayInputStream;
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -76,8 +78,10 @@ class FileScopeInheritanceTest {
                                                   FolderRepository folderRepo,
                                                   StorageClient storage,
                                                   AuditService audit,
-                                                  ObjectMapper mapper) {
-            return new FileUploadService(fileRepo, versionRepo, folderRepo, storage, audit, mapper);
+                                                  ObjectMapper mapper,
+                                                  TeamRepository teamRepo) {
+            return new FileUploadService(fileRepo, versionRepo, folderRepo, storage, audit, mapper,
+                new TeamArchiveGuard(teamRepo));
         }
     }
 
@@ -136,7 +140,7 @@ class FileScopeInheritanceTest {
      */
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Timestamp now = Timestamp.from(java.time.Instant.now());
+        OffsetDateTime now = OffsetDateTime.now();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
             "scope_type, scope_id, created_at, updated_at) " +

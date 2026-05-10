@@ -76,10 +76,12 @@ class FileMutationServiceTest {
         @Bean FileMutationService fileMutationService(FileRepository fileRepo,
                                                       FolderRepository folderRepo,
                                                       AuditService audit,
-                                                      ObjectMapper mapper) {
+                                                      ObjectMapper mapper,
+                                                      com.ibizdrive.team.TeamRepository teamRepo) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30),
-                mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class));
+                mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class),
+                new com.ibizdrive.team.TeamArchiveGuard(teamRepo));
         }
     }
 

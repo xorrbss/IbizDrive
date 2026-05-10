@@ -2380,7 +2380,7 @@ GET /api/departments/search?q=eng&limit=20
 | 404 | APPROVAL_NOT_FOUND | approval row 미존재 또는 다른 사용자 cancel 시도 (v1.x, ADR #47) | 토스트 + 목록 재조회 |
 | 409 | APPROVAL_ALREADY_DECIDED | terminal status(APPROVED/REJECTED/CANCELLED/EXPIRED)에 재결정 시도 (v1.x, ADR #47) | "이미 결정된 요청입니다" 토스트 + 목록 재조회 |
 | 400 | TEAM_OWNER_REQUIRED | 팀에는 최소 한 명의 OWNER가 필요 — 마지막 OWNER 탈퇴/제외 시도 차단 (spec `ERR_TEAM_OWNER_REQUIRED`) | "팀에 최소 한 명의 관리자가 필요합니다" 토스트 |
-| 423 | TEAM_ARCHIVED | archive된 팀에 쓰기 시도 (spec `ERR_TEAM_ARCHIVED`) — **예약**: FolderMutationService/FileUploadService의 archive 차단 미구현, 계약 선언만 (team-domain-hardening 이후 follow-on) | "archive된 팀의 콘텐츠는 수정할 수 없습니다" 토스트 |
+| 423 | TEAM_ARCHIVED | archive된 팀의 폴더/파일에 write(create/upload/move/rename/delete/restore/restoreVersion) 시도 (spec `ERR_TEAM_ARCHIVED`). `TeamArchiveGuard.assertNotArchived`가 FolderMutationService / FileMutationService / FileUploadService / FileVersionMutationService 진입점에서 차단. response body `details.teamId`로 archived 팀 식별. | "archive된 팀의 콘텐츠는 수정할 수 없습니다" 토스트 |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |

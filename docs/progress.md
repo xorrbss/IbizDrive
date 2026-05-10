@@ -5,10 +5,10 @@
 
 ---
 
-## 2026-05-10 — Plan D PR #138 CI 안정화 (rounds 3~7)
+## 2026-05-10 — Plan D PR #138 CI 안정화 (rounds 3~7) + master 머지
 
 ### 범위
-Plan D PR #138의 CI 실패 14건을 5 라운드에 걸쳐 해소. Plan D 고유 실패 0건 달성.
+Plan D PR #138의 CI 실패 14건을 5 라운드에 걸쳐 해소. Plan D 고유 실패 0건 달성. 마지막에 origin/master(PR #142 + PR #141 머지 포함)를 본 브랜치에 머지.
 
 ### 해결한 카테고리
 1. **테스트 fixture 스키마 정합** (round 3): files INSERT의 `storage_key` 컬럼 (file_versions에만 존재) 제거 5곳, `idx_permissions_unique` 회피용 subject 분리, `shares.folder_id` FK용 `seedFolder` 헬퍼 도입, FileMutationServiceTest move tests의 same-scope guard 호환 (sibling fixture).
@@ -17,17 +17,33 @@ Plan D PR #138의 CI 실패 14건을 5 라운드에 걸쳐 해소. Plan D 고유
 4. **E2E loginAs CSRF** (round 4): `loginAs`가 `X-CSRF-Token` 헤더를 빠뜨려 POST 요청이 403. `csrf.getFirst("X-CSRF-Token")` 추가.
 5. **E2E ScopeRef wire key** (round 5b): 테스트가 `scope.scopeId`로 query했으나 DTO record는 `{type, id}` (spec §5.3 wire format) → `scope.id`로 변경.
 6. **Mockito @Primary 빈 + @BeforeEach reset** (rounds 6~7): `@DataJpaTest` 컨텍스트는 `ApplicationContext`도 `ApplicationEventPublisher` 구현체로 등록 → `@Bean` mock과 모호성. `@Primary` 부여 + 테스트 간 invocation 누적 회피용 reset.
+7. **master 머지 (round 8)**: PR #142 (Instant→OffsetDateTime JDBC binding fix + reject move-to-root) + PR #141 (TeamArchiveGuard) 가 master에 머지된 후 본 브랜치에 흡수. FileMutationService/FolderMutationService 생성자에 TeamArchiveGuard 파라미터 추가 (compose both Plan D + master). 9 파일 conflict resolve.
 
 ### PR 상태
 - mergeable: MERGEABLE
-- mergeStateStatus: UNSTABLE — Plan D 영역 외 master 회귀 2건만 잔존
-  - `FolderMutationServiceTest.move_toRoot_setsParentNull`
-  - `TeamPivotEndToEndTest.teamCreate_invite_childFolder_membershipPermissions_workEndToEnd`
-- 동일 회귀가 PR #141, #143, #144에도 영향 — PR #142 `fix/master-backend-regressions`(다른 세션) 머지 시 본 PR rebase로 자연 해소.
+- master 머지 후 모든 잔존 회귀(FolderMutationServiceTest.move_toRoot_setsParentNull, TeamPivotEndToEndTest) 자연 해소 예상.
+
+---
+
+## 2026-05-10 세션 — Plan A 라인 follow-on: ERR_TEAM_ARCHIVED Write Enforcement (master, PR #141 머지)
+
+### 완료
+- [team-archive-enforcement] **T1+T2** TeamArchivedException + TeamArchiveGuard + GlobalExceptionHandler 423 → `TEAM_ARCHIVED` 매핑 (commit 18935d2)
+- [team-archive-enforcement] **T3** FolderMutationService 5 진입점 가드 (create/rename/move/delete/restore-3arg) + FolderArchivedTeamGuardTest (10 cases) (commit de99427)
+- [team-archive-enforcement] **T4** FileMutationService 4 진입점 가드 (rename/move/delete/restore-3arg) + FileArchivedTeamGuardTest (8 cases) (commit 510caa7)
+- [team-archive-enforcement] **T5** FileUploadService.upload + FileVersionMutationService.restoreVersion 가드 + FileUploadArchivedTeamGuardTest (4 cases) (commit 0ee3fe8)
+- [team-archive-enforcement] **T6** docs/02 §8 `TEAM_ARCHIVED` row "예약" 마커 제거 (정상 운영 항목으로 전환)
+- [team-archive-enforcement] dev-docs bootstrap + closure (dev/active → dev/completed)
+
+### 범위
+spec §2.2 archive lifecycle ("archived 팀 콘텐츠 read-only") + §5.4 (`ERR_TEAM_ARCHIVED 423`)에서 docs/02 §8 "예약" 항목으로만 선언되어 있던 enforcement 계약을 실제 동작하는 백엔드 가드로 닫음. archived 팀 소속 폴더/파일에 대한 모든 write API → HTTP 423 + envelope code `TEAM_ARCHIVED` + `details.teamId`. read 경로(GET, download)는 그대로 허용.
+
+11개 진입점 모두 `TeamArchiveGuard.assertNotArchived(scopeType, scopeId)` 단일 helper로 차단. DEPARTMENT scope는 helper에서 short-circuit (no-op) — 부서 deactivate는 별도 정책.
 
 ### 다음 세션 컨텍스트
-- PR #138 머지는 사용자 승인 + master CI green 대기.
-- PR #142 머지 후 본 PR rebase → CI green → merge.
+- **CrossWorkspaceMoveService TEAM_ARCHIVED 가드** — Plan D 머지 후 (PR #138). 본 세션 미커버. cross-workspace move의 source/destination 양쪽 archive 검증 필요.
+- **프론트 423 토스트 wiring** — Plan B 머지(PR #139) 후 `errors.ts` `TEAM_ARCHIVED` 상수와 mutation hook의 onError에서 토스트 표시. UX 측면.
+- **archived 팀 read-only UI 시각** — spec §4.5(9) "archived 팀 dim + 🔒". 사이드바/탐색기에서 archived 팀 콘텐츠는 read-only 모드로 진입. 별도 frontend task.
 
 ---
 
@@ -47,21 +63,12 @@ backend(Phase 1~6 + Finalize)는 이번 PR에서 완료. frontend Phase 7은 Pla
 - `CrossWorkspaceMoveCompletedEvent` (SSE는 v1.x 이월)
 - frontend `types/audit.ts` 두 wire 멤버 추가
 
-### 검증
-- backend: `./gradlew test` 모든 신규/회귀 테스트 컴파일 통과. Testcontainers 의존 테스트는 로컬 SKIP (Plan A 패턴), CI에서 실행.
-- E2E: `CrossWorkspaceMoveE2ETest`(folder), `CrossWorkspaceFileMoveE2ETest`(file)이 full stack을 검증.
-
 ### 결정/편차
 - subtree permissions 보존 옵션 → v1.x 이월 (spec §5.6 KISS 명시)
 - SSE 실 전송 → v1.x 이월 (이벤트 publish hook만 도입)
 - destination=root 직접 이동 차단 (`ERR_INVALID_DESTINATION`) — spec §1.3 정합
 - ADMIN preset cross-workspace 절대 금지(§4.2 강한 형태) → 본 plan에서 추가 분기 불필요. permissions 전체 삭제 후 destination 멤버십 기본권만 적용되어 ADMIN cross 부여 경로 차단.
 - V6 `shares.permission_id ON DELETE CASCADE` 발견 — Task 18 implementer가 `revokedShareCount`를 step 4(perm delete) 전에 capture하도록 조정. 결과적으로 active shares 0 invariant은 cascade로 자연 만족, audit metadata는 정확.
-
-### 다음 세션 컨텍스트
-- Plan D Phase 7 (frontend): Plan B의 `WorkspaceFolderTree` 머지 후 enable. 컨텍스트 메뉴 + `MoveToWorkspaceDialog` + `errors.ts` 상수 sync.
-- Plan E (휴지통 workspace 분리) 진입 가능.
-- Plan A에 stranded된 Task 4 commit `6fe62ea`(audit enum 값 추가) — Plan D Task 20 commit `9e40db5`이 동일 enum을 다시 추가했으므로 양 브랜치 머지 시 충돌 가능. master 머지 순서에서 처리 필요.
 
 ### 블로커
 - 없음.

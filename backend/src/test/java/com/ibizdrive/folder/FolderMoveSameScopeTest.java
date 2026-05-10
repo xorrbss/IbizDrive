@@ -17,7 +17,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.sql.Timestamp;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -73,10 +73,16 @@ class FolderMoveSameScopeTest {
         @Bean FolderMutationService folderMutationService(FolderRepository repo,
                                                           FileRepository fileRepo,
                                                           AuditService audit,
-                                                          ObjectMapper mapper) {
+                                                          ObjectMapper mapper,
+                                                          com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
                 new com.ibizdrive.trash.TrashRetentionProperties(30),
-                mock(CrossWorkspaceMoveService.class));
+                mock(CrossWorkspaceMoveService.class),
+                teamArchiveGuard);
+        }
+
+        @Bean com.ibizdrive.team.TeamArchiveGuard teamArchiveGuard(com.ibizdrive.team.TeamRepository teamRepository) {
+            return new com.ibizdrive.team.TeamArchiveGuard(teamRepository);
         }
     }
 
@@ -132,7 +138,7 @@ class FolderMoveSameScopeTest {
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Timestamp now = Timestamp.from(java.time.Instant.now());
+        OffsetDateTime now = OffsetDateTime.now();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
             "scope_type, scope_id, created_at, updated_at) " +

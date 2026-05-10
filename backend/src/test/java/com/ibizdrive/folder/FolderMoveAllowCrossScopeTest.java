@@ -113,11 +113,13 @@ class FolderMoveAllowCrossScopeTest {
                                                      FileRepository fileRepo,
                                                      AuditService audit,
                                                      ObjectMapper mapper,
-                                                     CrossWorkspaceMoveService crossWorkspaceMoveService) {
+                                                     CrossWorkspaceMoveService crossWorkspaceMoveService,
+                                                     com.ibizdrive.team.TeamRepository teamRepo) {
             return new FolderMutationService(
                 repo, fileRepo, audit, mapper,
                 new TrashRetentionProperties(30),
-                crossWorkspaceMoveService
+                crossWorkspaceMoveService,
+                new com.ibizdrive.team.TeamArchiveGuard(teamRepo)
             );
         }
     }
