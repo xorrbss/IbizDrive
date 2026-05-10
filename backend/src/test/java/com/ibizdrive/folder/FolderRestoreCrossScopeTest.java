@@ -77,7 +77,9 @@ class FolderRestoreCrossScopeTest {
                                                           ObjectMapper mapper,
                                                           TeamArchiveGuard guard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30), guard);
+                new com.ibizdrive.trash.TrashRetentionProperties(30),
+                mock(CrossWorkspaceMoveService.class),
+                guard);
         }
     }
 

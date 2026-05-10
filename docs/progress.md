@@ -66,6 +66,26 @@
 
 ---
 
+## 2026-05-10 — Plan D PR #138 CI 안정화 (rounds 3~7) + master 머지 (PR #138 머지)
+
+### 범위
+Plan D PR #138의 CI 실패 14건을 5 라운드에 걸쳐 해소. Plan D 고유 실패 0건 달성. 마지막에 origin/master(PR #142 + PR #141 머지 포함)를 본 브랜치에 머지.
+
+### 해결한 카테고리
+1. **테스트 fixture 스키마 정합** (round 3): files INSERT의 `storage_key` 컬럼 (file_versions에만 존재) 제거 5곳, `idx_permissions_unique` 회피용 subject 분리, `shares.folder_id` FK용 `seedFolder` 헬퍼 도입, FileMutationServiceTest move tests의 same-scope guard 호환 (sibling fixture).
+2. **Production 버그 — entity scope revert** (round 3): `CrossWorkspaceMoveService.moveFile/moveFolder`의 step 3 native @Modifying `updateScopeBatch` 후 stale entity로 `saveAndFlush` → JPA dirty-check가 stale scope를 DB에 되돌림. `assignScope(dest)` 동기화로 해결.
+3. **Production 버그 — moveFolder root constraint** (round 5): step 3 batch update 시 source가 아직 root(parent_id NULL)인 채 dest scope로 변경 → V14 `idx_folders_root_per_scope` 위반. parent_id 변경을 step 3 전으로 이동.
+4. **E2E loginAs CSRF** (round 4): `loginAs`가 `X-CSRF-Token` 헤더를 빠뜨려 POST 요청이 403. `csrf.getFirst("X-CSRF-Token")` 추가.
+5. **E2E ScopeRef wire key** (round 5b): 테스트가 `scope.scopeId`로 query했으나 DTO record는 `{type, id}` (spec §5.3 wire format) → `scope.id`로 변경.
+6. **Mockito @Primary 빈 + @BeforeEach reset** (rounds 6~7): `@DataJpaTest` 컨텍스트는 `ApplicationContext`도 `ApplicationEventPublisher` 구현체로 등록 → `@Bean` mock과 모호성. `@Primary` 부여 + 테스트 간 invocation 누적 회피용 reset.
+7. **master 머지 (round 8)**: PR #142 (Instant→OffsetDateTime JDBC binding fix + reject move-to-root) + PR #141 (TeamArchiveGuard) 가 master에 머지된 후 본 브랜치에 흡수. FileMutationService/FolderMutationService 생성자에 TeamArchiveGuard 파라미터 추가 (compose both Plan D + master). 9 파일 conflict resolve.
+
+### PR 상태
+- mergeable: MERGEABLE
+- master 머지 후 모든 잔존 회귀(FolderMutationServiceTest.move_toRoot_setsParentNull, TeamPivotEndToEndTest) 자연 해소 예상.
+
+---
+
 ## 2026-05-10 세션 — Plan A 라인 follow-on: ERR_TEAM_ARCHIVED Write Enforcement
 
 ### 완료
@@ -86,14 +106,33 @@ spec §2.2 archive lifecycle ("archived 팀 콘텐츠 read-only") + §5.4 (`ERR_
 - **프론트 423 토스트 wiring** — Plan B 머지(PR #139) 후 `errors.ts` `TEAM_ARCHIVED` 상수와 mutation hook의 onError에서 토스트 표시. UX 측면.
 - **archived 팀 read-only UI 시각** — spec §4.5(9) "archived 팀 dim + 🔒". 사이드바/탐색기에서 archived 팀 콘텐츠는 read-only 모드로 진입. 별도 frontend task.
 
-### 검증
-- backend 전체 suite: 1366 tests, 0 failures, 0 errors, 327 skipped (Testcontainers Docker 부재 시 skip — 기존 peer 패턴과 동일).
-- 신규 테스트 22 cases (Folder 10 + File 8 + Upload 4) — Docker 환경 CI에서 실행.
-- subagent 3-stage review READY (spec compliance + code quality 통합 패스, T1+T2 별도 패스 + T3/T4/T5 통합 패스).
+---
 
-### PR
-- branch: `feat/team-centric-pivot-team-archive-write-enforcement`
-- 5 commits (bootstrap + T1+T2 + T3 + T4 + T5 + T6 docs sync)
+## 2026-05-09 — 🎯 team-centric-pivot Plan D 완료 (cross-workspace move backend)
+
+### 범위
+spec §5.6 cross-workspace folder/file 이동을 backend(트랜잭션 + invariant) + frontend(컨텍스트 메뉴 + dialog)로 활성화.
+backend(Phase 1~6 + Finalize)는 이번 PR에서 완료. frontend Phase 7은 Plan B의 `WorkspaceFolderTree` 머지 후 별도 트랙으로 진행.
+
+### 변경 핵심
+- `CrossWorkspaceMoveService` (subtree scope update + permissions cleanup + shares revoke + invariant assert + Spring ApplicationEvent publish)
+- `MovePreviewService` (멱등 영향 계산)
+- `/move/preview` endpoint (folder + file)
+- `/move`에 `allowCrossScope` body 추가 (default false → 기존 same-scope 가드 유지)
+- 신규 envelope: `ERR_DEST_WORKSPACE_DENIED` (403), `ERR_INVALID_DESTINATION` (400). 기존 `ERR_CROSS_SCOPE_MOVE` 매핑 wire-up 정상화 (Plan A 잔여)
+- 신규 audit event: `folder.moved.cross_workspace`, `file.moved.cross_workspace`
+- `CrossWorkspaceMoveCompletedEvent` (SSE는 v1.x 이월)
+- frontend `types/audit.ts` 두 wire 멤버 추가
+
+### 결정/편차
+- subtree permissions 보존 옵션 → v1.x 이월 (spec §5.6 KISS 명시)
+- SSE 실 전송 → v1.x 이월 (이벤트 publish hook만 도입)
+- destination=root 직접 이동 차단 (`ERR_INVALID_DESTINATION`) — spec §1.3 정합
+- ADMIN preset cross-workspace 절대 금지(§4.2 강한 형태) → 본 plan에서 추가 분기 불필요. permissions 전체 삭제 후 destination 멤버십 기본권만 적용되어 ADMIN cross 부여 경로 차단.
+- V6 `shares.permission_id ON DELETE CASCADE` 발견 — Task 18 implementer가 `revokedShareCount`를 step 4(perm delete) 전에 capture하도록 조정. 결과적으로 active shares 0 invariant은 cascade로 자연 만족, audit metadata는 정확.
+
+### 블로커
+- 없음.
 
 ---
 
@@ -125,7 +164,6 @@ spec §2.2 archive lifecycle ("archived 팀 콘텐츠 read-only") + §5.4 (`ERR_
 - 34 commits ahead of origin/master, 1057+ tests pass
 
 ---
-
 
 ## 2026-05-09 — 🎯 team-centric-pivot Plan A 완료 (30/30 task, 100%)
 

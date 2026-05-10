@@ -1282,10 +1282,25 @@ PATCH /api/folders/:id
             → UPDATE → audit_log INSERT (FOLDER_RENAME) → COMMIT
 
 POST /api/folders/:id/move
-  Request:  { targetParentId: string }
+  Request:  { targetParentId: string, allowCrossScope?: boolean (optional, default false) }
   Response: 200 { folder: FolderDto, breadcrumb: FolderDto[] }
   TX:       SELECT FOR UPDATE on source + target → 후손 관계 검사 (closure or 재귀)
             → UNIQUE 검증 → UPDATE parent_id → audit_log (FOLDER_MOVE) → COMMIT
+  Note:     allowCrossScope=false(default) → 기존 same-scope 가드 유지 (ERR_CROSS_SCOPE_MOVE on cross attempt).
+            allowCrossScope=true → CrossWorkspaceMoveService 진입 (subtree scope update + permissions cleanup + shares revoke).
+            Auth for cross: source EDIT + SHARE AND destination UPLOAD (ERR_DEST_WORKSPACE_DENIED on deny).
+
+POST /api/folders/:id/move/preview
+  Auth:     source folder EDIT + SHARE (Plan D §5.6)
+  Request:  { destinationFolderId: UUID }
+  Response: 200 {
+    itemCount: number,                        // 이동될 폴더+파일 총 개수 (folder는 subtree 포함)
+    removedPermissions: PermissionRef[],      // 정리될 명시 권한 grant (id, subjectType, subjectId, preset)
+    revokedShares: ShareRef[],                // revoke될 share (id, resourceType, resourceId, sharedBy)
+    targetMembershipDefaults: Permission[],   // 이동 후 destination workspace 멤버십 기본권 (호출자 기준)
+    nameConflict: string | null               // destination 동명 항목 존재 시 충돌 이름, 없으면 null
+  }
+  Errors:   400 ERR_INVALID_DESTINATION (destinationFolderId null/self/descendant), 403 PERMISSION_DENIED, 404 NOT_FOUND
 
 DELETE /api/folders/:id   (휴지통 이동)
   Response: 204
@@ -1343,10 +1358,25 @@ PATCH /api/files/:id
   Norm:     normalized_name = NormalizeUtil.normalize(name)
 
 POST /api/files/:id/move
-  Request:  { targetFolderId: string }
+  Request:  { targetFolderId: string, allowCrossScope?: boolean (optional, default false) }
   Response: 200 { file: FileDto }
   TX:       SELECT FOR UPDATE on file + target folder
             → UNIQUE 충돌 검사 → UPDATE folder_id → audit_log (FILE_MOVE) → COMMIT
+  Note:     allowCrossScope=false(default) → 기존 same-scope 가드 유지.
+            allowCrossScope=true → CrossWorkspaceMoveService.moveFile 진입 (permissions cleanup + shares revoke).
+            Auth for cross: file EDIT + SHARE AND destination folder UPLOAD (ERR_DEST_WORKSPACE_DENIED on deny).
+
+POST /api/files/:id/move/preview
+  Auth:     file EDIT + SHARE (Plan D §5.6)
+  Request:  { destinationFolderId: UUID }
+  Response: 200 {
+    itemCount: number,                        // 단건 파일 이동이므로 항상 1
+    removedPermissions: PermissionRef[],      // 정리될 명시 권한 grant (id, subjectType, subjectId, preset)
+    revokedShares: ShareRef[],                // revoke될 share (id, resourceType, resourceId, sharedBy)
+    targetMembershipDefaults: Permission[],   // 이동 후 destination workspace 멤버십 기본권 (호출자 기준)
+    nameConflict: string | null               // destination 동명 항목 존재 시 충돌 이름, 없으면 null
+  }
+  Errors:   400 ERR_INVALID_DESTINATION (destinationFolderId null/self), 403 PERMISSION_DENIED, 404 NOT_FOUND
 
 DELETE /api/files/:id
   Response: 204
@@ -2374,7 +2404,10 @@ GET /api/departments/search?q=eng&limit=20
 | 409 | DEPARTMENT_CONFLICT | 동일 이름의 활성 부서 존재 (admin create/rename/reactivate) | 인라인 에러 — "같은 이름의 활성 부서가 이미 존재합니다" |
 | 400 | MOVE_INTO_SELF | 자기 자신으로 이동 시도 | UI 차단, 도달 시 토스트 |
 | 400 | MOVE_INTO_DESCENDANT | 후손 폴더로 이동 시도 | UI 차단, 도달 시 토스트 |
+| 400 | ERR_INVALID_DESTINATION | destinationFolderId가 null이거나 자기 자신/후손 — cross-workspace move/preview 전용 | 토스트 |
+| 403 | ERR_DEST_WORKSPACE_DENIED | cross-workspace move 시 source EDIT+SHARE 또는 destination UPLOAD 부재 | 토스트 |
 | 404 | TARGET_NOT_FOUND | 이동 타겟 폴더가 없음 | 토스트 + 폴더 트리 재조회 |
+| 409 | ERR_CROSS_SCOPE_MOVE | allowCrossScope=false(default)인데 다른 workspace로 이동 시도 — 컨텍스트 메뉴 사용 안내 | 토스트 + "다른 workspace로 이동" 메뉴 안내 |
 | 413 | QUOTA_EXCEEDED | 스토리지 할당량 초과 | 관리자 문의 안내 |
 | 413 | FILE_TOO_LARGE | 단일 파일 크기 초과 | 경고 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | 금지된 확장자 | 경고 |

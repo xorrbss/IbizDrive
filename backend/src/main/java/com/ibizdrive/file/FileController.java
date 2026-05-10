@@ -4,6 +4,9 @@ import com.ibizdrive.common.dto.RestoreRequest;
 import com.ibizdrive.file.dto.FileDto;
 import com.ibizdrive.file.dto.MoveFileRequest;
 import com.ibizdrive.file.dto.RenameFileRequest;
+import com.ibizdrive.folder.MovePreviewService;
+import com.ibizdrive.folder.dto.MovePreviewRequest;
+import com.ibizdrive.folder.dto.MovePreviewResponse;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
@@ -59,10 +62,14 @@ public class FileController {
 
     private final FileMutationService fileMutationService;
     private final FileQueryService fileQueryService;
+    private final MovePreviewService movePreviewService;
 
-    public FileController(FileMutationService fileMutationService, FileQueryService fileQueryService) {
+    public FileController(FileMutationService fileMutationService,
+                          FileQueryService fileQueryService,
+                          MovePreviewService movePreviewService) {
         this.fileMutationService = fileMutationService;
         this.fileQueryService = fileQueryService;
+        this.movePreviewService = movePreviewService;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -105,16 +112,24 @@ public class FileController {
 
     /**
      * 파일 이동 — 새 폴더로 옮긴다. {@code targetFolderId}는 NOT NULL ({@code MoveFileRequest @NotNull}).
-     * SpEL은 대상 파일의 MOVE + 새 폴더의 EDIT 모두 요구.
+     *
+     * <p>{@code allowCrossScope: true} 시 cross-workspace move 경로로 분기 (Plan D §5.6).
+     * 이 경우 source 파일의 EDIT+SHARE와 destination 폴더의 UPLOAD가 추가로 요구된다.
+     * 파일은 root 이동 개념 없으므로 folder의 {@code targetParentId == null} 분기가 없다.
      */
     @PostMapping("/{id}/move")
-    @PreAuthorize("hasPermission(#id, 'file', 'MOVE') and hasPermission(#req.targetFolderId, 'folder', 'EDIT')")
+    @PreAuthorize("hasPermission(#id, 'file', 'MOVE') and ("
+        + "#req.allowCrossScopeOrFalse() ? "
+            + "(hasPermission(#id, 'file', 'EDIT') and hasPermission(#id, 'file', 'SHARE') and hasPermission(#req.targetFolderId, 'folder', 'UPLOAD')) : "
+            + "hasPermission(#req.targetFolderId, 'folder', 'EDIT')"
+        + ")")
     public ResponseEntity<Map<String, FileDto>> move(
         @PathVariable("id") UUID id,
         @RequestBody @Valid MoveFileRequest req,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
-        FileItem moved = fileMutationService.move(id, req.targetFolderId(), principal.getUser().getId());
+        FileItem moved = fileMutationService.move(
+            id, req.targetFolderId(), principal.getUser().getId(), req.allowCrossScopeOrFalse());
         return ResponseEntity.ok(Map.of("file", FileDto.from(moved)));
     }
 
@@ -156,5 +171,26 @@ public class FileController {
         String newName = body != null ? body.name() : null;
         FileItem restored = fileMutationService.restore(id, principal.getUser().getId(), newName);
         return ResponseEntity.ok(Map.of("file", FileDto.from(restored)));
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // POST /api/files/{id}/move/preview
+    // ──────────────────────────────────────────────────────────────────
+
+    /**
+     * spec §5.6 — file 단건 cross-workspace move 미리보기.
+     *
+     * <p>SpEL 가드: source 파일 {@code EDIT+SHARE}.
+     */
+    @PostMapping("/{id}/move/preview")
+    @PreAuthorize("hasPermission(#id, 'file', 'EDIT') and hasPermission(#id, 'file', 'SHARE')")
+    public ResponseEntity<MovePreviewResponse> movePreview(
+        @PathVariable("id") UUID id,
+        @RequestBody @Valid MovePreviewRequest req,
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        return ResponseEntity.ok(
+            movePreviewService.previewFile(id, req.destinationFolderId(), principal.getUser().getId())
+        );
     }
 }

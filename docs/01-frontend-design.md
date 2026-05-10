@@ -698,6 +698,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 }
 ```
 
+### 7.1 cross-workspace drop 차단 (Plan D §5.6)
+
+dnd-kit `onDragEnd` 핸들러에서 source와 drop target의 `workspaceId`가 다르면 **drop 차단 + 사용자 안내**:
+
+- **토스트**: "🚫 다른 workspace로 이동 불가"
+- **툴팁 / 토스트 부가 설명**: "컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요"
+- 드래그 시각적 피드백: drop target 위에 커서 있을 때 `data-cross-workspace` 속성 → CSS `cursor: not-allowed` + 반투명 오버레이
+
+실제 cross-workspace 이동은 컨텍스트 메뉴 → `MoveToWorkspaceDialog` → `POST /api/folders/{id}/move` (`allowCrossScope: true`) 경로만 허용 (백엔드 서버 409 `ERR_CROSS_SCOPE_MOVE` 가드와 이중 방어).
+
+> frontend 구현 활성화 시점: Plan B `WorkspaceFolderTree` 머지 후 별도 트랙 (Plan D Phase 7).
+
 ---
 
 ## 8. 벌크 선택 & 액션 바
