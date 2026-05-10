@@ -7,6 +7,8 @@ import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.team.TeamRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -86,6 +88,7 @@ class FileArchivedTeamGuardTest {
     @Autowired private FileMutationService service;
     @Autowired private FileRepository fileRepository;
     @Autowired private JdbcTemplate jdbc;
+    @PersistenceContext private EntityManager em;
 
     // ──────────────────────────────────────────────────────────────────
     // rename
@@ -122,10 +125,12 @@ class FileArchivedTeamGuardTest {
 
     @Test
     void move_archivedTeam_throwsTeamArchived() {
+        // 한 팀에 root는 1개만 허용(idx_folders_root_per_scope) — src/dst는 root 아래 child로 구성.
         UUID owner = insertUser("fa-mv1@test", "fa-mv1");
         UUID teamId = insertTeam("Alpha-mv1", "alpha-mv1", owner);
-        UUID src = insertTeamFolder(owner, teamId, "SrcMv1");
-        UUID dst = insertTeamFolder(owner, teamId, "DstMv1");
+        UUID root = insertTeamFolder(owner, teamId, "RootMv1");
+        UUID src = insertChildFolder(root, owner, teamId, "SrcMv1");
+        UUID dst = insertChildFolder(root, owner, teamId, "DstMv1");
         FileItem f = insertTeamFile(src, owner, teamId, "MvFile1.txt");
         archiveTeam(teamId, owner);
 
@@ -138,8 +143,9 @@ class FileArchivedTeamGuardTest {
     void move_activeTeam_succeeds() {
         UUID owner = insertUser("fa-mv2@test", "fa-mv2");
         UUID teamId = insertTeam("Alpha-mv2", "alpha-mv2", owner);
-        UUID src = insertTeamFolder(owner, teamId, "SrcMv2");
-        UUID dst = insertTeamFolder(owner, teamId, "DstMv2");
+        UUID root = insertTeamFolder(owner, teamId, "RootMv2");
+        UUID src = insertChildFolder(root, owner, teamId, "SrcMv2");
+        UUID dst = insertChildFolder(root, owner, teamId, "DstMv2");
         FileItem f = insertTeamFile(src, owner, teamId, "MvFile2.txt");
 
         FileItem moved = service.move(f.getId(), dst, owner);
@@ -230,14 +236,23 @@ class FileArchivedTeamGuardTest {
         return id;
     }
 
+    /**
+     * raw JDBC UPDATE이므로 JPA L1 persistence context는 자동 갱신되지 않는다. setup 단계의
+     * service.delete가 가드를 트리거해 Team을 캐시에 적재하면, 이후 가드 호출이 stale active 상태를
+     * 반환한다(예: restore_archivedTeam). {@code em.flush() + em.clear()}로 캐시를 비워 다음 lookup이
+     * DB를 재조회하도록 강제.
+     */
     private void archiveTeam(UUID teamId, UUID actorId) {
         jdbc.update(
             "UPDATE teams SET archived_at = NOW(), archived_by = ?, updated_at = NOW() WHERE id = ?",
             actorId, teamId
         );
+        em.flush();
+        em.clear();
     }
 
-    /** team scope folder fixture — V13 NOT NULL scope_type/scope_id 충족. */
+    /** team scope root folder fixture — parent_id NULL. {@code idx_folders_root_per_scope}로 인해
+     *  팀당 1개만 가능. 자식이 필요하면 {@link #insertChildFolder}를 사용. */
     private UUID insertTeamFolder(UUID ownerId, UUID teamId, String name) {
         UUID id = UUID.randomUUID();
         String normalized = name.toLowerCase();
@@ -246,6 +261,19 @@ class FileArchivedTeamGuardTest {
             "scope_type, scope_id) " +
             "VALUES (?, NULL, ?, ?, ?, ?, 'standard', 'team', ?)",
             id, name, normalized, normalized, ownerId, teamId
+        );
+        return id;
+    }
+
+    /** team scope child folder — parent_id 명시. 같은 팀에 여러 폴더가 필요한 경우 root 1개 + children N개. */
+    private UUID insertChildFolder(UUID parentId, UUID ownerId, UUID teamId, String name) {
+        UUID id = UUID.randomUUID();
+        String normalized = name.toLowerCase();
+        jdbc.update(
+            "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +
+            "scope_type, scope_id) " +
+            "VALUES (?, ?, ?, ?, ?, ?, 'standard', 'team', ?)",
+            id, parentId, name, normalized, normalized, ownerId, teamId
         );
         return id;
     }

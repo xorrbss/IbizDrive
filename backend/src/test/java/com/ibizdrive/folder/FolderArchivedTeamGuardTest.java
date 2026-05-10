@@ -6,6 +6,8 @@ import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.team.TeamRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -20,7 +22,6 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -92,6 +93,7 @@ class FolderArchivedTeamGuardTest {
     @Autowired private FolderMutationService service;
     @Autowired private FolderRepository folderRepository;
     @Autowired private JdbcTemplate jdbc;
+    @PersistenceContext private EntityManager em;
 
     // ──────────────────────────────────────────────────────────────────
     // create
@@ -281,7 +283,14 @@ class FolderArchivedTeamGuardTest {
         return id;
     }
 
-    /** 활성 팀을 archive — TeamService.archive를 거치지 않고 V12 row만 직접 갱신. */
+    /**
+     * 활성 팀을 archive — TeamService.archive를 거치지 않고 V12 row만 직접 갱신.
+     *
+     * <p>raw JDBC UPDATE이므로 JPA L1 persistence context는 자동 갱신되지 않는다. 이전에 가드가
+     * Team을 로드한 적이 있으면(예: setup 단계의 service.create가 가드를 트리거) 캐시에 active 상태가
+     * 남아 있어 이후 가드 호출이 stale 데이터를 반환한다. {@code em.flush() + em.clear()}로 캐시를
+     * 비워 다음 lookup이 DB를 재조회하도록 강제한다.
+     */
     private void archiveTeam(UUID teamId) {
         OffsetDateTime now = OffsetDateTime.now();
         jdbc.update(
@@ -289,15 +298,20 @@ class FolderArchivedTeamGuardTest {
                 + "(SELECT created_by FROM teams WHERE id = ?), updated_at = ? WHERE id = ?",
             now, teamId, now, teamId
         );
+        em.flush();
+        em.clear();
     }
 
     /**
      * Workspace root folder 직접 INSERT — service.create가 root를 거부하므로 raw JDBC.
      * scope_type/scope_id는 V13 NOT NULL 제약에 따라 호출자가 명시 (team scope ⇒ scope_id = team.id).
+     *
+     * <p>created_at/updated_at는 TIMESTAMPTZ — JDBC 드라이버가 {@code OffsetDateTime}으로 binding 가능
+     * (CI Postgres 환경 호환). {@code java.time.Instant} 직접 binding은 SQL 타입 추론 실패.
      */
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        OffsetDateTime now = OffsetDateTime.now();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, "
                 + "scope_type, scope_id, created_at, updated_at) "
