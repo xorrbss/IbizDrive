@@ -27,8 +27,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 회귀 가드는 후속 Task 5/6 (Team/TeamMembership entity test)이 담당.
  *
  * <p>핵심 회귀 가드:
- *   - {@code teams} 컬럼 11개 (id, name, normalized_name, description, visibility, root_folder_id,
- *     created_by, archived_at, archived_by, created_at, updated_at)
+ *   - {@code teams} 컬럼 13개 (V12 11개 + V16 color/lead_id 2개)
  *   - {@code team_memberships} composite PK (team_id, user_id) — 한 팀당 한 user 1행
  *   - {@code idx_teams_name_active} partial unique — active row(archived_at IS NULL) 동일 이름 차단,
  *     archive 후 재생성은 허용 (별도 검증)
@@ -57,14 +56,16 @@ class V12MigrationIT {
     // -------------------- column presence --------------------
 
     @Test
-    void teams_table_has_eleven_columns() {
+    void teams_table_has_thirteen_columns() {
         Integer cols = jdbc.queryForObject(
             "SELECT COUNT(*) FROM information_schema.columns " +
             "WHERE table_schema='public' AND table_name='teams'",
             Integer.class);
+        // V12 11개 + V16 color, lead_id 2개 = 13.
         // id, name, normalized_name, description, visibility, root_folder_id,
-        // created_by, archived_at, archived_by, created_at, updated_at = 11
-        assertEquals(11, cols, "teams 테이블은 11개 컬럼을 가져야 함");
+        // created_by, archived_at, archived_by, created_at, updated_at,
+        // color, lead_id
+        assertEquals(13, cols, "teams 테이블은 13개 컬럼을 가져야 함 (V12 11 + V16 2)");
     }
 
     @Test
