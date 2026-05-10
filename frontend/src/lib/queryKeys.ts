@@ -220,9 +220,11 @@ export const qk = {
   folderChildren: (scopeType: 'department' | 'team', scopeId: string, parentId: string) =>
     [...qk.all, 'folders', 'children', scopeType, scopeId, parentId] as const,
 
-  // ── Teams (Plan B, spec §5.2 — POST /api/teams) ──
+  // ── Teams (Plan B + Plan F — POST/GET/PATCH /api/teams + members) ──
   teams: {
     all: () => [...qk.all, 'teams'] as const,
+    detail: (id: string) => [...qk.all, 'teams', 'detail', id] as const,
+    members: (id: string) => [...qk.all, 'teams', 'members', id] as const,
   },
 } as const
 
@@ -406,5 +408,17 @@ export const invalidations = {
    */
   afterTeamChanged(qc: QueryClient): Promise<void> {
     return qc.invalidateQueries({ queryKey: qk.workspaces.me() })
+  },
+
+  /**
+   * 팀 멤버 변경 후 무효화 — Plan F.
+   * - 해당 팀의 멤버 목록
+   * - workspaces.me() (자기 자신을 remove한 경우 워크스페이스 리스트 갱신)
+   */
+  afterTeamMembersChanged(qc: QueryClient, teamId: string): Promise<void> {
+    return Promise.all([
+      qc.invalidateQueries({ queryKey: qk.teams.members(teamId) }),
+      qc.invalidateQueries({ queryKey: qk.workspaces.me() }),
+    ]).then(() => undefined)
   },
 } as const
