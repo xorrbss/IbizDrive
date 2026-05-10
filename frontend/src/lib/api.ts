@@ -29,7 +29,7 @@ import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
 import type { AdminDashboardSummaryResponse } from '@/types/admin'
 import type { WorkspaceMeResponse } from '@/types/workspace'
-import type { TeamCreateRequest, TeamResponse } from '@/types/team'
+import type { TeamCreateRequest, TeamMember, TeamMemberRole, TeamResponse } from '@/types/team'
 import { normalizeFileName } from '@/lib/normalize'
 
 export const api = {
@@ -122,6 +122,86 @@ export const api = {
       throw await buildApiError(res, `createTeam failed: ${res.status}`)
     }
     return (await res.json()) as TeamResponse
+  },
+
+  /**
+   * Plan F T8 — 팀 멤버 목록 ({@code GET /api/teams/{teamId}/members}).
+   */
+  async getTeamMembers(teamId: string): Promise<TeamMember[]> {
+    const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}/members`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `getTeamMembers failed: ${res.status}`)
+    }
+    return (await res.json()) as TeamMember[]
+  },
+
+  /**
+   * Plan F T8 — 팀 멤버 초대 ({@code POST /api/teams/{teamId}/members}). idempotent.
+   */
+  async inviteTeamMember(teamId: string, userId: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const res = await fetch(`/api/teams/${encodeURIComponent(teamId)}/members`, {
+      method: 'POST',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify({ userId }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `inviteTeamMember failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * Plan F T8 — 팀 멤버 제거 ({@code DELETE /api/teams/{teamId}/members/{userId}}).
+   * OWNER 제거 시도 시 last-OWNER 가드 → 400 TEAM_OWNER_REQUIRED.
+   */
+  async removeTeamMember(teamId: string, userId: string): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const res = await fetch(
+      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+      {
+        method: 'DELETE',
+        credentials: 'include',
+        headers: { 'X-CSRF-TOKEN': csrf },
+      },
+    )
+    if (!res.ok) {
+      throw await buildApiError(res, `removeTeamMember failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * Plan F T8 — 팀 멤버 역할 변경 ({@code PATCH .../members/{userId}}).
+   * last-OWNER 강등 시도 → 400 TEAM_OWNER_REQUIRED.
+   */
+  async changeTeamMemberRole(
+    teamId: string,
+    userId: string,
+    role: TeamMemberRole,
+  ): Promise<void> {
+    const csrf = readCookie('XSRF-TOKEN') ?? ''
+    const res = await fetch(
+      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+      {
+        method: 'PATCH',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRF-TOKEN': csrf,
+        },
+        body: JSON.stringify({ role }),
+      },
+    )
+    if (!res.ok) {
+      throw await buildApiError(res, `changeTeamMemberRole failed: ${res.status}`)
+    }
   },
 
   /**
