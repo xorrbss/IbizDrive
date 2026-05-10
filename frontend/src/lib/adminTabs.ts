@@ -3,9 +3,10 @@
  * (line 65~93)와 1:1 매핑. URL이 어디를 소유한다(CLAUDE.md §3.1) 원칙에 따라
  * 디자인의 로컬 tab 상태가 아닌 라우트 기반.
  *
- * 라우트 매핑 결정 (dev/active/design-refresh-admin-2026-05-10/plan.md):
- * - href는 현재 존재하는 라우트로 — 기존 컨텐츠는 유지하고 chrome만 교체.
- *   Phase 2 (members/audit/retention 라우트 rename)는 후속 트랙.
+ * 라우트 매핑 결정 (dev/completed/design-refresh-admin-2026-05-10/):
+ * - T7-P2 라우트 rename 완료: /admin/users → /admin/members, /admin/audit/logs
+ *   → /admin/audit, /admin/trash/policy → /admin/retention. 기존 URL은
+ *   next.config.ts redirects(308)로 영구 이동 (북마크/외부 링크 보존).
  * - departments/system은 디자인에 없음 — 탭바 미노출. 라우트는 그대로.
  *
  * AUDITOR 가시성 (wave1.5-auditor-admin-ui-access 답습):
@@ -43,8 +44,9 @@ export const ADMIN_TABS: ReadonlyArray<AdminTabDef> = [
   {
     id: 'members',
     label: '멤버',
-    href: '/admin/users',
-    isActive: (p) => p.startsWith('/admin/users') || p.startsWith('/admin/members'),
+    href: '/admin/members',
+    // /admin/users 직접 진입은 redirect되지만 isActive는 prefix로 양쪽 호환.
+    isActive: (p) => p.startsWith('/admin/members') || p.startsWith('/admin/users'),
     scope: 'ADMIN',
   },
   {
@@ -78,15 +80,16 @@ export const ADMIN_TABS: ReadonlyArray<AdminTabDef> = [
   {
     id: 'audit',
     label: '감사 로그',
-    href: '/admin/audit/logs',
+    href: '/admin/audit',
     isActive: (p) => p.startsWith('/admin/audit'),
     scope: 'AUDITOR-OK',
   },
   {
     id: 'retention',
     label: '보관',
-    href: '/admin/trash/policy',
-    isActive: (p) => p.startsWith('/admin/trash') || p.startsWith('/admin/retention'),
+    href: '/admin/retention',
+    // /admin/trash/* (구 trash/all + redirected trash/policy) 도 retention 탭 활성.
+    isActive: (p) => p.startsWith('/admin/retention') || p.startsWith('/admin/trash'),
     scope: 'ADMIN',
   },
 ]
