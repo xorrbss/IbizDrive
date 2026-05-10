@@ -25,7 +25,7 @@ import java.util.UUID;
  * {@code TEAM_CREATED} audit이 "team + 초기 OWNER 생성"을 묶어 표현하므로 create는
  * {@code TeamMemberAddedEvent}를 발행하지 않는다 (Task 17 invite만 발행).
  *
- * <p><b>메서드 현황</b>: create + invite + remove + changeRole + archive + restore (Plan A2 T4/T7).
+ * <p><b>메서드 현황</b>: create + invite + remove + changeRole + archive + restore + listMembers (Plan F T3).
  * Phase 2 backlog 완료. audit/listing 강제(read-only 차단) — FolderMutationService/FileUploadService 담당 (TODO follow-on).
  */
 @Service
@@ -271,5 +271,23 @@ public class TeamService {
         teamRepo.save(team);
         events.publishEvent(new TeamRestoredEvent(teamId, actorId));
         return team;
+    }
+
+    /**
+     * 팀 멤버 목록 조회 — Plan F T3.
+     *
+     * <p>read-only delegation. user 정보(displayName, email)는 JPQL constructor projection으로
+     * 동시에 로드 (spec §3.4).
+     *
+     * @param teamId 조회할 팀 ID (null 불가)
+     * @return joinedAt 오름차순 멤버 목록; team이 없으면 빈 리스트
+     * @throws IllegalArgumentException teamId가 null
+     */
+    @Transactional(readOnly = true)
+    public java.util.List<com.ibizdrive.team.dto.TeamMemberResponse> listMembers(UUID teamId) {
+        if (teamId == null) {
+            throw new IllegalArgumentException("teamId must not be null");
+        }
+        return memRepo.findMembersWithUser(teamId);
     }
 }
