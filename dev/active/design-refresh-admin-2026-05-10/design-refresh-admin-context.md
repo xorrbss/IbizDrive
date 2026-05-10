@@ -9,8 +9,14 @@ Last Updated: 2026-05-10
 - 디자인 zip 추출 → `.tmp/design-fetch-2026-05-10/` (main repo).
 - 라우트 매핑 확정 (plan §1 표).
 - backend gap 식별: admin team list/detail/update/delete 4종 미구현.
-- **현재 active phase: T7 — Phase 1 (CSS 어댑터 + 레이아웃 골격)**.
-- 코드 변경 0. 다음 세션이 Phase 1 첫 task부터 시작.
+- **2026-05-10: T7 Phase 1 완료** — admin.css 921L 이식 + AdminTopHeader/
+  AdminTabBar/AdminChrome 신규 + AdminLayout 재구성 + AdminSideNav 제거.
+  /admin/teams + /admin/sharing placeholder. typecheck/lint 그린, admin 13
+  파일 116/116 테스트 통과. commits `4602396`, `e490dc2`.
+- T7-P2 (라우트 rename) **deferred** — 디자인 매핑은 isActive prefix로
+  /admin/users + /admin/members 둘 다 활성, /admin/trash/* + /admin/retention
+  둘 다 활성. URL 정리는 사용자 결정 시 진행.
+- **다음 active: T8-P3 (Backend admin team endpoints)** — 사용자 승인 대기.
 
 ## Current Execution Contract
 
@@ -29,10 +35,8 @@ Last Updated: 2026-05-10
 
 ## 현재 active task
 
-**T7 — Phase 1, Task 1.1**: 디자인 CSS 어댑터 추출.
-
-목표: `.tmp/design-fetch-2026-05-10/styles.css` (2316L) 중 admin/teams 관련
-셀렉터를 분리해 frontend로 이식 가능한 형태로 정리.
+**T8 — Phase 3, Task 3.1**: `Team` 도메인 확장 (description/color/leadId)
++ Flyway 마이그레이션. (사용자 승인 후 진입)
 
 ## 다음 세션 읽기 순서
 

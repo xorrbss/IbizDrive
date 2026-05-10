@@ -6,19 +6,20 @@ Last Updated: 2026-05-10
 
 | Phase | 트랙 | 상태 | 게이트 |
 |---|---|---|---|
-| **T7-P1** | CSS 어댑터 + 레이아웃 골격 | 🟢 active | G-T7-1 |
-| T7-P2 | 라우트 추가/리다이렉트 | ⏳ pending | G-T7-2 |
-| T8-P3 | Backend admin team endpoints | ⏳ pending | G-T8-1 |
+| ~~T7-P1~~ | ~~CSS 어댑터 + 레이아웃 골격~~ | ✅ 완료 (2026-05-10) | ✅ G-T7-1 |
+| T7-P2 | 라우트 추가/리다이렉트 | ⏳ pending (deferred — 사용자 결정) | G-T7-2 |
+| **T8-P3** | **Backend admin team endpoints** | 🟢 next (사용자 승인 후) | G-T8-1 |
 | T8-P4 | Frontend `/admin/teams` 구현 | ⏳ pending | G-T8-2 |
 
-## T7 — Phase 1: CSS 어댑터 + 레이아웃 골격
+## T7 — Phase 1: CSS 어댑터 + 레이아웃 골격 ✅
 
-- [ ] **1.1** 디자인 admin/teams CSS 셀렉터 추출
-- [ ] **1.2** `AdminTopHeader` 컴포넌트 신규
-- [ ] **1.3** `AdminTabBar` 컴포넌트 신규 (role-based 가시성)
-- [ ] **1.4** `AdminLayout` 재구성 (header + tabbar + main)
-- [ ] **1.5** 기존 `AdminSideNav` 제거 + 참조 정리
-- [ ] **1.6** Phase 검증 (typecheck/lint/test 그린 + 시각 spot-check)
+- [x] **1.1** 디자인 admin/teams CSS 셀렉터 추출 — commit `4602396`
+- [x] **1.2** `AdminTopHeader` 컴포넌트 신규 — commit `e490dc2`
+- [x] **1.3** `AdminTabBar` 컴포넌트 신규 (role-based 가시성) — commit `e490dc2`
+- [x] **1.4** `AdminLayout` 재구성 (header + tabbar + main) — commit `e490dc2`
+- [x] **1.5** 기존 `AdminSideNav` 제거 + 참조 정리 — commit `e490dc2`
+- [x] **1.6** Phase 검증 — typecheck/lint 그린, admin 13 파일 116/116 테스트 통과
+  + AdminTopHeader 11 tests + AdminTabBar 10 tests 신규
 
 ### Task 1.1 — 디자인 admin/teams CSS 셀렉터 추출
 
