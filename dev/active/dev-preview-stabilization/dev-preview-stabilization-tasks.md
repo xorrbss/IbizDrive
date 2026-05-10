@@ -6,21 +6,23 @@
 
 | Phase | 상태 | Active task |
 |---|---|---|
-| 1. Login 401 진단·수정 | TODO | (없음 — T1부터) |
-| 2. Frontend auth UX 점검 | BLOCKED on Phase 1 | — |
-| 3. Local dev 인프라 | TODO | (병렬 가능) |
+| 1. Login 401 진단·수정 | DONE (T1·T2 ✓) | — |
+| 2. Frontend auth UX 점검 | DONE (T3 ✓) | — |
+| 3. Local dev 인프라 | DONE (T4·T6 ✓) | — |
 | 4. Preview 시드 | DONE (T5 ✓) | — |
+
+> **트랙 closure**: 4 phase 모두 머지 완료. 후속 followup은 별도 트랙으로 분리.
 
 ## 작업 항목
 
 ### Phase 1 — Login 401 진단·수정
 
-- [ ] **T1** Login 401 재현 + 원인 진단 (timebox 4h)
-- [ ] **T2** 진단 결과 따라 fix + integration test 추가
+- [x] **T1** Login 401 재현 + 원인 진단 (timebox 4h) — `T1-finding.md`. 원인: CSRF 실패 → `AccessDeniedHandlerImpl.sendError(403)` → Spring Boot `/error` forward → 익명 `ExceptionTranslationFilter` → `HttpStatusEntryPoint(401)` 빈 body 위장.
+- [x] **T2** 진단 결과 따라 fix + integration test 추가 — `CsrfAwareAccessDeniedHandler` 도입. `sendError` 회피로 ErrorPage forward 차단 + `{"code":"CSRF_MISMATCH"}` envelope 구현 (PR #152).
 
 ### Phase 2 — Frontend auth UX 점검
 
-- [ ] **T3** Playwright e2e: signup → /files redirect, login → /files redirect, error 분기 (409/400/일반) 검증
+- [x] **T3** Playwright e2e — `frontend/e2e/auth.e2e.ts` 5 시나리오 (signup 성공/409, signup 짧은 PW 클라 검증, login 성공/401). Backend 미가동 자체 모킹(`page.route()`로 `/api/auth/*` fake-fetch). `pnpm typecheck && lint && test:e2e` 모두 grееn.
 
 ### Phase 3 — Local dev 인프라
 
