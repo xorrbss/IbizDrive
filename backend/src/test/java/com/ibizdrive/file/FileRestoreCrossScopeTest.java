@@ -6,6 +6,8 @@ import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.team.TeamRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -86,6 +88,7 @@ class FileRestoreCrossScopeTest {
     @Autowired private FileMutationService service;
     @Autowired private FileRepository fileRepository;
     @Autowired private JdbcTemplate jdbc;
+    @PersistenceContext private EntityManager em;
 
     @Test
     void restore_originalFolderMovedToDifferentScope_throwsScopeMismatch() {
@@ -108,6 +111,7 @@ class FileRestoreCrossScopeTest {
 
         // folder를 scope B로 강제 재배치 — partition 또는 admin migration 시뮬레이션.
         jdbc.update("UPDATE folders SET scope_id = ? WHERE id = ?", scopeB, folderId);
+        clearJpaCache();
 
         assertThatThrownBy(() -> service.restore(file.getId(), owner))
             .isInstanceOf(FileRestoreConflictException.class)
@@ -137,6 +141,7 @@ class FileRestoreCrossScopeTest {
 
         // folder의 scope_type/scope_id를 team으로 통째 변경.
         jdbc.update("UPDATE folders SET scope_type = 'team', scope_id = ? WHERE id = ?", teamId, folderId);
+        clearJpaCache();
 
         assertThatThrownBy(() -> service.restore(file.getId(), owner))
             .isInstanceOf(FileRestoreConflictException.class)
@@ -217,11 +222,22 @@ class FileRestoreCrossScopeTest {
         return fileRepository.saveAndFlush(f);
     }
 
+    /** raw JDBC soft-delete + scope 재배치 후 호출자가 service.restore 진입 직전에 사용.
+     *  JPA L1 캐시는 raw UPDATE를 보지 못하므로 stale entity (originalFolderId/scope_id 미반영)가
+     *  반환되지 않도록 영속성 컨텍스트를 비운다. */
     private void softDeleteFile(UUID fileId, UUID originalFolderId) {
         jdbc.update(
             "UPDATE files SET deleted_at = NOW(), purge_after = NOW() + INTERVAL '30 days', " +
             "original_folder_id = ? WHERE id = ?",
             originalFolderId, fileId
         );
+        em.flush();
+        em.clear();
+    }
+
+    /** raw JDBC scope 재배치(cross-workspace migration 시뮬레이션) 후 L1 캐시 무효화. */
+    private void clearJpaCache() {
+        em.flush();
+        em.clear();
     }
 }

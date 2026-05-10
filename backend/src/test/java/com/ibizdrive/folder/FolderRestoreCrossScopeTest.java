@@ -5,6 +5,8 @@ import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.team.TeamRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -82,6 +84,15 @@ class FolderRestoreCrossScopeTest {
     @Autowired private FolderMutationService service;
     @Autowired private FolderRepository folderRepository;
     @Autowired private JdbcTemplate jdbc;
+    @PersistenceContext private EntityManager em;
+
+    /** raw JDBC scope 재배치(cross-workspace migration 시뮬레이션) 후 L1 캐시 무효화.
+     *  service.restore의 findByIdAndDeletedAtIsNull lookup이 stale entity (변경 전 scope_id)를
+     *  반환하지 않도록 영속성 컨텍스트를 비운다. */
+    private void clearJpaCache() {
+        em.flush();
+        em.clear();
+    }
 
     @Test
     void restore_originalParentMovedToDifferentScope_throwsScopeMismatch() {
@@ -104,6 +115,7 @@ class FolderRestoreCrossScopeTest {
 
         // rootA를 scope B로 강제 재배치 — partition 또는 admin migration 시뮬레이션.
         jdbc.update("UPDATE folders SET scope_id = ? WHERE id = ?", scopeB, rootId);
+        clearJpaCache();
 
         assertThatThrownBy(() -> service.restore(child.getId(), owner))
             .isInstanceOf(FolderRestoreConflictException.class)
@@ -133,6 +145,7 @@ class FolderRestoreCrossScopeTest {
 
         // root의 scope_type/scope_id를 team으로 통째 변경.
         jdbc.update("UPDATE folders SET scope_type = 'team', scope_id = ? WHERE id = ?", teamId, rootId);
+        clearJpaCache();
 
         assertThatThrownBy(() -> service.restore(child.getId(), owner))
             .isInstanceOf(FolderRestoreConflictException.class)

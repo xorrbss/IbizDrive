@@ -7,6 +7,8 @@ import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.team.TeamArchiveGuard;
 import com.ibizdrive.team.TeamArchivedException;
 import com.ibizdrive.team.TeamRepository;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.PersistenceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -87,6 +89,7 @@ class FileRestoreArchivedTest {
     @Autowired private FileMutationService service;
     @Autowired private FileRepository fileRepository;
     @Autowired private JdbcTemplate jdbc;
+    @PersistenceContext private EntityManager em;
 
     @Test
     void restore_archivedTeamScope_throwsTeamArchived() {
@@ -176,13 +179,17 @@ class FileRestoreArchivedTest {
         return fileRepository.saveAndFlush(f);
     }
 
-    /** raw JDBC soft-delete — original_folder_id 보존. */
+    /** raw JDBC soft-delete — original_folder_id 보존. JPA L1 캐시는 raw UPDATE를 보지 못하므로
+     *  service.restore의 lockByIdAndDeletedAtIsNotNull lookup이 stale entity (originalFolderId=NULL)를
+     *  반환하지 않도록 flush + clear로 영속성 컨텍스트를 비운다. */
     private void softDeleteFile(UUID fileId, UUID originalFolderId) {
         jdbc.update(
             "UPDATE files SET deleted_at = NOW(), purge_after = NOW() + INTERVAL '30 days', " +
             "original_folder_id = ? WHERE id = ?",
             originalFolderId, fileId
         );
+        em.flush();
+        em.clear();
     }
 
     /** Team을 archived 상태로 전환. archived_at + archived_by NOT NULL 동시 update. */
