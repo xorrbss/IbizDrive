@@ -60,11 +60,6 @@ class CrossWorkspaceMoveServiceTest {
         }
 
         @Bean
-        ApplicationEventPublisher applicationEventPublisher() {
-            return mock(ApplicationEventPublisher.class);
-        }
-
-        @Bean
         CrossWorkspaceMoveService crossWorkspaceMoveService(FolderRepository folderRepo,
                                                             FileRepository fileRepo,
                                                             PermissionResolver permissionResolver,
@@ -83,7 +78,11 @@ class CrossWorkspaceMoveServiceTest {
     @Autowired private FolderRepository folderRepo;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PermissionResolver permissionResolver;
-    @Autowired private ApplicationEventPublisher applicationEventPublisher;
+    // @MockBean: @Bean으로 ApplicationEventPublisher mock을 정의하면 Spring autowire가
+    // ApplicationContext(ApplicationEventPublisher 구현체) 우선 주입 → verify 시 NotAMockException.
+    // @MockBean은 명시적으로 컨텍스트의 빈을 mock으로 교체.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private ApplicationEventPublisher applicationEventPublisher;
 
     // ── fixtures ──
 

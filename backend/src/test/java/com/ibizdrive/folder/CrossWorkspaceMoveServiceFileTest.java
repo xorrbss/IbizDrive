@@ -59,11 +59,6 @@ class CrossWorkspaceMoveServiceFileTest {
         }
 
         @Bean
-        ApplicationEventPublisher applicationEventPublisher() {
-            return mock(ApplicationEventPublisher.class);
-        }
-
-        @Bean
         CrossWorkspaceMoveService crossWorkspaceMoveService(FolderRepository folderRepo,
                                                             FileRepository fileRepo,
                                                             PermissionResolver permissionResolver,
@@ -81,7 +76,10 @@ class CrossWorkspaceMoveServiceFileTest {
     @Autowired private CrossWorkspaceMoveService service;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PermissionResolver permissionResolver;
-    @Autowired private ApplicationEventPublisher applicationEventPublisher;
+    // @MockBean: TestConfig @Bean ApplicationEventPublisher 대신 — autowire 시 ApplicationContext가
+    // 우선 주입되어 verify에서 NotAMockException 발생. @MockBean이 빈을 명시적으로 mock으로 교체.
+    @org.springframework.boot.test.mock.mockito.MockBean
+    private ApplicationEventPublisher applicationEventPublisher;
 
     // ── fixtures ──
 

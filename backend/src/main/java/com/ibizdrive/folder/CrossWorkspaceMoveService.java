@@ -121,7 +121,7 @@ public class CrossWorkspaceMoveService {
                 "folder name already exists at destination: " + source.getNormalizedName());
         }
 
-        // step 3: subtree scope update
+        // step 3: subtree id 수집
         List<UUID> subtreeFolderIds = new ArrayList<>();
         subtreeFolderIds.add(source.getId());
         subtreeFolderIds.addAll(collectDescendantFolderIds(source.getId()));
@@ -131,15 +131,26 @@ public class CrossWorkspaceMoveService {
 
         String destScopeType = destination.getScopeType().dbValue();
         UUID destScopeId = destination.getScopeId();
+        Instant now = Instant.now();
 
+        // step 4: source 자신의 parent_id + scope를 entity-level로 먼저 commit.
+        // V14 idx_folders_root_per_scope (parent_id IS NULL AND deleted_at IS NULL) — source가
+        // 아직 root(parent_id NULL)인 채로 scope만 dest로 update하면 dest의 기존 root와 충돌.
+        // parent를 먼저 destination으로 set해 source가 더 이상 root가 아니게 한 뒤 scope update.
+        source.assignScope(destination.getScopeType(), destination.getScopeId());
+        source.setParentId(destination.getId());
+        source.setUpdatedAt(now);
+        folderRepo.saveAndFlush(source);
+
+        // step 5: subtree scope batch update — source 자신은 step 4에서 이미 commit됨이지만
+        // updateScopeBatch는 idempotent이므로 source 포함해도 안전 (no-op for source row).
         folderRepo.updateScopeBatch(subtreeFolderIds, destScopeType, destScopeId);
         if (!subtreeFileIds.isEmpty()) {
             fileRepo.updateScopeBatch(subtreeFileIds, destScopeType, destScopeId);
         }
 
-        // step 5 (collected EARLY due to V6 ON DELETE CASCADE on shares.permission_id —
-        // perm delete in step 4 cascade-deletes share rows; collect IDs before they vanish):
-        Instant now = Instant.now();
+        // step 6 (collected EARLY due to V6 ON DELETE CASCADE on shares.permission_id —
+        // perm delete in step 7 cascade-deletes share rows; collect IDs before they vanish):
         List<Share> folderShares =
             shareRepo.findActiveByResourceIn("folder", subtreeFolderIds);
         List<Share> fileShares = subtreeFileIds.isEmpty()
@@ -152,19 +163,11 @@ public class CrossWorkspaceMoveService {
             shareRepo.revokeByIds(allShareIds, actorId, now);
         }
 
-        // step 4: 명시 권한 정리 (cascade-deletes the just-revoked share rows via V6 FK)
+        // step 7: 명시 권한 정리 (cascade-deletes the just-revoked share rows via V6 FK)
         permRepo.deleteByResourceIn("folder", subtreeFolderIds);
         if (!subtreeFileIds.isEmpty()) {
             permRepo.deleteByResourceIn("file", subtreeFileIds);
         }
-
-        // step 6: parent_id 변경
-        // NOTE: step 3 native @Modifying updateScopeBatch가 DB의 source folder scope를 갱신했지만
-        // in-memory entity는 stale. saveAndFlush가 stale scope를 덮어쓰지 않도록 새 값으로 동기화.
-        source.assignScope(destination.getScopeType(), destination.getScopeId());
-        source.setParentId(destination.getId());
-        source.setUpdatedAt(now);
-        folderRepo.saveAndFlush(source);
 
         // step 7: invariant assert
         // step 7-a: scope 일관성 (folder + file)
