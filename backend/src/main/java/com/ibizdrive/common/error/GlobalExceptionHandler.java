@@ -9,6 +9,7 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionConflictException;
 import com.ibizdrive.permission.PermissionDenyContext;
 import com.ibizdrive.team.LastOwnerRequiredException;
+import com.ibizdrive.team.TeamArchivedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -129,6 +130,21 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleLastOwnerRequired(LastOwnerRequiredException ex) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
             .body(ApiError.of("TEAM_OWNER_REQUIRED", "팀에는 최소 한 명의 OWNER가 필요합니다", null));
+    }
+
+    /**
+     * spec §2.2 archive 라이프사이클 — archived 팀 소속 콘텐츠에 write 시도 시 발생.
+     *
+     * <p>HTTP 423 (Locked) + envelope code {@code TEAM_ARCHIVED} (spec §5.4).
+     * spec 표기 {@code ERR_TEAM_ARCHIVED} ↔ wire {@code TEAM_ARCHIVED} (peer convention).
+     *
+     * <p>details에 {@code teamId}를 포함해 frontend가 어떤 팀이 archived인지 식별 가능하게 한다.
+     */
+    @ExceptionHandler(TeamArchivedException.class)
+    public ResponseEntity<ApiError> handleTeamArchived(TeamArchivedException ex) {
+        return ResponseEntity.status(HttpStatus.LOCKED)
+            .body(ApiError.of("TEAM_ARCHIVED", "archive된 팀의 콘텐츠는 수정할 수 없습니다",
+                Map.of("teamId", ex.getTeamId().toString())));
     }
 
     /**

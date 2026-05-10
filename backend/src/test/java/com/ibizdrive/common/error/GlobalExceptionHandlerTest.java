@@ -1,10 +1,12 @@
 package com.ibizdrive.common.error;
 
 import com.ibizdrive.team.LastOwnerRequiredException;
+import com.ibizdrive.team.TeamArchivedException;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.util.Map;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -27,5 +29,22 @@ class GlobalExceptionHandlerTest {
         assertThat(body.code()).isEqualTo("TEAM_OWNER_REQUIRED");
         assertThat(body.message()).isNotBlank();
         assertThat(body.details()).isNull();
+    }
+
+    @Test
+    void handleTeamArchived_returns423WithTeamIdInDetails() {
+        UUID teamId = UUID.randomUUID();
+        TeamArchivedException ex = new TeamArchivedException(teamId);
+
+        ResponseEntity<ApiError> response = handler.handleTeamArchived(ex);
+
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.LOCKED);
+        ApiError.Body body = response.getBody().error();
+        assertThat(body.code()).isEqualTo("TEAM_ARCHIVED");
+        assertThat(body.message()).isNotBlank();
+        assertThat(body.details()).isInstanceOf(Map.class);
+        @SuppressWarnings("unchecked")
+        Map<String, Object> details = (Map<String, Object>) body.details();
+        assertThat(details).containsEntry("teamId", teamId.toString());
     }
 }

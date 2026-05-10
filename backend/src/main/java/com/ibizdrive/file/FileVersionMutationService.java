@@ -7,6 +7,7 @@ import com.ibizdrive.audit.AuditEventType;
 import com.ibizdrive.audit.AuditService;
 import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.audit.WebRequestContextHolder;
+import com.ibizdrive.team.TeamArchiveGuard;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,6 +52,10 @@ import java.util.UUID;
  * <p>{@link FileMutationService}와 분리한 이유: file rename/move/delete/restore(휴지통)는 file 자체의
  * lifecycle, version restore는 file의 version pointer 갱신으로 도메인 책임이 다르며 두 서비스의
  * 트랜잭션 경계를 섞을 필요가 없다 (KISS, 단일 책임).
+ *
+ * <p><b>TEAM_ARCHIVED 가드</b> (spec §2.2/§5.4): 대상 파일 fetch 직후, mutation 직전에
+ * {@link TeamArchiveGuard#assertNotArchived(com.ibizdrive.folder.ScopeType, UUID)} 호출 — archived
+ * 팀에 속한 파일의 버전 복원 차단. DEPARTMENT scope는 가드 내부에서 no-op.
  */
 @Service
 @Transactional
@@ -60,15 +65,18 @@ public class FileVersionMutationService {
     private final FileVersionRepository fileVersionRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final TeamArchiveGuard teamArchiveGuard;
 
     public FileVersionMutationService(FileRepository fileRepository,
                                       FileVersionRepository fileVersionRepository,
                                       AuditService auditService,
-                                      ObjectMapper objectMapper) {
+                                      ObjectMapper objectMapper,
+                                      TeamArchiveGuard teamArchiveGuard) {
         this.fileRepository = fileRepository;
         this.fileVersionRepository = fileVersionRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.teamArchiveGuard = teamArchiveGuard;
     }
 
     /**
@@ -85,6 +93,10 @@ public class FileVersionMutationService {
 
         FileItem file = fileRepository.lockByIdAndDeletedAtIsNull(fileId)
             .orElseThrow(() -> new FileNotFoundException("file not found or deleted: " + fileId));
+
+        // spec §2.2 — archived 팀 파일의 버전 복원 차단 (DEPARTMENT는 가드 내부 no-op).
+        // 대상 파일 fetch 후, version lookup/mutation 직전에 1회 호출.
+        teamArchiveGuard.assertNotArchived(file.getScopeType(), file.getScopeId());
 
         FileVersion version = fileVersionRepository.findById(versionId)
             .orElseThrow(() -> new FileNotFoundException("version not found: " + versionId));
