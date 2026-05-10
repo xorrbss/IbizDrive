@@ -527,7 +527,15 @@ export const qk = {
   effectivePermissions: () => [...qk.all, 'permissions', 'effective'] as const,
 
   search: () => [...qk.all, 'search'] as const,
+  /** prefix 키 — invalidate 매트릭스에서 사용 (afterDelete/afterRestore/afterPurge). */
   trash: () => [...qk.all, 'trash'] as const,
+  /**
+   * workspace scope 별 휴지통 listing 키 (Plan E T6, 2026-05-10).
+   * backend `GET /api/trash?scopeType&scopeId` 필수 파라미터와 1:1 대응.
+   * invalidate 시 `qk.trash()` prefix 매칭이면 전체 scope 일괄 갱신.
+   */
+  trashList: (scopeType: 'department' | 'team', scopeId: string) =>
+    [...qk.trash(), 'list', scopeType, scopeId] as const,
 
   // F4: shares (by-me/with-me)
   shares: () => [...qk.all, 'shares'] as const,
@@ -689,6 +697,18 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   )
 }
 ```
+
+### 7.1 cross-workspace drop 차단 (Plan D §5.6)
+
+dnd-kit `onDragEnd` 핸들러에서 source와 drop target의 `workspaceId`가 다르면 **drop 차단 + 사용자 안내**:
+
+- **토스트**: "🚫 다른 workspace로 이동 불가"
+- **툴팁 / 토스트 부가 설명**: "컨텍스트 메뉴 '다른 workspace로 이동'을 사용하세요"
+- 드래그 시각적 피드백: drop target 위에 커서 있을 때 `data-cross-workspace` 속성 → CSS `cursor: not-allowed` + 반투명 오버레이
+
+실제 cross-workspace 이동은 컨텍스트 메뉴 → `MoveToWorkspaceDialog` → `POST /api/folders/{id}/move` (`allowCrossScope: true`) 경로만 허용 (백엔드 서버 409 `ERR_CROSS_SCOPE_MOVE` 가드와 이중 방어).
+
+> frontend 구현 활성화 시점: Plan B `WorkspaceFolderTree` 머지 후 별도 트랙 (Plan D Phase 7).
 
 ---
 
@@ -961,16 +981,31 @@ files.purge_after      : 영구 삭제 예정 (deleted_at + 30일)
 
 ### 13.2 UX
 
-- `/trash` 전용 페이지, Sidebar 하단 `<TrashLink />`
+- **URL** (Plan E, 2026-05-10 — workspace split, spec `2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` §2.1):
+  - `/trash` — redirect handler. 클라이언트에서 `useWorkspaces()` 응답을 보고 `router.replace`:
+    - 부서 보유 → `/trash/d/:deptId` (MVP slug = workspace UUID, `workspacePath.ts` 주석 참조)
+    - 부서 미보유 + 팀 N개 → 첫 활성 팀 우선, 없으면 첫 archived 팀 → `/trash/t/:teamId`
+    - workspace 0 → `<EmptyWorkspacesState />` ("참여 중인 workspace가 없어 휴지통에 접근할 수 없습니다. 관리자에게 문의해 주세요.")
+  - `/trash/d/:deptSlug` — 부서 휴지통 (탭 활성화: 부서)
+  - `/trash/t/:teamSlug` — 팀 휴지통 (탭 활성화: 해당 팀; archived 팀도 진입 가능)
+- **사이드바**: 단일 진입점 `<TrashLink />` href=`/trash` 그대로 (Plan B 구현). workspace별 휴지통은 사이드바에 노출하지 않고 탭 페이지에서 전환.
+- **TrashWorkspaceTabs** (`components/trash/TrashWorkspaceTabs.tsx`, Plan E T12): 가로 탭 바.
+  - 부서 1개 + 본인 팀 N개. archived 팀은 `opacity-60` + `🔒` prefix (clickable, listing 정상).
+  - active 탭은 URL `useParams` 기반 (`aria-selected`).
+  - source: `useWorkspaces()` (Plan B `GET /api/workspaces/me`).
+- **archived 팀 페이지**: 페이지 상단 alert "이 팀은 archive되어 콘텐츠 복원이 불가능합니다." + `<TrashRowActions>` 의 복원 버튼 `disabled` (Plan E T13). 보안은 backend `TeamArchiveGuard`(`423 TEAM_ARCHIVED`) 가 책임 — UX 가드일 뿐.
 - 행 액션: **원위치로 복원**, **영구 삭제**
 - 삭제 직후 토스트의 **"되돌리기"** 버튼 (5초)
-- **RESTORE_CONFLICT 다이얼로그** (v1.x M9 후속): 행 복원 시 원위치에 동일 이름 활성 항목이 있어 backend 가 409 `RESTORE_CONFLICT` 를 반환하면 `<RestoreConflictDialog />` 가 열려 사용자에게 새 이름을 입력받는다. 기본 제안은 `suggestRestoreName(name, type)` (file 은 `report.pdf` → `report (1).pdf`, folder 는 `Reports` → `Reports (1)`). 사용자 입력 후 `useRestoreItem.mutate({ ..., newName })` 가 backend `POST /api/{files|folders}/{id}/restore` body `{ name }` 로 재요청. 새 이름이 또 충돌하면 `RENAME_CONFLICT` envelope → 다이얼로그 inline alert 로 표시 (다이얼로그 유지). 다른 코드는 toast.error + 닫기.
+- **RESTORE_CONFLICT 다이얼로그** (v1.x M9 + Plan E T13 reason 분기): 행 복원 시 backend 가 409 `RESTORE_CONFLICT` envelope 을 반환하면 `<RestoreConflictDialog />` 가 열린다. body `details.reason` 으로 두 분기:
+  - **`name_conflict`** (v1.x 기존): 원위치에 동일 이름 활성 항목 → 사용자에게 새 이름 입력. 기본 제안 `suggestRestoreName(name, type)` (file `report.pdf` → `report (1).pdf`, folder `Reports` → `Reports (1)`). 입력 후 `useRestoreItem.mutate({ ..., newName })` → backend body `{ name }` 로 재요청. 또 충돌 시 `RENAME_CONFLICT` → 다이얼로그 inline alert (유지). 다른 코드는 toast.error + 닫기.
+  - **`scope_mismatch`** (Plan E T13 신규): 원위치 폴더가 다른 workspace 로 cross-workspace move (Plan D) 된 상태 → rename 으로 해결 불가. read-only 메시지 ("`'<name>'` 의 원위치가 다른 workspace로 이동되어 복원할 수 없습니다. 관리자에게 문의해 주세요.") + 닫기 버튼만 노출.
+  - body `details` 추가 키: `expectedScopeType` / `expectedScopeId` / `actualScopeType` / `actualScopeId` (scope_mismatch 시). frontend 는 분기 메시지에만 사용 — 표시 X.
 - BulkActionBar Undo 의 다건 복원 충돌은 다이얼로그 미적용 (v1.x 후속) — toast.error 메시지가 휴지통 페이지에서 행 단위 복원으로 안내.
 
 > **Backend endpoints** (docs/02 §7.11):
-> - `GET /api/trash?cursor=&type=` — list. queryKey `qk.trash()` (§6.1).
-> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6). v1.x 부터 optional body `{ name?: string }` — `name` 미지정 시 원본 이름 그대로 복원, 충돌 envelope `RESTORE_CONFLICT`. `name` 지정 시 NFC 정규화 + UNIQUE 재검사, 충돌 envelope `RENAME_CONFLICT`.
-> - `DELETE /api/trash/:type/:id` — manual purge, ADMIN only (A8, ADR #32).
+> - `GET /api/trash?scopeType={department|team}&scopeId={uuid}&cursor=&type=` — list (Plan E T2). `scopeType` / `scopeId` **필수** — 누락 시 `422 VALIDATION_ERROR`. queryKey `qk.trashList(scopeType, scopeId)` (§6.1, Plan E T6 — 기존 무인자 `qk.trash()` 는 prefix 키로 invalidate 시 그대로 사용 가능).
+> - `POST /api/files/:id/restore` / `POST /api/folders/:id/restore` — per-resource restore (A6). v1.x 부터 optional body `{ name?: string }` — `name` 미지정 시 원본 이름 그대로 복원, 충돌 envelope `RESTORE_CONFLICT` (`reason='name_conflict'`). `name` 지정 시 NFC 정규화 + UNIQUE 재검사, 충돌 envelope `RENAME_CONFLICT`. Plan E T4/T5 추가 검증: archived 팀 차단 (`423 TEAM_ARCHIVED`) + cross-workspace 원위치 mismatch (`409 RESTORE_CONFLICT` `reason='scope_mismatch'`).
+> - `DELETE /api/trash/:type/:id` — manual purge, ADMIN only (A8, ADR #32, Plan E 변경 없음).
 > - bulk `DELETE /api/trash`는 미구현 — `purge.expired` 배치(A7) 자동 처리.
 
 ```tsx

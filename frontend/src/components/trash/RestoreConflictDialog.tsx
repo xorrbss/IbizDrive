@@ -3,17 +3,26 @@ import { FormEvent, useEffect, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import { useRestoreConflictUiStore } from '@/stores/restoreConflictUi'
 import { useRestoreItem } from '@/hooks/useRestoreItem'
+import { messageForError } from '@/lib/errors'
 import { suggestRestoreName } from '@/lib/restoreNameSuggest'
 
 /**
- * 휴지통 복원 시 RESTORE_CONFLICT (원본 이름 충돌) 발생 시 띄우는 다이얼로그 (v1.x M9 후속).
+ * 휴지통 복원 시 RESTORE_CONFLICT 발생 시 띄우는 다이얼로그.
  *
- * - 자동 제안 이름: `suggestRestoreName(originalName, type)` — `report.pdf` → `report (1).pdf`.
- * - 사용자 입력 + 확인 → `useRestoreItem.mutate({ ..., newName })`.
- * - onError(NAME_CONFLICT|RENAME_CONFLICT) → inline alert (다이얼로그 유지, 입력 수정 후 재시도).
- * - onError(VALIDATION_ERROR) → inline alert (backend 정규화 실패 메시지 노출).
- * - onError(other) → toast.error + close.
- * - Esc 키 닫기, previousFocus 복귀 (RenameDialog 패턴 미러).
+ * Plan E T13 — backend `details.reason` 에 따라 두 분기:
+ *
+ * 1. `name_conflict` (v1.x 기존 동작):
+ *    - 자동 제안 이름: `suggestRestoreName(originalName, type)` — `report.pdf` → `report (1).pdf`.
+ *    - 사용자 입력 + 확인 → `useRestoreItem.mutate({ ..., newName })`.
+ *    - onError(NAME_CONFLICT|RENAME_CONFLICT) → inline alert (다이얼로그 유지, 입력 수정 후 재시도).
+ *    - onError(VALIDATION_ERROR) → inline alert (backend 정규화 실패 메시지 노출).
+ *    - onError(other) → toast.error + close.
+ *
+ * 2. `scope_mismatch` (Plan E T13 신규):
+ *    - 원위치 폴더가 다른 workspace로 이동되어 복원 불가능 — rename으로 해결 불가.
+ *    - read-only 안내 + 닫기 버튼만 노출 (관리자 문의 메시지).
+ *
+ * 공통: Esc 키 닫기, previousFocus 복귀 (RenameDialog 패턴 미러).
  */
 export function RestoreConflictDialog() {
   const isOpen = useRestoreConflictUiStore((s) => s.isOpen)
@@ -21,6 +30,7 @@ export function RestoreConflictDialog() {
   const targetId = useRestoreConflictUiStore((s) => s.targetId)
   const originalName = useRestoreConflictUiStore((s) => s.originalName)
   const sourceFolderId = useRestoreConflictUiStore((s) => s.sourceFolderId)
+  const payload = useRestoreConflictUiStore((s) => s.payload)
   const error = useRestoreConflictUiStore((s) => s.error)
   const close = useRestoreConflictUiStore((s) => s.close)
   const setError = useRestoreConflictUiStore((s) => s.setError)
@@ -31,16 +41,22 @@ export function RestoreConflictDialog() {
   const inputRef = useRef<HTMLInputElement>(null)
   const previousFocusRef = useRef<HTMLElement | null>(null)
 
+  // Plan E T13: payload.reason === 'scope_mismatch' 면 입력 분기 자체 미사용.
+  // payload null (v1.x 호환) 또는 'name_conflict' → 입력 + 재시도 분기.
+  const isScopeMismatch = payload?.reason === 'scope_mismatch'
+
   // 다이얼로그 열릴 때: 자동 제안 이름 + 이전 focus 저장 + input focus + select.
+  // scope_mismatch 분기는 입력 미사용 — focus만 close 버튼으로 이동.
   useEffect(() => {
     if (!isOpen || !targetType) return
-    setValue(suggestRestoreName(originalName, targetType))
     previousFocusRef.current = document.activeElement as HTMLElement | null
+    if (isScopeMismatch) return
+    setValue(suggestRestoreName(originalName, targetType))
     queueMicrotask(() => {
       inputRef.current?.focus()
       inputRef.current?.select()
     })
-  }, [isOpen, originalName, targetType])
+  }, [isOpen, originalName, targetType, isScopeMismatch])
 
   // 닫힐 때 이전 focus 복귀.
   useEffect(() => {
@@ -50,6 +66,46 @@ export function RestoreConflictDialog() {
 
   if (!isOpen || !targetId || !targetType) return null
 
+  // ─── scope_mismatch 분기 ──────────────────────────────────────────────────
+  if (isScopeMismatch) {
+    return (
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="restore-conflict-dialog-title"
+        tabIndex={-1}
+        onKeyDown={(e) => {
+          if (e.key === 'Escape') close()
+        }}
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      >
+        <div className="bg-surface-1 border border-border rounded-md w-[440px] flex flex-col p-4 gap-3 shadow-2xl">
+          <h2
+            id="restore-conflict-dialog-title"
+            className="text-[14px] font-semibold text-fg"
+          >
+            복원할 수 없습니다
+          </h2>
+          <p className="text-[12.5px] text-fg-muted">
+            <span className="text-fg">{`'${originalName}'`}</span> 의 원위치가 다른
+            workspace로 이동되어 복원할 수 없습니다.
+          </p>
+          <p className="text-[12.5px] text-fg-muted">관리자에게 문의해 주세요.</p>
+          <div className="flex justify-end gap-2 mt-1">
+            <button
+              type="button"
+              onClick={close}
+              className="h-8 px-3 rounded bg-accent text-accent-text text-[12.5px] font-medium hover:opacity-90"
+            >
+              닫기
+            </button>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // ─── name_conflict 분기 (v1.x 기존) ──────────────────────────────────────
   const trimmed = value.trim()
   const canSubmit = trimmed.length > 0 && !restore.isPending
 
@@ -76,7 +132,7 @@ export function RestoreConflictDialog() {
           } else if (code === 'VALIDATION_ERROR') {
             setError(message ?? '이름 형식이 올바르지 않습니다')
           } else {
-            toast.error('복원에 실패했습니다')
+            toast.error(messageForError(err, '복원에 실패했습니다'))
             close()
           }
         },

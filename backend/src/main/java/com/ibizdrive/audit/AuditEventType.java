@@ -23,10 +23,10 @@ public enum AuditEventType {
     FILE_UPLOADED("file.uploaded"),
     FILE_RENAMED("file.renamed"),
     FILE_MOVED("file.moved"),
+    FILE_MOVED_CROSS_WORKSPACE("file.moved.cross_workspace"),
     FILE_DELETED("file.deleted"),
     FILE_RESTORED("file.restored"),
     FILE_PURGED("file.purged"),
-    FILE_MOVED_CROSS_WORKSPACE("file.moved.cross_workspace"),
 
     // 버전 (3)
     VERSION_CREATED("version.created"),
@@ -37,11 +37,11 @@ public enum AuditEventType {
     FOLDER_CREATED("folder.created"),
     FOLDER_RENAMED("folder.renamed"),
     FOLDER_MOVED("folder.moved"),
+    FOLDER_MOVED_CROSS_WORKSPACE("folder.moved.cross_workspace"),
     FOLDER_DELETED("folder.deleted"),
     FOLDER_RESTORED("folder.restored"),
     FOLDER_PURGED("folder.purged"),
     FOLDER_AUDIT_LEVEL_CHANGED("folder.audit_level_changed"),
-    FOLDER_MOVED_CROSS_WORKSPACE("folder.moved.cross_workspace"),
 
     // 권한 / 공유 (7)
     PERMISSION_GRANTED("permission.granted"),

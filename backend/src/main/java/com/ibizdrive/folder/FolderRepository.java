@@ -189,6 +189,40 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
                                  @Param("limit") int limit);
 
     /**
+     * E T1 — scope-aware 휴지통 page query. {@link #findTrashedPage}의 scope-filter 오버로드.
+     *
+     * <p>요청 scope ({@code scope_type + scope_id}) 에 속하는 soft-deleted folder만 반환한다.
+     * 정렬 / cursor 의미는 {@link #findTrashedPage}와 동일 ({@code deleted_at DESC, id DESC}).
+     *
+     * <p>{@code scopeTypeRaw}는 {@link ScopeType#dbValue()} 소문자 문자열이어야 한다
+     * ({@code "department"} | {@code "team"}). 호출자는 {@code scopeType.dbValue()}를 전달한다.
+     *
+     * <p>{@code cursorDeletedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지. NOT NULL이면
+     * 해당 tuple보다 strictly less than인 row만 반환 (cursor pagination). T2(TrashQueryService)가
+     * 호출 시점에 변환을 담당한다.
+     */
+    @Query(value = """
+        SELECT * FROM folders
+        WHERE deleted_at IS NOT NULL
+          AND scope_type = :scopeTypeRaw
+          AND scope_id = CAST(:scopeId AS uuid)
+          AND (
+            CAST(:cursorDeletedAt AS timestamptz) IS NULL
+            OR deleted_at < CAST(:cursorDeletedAt AS timestamptz)
+            OR (deleted_at = CAST(:cursorDeletedAt AS timestamptz) AND id < CAST(:cursorId AS uuid))
+          )
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT :limit
+        """, nativeQuery = true)
+    List<Folder> findTrashedPageByScope(
+        @Param("scopeTypeRaw") String scopeTypeRaw,
+        @Param("scopeId") UUID scopeId,
+        @Param("cursorDeletedAt") Instant cursorDeletedAt,
+        @Param("cursorId") UUID cursorId,
+        @Param("limit") int limit
+    );
+
+    /**
      * A9.2 — search by normalized_name LIKE (docs/02 §7.8, ADR #33).
      *
      * <p>{@link com.ibizdrive.file.FileRepository#searchByNormalizedName}와 동일 contract — folder
@@ -221,6 +255,36 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
           AND normalized_name LIKE :pattern ESCAPE '\\'
         """, nativeQuery = true)
     long countByNormalizedName(@Param("pattern") String pattern);
+
+    /**
+     * Plan D Task 12 — cross-workspace 이동 시 subtree 폴더의 (scope_type, scope_id) 일괄 갱신.
+     * native UPDATE로 {@code updated_at = NOW()} 서버 사이드 처리 (Java Instant 불일치 허용).
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 — empty IN(...) 문법 오류를 피하기 위해
+     * service 레이어에서 source.getId()가 항상 포함된 non-empty list를 전달.
+     */
+    @Modifying
+    @Query(value = "UPDATE folders SET scope_type = :scopeType, scope_id = :scopeId, updated_at = NOW() "
+                 + "WHERE id IN (:ids)", nativeQuery = true)
+    int updateScopeBatch(@Param("ids") Collection<UUID> ids,
+                         @Param("scopeType") String scopeType,
+                         @Param("scopeId") UUID scopeId);
+
+    /**
+     * Plan D Task 15 — cross-workspace move 완료 후 invariant 검증 (a).
+     * subtree 폴더 중 destination scope와 일치하지 않는 row 수를 반환.
+     * 0이 아니면 scope 재할당(step 3)이 불완전하게 적용된 것이므로 트랜잭션 ROLLBACK.
+     *
+     * <p>호출자는 {@code ids}가 비어있지 않음을 보장해야 한다 (source 포함 subtree는 최소 1개).
+     */
+    @Query(value = "SELECT COUNT(*) FROM folders WHERE id IN (:ids) "
+                 + "AND (scope_type <> :scopeType OR scope_id <> :scopeId)",
+           nativeQuery = true)
+    int countByIdInAndScopeNotMatching(
+        @Param("ids") java.util.Collection<UUID> ids,
+        @Param("scopeType") String scopeType,
+        @Param("scopeId") UUID scopeId
+    );
 
     /**
      * admin-dashboard — 활성 폴더 수 ({@code deleted_at IS NULL}).

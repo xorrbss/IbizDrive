@@ -23,6 +23,7 @@ describe('RestoreConflictDialog', () => {
       targetId: null,
       originalName: '',
       sourceFolderId: null,
+      payload: null,
       error: null,
     })
     vi.restoreAllMocks()
@@ -135,5 +136,96 @@ describe('RestoreConflictDialog', () => {
       fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
     })
     expect(useRestoreConflictUiStore.getState().isOpen).toBe(false)
+  })
+
+  // ─── Plan E T13: reason 분기 ───────────────────────────────────────────────
+
+  it('payload.reason="name_conflict" → 이름 입력 분기 (기존 동작)', () => {
+    render(withQueryClient(<RestoreConflictDialog />))
+    act(() => {
+      useRestoreConflictUiStore.getState().open({
+        type: 'file',
+        id: 'f-name',
+        originalName: 'doc.txt',
+        sourceFolderId: 'folder-1',
+        payload: { reason: 'name_conflict' },
+      })
+    })
+    expect(screen.getByRole('dialog', { name: '다른 이름으로 복원' })).toBeTruthy()
+    const input = screen.getByLabelText('새 이름') as HTMLInputElement
+    expect(input.value).toBe('doc (1).txt')
+    expect(screen.getByRole('button', { name: '복원' })).toBeTruthy()
+  })
+
+  it('payload.reason="scope_mismatch" → 안내 메시지 + 닫기 버튼만 노출', () => {
+    render(withQueryClient(<RestoreConflictDialog />))
+    act(() => {
+      useRestoreConflictUiStore.getState().open({
+        type: 'file',
+        id: 'f-scope',
+        originalName: 'report.pdf',
+        sourceFolderId: 'folder-1',
+        payload: { reason: 'scope_mismatch', resourceId: 'folder-1' },
+      })
+    })
+    const dialog = screen.getByRole('dialog', { name: '복원할 수 없습니다' })
+    expect(dialog).toBeTruthy()
+    expect(dialog.textContent).toMatch(/원위치가 다른 workspace로 이동되어/)
+    expect(dialog.textContent).toMatch(/관리자에게 문의/)
+    expect(dialog.textContent).toMatch(/'report.pdf'/)
+    // 입력은 미노출 (rename으로 해결 불가)
+    expect(screen.queryByLabelText('새 이름')).toBeNull()
+    // 복원 submit 버튼 미노출 — 닫기 버튼만
+    expect(screen.queryByRole('button', { name: '복원' })).toBeNull()
+    expect(screen.getByRole('button', { name: '닫기' })).toBeTruthy()
+  })
+
+  it('scope_mismatch → 닫기 버튼 클릭 시 다이얼로그 닫힘', () => {
+    render(withQueryClient(<RestoreConflictDialog />))
+    act(() => {
+      useRestoreConflictUiStore.getState().open({
+        type: 'folder',
+        id: 'fld-scope',
+        originalName: 'Archive',
+        sourceFolderId: null,
+        payload: { reason: 'scope_mismatch' },
+      })
+    })
+    expect(useRestoreConflictUiStore.getState().isOpen).toBe(true)
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: '닫기' }))
+    })
+    expect(useRestoreConflictUiStore.getState().isOpen).toBe(false)
+  })
+
+  it('scope_mismatch → Esc 키로도 닫힘', () => {
+    render(withQueryClient(<RestoreConflictDialog />))
+    act(() => {
+      useRestoreConflictUiStore.getState().open({
+        type: 'folder',
+        id: 'fld-scope-esc',
+        originalName: 'Old',
+        sourceFolderId: null,
+        payload: { reason: 'scope_mismatch' },
+      })
+    })
+    act(() => {
+      fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' })
+    })
+    expect(useRestoreConflictUiStore.getState().isOpen).toBe(false)
+  })
+
+  it('payload 미지정 (v1.x 호환) → 기존 name_conflict 분기 유지', () => {
+    render(withQueryClient(<RestoreConflictDialog />))
+    act(() => {
+      useRestoreConflictUiStore.getState().open({
+        type: 'file',
+        id: 'f-legacy',
+        originalName: 'legacy.txt',
+        sourceFolderId: null,
+      })
+    })
+    expect(screen.getByRole('dialog', { name: '다른 이름으로 복원' })).toBeTruthy()
+    expect(screen.getByLabelText('새 이름')).toBeTruthy()
   })
 })

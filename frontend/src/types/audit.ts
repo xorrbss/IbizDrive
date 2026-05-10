@@ -15,6 +15,7 @@ export type AuditEventType =
   | 'file.deleted'
   | 'file.restored'
   | 'file.purged'
+  | 'file.moved.cross_workspace'
   // 버전
   | 'version.created'
   | 'version.restored'
@@ -27,6 +28,7 @@ export type AuditEventType =
   | 'folder.restored'
   | 'folder.purged'
   | 'folder.audit_level_changed'
+  | 'folder.moved.cross_workspace'
   // 권한 / 공유
   | 'permission.granted'
   | 'permission.revoked'

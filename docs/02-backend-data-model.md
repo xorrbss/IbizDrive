@@ -925,14 +925,33 @@ COMMIT;
 
 -- 복원 (원위치 폴더의 이름 충돌 재검사 필수)
 BEGIN;
-SELECT id FROM folders WHERE id = :original_folder_id FOR UPDATE;
+-- 1) target lock + lookup
+SELECT id, scope_type, scope_id, original_folder_id, normalized_name
+  FROM files WHERE id = :file_id AND deleted_at IS NOT NULL FOR UPDATE;
 
--- 복원하려는 이름이 현재 사용 중인지 검사
+-- 2) NEW (Plan E T5, 2026-05-10) — archive guard:
+--    target.scope_type='team' AND teams.archived_at IS NOT NULL → 423 TEAM_ARCHIVED
+--    (TeamArchiveGuard.assertNotArchived(target.scope))
+SELECT archived_at FROM teams WHERE id = :scope_id;
+-- (archived_at IS NOT NULL → throw TeamArchivedException → 423 TEAM_ARCHIVED)
+
+-- 3) original folder active 검사 + lock
+SELECT id, scope_type, scope_id FROM folders
+  WHERE id = :original_folder_id AND deleted_at IS NULL FOR UPDATE;
+-- (없으면 404 — original parent purged/deleted)
+
+-- 3') NEW (Plan E T5, 2026-05-10) — cross-workspace mismatch:
+--    original_folder.scope != target.scope (Plan D cross-workspace move 후 시나리오)
+--    → 409 RESTORE_CONFLICT body { reason: 'scope_mismatch',
+--        expectedScopeType, expectedScopeId, actualScopeType, actualScopeId }
+
+-- 4) 복원하려는 이름이 현재 사용 중인지 검사 (기존)
 SELECT id FROM files
   WHERE folder_id = :original_folder_id
     AND normalized_name = :normalized_name
     AND deleted_at IS NULL;
--- 존재 시 409 → 프론트에서 이름 변경 후 복원 선택지 제시
+-- 존재 시 409 RESTORE_CONFLICT body { reason: 'name_conflict' }
+-- → 프론트에서 이름 변경 후 복원 선택지 제시
 
 UPDATE files
   SET deleted_at = NULL,
@@ -943,6 +962,8 @@ UPDATE files
   WHERE id = ANY(:ids);
 COMMIT;
 ```
+
+> **Plan E (2026-05-10) restore 검증 추가**: 위 단계 2/3' 가 신규. T4 (folder) / T5 (file) 양쪽 동형 — folder 의 경우 단계 3 가 `restoreParent` lookup 으로 이름만 다르고 cross-scope 비교는 동일 (`restoreParent.scope != target.scope` → SCOPE_MISMATCH). 자세한 wire body 형식은 §8 `RESTORE_CONFLICT` 행 참조.
 
 #### 6.5.1 `deleted_by` 컬럼 (V10, Wave 2 T9 follow-up — 2026-05-08)
 
@@ -1245,7 +1266,7 @@ POST /api/auth/password/change                     (A1.5, ADR #43)
 | PATCH | `/api/folders/:id` | `hasPermission(#id, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + sibling | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/folders/:id/move` | `hasPermission(#id, 'folder', 'MOVE')` AND `(#req.targetParentId == null ? hasRole('ADMIN') : hasPermission(#req.targetParentId, 'folder', 'EDIT'))` (ADR #30) | REQUIRED + FOR UPDATE on `id`, `targetParentId` | — (이름 유지) | `WHERE deleted_at IS NULL` | 400 MOVE_INTO_SELF, 400 MOVE_INTO_DESCENDANT, 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
 | DELETE | `/api/folders/:id` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW()` (재귀: 후손 폴더/파일 cascade — root 1회 audit) | 404 |
-| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | optional `name → normalized_name` (v1.x) | `SET deleted_at = NULL` + UNIQUE 재검사 (자기 자신만 복원, 후손 잔존) | 404, 409 RESTORE_CONFLICT (원본 이름), 409 RENAME_CONFLICT (새 이름) |
+| POST | `/api/folders/:id/restore` | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE on `id`, parent | optional `name → normalized_name` (v1.x) | `SET deleted_at = NULL` + UNIQUE 재검사 (자기 자신만 복원, 후손 잔존) + Plan E T4 archive guard + cross-scope mismatch — §7.11 / §6.5 참조 | 404, 409 RESTORE_CONFLICT (`reason='name_conflict' \| 'scope_mismatch'`), 409 RENAME_CONFLICT (새 이름), 423 TEAM_ARCHIVED |
 
 ```text
 POST /api/folders
@@ -1261,10 +1282,25 @@ PATCH /api/folders/:id
             → UPDATE → audit_log INSERT (FOLDER_RENAME) → COMMIT
 
 POST /api/folders/:id/move
-  Request:  { targetParentId: string }
+  Request:  { targetParentId: string, allowCrossScope?: boolean (optional, default false) }
   Response: 200 { folder: FolderDto, breadcrumb: FolderDto[] }
   TX:       SELECT FOR UPDATE on source + target → 후손 관계 검사 (closure or 재귀)
             → UNIQUE 검증 → UPDATE parent_id → audit_log (FOLDER_MOVE) → COMMIT
+  Note:     allowCrossScope=false(default) → 기존 same-scope 가드 유지 (ERR_CROSS_SCOPE_MOVE on cross attempt).
+            allowCrossScope=true → CrossWorkspaceMoveService 진입 (subtree scope update + permissions cleanup + shares revoke).
+            Auth for cross: source EDIT + SHARE AND destination UPLOAD (ERR_DEST_WORKSPACE_DENIED on deny).
+
+POST /api/folders/:id/move/preview
+  Auth:     source folder EDIT + SHARE (Plan D §5.6)
+  Request:  { destinationFolderId: UUID }
+  Response: 200 {
+    itemCount: number,                        // 이동될 폴더+파일 총 개수 (folder는 subtree 포함)
+    removedPermissions: PermissionRef[],      // 정리될 명시 권한 grant (id, subjectType, subjectId, preset)
+    revokedShares: ShareRef[],                // revoke될 share (id, resourceType, resourceId, sharedBy)
+    targetMembershipDefaults: Permission[],   // 이동 후 destination workspace 멤버십 기본권 (호출자 기준)
+    nameConflict: string | null               // destination 동명 항목 존재 시 충돌 이름, 없으면 null
+  }
+  Errors:   400 ERR_INVALID_DESTINATION (destinationFolderId null/self/descendant), 403 PERMISSION_DENIED, 404 NOT_FOUND
 
 DELETE /api/folders/:id   (휴지통 이동)
   Response: 204
@@ -1304,7 +1340,7 @@ GET /api/folders/:id/items
 | PATCH | `/api/files/:id` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE | `name → normalized_name` | `WHERE deleted_at IS NULL` | 409 RENAME_CONFLICT |
 | POST | `/api/files/:id/move` | `hasPermission(#id, 'file', 'MOVE')` AND `hasPermission(#req.targetFolderId, 'folder', 'EDIT')` | REQUIRED + FOR UPDATE on `id` + targetFolder | — | `WHERE deleted_at IS NULL` | 404 TARGET_NOT_FOUND, 409 RENAME_CONFLICT |
 | DELETE | `/api/files/:id` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NOW(), purge_after = NOW()+30d` | 404 |
-| POST | `/api/files/:id/restore` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | optional `name → normalized_name` (v1.x) | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT (원본 이름), 409 RENAME_CONFLICT (새 이름) |
+| POST | `/api/files/:id/restore` | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | optional `name → normalized_name` (v1.x) | `SET deleted_at = NULL` + UNIQUE 재검사 + Plan E T5 archive guard + cross-scope mismatch — §7.11 / §6.5 참조 | 404, 409 RESTORE_CONFLICT (`reason='name_conflict' \| 'scope_mismatch'`), 409 RENAME_CONFLICT (새 이름), 423 TEAM_ARCHIVED |
 | POST | `/api/files/:id/versions` | `hasPermission(#id, 'file', 'EDIT')` | REQUIRED + FOR UPDATE on file row | — | `WHERE deleted_at IS NULL` | 409 VERSION_CONFLICT, 413 QUOTA_EXCEEDED, 415 |
 | GET | `/api/files/:id/download` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
 | GET | `/api/files/:id/preview` | `hasPermission(#id, 'file', 'READ')` | — | — | `WHERE deleted_at IS NULL` | 404 |
@@ -1322,10 +1358,25 @@ PATCH /api/files/:id
   Norm:     normalized_name = NormalizeUtil.normalize(name)
 
 POST /api/files/:id/move
-  Request:  { targetFolderId: string }
+  Request:  { targetFolderId: string, allowCrossScope?: boolean (optional, default false) }
   Response: 200 { file: FileDto }
   TX:       SELECT FOR UPDATE on file + target folder
             → UNIQUE 충돌 검사 → UPDATE folder_id → audit_log (FILE_MOVE) → COMMIT
+  Note:     allowCrossScope=false(default) → 기존 same-scope 가드 유지.
+            allowCrossScope=true → CrossWorkspaceMoveService.moveFile 진입 (permissions cleanup + shares revoke).
+            Auth for cross: file EDIT + SHARE AND destination folder UPLOAD (ERR_DEST_WORKSPACE_DENIED on deny).
+
+POST /api/files/:id/move/preview
+  Auth:     file EDIT + SHARE (Plan D §5.6)
+  Request:  { destinationFolderId: UUID }
+  Response: 200 {
+    itemCount: number,                        // 단건 파일 이동이므로 항상 1
+    removedPermissions: PermissionRef[],      // 정리될 명시 권한 grant (id, subjectType, subjectId, preset)
+    revokedShares: ShareRef[],                // revoke될 share (id, resourceType, resourceId, sharedBy)
+    targetMembershipDefaults: Permission[],   // 이동 후 destination workspace 멤버십 기본권 (호출자 기준)
+    nameConflict: string | null               // destination 동명 항목 존재 시 충돌 이름, 없으면 null
+  }
+  Errors:   400 ERR_INVALID_DESTINATION (destinationFolderId null/self), 403 PERMISSION_DENIED, 404 NOT_FOUND
 
 DELETE /api/files/:id
   Response: 204
@@ -1692,26 +1743,35 @@ GET /api/me/effective-permissions[?nodeId={uuid}]
 ### 7.11 휴지통 (Trash, A6/A8)
 
 > Restore endpoint은 A6에서 per-resource로 구현(`/api/files/:id/restore`, `/api/folders/:id/restore`) — 본 표는 그 위치 기준. Manual purge는 A8(`DELETE /api/trash/:type/:id`, ADR #32). Bulk purge `DELETE /api/trash`는 미구현(별도 트랙). 관리자 전역 휴지통 listing은 Wave 2 T9에서 별도 endpoint(`GET /api/admin/trash`)로 추가 — admin DTO(owner/originalParent/size 노출), mutation은 기존 endpoint 재사용(ADMIN ROLE이 SpEL 가드 통과).
+>
+> **Plan E (2026-05-10) workspace split**: `GET /api/trash` 가 `scopeType`/`scopeId` query param **필수** 로 변경 — 부서 ↔ 팀 휴지통이 분리. 비멤버는 `403 PERMISSION_DENIED` (ADMIN bypass). row 별 DELETE 권한 후처리는 기존(ADR #32) 그대로. 자세한 spec 은 `docs/superpowers/specs/2026-05-10-team-centric-pivot-plan-e-trash-workspace-split-design.md` §3.1 / §5.1 참조.
 
 | Method | Path | Guard | TX | Norm | SoftDel | Errors |
 |---|---|---|---|---|---|---|
-| GET | `/api/trash` | `isAuthenticated()` (결과는 사용자가 DELETE 권한 가진 항목만 — A8 결과 후처리, ADR #32) | — | — | **`WHERE deleted_at IS NOT NULL`** | — |
+| GET | `/api/trash?scopeType=&scopeId=` (Plan E T2) | `isAuthenticated()` + workspace 멤버십 fast-fail (DEPT 매치 또는 TEAM membership; ADMIN bypass — ADR #32 row 별 DELETE 후처리는 그대로 유지) | — | — | **`WHERE deleted_at IS NOT NULL AND scope_type=? AND scope_id=?`** | 422 VALIDATION_ERROR(scopeType/scopeId 누락 또는 형식 오류), 403 PERMISSION_DENIED(비멤버) |
 | GET | `/api/admin/trash` (Wave 2 T9) | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→LIKE escape (case-insensitive) | **`WHERE deleted_at IS NOT NULL`** | 400 VALIDATION_ERROR(invalid type/ownerId/q>200/deletedFrom·deletedTo 형식 또는 from≥to), 401, 403 |
 | POST | `/api/admin/trash/bulk` (Wave 2 T9 follow-up) | `hasRole('ADMIN')` | — (per-item 단건 service 트랜잭션, fan-out) | — | per-item: 단건 endpoint와 동일 (restore: SET NULL+UNIQUE 재검사 / purge: row+versions cascade) | 200(부분 실패 허용 — `failed[]`로 표현), 400 VALIDATION_ERROR(invalid action / items.size ∉ [1,200]), 401, 403 |
 | GET | `/api/admin/trash/policy` (Wave 2 T9 follow-up, wave2-trash-policy-viewer) | `hasRole('ADMIN')` | — | — | — (read-only) | 401, 403 |
-| POST | `/api/files/:id/restore` (A6) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 | 404, 409 RESTORE_CONFLICT |
-| POST | `/api/folders/:id/restore` (A6) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade | 404, 409 RESTORE_CONFLICT |
+| POST | `/api/files/:id/restore` (A6 + Plan E T5) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + **archive guard** + **cross-scope mismatch 검사** (Plan E T5) | 404, 409 RESTORE_CONFLICT (`reason='name_conflict' \| 'scope_mismatch'`), 423 TEAM_ARCHIVED |
+| POST | `/api/folders/:id/restore` (A6 + Plan E T4) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade + **archive guard** + **cross-scope mismatch 검사** (Plan E T4) | 404, 409 RESTORE_CONFLICT (`reason='name_conflict' \| 'scope_mismatch'`), 423 TEAM_ARCHIVED |
 | DELETE | `/api/trash/:type/:id` (A8, ADR #32) | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + file_versions cascade. S3 객체는 ADR #31 deferred) | 400 VALIDATION_ERROR(invalid type), 403, 404 |
 | ~~DELETE~~ | ~~`/api/trash`~~ (bulk) | ~~`hasRole('ADMIN')`~~ | — | — | **(미구현, 별도 트랙 — `purge.expired` 배치(A7) + manual single(A8) 조합으로 운영 충분, ADR #32)** | — |
 
 ```text
-GET /api/trash?cursor=&type=                    (A8.1, ADR #32)
+GET /api/trash?scopeType=&scopeId=&cursor=&type=  (A8.1, ADR #32, Plan E T2)
   Guard:    isAuthenticated()
+            + workspace 멤버십 fast-fail (DEPT 매치 또는 TEAM membership; ADMIN bypass)
+            + per-row hasPermission(id, type, 'DELETE') 후처리 (ADR #32 그대로)
+  Query:    scopeType  (필수; 'department' | 'team')
+            scopeId    (필수; UUID — workspace id)
+            cursor     (선택; opaque base64)
+            type       (선택; 'file' | 'folder' | (생략 = 양쪽))
   Response: 200 { items: TrashItemDto[], nextCursor? }
   Note:     items 필드 = (id, name, type='file'|'folder', deletedAt, purgeAfter, originalPath)
-  Filter:   actor의 per-row hasPermission(id, type, 'DELETE') 후처리
-            (MVP 가정: 페이지 한도 < 권한 보유 row 수, 큰 dataset 시 별도 ADR)
-  type 파라미터: 'file' | 'folder' | (생략 = 양쪽)
+            archived workspace listing 통과 (read-only 의미 보존, frontend 가 alert + restore disabled)
+  Errors:
+    422 VALIDATION_ERROR  { details: { field: 'scopeType' | 'scopeId', rule: '...' } }
+    403 PERMISSION_DENIED (비멤버, ADMIN 외)
 
 GET /api/admin/trash?q=&type=&ownerId=&deletedFrom=&deletedTo=&cursor=&limit=
                                               (Wave 2 T9, 2026-05-07; 날짜 범위 필터: T9 follow-up)
@@ -1797,12 +1857,22 @@ POST /api/admin/trash/bulk                       (Wave 2 T9 follow-up, 2026-05-0
               자연스럽게 cap 안.
             - 단건 endpoint 무변경 — bulk는 service layer fan-out만.
 
-POST /api/files/:id/restore                     (A6)
-POST /api/folders/:id/restore                   (A6)
-  TX:       SELECT FOR UPDATE → 원 부모 폴더 활성 검증 → UNIQUE 충돌 검사
-            → SET deleted_at = NULL (folder는 후손 cascade) → audit_log (FILE_RESTORED / FOLDER_RESTORED)
+POST /api/files/:id/restore                     (A6 + Plan E T5)
+POST /api/folders/:id/restore                   (A6 + Plan E T4)
+  TX:       SELECT FOR UPDATE
+            → archive guard: target.scope_type='team' && team.archived_at IS NOT NULL
+              → 423 TEAM_ARCHIVED { teamId } (Plan E T4/T5, TeamArchiveGuard)
+            → 원 부모 폴더 활성 검증 (없으면 404)
+            → cross-scope mismatch 검사: original_folder.scope != target.scope
+              → 409 RESTORE_CONFLICT { reason:'scope_mismatch', expectedScopeType,
+                expectedScopeId, actualScopeType, actualScopeId } (Plan E T4/T5)
+            → UNIQUE 충돌 검사
+              → 409 RESTORE_CONFLICT { reason:'name_conflict', suggestedName }
+            → SET deleted_at = NULL (folder는 후손 cascade)
+            → audit_log (FILE_RESTORED / FOLDER_RESTORED)
             → COMMIT
-  Errors:   409 RESTORE_CONFLICT { suggestedName }
+  Errors:   409 RESTORE_CONFLICT { reason: 'name_conflict' | 'scope_mismatch', ...details }
+            423 TEAM_ARCHIVED { teamId }
 
 DELETE /api/trash/:type/:id                     (A8.2, ADR #32, 영구 삭제, 관리자)
   Guard:    hasRole('ADMIN')                    -- 노드 admin preset 무시 (ADR #26 §3.2.5)
@@ -2329,12 +2399,15 @@ GET /api/departments/search?q=eng&limit=20
 | 404 | NOT_FOUND | 리소스 없음 | not-found 페이지 |
 | 409 | UPLOAD_CONFLICT | 업로드 동일명 충돌 | ConflictDialog |
 | 409 | RENAME_CONFLICT | 이름 변경 충돌 | RenameDialog 재표시 |
-| 409 | RESTORE_CONFLICT | 복원 시 원위치 충돌 | 이름 변경 후 복원 제안 |
+| 409 | RESTORE_CONFLICT | 복원 시 원위치 충돌. body `details.reason` 분기: `'name_conflict'` (원위치 동명 항목 존재 — `details.resourceId`, `details.suggestedName` 포함) / `'scope_mismatch'` (Plan E T4/T5, 2026-05-10 — 원위치 폴더가 다른 workspace 로 cross-workspace move 됨; `details.resourceId`, `details.expectedScopeType`, `details.expectedScopeId`, `details.actualScopeType`, `details.actualScopeId` 포함). **에러 코드 신규 0** — 기존 RESTORE_CONFLICT 재사용 + body field 확장 (backward-compatible). | `RestoreConflictDialog` 가 reason 으로 분기: `name_conflict` → 이름 변경 후 복원 제안, `scope_mismatch` → read-only 안내 + 닫기 (관리자 문의) |
 | 409 | VERSION_CONFLICT | 버전 업로드 시 최신 버전 불일치 | "최신 버전 확인" 다이얼로그 |
 | 409 | DEPARTMENT_CONFLICT | 동일 이름의 활성 부서 존재 (admin create/rename/reactivate) | 인라인 에러 — "같은 이름의 활성 부서가 이미 존재합니다" |
 | 400 | MOVE_INTO_SELF | 자기 자신으로 이동 시도 | UI 차단, 도달 시 토스트 |
 | 400 | MOVE_INTO_DESCENDANT | 후손 폴더로 이동 시도 | UI 차단, 도달 시 토스트 |
+| 400 | ERR_INVALID_DESTINATION | destinationFolderId가 null이거나 자기 자신/후손 — cross-workspace move/preview 전용 | 토스트 |
+| 403 | ERR_DEST_WORKSPACE_DENIED | cross-workspace move 시 source EDIT+SHARE 또는 destination UPLOAD 부재 | 토스트 |
 | 404 | TARGET_NOT_FOUND | 이동 타겟 폴더가 없음 | 토스트 + 폴더 트리 재조회 |
+| 409 | ERR_CROSS_SCOPE_MOVE | allowCrossScope=false(default)인데 다른 workspace로 이동 시도 — 컨텍스트 메뉴 사용 안내 | 토스트 + "다른 workspace로 이동" 메뉴 안내 |
 | 413 | QUOTA_EXCEEDED | 스토리지 할당량 초과 | 관리자 문의 안내 |
 | 413 | FILE_TOO_LARGE | 단일 파일 크기 초과 | 경고 |
 | 415 | UNSUPPORTED_MEDIA_TYPE | 금지된 확장자 | 경고 |
@@ -2347,7 +2420,7 @@ GET /api/departments/search?q=eng&limit=20
 | 404 | APPROVAL_NOT_FOUND | approval row 미존재 또는 다른 사용자 cancel 시도 (v1.x, ADR #47) | 토스트 + 목록 재조회 |
 | 409 | APPROVAL_ALREADY_DECIDED | terminal status(APPROVED/REJECTED/CANCELLED/EXPIRED)에 재결정 시도 (v1.x, ADR #47) | "이미 결정된 요청입니다" 토스트 + 목록 재조회 |
 | 400 | TEAM_OWNER_REQUIRED | 팀에는 최소 한 명의 OWNER가 필요 — 마지막 OWNER 탈퇴/제외 시도 차단 (spec `ERR_TEAM_OWNER_REQUIRED`) | "팀에 최소 한 명의 관리자가 필요합니다" 토스트 |
-| 423 | TEAM_ARCHIVED | archive된 팀의 폴더/파일에 write(create/upload/move/rename/delete/restore/restoreVersion) 시도 (spec `ERR_TEAM_ARCHIVED`). `TeamArchiveGuard.assertNotArchived`가 FolderMutationService / FileMutationService / FileUploadService / FileVersionMutationService 진입점에서 차단. response body `details.teamId`로 archived 팀 식별. | "archive된 팀의 콘텐츠는 수정할 수 없습니다" 토스트 |
+| 423 | TEAM_ARCHIVED | archive된 팀의 폴더/파일에 write(create/upload/move/rename/delete/restore/restoreVersion) 시도 (spec `ERR_TEAM_ARCHIVED`). `TeamArchiveGuard.assertNotArchived`가 차단. 활성 진입점: `Folder/FileMutationService.create/move/rename/softDelete/restore` + `FileUploadService` + `FileVersionMutationService` (team-archive-write-enforcement + Plan E T4/T5, 2026-05-10). response body `details.teamId`로 archived 팀 식별. | archived 팀 페이지에서는 frontend가 사전에 버튼 disabled (휴지통 페이지 alert + RestoreRowActions disabled, Plan E T13). 도달 시 "archive된 팀의 콘텐츠는 수정할 수 없습니다" 토스트. |
 | 429 | RATE_LIMIT_EXCEEDED | 요청 한도 초과 | 지수 백오프 재시도 |
 | 500 | INTERNAL_ERROR | 서버 오류 | 재시도 / 에러 리포트 |
 | 503 | SERVICE_UNAVAILABLE | 점검 중 | 점검 페이지 |

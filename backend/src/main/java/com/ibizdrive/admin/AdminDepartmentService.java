@@ -77,7 +77,12 @@ public class AdminDepartmentService {
         }
 
         Department dept = new Department(UUID.randomUUID(), name, OffsetDateTime.now());
-        departmentRepository.save(dept);
+        // Spring Data JPA save()는 assigned-UUID + no-@Version entity를 isNew()=false로 판단해
+        // EntityManager.merge() 경로를 탄다. merge는 NEW managed copy를 반환하며 원본 instance는
+        // detached 상태로 남는다. 원본에 후속 변경(attachRootFolder)을 가하면 dirty check가
+        // 동작하지 않아 root_folder_id UPDATE가 영원히 flush되지 않는다 (TeamService.create와 동일 패턴).
+        // 명시적으로 managed copy로 재할당해야 attachRootFolder가 dirty check에 잡힌다.
+        dept = departmentRepository.save(dept);
 
         Folder root = folderMutationService.createRootForScope(
             ScopeType.DEPARTMENT, dept.getId(), actorId, name);

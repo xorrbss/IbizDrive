@@ -62,7 +62,13 @@ export const qk = {
 
   // ── 휴지통 (M9) ──
   trash: () => [...qk.all, 'trash'] as const,
-  trashList: () => [...qk.trash(), 'list'] as const,
+  /**
+   * 워크스페이스 범위별 휴지통 목록 키 (Plan E T6).
+   * scopeType + scopeId 필수 — backend `GET /api/trash?scopeType&scopeId` 필수 파라미터와 1:1 대응.
+   * invalidate는 `qk.trash()` prefix 매칭 사용 → afterDelete/afterRestore/afterPurge 영향 없음.
+   */
+  trashList: (scopeType: 'department' | 'team', scopeId: string) =>
+    [...qk.trash(), 'list', scopeType, scopeId] as const,
 
   // ── 공유 (F4, docs/02 §7.9) ──
   shares: () => [...qk.all, 'shares'] as const,

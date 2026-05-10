@@ -52,6 +52,11 @@ class AdminDepartmentServiceTest {
         eventPublisher = mock(ApplicationEventPublisher.class);
         service = new AdminDepartmentService(departmentRepository, folderMutationService, eventPublisher);
 
+        // production code (post-fix)는 dept = repo.save(dept)로 반환된 managed entity를 사용해
+        // attachRootFolder 호출 — JPA merge가 NEW instance를 반환하므로 dirty check를 위해 필수.
+        // mock은 input entity를 그대로 반환해 production 흐름을 모방.
+        when(departmentRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+
         // Stub folderMutationService for create tests — prevents NullPointerException.
         when(folderMutationService.createRootForScope(any(), any(), any(), anyString()))
             .thenAnswer(inv -> {

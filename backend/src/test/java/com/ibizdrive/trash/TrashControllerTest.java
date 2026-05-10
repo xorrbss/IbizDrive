@@ -1,5 +1,6 @@
 package com.ibizdrive.trash;
 
+import com.ibizdrive.folder.ScopeType;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.Role;
 import com.ibizdrive.user.User;
@@ -25,8 +26,9 @@ import static org.mockito.Mockito.when;
  *
  * <p>controller가 가진 책임만 검증한다:
  * <ul>
+ *   <li>scope 파라미터 파싱 (department/team/invalid → 400)</li>
  *   <li>type 파라미터 파싱 (null/file/folder/invalid → 400)</li>
- *   <li>service delegation 인자 전달 (actorId, role, cursor, type, limit)</li>
+ *   <li>service delegation 인자 전달 (actorId, role, scopeType, scopeId, cursor, type, limit)</li>
  *   <li>200 + body echo</li>
  * </ul>
  *
@@ -36,6 +38,7 @@ import static org.mockito.Mockito.when;
 class TrashControllerTest {
 
     private static final UUID ACTOR = UUID.fromString("11111111-1111-1111-1111-111111111111");
+    private static final UUID SCOPE_ID = UUID.fromString("99999999-9999-9999-9999-999999999999");
 
     private TrashQueryService service;
     private TrashPurgeService purgeService;
@@ -55,58 +58,127 @@ class TrashControllerTest {
         adminPrincipal = new IbizDriveUserDetails(u);
     }
 
+    // ── scope 파싱 ───────────────────────────────────────────────────────
+
+    @Test
+    void list_scopeDepartment_passesEnum() {
+        TrashPage expected = new TrashPage(List.of(), null);
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.DEPARTMENT), eq(SCOPE_ID),
+                          isNull(), isNull(), isNull()))
+            .thenReturn(expected);
+
+        ResponseEntity<TrashPage> res = controller.list(
+            "department", SCOPE_ID, null, null, null, adminPrincipal
+        );
+
+        assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
+    }
+
+    @Test
+    void list_scopeTeam_passesEnum() {
+        TrashPage expected = new TrashPage(List.of(), null);
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.TEAM), eq(SCOPE_ID),
+                          isNull(), isNull(), isNull()))
+            .thenReturn(expected);
+
+        controller.list("team", SCOPE_ID, null, null, null, adminPrincipal);
+
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.TEAM, SCOPE_ID, null, null, null);
+    }
+
+    @Test
+    void list_scopeUppercase_acceptedAndNormalized() {
+        TrashPage expected = new TrashPage(List.of(), null);
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.DEPARTMENT), eq(SCOPE_ID),
+                          isNull(), isNull(), isNull()))
+            .thenReturn(expected);
+
+        // wire normalize — controller가 case-insensitive 받기 (parseScopeType의 toUpperCase).
+        controller.list("DEPARTMENT", SCOPE_ID, null, null, null, adminPrincipal);
+
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
+    }
+
+    @Test
+    void list_scopeNull_throwsIllegalArgument() {
+        assertThatThrownBy(() -> controller.list(null, SCOPE_ID, null, null, null, adminPrincipal))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void list_scopeBlank_throwsIllegalArgument() {
+        assertThatThrownBy(() -> controller.list("   ", SCOPE_ID, null, null, null, adminPrincipal))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
+    @Test
+    void list_scopeInvalid_throwsIllegalArgument() {
+        assertThatThrownBy(() -> controller.list("global", SCOPE_ID, null, null, null, adminPrincipal))
+            .isInstanceOf(IllegalArgumentException.class);
+    }
+
     // ── type 파싱 ────────────────────────────────────────────────────────
 
     @Test
     void list_typeNull_passesNullToService() {
         TrashPage expected = new TrashPage(List.of(), null);
-        when(service.list(eq(ACTOR), eq(Role.ADMIN), isNull(), isNull(), isNull()))
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.DEPARTMENT), eq(SCOPE_ID),
+                          isNull(), isNull(), isNull()))
             .thenReturn(expected);
 
-        ResponseEntity<TrashPage> res = controller.list(null, null, null, adminPrincipal);
+        ResponseEntity<TrashPage> res = controller.list(
+            "department", SCOPE_ID, null, null, null, adminPrincipal
+        );
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody()).isEqualTo(expected);
-        verify(service).list(ACTOR, Role.ADMIN, null, null, null);
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
     }
 
     @Test
     void list_typeBlank_treatedAsNull() {
         TrashPage expected = new TrashPage(List.of(), null);
-        when(service.list(eq(ACTOR), eq(Role.ADMIN), isNull(), isNull(), isNull()))
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.DEPARTMENT), eq(SCOPE_ID),
+                          isNull(), isNull(), isNull()))
             .thenReturn(expected);
 
-        controller.list(null, "   ", null, adminPrincipal);
+        controller.list("department", SCOPE_ID, null, "   ", null, adminPrincipal);
 
-        verify(service).list(ACTOR, Role.ADMIN, null, null, null);
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
     }
 
     @Test
     void list_typeFile_passesEnum() {
         TrashPage expected = new TrashPage(List.of(), null);
-        when(service.list(eq(ACTOR), eq(Role.ADMIN), isNull(), eq(TrashItemType.FILE), isNull()))
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.DEPARTMENT), eq(SCOPE_ID),
+                          isNull(), eq(TrashItemType.FILE), isNull()))
             .thenReturn(expected);
 
-        controller.list(null, "file", null, adminPrincipal);
+        controller.list("department", SCOPE_ID, null, "file", null, adminPrincipal);
 
-        verify(service).list(ACTOR, Role.ADMIN, null, TrashItemType.FILE, null);
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID,
+            null, TrashItemType.FILE, null);
     }
 
     @Test
     void list_typeFolder_passesEnum() {
         TrashPage expected = new TrashPage(List.of(), null);
-        when(service.list(eq(ACTOR), eq(Role.ADMIN), isNull(), eq(TrashItemType.FOLDER), isNull()))
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.DEPARTMENT), eq(SCOPE_ID),
+                          isNull(), eq(TrashItemType.FOLDER), isNull()))
             .thenReturn(expected);
 
-        controller.list(null, "folder", null, adminPrincipal);
+        controller.list("department", SCOPE_ID, null, "folder", null, adminPrincipal);
 
-        verify(service).list(ACTOR, Role.ADMIN, null, TrashItemType.FOLDER, null);
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID,
+            null, TrashItemType.FOLDER, null);
     }
 
     @Test
     void list_invalidType_throwsIllegalArgument() {
-        assertThatThrownBy(() -> controller.list(null, "bogus", null, adminPrincipal))
-            .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> controller.list(
+            "department", SCOPE_ID, null, "bogus", null, adminPrincipal
+        )).isInstanceOf(IllegalArgumentException.class);
     }
 
     // ── cursor + limit echo ─────────────────────────────────────────────
@@ -115,14 +187,17 @@ class TrashControllerTest {
     void list_cursorAndLimit_passedThrough() {
         String cursor = "abc123";
         TrashPage expected = new TrashPage(List.of(), "next");
-        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(cursor), isNull(), eq(25)))
+        when(service.list(eq(ACTOR), eq(Role.ADMIN), eq(ScopeType.TEAM), eq(SCOPE_ID),
+                          eq(cursor), isNull(), eq(25)))
             .thenReturn(expected);
 
-        ResponseEntity<TrashPage> res = controller.list(cursor, null, 25, adminPrincipal);
+        ResponseEntity<TrashPage> res = controller.list(
+            "team", SCOPE_ID, cursor, null, 25, adminPrincipal
+        );
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody().nextCursor()).isEqualTo("next");
-        verify(service).list(ACTOR, Role.ADMIN, cursor, null, 25);
+        verify(service).list(ACTOR, Role.ADMIN, ScopeType.TEAM, SCOPE_ID, cursor, null, 25);
     }
 
     // ── DELETE /api/trash/{type}/{id} ──────────────────────────────────
