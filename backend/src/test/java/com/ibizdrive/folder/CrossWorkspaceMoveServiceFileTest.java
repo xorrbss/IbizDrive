@@ -86,6 +86,14 @@ class CrossWorkspaceMoveServiceFileTest {
     @Autowired private PermissionResolver permissionResolver;
     @Autowired private ApplicationEventPublisher applicationEventPublisher;
 
+    /**
+     * Spring TestContext가 mock 빈을 클래스 전체에서 공유 → 테스트 간 invocation 카운트 누적 회피.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void resetMocks() {
+        org.mockito.Mockito.reset(applicationEventPublisher, permissionResolver);
+    }
+
     // ── fixtures ──
 
     private UUID insertFakeRoot(UUID ownerId, String scopeType, UUID scopeId) {

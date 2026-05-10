@@ -89,6 +89,16 @@ class CrossWorkspaceMoveServiceTest {
     @Autowired private PermissionResolver permissionResolver;
     @Autowired private ApplicationEventPublisher applicationEventPublisher;
 
+    /**
+     * Spring TestContext가 컨텍스트(따라서 mock 빈)를 클래스 전체에서 공유 — 테스트 간 invocation
+     * 카운트가 누적되어 verify(publisher, times(1))이 후속 테스트에서 TooManyActualInvocations로 실패.
+     * 명시 reset으로 격리.
+     */
+    @org.junit.jupiter.api.BeforeEach
+    void resetMocks() {
+        org.mockito.Mockito.reset(applicationEventPublisher, permissionResolver);
+    }
+
     // ── fixtures ──
 
     private UUID insertUser(String emailPrefix) {
