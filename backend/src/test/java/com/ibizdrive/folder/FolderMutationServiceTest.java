@@ -23,7 +23,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 
-import java.time.Instant;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -265,19 +265,20 @@ class FolderMutationServiceTest {
     }
 
     @Test
-    void move_toRoot_setsParentNull() {
-        // V13/Task 24: child→root(null) move는 service.move 계약상 허용 (Task 25에서 cross-scope
-        // 가드를 별도 도입). 본 테스트는 audit 발행 + parentId=NULL 전이만 검증.
+    void move_toRoot_throwsBadRequest() {
+        // spec §1.3 — root 폴더는 workspace lifecycle만 생성/소유 (V13 partial unique
+        // idx_folders_root_per_scope가 scope당 root 1개 강제). 일반 폴더의 null parent 이동은
+        // service 진입에서 IllegalArgumentException으로 거부.
         UUID owner = insertUser("m2@test", "m2");
         Folder root = insertRootFolder("RootM2", owner);
         Folder parent = service.create(root.getId(), "ParentM2", owner, "standard", owner);
         Folder child = service.create(parent.getId(), "ChildM2", owner, "standard", owner);
         reset(auditService);
 
-        Folder moved = service.move(child.getId(), null, owner);
-
-        assertThat(moved.getParentId()).isNull();
-        verifyAuditEmitted(AuditEventType.FOLDER_MOVED, child.getId(), owner);
+        assertThatThrownBy(() -> service.move(child.getId(), null, owner))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("newParentId is required");
+        verify(auditService, never()).record(any());
     }
 
     @Test
@@ -546,7 +547,7 @@ class FolderMutationServiceTest {
      */
     private Folder insertRootFolder(String name, UUID ownerId) {
         UUID id = UUID.randomUUID();
-        Instant now = Instant.now();
+        OffsetDateTime now = OffsetDateTime.now();
         UUID scopeId = UUID.randomUUID();
         jdbc.update(
             "INSERT INTO folders(id, parent_id, name, normalized_name, slug, owner_id, audit_level, " +

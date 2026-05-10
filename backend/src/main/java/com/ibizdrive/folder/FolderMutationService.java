@@ -295,13 +295,27 @@ public class FolderMutationService {
      * {@link CrossScopeMoveException} (HTTP 409 + {@code ERR_CROSS_SCOPE_MOVE}). 명시적
      * cross-workspace move는 Plan D scope ({@code allowCrossScope: true} + 영향 미리보기).
      *
+     * <p><b>Root 이동 차단 (spec §1.3 invariant)</b>: {@code newParentId == null}은 거부된다 — root
+     * 폴더는 workspace lifecycle만 생성/소유하며, V13 partial unique index
+     * {@code idx_folders_root_per_scope}({@code (scope_type, scope_id) WHERE parent_id IS NULL})가
+     * scope당 root 1개를 강제. 일반 폴더가 root로 승격되면 이 invariant가 깨지므로 service 진입에서
+     * 거부. (Plan D의 cross-workspace move는 destination root가 명시 지정되므로 본 경로 미사용.)
+     *
      * @throws FolderNotFoundException  folderId 또는 newParentId가 활성 폴더가 아님
-     * @throws IllegalArgumentException 자기 자신 또는 자기 자신의 하위 트리로 이동 (cycle)
+     * @throws IllegalArgumentException folderId null, {@code newParentId == null} (root 승격 차단),
+     *                                  또는 자기 자신/자기 하위로의 이동 (cycle)
      * @throws CrossScopeMoveException  newParent의 scope가 target과 다름 (Plan A: same-scope만)
      * @throws FolderNameConflictException 새 부모 안에 동일 normalized_name 활성 폴더 존재
      */
     public Folder move(UUID folderId, UUID newParentId, UUID actorId) {
         if (folderId == null) throw new IllegalArgumentException("folderId is required");
+        if (newParentId == null) {
+            // spec §1.3 — root는 workspace lifecycle 전용. 일반 폴더의 root 승격은 V13
+            // idx_folders_root_per_scope 위반(scope당 root 1개)으로 DB-level fail이 보장되지만,
+            // service 진입에서 명시 거부해 caller에 명확한 BAD_REQUEST 신호.
+            throw new IllegalArgumentException(
+                "newParentId is required — root folders are workspace-managed only (spec §1.3)");
+        }
 
         Folder target = folderRepository.lockByIdAndDeletedAtIsNull(folderId)
             .orElseThrow(() -> new FolderNotFoundException("folder not found: " + folderId));
@@ -315,20 +329,16 @@ public class FolderMutationService {
             return target;                                  // short-circuit
         }
 
-        if (newParentId != null) {
-            // 새 부모가 활성인지 확인. cycle 검사를 위해서도 ancestor walk 진입점이 활성이어야 함.
-            Folder newParent = folderRepository.findByIdAndDeletedAtIsNull(newParentId)
-                .orElseThrow(() -> new FolderNotFoundException(
-                    "new parent folder not found: " + newParentId));
-            // Plan A Task 25 — same-scope 가드. newParentId == null (root) 케이스는 §1.2 invariant
-            // 와 충돌하나 본 task는 명시적으로 same-scope 검증만 다룸 (rootless folder 차단은
-            // 별도 트랙). 가드는 mutation 직전, 가장 저렴한 비교부터 (cycle walk 이전) 배치.
-            if (target.getScopeType() != newParent.getScopeType()
-                || !target.getScopeId().equals(newParent.getScopeId())) {
-                throw new CrossScopeMoveException();
-            }
-            assertNoCycle(folderId, newParentId);
+        // 새 부모가 활성인지 확인. cycle 검사를 위해서도 ancestor walk 진입점이 활성이어야 함.
+        Folder newParent = folderRepository.findByIdAndDeletedAtIsNull(newParentId)
+            .orElseThrow(() -> new FolderNotFoundException(
+                "new parent folder not found: " + newParentId));
+        // Plan A Task 25 — same-scope 가드. mutation 직전, 가장 저렴한 비교부터 (cycle walk 이전) 배치.
+        if (target.getScopeType() != newParent.getScopeType()
+            || !target.getScopeId().equals(newParent.getScopeId())) {
+            throw new CrossScopeMoveException();
         }
+        assertNoCycle(folderId, newParentId);
 
         if (folderRepository.existsActiveByParentAndNormalizedNameExcludingId(
                 newParentId, target.getNormalizedName(), target.getId())) {
