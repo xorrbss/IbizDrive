@@ -208,6 +208,37 @@ textarea:focus-visible {
   outline-offset: 1px;
 }
 
+/* ==============================================================
+   Animation 키프레임 (modal / bulk action bar)
+   원본: design-zip styles.css
+     L544 @keyframes bulkSlide  (translateY -4px → 0, .18s ease-out)
+     L1158 @keyframes modalBg   (opacity 0 → 1, .15s)
+     L1170 @keyframes modalPop  (scale .96 → 1, .18s cubic-bezier(.2,.9,.4,1))
+   Tailwind arbitrary value(`animate-[...]`) 로 표현 가능하나 cubic-bezier 인자에
+   콤마가 들어가 클래스명 파싱이 깨지는 이슈가 있어 globals 키프레임 + 헬퍼 클래스로
+   노출 (KISS, 한 곳에서 duration/curve 관리). 사용처:
+   - .anim-modal-bg : UploadConflictDialog / 후속 모달 backdrop fade
+   - .anim-modal-pop: 동 모달 dialog scale-in
+   - .anim-bulk-slide: BulkActionBar 진입 slide
+   ============================================================== */
+@keyframes modalBg { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalPop {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes bulkSlide {
+  from { transform: translateY(-4px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.anim-modal-bg  { animation: modalBg .15s; }
+.anim-modal-pop { animation: modalPop .18s cubic-bezier(.2, .9, .4, 1); }
+.anim-bulk-slide { animation: bulkSlide .18s ease-out; }
+
+/* prefers-reduced-motion 안전장치 — 키프레임 무효화 (즉시 표시) */
+@media (prefers-reduced-motion: reduce) {
+  .anim-modal-bg, .anim-modal-pop, .anim-bulk-slide { animation: none; }
+}
+
 /* 스크롤바 (webkit) — 디자인 원본 따름 */
 *::-webkit-scrollbar { width: 10px; height: 10px; }
 *::-webkit-scrollbar-track { background: transparent; }

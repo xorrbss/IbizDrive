@@ -64,7 +64,7 @@ function TaskRow({ task }: { task: UploadTask }) {
       </div>
       <div className="mt-[3px] h-[2px] bg-surface-3 rounded-[1px] overflow-hidden">
         <div
-          className={`h-full ${task.status === 'failed' ? 'bg-danger' : 'bg-accent'} transition-[width]`}
+          className={`h-full ${task.status === 'failed' ? 'bg-danger' : 'bg-accent'} transition-[width] duration-200`}
           style={{ width: `${Math.round(task.progress * 100)}%` }}
         />
       </div>

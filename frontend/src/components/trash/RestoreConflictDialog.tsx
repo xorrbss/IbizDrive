@@ -77,9 +77,9 @@ export function RestoreConflictDialog() {
         onKeyDown={(e) => {
           if (e.key === 'Escape') close()
         }}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 anim-modal-bg"
       >
-        <div className="bg-surface-1 border border-border rounded-md w-[440px] flex flex-col p-4 gap-3 shadow-2xl">
+        <div className="bg-surface-1 border border-border rounded-md w-[440px] flex flex-col p-4 gap-3 shadow-2xl anim-modal-pop">
           <h2
             id="restore-conflict-dialog-title"
             className="text-[14px] font-semibold text-fg"
@@ -95,7 +95,7 @@ export function RestoreConflictDialog() {
             <button
               type="button"
               onClick={close}
-              className="h-8 px-3 rounded bg-accent text-accent-text text-[12.5px] font-medium hover:opacity-90"
+              className="h-8 px-3 rounded bg-accent text-accent-fg text-[12.5px] font-medium hover:opacity-90"
             >
               닫기
             </button>
@@ -149,11 +149,11 @@ export function RestoreConflictDialog() {
       onKeyDown={(e) => {
         if (e.key === 'Escape') close()
       }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 anim-modal-bg"
     >
       <form
         onSubmit={handleSubmit}
-        className="bg-surface-1 border border-border rounded-md w-[440px] flex flex-col p-4 gap-3 shadow-2xl"
+        className="bg-surface-1 border border-border rounded-md w-[440px] flex flex-col p-4 gap-3 shadow-2xl anim-modal-pop"
       >
         <h2
           id="restore-conflict-dialog-title"
@@ -194,7 +194,7 @@ export function RestoreConflictDialog() {
           <button
             type="submit"
             disabled={!canSubmit}
-            className="h-8 px-3 rounded bg-accent text-accent-text text-[12.5px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="h-8 px-3 rounded bg-accent text-accent-fg text-[12.5px] font-medium hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             복원
           </button>
