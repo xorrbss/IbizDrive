@@ -53,8 +53,8 @@ CREATE TABLE users (
   password_hash    VARCHAR(100),                           -- DelegatingPasswordEncoder 호환 ({bcrypt}/{argon2id} 프리픽스, 미래 Argon2id 마이그레이션). SSO 사용자는 NULL
   department_id    UUID REFERENCES departments(id),        -- A16 도입 (V7), nullable
   role             VARCHAR(50) NOT NULL DEFAULT 'MEMBER',  -- MEMBER|AUDITOR|ADMIN (docs/03 §3.2.5)
-  storage_quota    BIGINT NOT NULL DEFAULT 10737418240,    -- 10GB. A4 이후 사용
-  storage_used     BIGINT NOT NULL DEFAULT 0,              -- A4 이후 사용
+  storage_quota    BIGINT NOT NULL DEFAULT 10737418240,    -- 10GB. ⚠️ V2~V17 ALTER 미적용 — V18 (`docs/04 §6.1 quota mutation Phase 2`) 도입 예정
+  storage_used     BIGINT NOT NULL DEFAULT 0,              -- ⚠️ V2~V17 ALTER 미적용 — V18 (`docs/04 §6.1 quota mutation Phase 2`) 도입 예정
   is_active        BOOLEAN NOT NULL DEFAULT TRUE,
   last_login_at    TIMESTAMPTZ,                            -- audit + 비활성 계정 식별
   locked_at        TIMESTAMPTZ,                            -- 관리자 수동 잠금 (ADR #20). NULL이면 미잠금
