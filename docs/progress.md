@@ -65,6 +65,86 @@ Claude Design 핸드오프 (`q_E8bGXpCKkbcXTFb4TiTg`) 와 frontend 시각 fideli
 - PR #172/#175/#177 머지 후 본 closure PR 머지 + gap-report 를 `dev/active/` → `dev/completed/` 이동.
 - G4 액션 버튼 메뉴 wiring 후속 PR (v1.x).
 - M-mobile 신설 시 G7 처리 — `[data-density="compact"]` cascade 와 통합 가능 여부 검토.
+  - **2026-05-11 정정**: G7 폐기 처리됨 (CLAUDE.md §3 원칙 13). M-mobile 트랙 자체 폐기.
+
+---
+
+## 2026-05-11 — 🏁 trash-retention-mutation 트랙 종료 (Phase A → B → C 모두 머지, dev-docs archive)
+
+### 범위
+
+휴지통 보존 정책 mutation UI 트랙 closure. 코드 0줄 — dev-docs 3종을 `dev/active/` → `dev/completed/`로 이동 + plan.md frontmatter status 갱신.
+
+### 트랙 closure 표
+
+| Phase | PR | 머지 | 산출물 |
+|---|---|---|---|
+| A — spec | #167 | 2026-05-11 | docs/02 §2.12 V17 schema + §7.11.1 PUT spec, docs/03 §4.1 audit event(`admin.retention.changed`) + §6.4.3 dual-approval 표 갱신, docs/04 §8.3/§9.2/§15.6 운영 명세, dev-docs 3종 |
+| B — backend | #169 | 2026-05-11 | V17 migration + TrashPolicy entity/repo/service + RetentionPolicyChangedEvent + TrashPolicyAuditListener + AdminTrashPolicyController PUT + FileMutationService/FolderMutationService 호출 전환 + 단위/slice 테스트 21건 |
+| C — frontend | #173 | 2026-05-11 | api.updateAdminTrashPolicy + useUpdateAdminTrashPolicy + RetentionPolicyEditor (감소 경고 + ConfirmDialog) + page wire + 회귀 가드 17건 |
+
+### 핵심 결정 (회고)
+
+- **저장 전략 Option A** — single-row `trash_policy` (id=1 CHECK + retention_days BETWEEN 7 AND 90). KISS/YAGNI, 일반화 `app_settings`는 후속 트랙(quota 등) 패턴 확정 후 검토.
+- **신규 row만 적용** — 기존 trash row의 `purge_after`는 재계산 안 함. 일수 감소 시 hard purge 폭증 회피. UI confirm dialog + audit `appliesTo:'new-deletes-only'` 명시.
+- **단일-approver MVP** — 단일 ADMIN 즉시 적용. 2인 승인 framework는 v1.x++ deferred. 본 endpoint는 framework 도입 시 hook point (`app.dual-approval.retention-change.enabled`).
+- **`@PostConstruct` ensure-row** — V17 migration이 INSERT 안 함, service 부팅 시 yml 값으로 idempotent INSERT (운영자 yml override 이력 보존 + 다중 instance race는 PK + CHECK가 흡수).
+- **No-op same value** — `updateRetentionDays(currentDays, ...)`는 row touch + audit emit 없이 현재값 반환.
+
+### 사용자 가시 결과
+
+- `/admin/retention` 페이지에서 ADMIN이 보존 일수(7~90)를 무중단 변경
+- 감소 시 인라인 경고 + ConfirmDialog 재확인 (hard purge 폭증 회피)
+- audit_log `admin.retention.changed` 자동 기록
+- 운영자 yml 직접 수정 + 재기동 의존 해소 (docs/04 §15.6 backlog 처리)
+
+### 함께 처리된 부수 작업
+
+- PR #169에서 co-session이 master에 push한 `TopBar.test.tsx` lint error 1줄 fix (unblock)
+- 두 차례 master drift conflict 해결 (#168, #171, #169 머지 사이)
+
+### 다음 트랙 후보
+
+- **quota mutation UI** — 같은 패턴(single-row 테이블 또는 `app_settings` 일반화 검토 시점). docs/04 §6.1 spec.
+- **2인 승인 framework** — trash + quota + role 모두 hook into. ADR #47 활성화 트랙. 가장 큰 트랙.
+- **uploadFile XHR async cleanup** — csrf-helper-sweep(#165)의 의도적 예외 해소. useUpload 호출자 변경 필요.
+
+---
+
+## 2026-05-11 — 📜 docs/no-mobile-support-policy (CLAUDE.md §3 원칙 13 + G7 폐기 명시)
+
+### 범위
+
+사용자 결정(2026-05-11): IbizDrive는 사내 데스크탑 메인 가정, 모바일 미지원. 프로젝트 차원 invariant로 명시해 모든 세션·co-session이 같은 가드 적용. 코드 0줄, doc-only PR.
+
+### 변경
+
+- **CLAUDE.md §3 핵심 원칙 13 추가** — "데스크탑 메인, 모바일 미지원" 원칙. `lg:` breakpoint / `.mobile-view` / `useMediaQuery` / 사이드바 mobile overlay / RightPanel mobile auto-hide / FileTable 컬럼 축약 모두 backlog 제외. 좁은 데스크탑 폭은 기존 `useSidebarChromeStore` 사용자 토글로 충분.
+- **`dev/active/design-handoff-gap-report-2026-05-10.md` 진행 상태 갱신**:
+  - G1/G2/G3/G6/G8/G9 ✅ 머지 완료 마커 (PR #148, #168 등).
+  - G4 활성 트랙 마커 (`feat/design-handoff-g4-filetable` co-session).
+  - G5 활성 트랙 마커 (`feat/design-handoff-g5-density` co-session).
+  - **G7 폐기** 마커 (CLAUDE.md §3 원칙 13 backlink).
+  - 결론 섹션 2026-05-11 시점으로 갱신.
+  - PR #171/#174 (`?` 모달 + 데이터 single-source) backlink — 직접 항목은 아니나 §12.1 spec 정합 강화.
+
+### 검증
+
+- 코드 0줄 — typecheck/lint/test 무관.
+- spec 정합성 자체 리뷰: 메모리 `project_no_mobile_support` ↔ CLAUDE.md §3 원칙 13 ↔ design-handoff-gap-report G7 마커 3중 일관성.
+
+### 결정/편차
+
+- **CLAUDE.md §3 원칙 13으로 격상** — 메모리는 본 세션 한정이라 co-session에 전파 안 됨. 프로젝트 invariant로 격상해야 모든 세션이 G7류 작업 회피.
+- **gap report는 active 유지** — G4/G5 활성 + co-session 진행 중. 두 트랙 머지 후 archive 후보.
+- **dev-docs 부트스트랩 생략** — doc-only 정렬 작업, KISS.
+
+### 다음 자율 후보 (모바일 제외)
+
+- G4 / G5 (co-session 진행 중) — 충돌 회피.
+- **admin/permissions 전역 grant — resource picker** (큰 가치, 분할 가능).
+- audit JSON streaming / progress streaming (SSE/WS) — backend 영역.
+- ROLE/TEAM grant 평가 (v2.x backend resolver).
 
 ---
 

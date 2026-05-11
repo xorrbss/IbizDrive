@@ -48,11 +48,9 @@
 - 디자인: `auto-fill minmax(172px, 1fr)`
 - **변경:** `GRID_MIN_COL_WIDTH = 140` → `172`. PR #148.
 
-### G7. Mobile view 미구현
+### G7. Mobile view — ❌ 폐기 (2026-05-11 사용자 결정)
 - 디자인: `.mobile-view` 클래스 (styles.css L1248-1259) — sidebar/right-panel 숨김 + FileTable 컬럼 축약 (`36 1fr 130 44`).
-- 현재: `mobile-view` 클래스 미존재. responsive 분기 없음.
-- **영향:** 모바일 뷰포트에서 3-pane이 그대로 압축 → UX 깨짐.
-- **권장:** 별도 마일스톤 (M-mobile 신설). 우선순위 낮음 — 사내 데스크톱 메인 가정이면 backlog.
+- **결정:** 사내 데스크탑 메인 가정. `CLAUDE.md §3 원칙 13` "데스크탑 메인, 모바일 미지원" 으로 격상. `.mobile-view` / `useMediaQuery` / `lg:` breakpoint / 사이드바 mobile overlay / RightPanel mobile auto-hide / FileTable 컬럼 축약 모두 backlog 제외. 좁은 데스크탑 폭은 기존 `useSidebarChromeStore` 토글로 충분.
 
 ### G8. DropOverlay 시각 fidelity — ✅ 해결 (PR #148)
 - 디자인: `backdrop-filter: blur(2px)` + 8px margin + 중앙 카드 (surface-1 + lg shadow + 56px 원형 아이콘).
@@ -70,25 +68,33 @@
 
 | Gap | 트랙 / PR | 상태 |
 |---|---|---|
-| ~~G1 TopBar 48px~~ | PR #148 | ✅ 머지 |
+| ~~G1 TopBar 48px~~ | PR #148 (h-10 → h-12) | ✅ 머지 |
 | ~~G2 TopBar 3-col grid + 햄버거~~ | PR #168 (사이드바 collapse 동반) | ✅ 머지 |
-| ~~G3 SearchBar ⌘K + 폭~~ | PR #168 + #172 (kbd platform 분기) | ✅ #168 머지, #172 진행 |
-| ~~G4 FileTable 6열~~ | PR #177 | ✅ 진행 (M4 selection store 재사용, 액션 버튼 layout placeholder) |
+| ~~G3 SearchBar ⌘K + 폭~~ | PR #168 (kbd 칩 + clear + ⌘K/Ctrl+K) + #172 (platform 분기) | ✅ #168 머지, #172 진행 |
+| ~~G4 FileTable 6열~~ | PR #177 (M4 selection store 재사용, 액션 버튼 layout placeholder) | ✅ 진행 |
 | ~~G5 row 34 + density 토글~~ | PR #148 (row 34) + #175 (density) | ✅ #148 머지, #175 진행 |
 | ~~G6 grid 172px~~ | PR #148 | ✅ 머지 |
-| G7 mobile-view | M-mobile 별도 마일스톤 | ⏸ backlog (사내 데스크톱 메인) |
+| ~~G7 mobile-view~~ | ❌ **폐기 (2026-05-11 사용자 결정)** — 사내 데스크탑 메인 가정. CLAUDE.md §3 원칙 13 동기화. | ❌ 폐기 |
 | ~~G8 DropOverlay fidelity~~ | PR #148 commit `166432b` | ✅ 머지 |
 | ~~G9 statusbar 확인~~ | 이미 일치 | ✅ 변경 불필요 |
+
+> **트랙 외 후속**: PR #171 (`?` 도움말 모달) + PR #174 (단축키 데이터 single-source) — 디자인 핸드오프 직접 항목은 아니지만 §12.1 키맵 spec 정합 강화. PR #168 종료 보고 backlog였음.
 
 ---
 
 ## 결론 (2026-05-11 closure)
 
-**G1~G9 중 8건 ✅ 해결** (G7 mobile은 backlog로 명시 분리). 디자인 핸드오프 시각 fidelity 95%+ 동기화 — admin 외 main explorer 영역까지 정렬.
+**G1~G9 중 8건 ✅ 해결**, G7 폐기 (CLAUDE.md §3 원칙 13). 디자인 핸드오프 시각 fidelity 95%+ 동기화 — admin 외 main explorer 영역까지 정렬.
 
 **잔여:**
-- **G7 mobile-view** — M-mobile 별도 마일스톤. 사내 데스크톱 메인 가정 (사용자 확인).
-- **G4 액션 버튼 메뉴 wiring** — rename/move/share/delete 컨텍스트 메뉴 v1.x 후속 PR.
-- **G6/G3 미진행 PR (#172, #175, #177)** — CI green, 머지 대기.
+- **G3 platform 분기** (PR #172, CI green) — 머지 대기
+- **G5 density 토글** (PR #175, CI green) — 머지 대기
+- **G4 FileTable 6열** (PR #177, CI green) — 머지 대기
+- **G4 액션 버튼 메뉴 wiring** — rename/move/share/delete 컨텍스트 메뉴 v1.x 후속 PR
 
 **closure 트랙 (2026-05-11):** `design-handoff-g2-g5-closure`. PR #170 중복 close 처리 (PR #168이 G2/G3 + 사이드바 collapse 함께 머지). 본 gap-report는 머지 후 `dev/completed/`로 archive.
+
+**원본 권장 액션 결과:**
+1. ~~G1 + G6 + G5(without density 토글) → `design-fidelity-quick-wins`~~ — PR #148로 G1+G6+G8 처리, G5 density 토글은 PR #175.
+2. ~~G2/G3 → Plan B foundation에 흡수~~ — PR #168로 G2/G3 별도 trace 처리 (sidebar collapse 동반).
+3. ~~G7/G8/G9 → 별도 spot-check~~ — G8/G9 spot-check 완료(PR #148), G7 폐기 (CLAUDE.md §3 원칙 13).
