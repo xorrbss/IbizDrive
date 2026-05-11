@@ -225,11 +225,14 @@ public class AdminTrashService {
      * 빈 입력은 short-circuit. 결과 누락(부모 chain 종착 실패 — 데이터 corruption 또는 depth
      * 100 초과) 시 해당 parent는 map에 없으며 호출자가 fallback({@code originalParentName})으로
      * 처리한다.
+     *
+     * <p>구현은 {@link FolderRepository#findAncestorPaths}에 위임 (폴더 도메인 query). user trash
+     * (TrashQueryService)와 동일 source 사용 — 두 path 표시가 일관된다.
      */
     private Map<UUID, String> parentPathsFor(Set<UUID> parentIds) {
         if (parentIds.isEmpty()) return Map.of();
         Map<UUID, String> paths = new HashMap<>(parentIds.size());
-        for (Object[] row : adminRepo.findFolderAncestorPaths(parentIds)) {
+        for (Object[] row : folderRepository.findAncestorPaths(parentIds)) {
             paths.put((UUID) row[0], (String) row[1]);
         }
         return paths;

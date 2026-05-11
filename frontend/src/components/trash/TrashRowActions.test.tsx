@@ -31,6 +31,7 @@ const item: TrashItem = {
   deletedAt: '2026-04-30T10:00:00Z',
   purgeAfter: '2026-05-30T10:00:00Z',
   originalParentId: 'p1',
+  originalParentPath: '/문서',
 }
 
 describe('TrashRowActions', () => {

@@ -62,7 +62,7 @@ describe('api.getTrash', () => {
     expect(u.searchParams.get('type')).toBe('folder')
   })
 
-  it('응답을 TrashPage로 매핑 (originalParentId 누락 시 null 폴백)', async () => {
+  it('응답을 TrashPage로 매핑 (originalParentId/originalParentPath 누락 시 null 폴백)', async () => {
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
         items: [
@@ -73,9 +73,10 @@ describe('api.getTrash', () => {
             deletedAt: '2026-04-30T12:00:00Z',
             purgeAfter: '2026-05-30T12:00:00Z',
             originalParentId: 'folder-x',
+            originalParentPath: '/회사/팀A',
           },
           {
-            // backend NON_NULL 직렬화 → originalParentId 키 자체 부재 (root였던 폴더)
+            // backend NON_NULL 직렬화 → originalParentId/Path 키 자체 부재 (root였던 폴더)
             id: 'd-1',
             name: '루트백업',
             type: 'folder',
@@ -89,7 +90,9 @@ describe('api.getTrash', () => {
     const r = await api.getTrash({ scopeType: 'department', scopeId: 'dept-1' })
     expect(r.items).toHaveLength(2)
     expect(r.items[0].originalParentId).toBe('folder-x')
+    expect(r.items[0].originalParentPath).toBe('/회사/팀A')
     expect(r.items[1].originalParentId).toBeNull()
+    expect(r.items[1].originalParentPath).toBeNull()
     expect(r.items[1].type).toBe('folder')
     expect(r.nextCursor).toBe('next-page-token')
   })
