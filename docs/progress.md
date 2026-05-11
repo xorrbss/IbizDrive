@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-05-11 — trash-retention-mutation Phase C (frontend mutation editor)
+
+### 범위
+
+Phase B(PR #169 backend) 의존. `/admin/retention` 페이지에 mutation editor 추가 — input + 감소 경고 + ConfirmDialog flow + 단일-approver MVP 명시.
+
+### 변경 핵심
+
+- `frontend/src/lib/api.ts` — `updateAdminTrashPolicy(days)` 추가 (`PUT /api/admin/trash/policy`, `await ensureCsrfToken()`, body `{days}`, 응답 `{retentionDays}` unwrap).
+- `frontend/src/lib/api.updateAdminTrashPolicy.test.ts` — 회귀 가드 5건 (PUT/CSRF/body/4xx envelope/no-op).
+- `frontend/src/hooks/useUpdateAdminTrashPolicy.ts` — `useMutation` 래퍼, onSuccess `qk.adminTrashPolicy()` invalidate.
+- `frontend/src/hooks/useUpdateAdminTrashPolicy.test.tsx` — 회귀 가드 2건 (invalidate + error pass-through).
+- `frontend/src/components/admin/RetentionPolicyEditor.tsx`:
+  - props `currentDays`. input(7~90) + diff 미리보기 + 감소 경고 + 범위 위반 차단.
+  - "정책 변경" 버튼 (unchanged/range/pending 3중 disable).
+  - ConfirmDialog (focus trap, Esc, 단일-approver 명시) → mutate.
+  - 성공 시 `toast.success` + dialog close. 400 inline alert(dialog 유지) / 403 toast+close / 기타 fallback.
+- `frontend/src/components/admin/RetentionPolicyEditor.test.tsx` — 회귀 가드 10건 (초기 렌더, 변경, 감소 경고, 증가 시 경고 미노출, 범위 위반, confirm 노출, confirm flow, cancel, 400 inline, 403 toast).
+- `frontend/src/app/admin/retention/page.tsx` — yml 안내 섹션 제거, `<RetentionPolicyEditor>` 마운트 + 2인 승인 deferred 안내 갱신.
+- `frontend/src/app/admin/retention/page.test.tsx` — RetentionPolicyEditor stub mock + Phase C 통합 테스트 1건 추가.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run` Phase C 4 파일 25/25 PASS.
+- 회귀: 기존 page.test.tsx 일부 갱신 (yml 안내 제거 → editor stub 검증 + multi-text getByText → getAllByText)
+
+### 결정/편차
+
+- **단일-approver MVP 명시** — page §approval-heading + ConfirmDialog 내부 텍스트 두 곳 모두 "단일 ADMIN 즉시 적용" 명시. v1.x++ dual-approval 도입 시 hook point.
+- **감소 경고 UI 위치** — 입력 변경 시 인라인 + ConfirmDialog 재확인. 두 단계 가드.
+- **input HTML5 min/max + JS 가드 이중화** — 브라우저별 형식 가드 일관성.
+- **page.test.tsx에서 RetentionPolicyEditor stub** — 본체 행위는 RetentionPolicyEditor.test.tsx가 책임. page는 wire만 검증.
+- **co-session 머지 흡수** — Phase C 작업 중 PR #168(design-fidelity)/PR #171(shortcut-cheatsheet) 머지로 master drift. TopBar.test.tsx lint fix는 이미 master에 들어가서 본 PR에서 discard. progress.md는 양쪽 entry 병합.
+
+---
+
 ## 2026-05-11 — trash-retention-mutation Phase B (backend — V17 + service + endpoint + audit)
 
 ### 범위
