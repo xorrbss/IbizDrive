@@ -236,7 +236,7 @@ class AdminTrashServiceTest {
         // root 부모 → CTE는 single segment "/Reports"를 반환.
         // singletonList — `List.of(Object[]...)`는 varargs로 풀려 `List<Object>`로 추론되어
         // 호출부에서 `Object[]` cast가 깨진다. element 1개일 때만 발생하는 함정.
-        when(adminRepo.findFolderAncestorPaths(any(Collection.class))).thenReturn(
+        when(folderRepository.findAncestorPaths(any(Collection.class))).thenReturn(
             Collections.singletonList(new Object[]{parent, "/Reports"}));
 
         AdminTrashPage page = service.list(
@@ -439,7 +439,7 @@ class AdminTrashServiceTest {
         lenient().when(parentFolder.getName()).thenReturn("문서");
         when(folderRepository.findAllById(anyIterable())).thenReturn(List.of(parentFolder));
         // CTE가 root까지 거슬러 누적한 다중 segment 경로를 반환.
-        when(adminRepo.findFolderAncestorPaths(any(Collection.class))).thenReturn(
+        when(folderRepository.findAncestorPaths(any(Collection.class))).thenReturn(
             Collections.singletonList(new Object[]{parent, "/회사/팀A/문서"}));
 
         AdminTrashPage page = service.list(
@@ -471,7 +471,7 @@ class AdminTrashServiceTest {
         AdminTrashPage page = service.list(
             new AdminTrashFilters(null, null, null, null, null), null, null);
 
-        verify(adminRepo, never()).findFolderAncestorPaths(any());
+        verify(folderRepository, never()).findAncestorPaths(any());
         assertThat(page.items().get(0).originalParentPath()).isNull();
     }
 

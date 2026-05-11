@@ -29,6 +29,7 @@ const itemA: TrashItem = {
   deletedAt: '2026-04-30T10:00:00Z',
   purgeAfter: '2026-05-30T10:00:00Z',
   originalParentId: 'p1',
+  originalParentPath: '/문서',
 }
 const itemB: TrashItem = {
   id: 'f2',
@@ -37,6 +38,7 @@ const itemB: TrashItem = {
   deletedAt: '2026-04-30T11:00:00Z',
   purgeAfter: '2026-05-30T11:00:00Z',
   originalParentId: 'p1',
+  originalParentPath: '/문서',
 }
 const folderC: TrashItem = {
   id: 'd1',
@@ -45,6 +47,7 @@ const folderC: TrashItem = {
   deletedAt: '2026-04-30T12:00:00Z',
   purgeAfter: '2026-05-30T12:00:00Z',
   originalParentId: null,
+  originalParentPath: null,
 }
 
 describe('useTrashList', () => {

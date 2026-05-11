@@ -16,6 +16,8 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.UUID;
@@ -25,6 +27,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -204,6 +207,75 @@ class TrashQueryServiceTest {
             () -> service.list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID,
                 "!!not-base64!!", null, null)
         ).isInstanceOf(IllegalArgumentException.class);
+    }
+
+    // ── originalParentPath enrichment (2026-05-11) ─────────────────────
+
+    @Test
+    void list_populatesOriginalParentPath_whenParentExists() {
+        Instant t0 = Instant.parse("2026-04-30T10:00:00Z");
+        UUID fileId = UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa");
+
+        when(permissionService.effectivePermissions(Role.ADMIN))
+            .thenReturn(EnumSet.allOf(Permission.class));
+        when(fileRepository.findTrashedPageByScope(any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(newFile(fileId, "doc.pdf", t0)));
+        when(folderRepository.findTrashedPageByScope(any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        // singletonList — `List.of(Object[]...)`는 varargs로 풀려 `List<Object>`로 추론되어
+        // 호출부에서 `Object[]` cast가 깨진다. element 1개일 때만 발생하는 함정.
+        when(folderRepository.findAncestorPaths(any(Collection.class)))
+            .thenReturn(Collections.singletonList(new Object[]{PARENT, "/회사/팀A/문서"}));
+
+        TrashPage page = service.list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).originalParentId()).isEqualTo(PARENT);
+        assertThat(page.items().get(0).originalParentPath()).isEqualTo("/회사/팀A/문서");
+    }
+
+    @Test
+    void list_skipsAncestorPathQuery_whenAllItemsAreRoot() {
+        // Postgres IN ()는 문법 오류 — parent set이 비어 있으면 CTE 호출 자체가 없어야 한다.
+        Instant t0 = Instant.parse("2026-04-30T10:00:00Z");
+        UUID folderId = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
+
+        when(permissionService.effectivePermissions(Role.ADMIN))
+            .thenReturn(EnumSet.allOf(Permission.class));
+        when(fileRepository.findTrashedPageByScope(any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(folderRepository.findTrashedPageByScope(any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(FolderTestFixtures.trashedFolder(folderId, null, ACTOR, "root-deleted", t0)));
+
+        TrashPage page = service.list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).originalParentId()).isNull();
+        assertThat(page.items().get(0).originalParentPath()).isNull();
+        verify(folderRepository, never()).findAncestorPaths(any());
+    }
+
+    @Test
+    void list_nullsOriginalParentPath_whenChainResolutionFails() {
+        // 부모 chain 종착 실패(데이터 corruption 시뮬레이션) — CTE가 결과 row 없이 반환되면
+        // DTO path는 NULL로 전달되어 frontend가 폴백 텍스트로 표시한다.
+        Instant t0 = Instant.parse("2026-04-30T10:00:00Z");
+        UUID fileId = UUID.fromString("cccccccc-cccc-cccc-cccc-cccccccccccc");
+
+        when(permissionService.effectivePermissions(Role.ADMIN))
+            .thenReturn(EnumSet.allOf(Permission.class));
+        when(fileRepository.findTrashedPageByScope(any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of(newFile(fileId, "orphan.pdf", t0)));
+        when(folderRepository.findTrashedPageByScope(any(), any(), any(), any(), anyInt()))
+            .thenReturn(List.of());
+        when(folderRepository.findAncestorPaths(any(Collection.class)))
+            .thenReturn(List.of()); // chain 종착 실패 — 결과 누락
+
+        TrashPage page = service.list(ACTOR, Role.ADMIN, ScopeType.DEPARTMENT, SCOPE_ID, null, null, null);
+
+        assertThat(page.items()).hasSize(1);
+        assertThat(page.items().get(0).originalParentId()).isEqualTo(PARENT);
+        assertThat(page.items().get(0).originalParentPath()).isNull();
     }
 
     // ── helpers ────────────────────────────────────────────────────────

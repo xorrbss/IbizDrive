@@ -1073,6 +1073,9 @@ export const api = {
         purgeAfter: string
         // backend record는 NON_NULL 직렬화라 root였던 폴더는 키 자체가 없을 수 있다.
         originalParentId?: string | null
+        // 2026-05-11 — backend가 페이지 단위 recursive CTE batch로 채움. chain 종착 실패
+        // 또는 originalParentId null인 경우 키 자체가 없을 수 있다 (NON_NULL 직렬화).
+        originalParentPath?: string | null
       }>
       // 마지막 페이지에서는 NON_NULL로 키 생략될 수 있다.
       nextCursor?: string | null
@@ -1084,6 +1087,7 @@ export const api = {
       deletedAt: it.deletedAt,
       purgeAfter: it.purgeAfter,
       originalParentId: it.originalParentId ?? null,
+      originalParentPath: it.originalParentPath ?? null,
     }))
     return { items, nextCursor: raw.nextCursor ?? null }
   },

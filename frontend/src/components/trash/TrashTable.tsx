@@ -1,21 +1,17 @@
 'use client'
 import { useTrashList } from '@/hooks/useTrashList'
-import { findFolderPath } from '@/lib/folderTreeUtils'
 import { TrashRowActions } from './TrashRowActions'
 import type { TrashItem } from '@/types/trash'
-import type { FolderNode } from '@/types/folder'
-
-// TODO: [BLOCKED]
-//   violated: 기존 구조 우선
-//   reason: useFolderTree (flat tree) 제거됨. Plan B lazy per-workspace tree (Tasks 17+) 미구현.
-//   required_change: Tasks 17+ 구현 후 per-workspace tree로 원위치 path 표시 복원.
-//   현재: tree=undefined → originalParentId가 있어도 "원위치 폴더 삭제됨" 폴백 (안전 degradation).
 
 /**
  * 휴지통 테이블 (M9.3). 단순 list (MVP는 가상화 없음 — 휴지통은 일반적으로 ≤ 수백건).
  * docs/01 §11 (4상태) + §12 (aria-rowcount/rowindex) + §13 UX.
  *
  * 컬럼: 이름 / 타입 / 원위치 / 삭제 시각 / 영구 삭제 예정 / 행 액션
+ *
+ * <p>원위치 path: backend `TrashItemDto.originalParentPath` (페이지 단위 recursive CTE batch 계산,
+ * admin trash와 동일 source). `originalParentId == null`이면 "최상위", path가 null이면 "원위치 미상"
+ * (데이터 corruption 또는 chain 종착 실패) — flat folderTree 의존 제거 (2026-05-11).
  */
 const GRID_COLS =
   'grid grid-cols-[1fr_60px_180px_140px_140px_160px] gap-3 items-center px-4'
@@ -30,7 +26,6 @@ export function TrashTable(props: {
 }) {
   const { scopeType, scopeId, archived = false } = props
   const query = useTrashList({ scopeType, scopeId })
-  const tree: FolderNode | undefined = undefined // Tasks 17+: per-workspace lazy tree
 
   if (query.isLoading) {
     return (
@@ -79,15 +74,10 @@ export function TrashTable(props: {
 
       <div className="flex-1 overflow-auto">
         {items.map((it, idx) => {
-          let originalPath = '최상위'
-          if (it.originalParentId) {
-            const path = tree ? findFolderPath(tree, it.originalParentId) : null
-            if (path) {
-              originalPath = path.map((n) => (n.id === 'root' ? '내 드라이브' : n.name)).join(' / ')
-            } else {
-              originalPath = '원위치 폴더 삭제됨'
-            }
-          }
+          // backend `originalParentPath` 직접 사용. id 만 있고 path 없으면 chain 종착 실패 → "원위치 미상".
+          const originalPath = it.originalParentId === null
+            ? '최상위'
+            : (it.originalParentPath ?? '원위치 미상')
           return (
             <div
               key={`${it.type}:${it.id}`}

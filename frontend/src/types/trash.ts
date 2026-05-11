@@ -21,6 +21,15 @@ export interface TrashItem {
   purgeAfter: string
   /** 원위치 부모 폴더 id. root였던 폴더는 null (file은 항상 non-null). */
   originalParentId: string | null
+  /**
+   * 원위치 부모 폴더의 절대 경로. leading `/`, trailing slash 없음 (예: `/회사/팀A/문서`).
+   * `originalParentId`가 null이거나 backend의 부모 chain 종착 실패(데이터 corruption 또는
+   * depth 100 초과) 시 null — UI는 NULL일 때 "원위치 미상" 폴백.
+   *
+   * <p>backend가 페이지 단위 recursive CTE로 일괄 계산 ({@link AdminTrashItem.originalParentPath}와
+   * 동일 source `FolderRepository.findAncestorPaths`).
+   */
+  originalParentPath: string | null
 }
 
 export interface TrashPage {
