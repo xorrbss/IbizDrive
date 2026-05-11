@@ -16,7 +16,7 @@ import { useUpdateAdminTrashPolicy } from '@/hooks/useUpdateAdminTrashPolicy'
  * - 클릭 → ConfirmDialog → mutate
  * - 성공 시 toast.success + 페이지 자동 갱신 (hook이 invalidate)
  *
- * <p>2인 승인 framework는 v1.x++ deferred (docs/04 §15.4) — 본 컴포넌트는 단일-approver MVP로
+ * <p>2인 승인 framework는 v1.x++ deferred (docs/04 §16 / ADR #47) — 본 컴포넌트는 단일-approver MVP로
  * 즉시 적용. 운영자가 2인 승인 기대했다가 의외 변경되는 상황을 막기 위해 confirm dialog
  * 텍스트에 "단일 ADMIN 즉시 적용" 명시.
  */
