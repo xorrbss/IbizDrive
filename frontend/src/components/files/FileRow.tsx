@@ -1,7 +1,7 @@
 // frontend/src/components/files/FileRow.tsx
 'use client'
 import { useDraggable } from '@dnd-kit/core'
-import { Check } from 'lucide-react'
+import { Check, Star, Lock, Users } from 'lucide-react'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
@@ -153,10 +153,43 @@ export function FileRow({
         </button>
       </span>
 
-      {/* 이름 셀: 아이콘 + 파일명 inline */}
+      {/* 이름 셀: 아이콘 + 파일명 + 배지(star/lock/share/itemsCount) inline.
+          zip components.jsx FileRow td-name 구조 답습. 데이터 미존재(undefined) 시 비표시.
+          백엔드 wiring은 v1.x (FileItem.starred/restricted/shareCount/itemsCount 참조). */}
       <span className="flex items-center gap-2 min-w-0" role="gridcell">
         <Icon size={16} className={`flex-shrink-0 ${iconClassName}`} aria-hidden />
         <span className="truncate font-medium text-fg">{item.name}</span>
+        {item.starred && (
+          <Star
+            size={11}
+            className="flex-shrink-0 text-warn fill-warn"
+            aria-label="즐겨찾기"
+          />
+        )}
+        {item.restricted && (
+          <Lock
+            size={11}
+            className="flex-shrink-0 text-fg-muted"
+            aria-label="권한 제한"
+          />
+        )}
+        {typeof item.shareCount === 'number' && item.shareCount > 1 && (
+          <span
+            className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10.5px] text-fg-muted border border-border rounded-full px-1.5 py-0 tabular-nums"
+            aria-label={`${item.shareCount}명 공유`}
+          >
+            <Users size={10} aria-hidden />
+            <span>{item.shareCount}</span>
+          </span>
+        )}
+        {item.type === 'folder' && typeof item.itemsCount === 'number' && (
+          <span
+            className="flex-shrink-0 text-[11px] text-fg-subtle tabular-nums"
+            aria-label={`항목 ${item.itemsCount}개`}
+          >
+            {item.itemsCount}개
+          </span>
+        )}
       </span>
 
       <span className="text-right text-[12.5px] text-fg-muted tabular-nums" role="gridcell">

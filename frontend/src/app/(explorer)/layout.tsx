@@ -1,6 +1,7 @@
 'use client'
 import { Suspense } from 'react'
 import { SidebarSections } from '@/components/sidebar/SidebarSections'
+import { SidebarNewButton } from '@/components/sidebar/SidebarNewButton'
 import { TrashLink } from '@/components/trash/TrashLink'
 import { SharesLink } from '@/components/shares/SharesLink'
 import { DndProvider } from '@/components/dnd/DndProvider'
@@ -36,6 +37,9 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
                 />
                 <span className="text-[14px] font-semibold tracking-tight text-fg">IbizDrive</span>
               </div>
+              {/* design-sweep-phase-2b: zip components.jsx Sidebar primary "새로 만들기" 진입점.
+                  brand 마크와 nav/folder tree 사이에 배치(원본 components.jsx L24 NewButton 위치). */}
+              <SidebarNewButton />
               <SidebarSections />
               <div className="mt-auto pt-2 border-t border-border">
                 <SharesLink />

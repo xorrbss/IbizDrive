@@ -19,6 +19,15 @@ export type FileItem = {
    * docs/01 §13.1: 백엔드 `files.original_parent`.
    */
   originalParentId?: string | null
+  /**
+   * design-sweep-phase-2b: FileRow 배지(star/lock/share/items) 표시용. 모두 optional.
+   * 백엔드 wiring(즐겨찾기/RBAC restricted/share count/folder itemsCount)은 v1.x.
+   * 현재 호출부는 미전달 → undefined → 배지 비표시 (zip fidelity 우선).
+   */
+  starred?: boolean
+  restricted?: boolean
+  shareCount?: number
+  itemsCount?: number | null
 }
 
 export type SortKey = 'name' | 'updatedAt' | 'size'
