@@ -157,7 +157,7 @@ export function FileRow({
           }}
           className={`h-4 w-4 inline-flex items-center justify-center rounded border transition-colors ${
             isSelected
-              ? 'bg-accent border-accent text-accent-text'
+              ? 'bg-accent border-accent text-accent-fg'
               : 'border-border-strong bg-surface-1 hover:border-fg-muted'
           } ${isPending ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
         >
