@@ -1,9 +1,11 @@
 // frontend/src/components/files/FileRow.tsx
 'use client'
 import { useDraggable } from '@dnd-kit/core'
+import { MoreHorizontal, Check } from 'lucide-react'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
+import { useSelectionStore } from '@/stores/selection'
 import { fileIconFor } from '@/lib/fileIcon'
 import type { FileItem } from '@/types/file'
 
@@ -46,6 +48,7 @@ export function FileRow({
   onKeyDown,
   gridCols,
 }: Props) {
+  const toggleSelection = useSelectionStore((s) => s.toggle)
   const dragData = useDragPayload(item.id, item.parentId)
   const draggable = useDraggable({
     id: `${DRAGGABLE_ROW_PREFIX}${item.id}`,
@@ -53,13 +56,11 @@ export function FileRow({
     disabled: isPending,
   })
 
-  // 폴더 행은 droppable로도 동작 (hook 호출 순서 안정화 위해 항상 호출)
   const droppable = useFolderDroppable(
     item.type === 'folder' ? item.id : '__not_a_target__',
   )
   const isFolderTarget = item.type === 'folder'
 
-  // ref 합치기 (draggable + droppable, 폴더 행만 droppable ref 바인딩)
   const setRef = (el: HTMLElement | null) => {
     draggable.setNodeRef(el)
     if (isFolderTarget) droppable.setNodeRef(el)
@@ -67,7 +68,6 @@ export function FileRow({
 
   const isDraggingThis = draggable.isDragging
 
-  // 드래그 중인 폴더 타겟 시각화
   const dropClass =
     isFolderTarget && droppable.isDragging
       ? droppable.isCrossWorkspace || droppable.isSharedTarget
@@ -88,7 +88,6 @@ export function FileRow({
           : undefined
       : undefined
 
-  // 상태별 배경 — pending > dragging > selected > hover
   const stateClass = isPending
     ? 'opacity-55 cursor-not-allowed'
     : isDraggingThis
@@ -96,6 +95,8 @@ export function FileRow({
       : isSelected
         ? 'bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
         : 'hover:bg-surface-2 cursor-default'
+
+  const { Icon, className: iconClassName } = fileIconFor(item)
 
   return (
     <div
@@ -125,18 +126,36 @@ export function FileRow({
       onKeyDown={onKeyDown}
       data-file-id={item.id}
     >
-      <span className="flex items-center justify-center" role="gridcell" aria-hidden="true">
-        {(() => {
-          const { Icon, className } = fileIconFor(item)
-          return <Icon size={16} className={className} />
-        })()}
+      {/* 체크박스 — M4 selection store 연결. Space/Ctrl+A 등 키보드 토글은 FileTable 레벨에서 처리. */}
+      <span className="flex items-center justify-center" role="gridcell">
+        <button
+          type="button"
+          role="checkbox"
+          aria-checked={isSelected}
+          aria-label={`${item.name} 선택`}
+          disabled={isPending}
+          tabIndex={-1}
+          onClick={(e) => {
+            e.stopPropagation()
+            if (isPending) return
+            toggleSelection(item.id)
+          }}
+          className={`h-4 w-4 inline-flex items-center justify-center rounded border transition-colors ${
+            isSelected
+              ? 'bg-accent border-accent text-accent-text'
+              : 'border-border-strong bg-surface-1 hover:border-fg-muted'
+          } ${isPending ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
+        >
+          {isSelected && <Check size={12} aria-hidden strokeWidth={3} />}
+        </button>
       </span>
-      <span
-        className="truncate font-medium text-fg"
-        role="gridcell"
-      >
-        {item.name}
+
+      {/* 이름 셀: 아이콘 + 파일명 inline */}
+      <span className="flex items-center gap-2 min-w-0" role="gridcell">
+        <Icon size={16} className={`flex-shrink-0 ${iconClassName}`} aria-hidden />
+        <span className="truncate font-medium text-fg">{item.name}</span>
       </span>
+
       <span className="text-right text-[12.5px] text-fg-muted tabular-nums" role="gridcell">
         {formatFileSize(item.size)}
       </span>
@@ -154,6 +173,25 @@ export function FileRow({
           />
         )}
         <span className="truncate">{item.updatedBy}</span>
+      </span>
+
+      {/* 액션 버튼 — 디자인 핸드오프 G4 layout placeholder. 클릭 시 컨텍스트 메뉴(rename/move/share/delete)
+          연결은 v1.x 후속 PR. 현재는 propagation만 차단해 row 클릭과 분리. */}
+      <span className="flex items-center justify-center" role="gridcell">
+        <button
+          type="button"
+          aria-label="더 보기"
+          disabled={isPending}
+          tabIndex={-1}
+          onClick={(e) => {
+            e.stopPropagation()
+          }}
+          className={`h-7 w-7 inline-flex items-center justify-center rounded text-fg-muted hover:bg-surface-3 hover:text-fg ${
+            isPending ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
+          }`}
+        >
+          <MoreHorizontal size={14} aria-hidden />
+        </button>
       </span>
     </div>
   )
