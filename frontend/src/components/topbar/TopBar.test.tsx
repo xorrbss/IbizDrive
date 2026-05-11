@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
 import { TopBar } from './TopBar'
 import { useSidebarChromeStore } from '@/stores/sidebarChrome'
+import { OPEN_SHORTCUTS_EVENT } from '@/hooks/useGlobalShortcuts'
 
 // SearchBar/TweaksPanel/Avatar는 본 테스트 scope 밖. 단순 stub.
 vi.mock('./SearchBar', () => ({
@@ -47,5 +48,31 @@ describe('TopBar (G2 — 3-column grid + 햄버거)', () => {
     const searchWrapper = screen.getByTestId('searchbar-stub').parentElement
     expect(searchWrapper?.className).toMatch(/max-w-\[560px\]/)
     expect(searchWrapper?.className).toMatch(/mx-auto/)
+  })
+
+  describe('키보드 단축키 도움말 버튼 (2026-05-11)', () => {
+    let shortcutsListener: ReturnType<typeof vi.fn>
+
+    beforeEach(() => {
+      shortcutsListener = vi.fn()
+      window.addEventListener(OPEN_SHORTCUTS_EVENT, shortcutsListener)
+    })
+
+    afterEach(() => {
+      window.removeEventListener(OPEN_SHORTCUTS_EVENT, shortcutsListener)
+    })
+
+    it('Keyboard 아이콘 버튼 노출 + aria-label + title', () => {
+      render(<TopBar />)
+      const btn = screen.getByLabelText('키보드 단축키 보기')
+      expect(btn).toBeTruthy()
+      expect(btn.getAttribute('title')).toBe('키보드 단축키 ( ? )')
+    })
+
+    it('버튼 클릭 시 app:open-shortcuts 이벤트 dispatch', () => {
+      render(<TopBar />)
+      fireEvent.click(screen.getByLabelText('키보드 단축키 보기'))
+      expect(shortcutsListener).toHaveBeenCalledTimes(1)
+    })
   })
 })

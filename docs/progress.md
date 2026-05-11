@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-11 — ⌨️ TopBar 키보드 단축키 도움말 버튼 (cheat sheet 클릭 진입점)
+
+### 범위
+
+PR #171 (ShortcutsCheatSheet `?` 모달) 후속 폴리시. `?` 단축키 미인지 사용자의 발견성(discoverability)을 위해 TopBar 우측에 Keyboard 아이콘 버튼 추가. 클릭 시 동일 `OPEN_SHORTCUTS_EVENT` dispatch → 모달 트리거.
+
+### 변경 핵심
+
+- `frontend/src/components/topbar/TopBar.tsx`: 우측 영역에 Keyboard 도움말 버튼 추가 (TweaksPanel 왼쪽). `aria-label="키보드 단축키 보기"` + `title="키보드 단축키 ( ? )"`. 클릭 시 `window.dispatchEvent(new CustomEvent(OPEN_SHORTCUTS_EVENT))`.
+- `frontend/src/components/topbar/TopBar.test.tsx`: 회귀 가드 2건 추가 (버튼 노출 + aria/title / 클릭 시 OPEN_SHORTCUTS_EVENT dispatch). 누적 5건.
+- `docs/01 §12.1` Shortcut Cheat Sheet callout — `?` 키 외 TopBar 버튼 클릭 진입점 명시.
+- `docs/01 §17` TopBar 레이아웃 callout — 우측 영역에 Keyboard 도움말 버튼 추가.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run TopBar` 5/5 PASS (3 기존 + 2 신규).
+- 광범위 회귀 zero — TopBar 외 영향 없음.
+
+### 결정/편차
+
+- **CustomEvent 재사용** — 새 prop/store 없이 기존 `OPEN_SHORTCUTS_EVENT` 그대로 사용. KISS.
+- **lucide `Keyboard` 아이콘** — 사용자가 즉시 단축키 도움말로 인지. `HelpCircle`(일반 도움말 의미)보다 명확.
+- **title="키보드 단축키 ( ? )"** — 호버 시 단축키 hint. placeholder 아닌 tooltip이라 i18n 영향 최소.
+- **dev-docs 부트스트랩 생략** — 단일 컴포넌트 1줄 추가, KISS.
+
+### 트랙 외 후속
+
+- 단축키 → action 매핑 통합 (KEYBOARD_SHORTCUTS에 action 필드) — v1.x backlog.
+- ShareDialog 도움말 진입점 (필요 시) — 별도.
+
+---
+
 ## 2026-05-11 — 🏁 trash-retention-mutation 트랙 종료 (Phase A → B → C 모두 머지, dev-docs archive)
 
 ### 범위
