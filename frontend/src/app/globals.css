@@ -87,6 +87,9 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
   --color-accent-text: var(--accent-text);
+  /* alias: bg-accent + text-accent-fg pairing (semantic foreground name)
+     동일 변수(--accent-text)를 가리키지만 사용처에서 의미 명확성을 위해 별도 토큰 노출 */
+  --color-accent-fg: var(--accent-text);
   --color-danger: var(--danger);
   --color-warn: var(--warn);
   --color-success: var(--success);
