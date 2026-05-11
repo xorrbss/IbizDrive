@@ -143,7 +143,7 @@ T=$(grep XSRF-TOKEN /tmp/c.txt | awk '{print $7}')
 # 자세한 배경은 §6.2 트러블슈팅 + dev/active/dev-preview-stabilization/T1-finding.md 참조.
 curl -i -s -b /tmp/c.txt -X POST http://localhost:8080/api/auth/signup \
   -H "Content-Type: application/json" -H "X-CSRF-Token: $T" \
-  -d '{"email":"admin@local.test","password":"AdminPass123","fullName":"Local Admin"}'
+  -d '{"email":"admin@local.test","password":"AdminPass123","displayName":"Local Admin"}'
 # → HTTP 201 + SESSION 쿠키
 ```
 
