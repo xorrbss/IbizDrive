@@ -2,7 +2,9 @@
 import { SlidersHorizontal } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 import { useVariant } from '@/hooks/useVariant'
+import { useDensity } from '@/hooks/useDensity'
 import type { Variant } from '@/lib/variant'
+import type { Density } from '@/lib/density'
 import { ThemeToggle } from './ThemeToggle'
 
 const VARIANT_LABELS: Record<Variant, string> = {
@@ -14,17 +16,29 @@ const VARIANT_LABELS: Record<Variant, string> = {
 
 const VARIANTS: Variant[] = ['default', 'notion', 'dropbox', 'terminal']
 
+const DENSITY_LABELS: Record<Density, string> = {
+  compact: '촘촘하게',
+  default: '기본',
+  comfortable: '넉넉하게',
+}
+
+const DENSITIES: Density[] = ['compact', 'default', 'comfortable']
+
 /**
- * 디자인 미세 조정 패널 (M13.1).
+ * 디자인 미세 조정 패널 (M13.1 + G5).
  *
  * - 트리거: TopBar 의 SlidersHorizontal 아이콘 버튼.
- * - 내용: 테마 (ThemeToggle 임베드) + variant 4종 라디오 그룹.
+ * - 내용: 테마 (ThemeToggle 임베드) + variant 4종 + 밀도 3종 라디오 그룹.
  * - outside click + Esc 키로 닫힘. focus trap 미적용 (v1.x).
  *
- * variant 진실 출처: localStorage('variant') + [data-variant] (lib/variant.ts).
+ * 진실 출처:
+ *   - variant: localStorage('variant') + [data-variant] (lib/variant.ts)
+ *   - density: localStorage('density') + [data-density] (lib/density.ts)
+ * 우선순위: [data-density] (사용자 명시) > [data-variant] default --row-h.
  */
 export function TweaksPanel() {
   const { variant, setVariant } = useVariant()
+  const { density, setDensity } = useDensity()
   const [open, setOpen] = useState(false)
   const ref = useRef<HTMLDivElement | null>(null)
 
@@ -94,6 +108,36 @@ export function TweaksPanel() {
                     }`}
                   >
                     <span>{VARIANT_LABELS[v]}</span>
+                    {active && (
+                      <span className="text-fg-muted text-[11px]">선택됨</span>
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+          </section>
+          <div className="my-1 border-t border-border" />
+          <section className="px-3 py-1.5">
+            <div className="text-fg-muted mb-1.5">밀도</div>
+            <div
+              role="radiogroup"
+              aria-label="밀도"
+              className="flex flex-col gap-0.5"
+            >
+              {DENSITIES.map((d) => {
+                const active = d === density
+                return (
+                  <button
+                    key={d}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    onClick={() => setDensity(d)}
+                    className={`w-full text-left px-2 py-1 rounded hover:bg-surface-2 flex items-center justify-between ${
+                      active ? 'text-fg font-medium' : 'text-fg-2'
+                    }`}
+                  >
+                    <span>{DENSITY_LABELS[d]}</span>
                     {active && (
                       <span className="text-fg-muted text-[11px]">선택됨</span>
                     )}
