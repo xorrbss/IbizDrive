@@ -110,6 +110,7 @@ app/               Next.js App Router
 
 11. **정규화 함수는 프론트/백엔드 동일 로직** (`normalizeFileName`, `normalizeForSearch`). 테스트 케이스 공유.
 12. **에러 코드 (docs/02 §8)는 계약이다.** 새 에러 추가 시 양쪽 동기화.
+13. **데스크탑 메인, 모바일 미지원.** 사내 데스크탑 가정. `lg:` breakpoint 분기, `.mobile-view` 클래스, `useMediaQuery`/뷰포트 감지 hook, 사이드바 mobile overlay, RightPanel mobile auto-hide, FileTable 컬럼 축약 등 **모바일 UX 작업은 backlog에서 제외**. design 핸드오프 G7 항목도 폐기(2026-05-11 사용자 결정). 좁은 데스크탑 폭은 기존 `useSidebarChromeStore` 사용자 토글로 충분.
 
 ---
 
