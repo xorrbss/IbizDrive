@@ -82,7 +82,7 @@ class FileRestoreArchivedTest {
                                                       ObjectMapper mapper,
                                                       TeamArchiveGuard guard) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30),
+                com.ibizdrive.trash.TrashPolicyTestSupport.stubReturning(30),
                 mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class),
                 guard);
         }

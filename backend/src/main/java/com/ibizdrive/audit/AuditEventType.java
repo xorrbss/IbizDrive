@@ -74,6 +74,7 @@ public enum AuditEventType {
     ADMIN_DEPARTMENT_UPDATED("admin.department.updated"),
     ADMIN_DEPARTMENT_DEACTIVATED("admin.department.deactivated"),
     ADMIN_CRON_TOGGLED("admin.cron.toggled"),
+    ADMIN_RETENTION_CHANGED("admin.retention.changed"),
 
     // 시스템 (3)
     SYSTEM_BACKUP_COMPLETED("system.backup.completed"),

@@ -85,7 +85,7 @@ class FolderArchivedTeamGuardTest {
                                                           ObjectMapper mapper,
                                                           TeamArchiveGuard guard) {
             return new FolderMutationService(repo, fileRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30),
+                com.ibizdrive.trash.TrashPolicyTestSupport.stubReturning(30),
                 org.mockito.Mockito.mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class),
                 guard);
         }

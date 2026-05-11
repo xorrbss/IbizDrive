@@ -5,6 +5,61 @@
 
 ---
 
+## 2026-05-11 — trash-retention-mutation Phase B (backend — V17 + service + endpoint + audit)
+
+### 범위
+
+Phase A spec(PR #167) 구현. backend mutation full path: V17 single-row 테이블 + entity/repo/service + audit listener + PUT endpoint + FileMutationService/FolderMutationService 호출 전환. yml `TrashRetentionProperties`는 V17 row 부재 시 첫 INSERT의 default value source로만 잔존.
+
+### 변경 핵심
+
+- **V17 migration** (`backend/src/main/resources/db/migration/V17__trash_policy.sql`):
+  - `CREATE TABLE trash_policy (id SMALLINT CHECK id=1, retention_days INT CHECK 7..90, updated_at, updated_by FK ON DELETE SET NULL)`
+  - 초기 row INSERT는 V17이 직접 안 함 — service `@PostConstruct`가 yml 값으로 idempotent INSERT (운영자 yml override 이력 보존).
+- **TrashPolicy entity + repository** (`com.ibizdrive.trash.TrashPolicy`, `TrashPolicyRepository`).
+- **TrashPolicyService** (`getRetentionDays`, `updateRetentionDays`, `ensureSingletonRow @PostConstruct`):
+  - 7..90 범위 + actor null 검증, 동일값 입력 no-op (audit 미발행).
+  - 변경 시 `RetentionPolicyChangedEvent` publish.
+- **RetentionPolicyChangedEvent** (record).
+- **TrashPolicyAuditListener** (`@TransactionalEventListener AFTER_COMMIT`, `TeamAuditListener` 패턴 답습) — `RETENTION_POLICY_CHANGED` audit_log 변환, metadata `appliesTo:'new-deletes-only'`.
+- **AuditEventType.ADMIN_RETENTION_CHANGED** + **AuditTargetType.TRASH_POLICY** enum 추가.
+- **AdminTrashPolicyController**:
+  - GET source 변경: `TrashRetentionProperties.days()` → `trashPolicyService.getRetentionDays()`.
+  - PUT 추가: `@PreAuthorize("hasRole('ADMIN')")`, body `{days:7..90}` (Bean Validation), 응답 `{retentionDays}`.
+  - DTO `AdminTrashPolicyUpdateRequest` 신규.
+- **FileMutationService** + **FolderMutationService**: `TrashRetentionProperties` 의존성 → `TrashPolicyService`로 전환. constructor 시그니처 + import 정리.
+- **테스트**:
+  - `TrashPolicyServiceTest` (10 단위 케이스) — get/update/ensureSingletonRow 흐름, race(DataIntegrityViolation) swallow, 7..90 boundary.
+  - `TrashPolicyAuditListenerTest` (2 케이스) — 변환 정확성 + 실패 swallow.
+  - `AdminTrashPolicyControllerTest` 확장 — PUT 200/400(범위×3, null)/401/403(member, auditor) 7건 추가.
+  - 12 기존 slice 테스트(File/Folder MutationService 외) — `new TrashRetentionProperties(30)` → `TrashPolicyTestSupport.stubReturning(30)` sed sweep + 신규 helper 1.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` 통과.
+- `./gradlew test --tests AdminTrashPolicyControllerTest` 9/9 PASS (Webmvc slice).
+- `./gradlew test --tests TrashPolicyServiceTest --tests TrashPolicyAuditListenerTest` (단위) — 결과 commit 직전 확인.
+- DB-touching slice (FileMutationServiceTest 등)는 Testcontainers 필요 → 로컬 SKIP, CI(Linux)에서 검증.
+
+### 결정/편차
+
+- **`@PostConstruct` ensure-row** — V17 migration에서 INSERT 생략 + service 부팅 시점에 yml 값으로 idempotent INSERT. 운영자 yml override 이력 보존 + 다중 instance race는 V17 PK + CHECK가 두 번째 INSERT를 차단(catch DataIntegrityViolation, swallow).
+- **No-op same value** — `updateRetentionDays(currentDays, ...)`는 row touch + audit emit 없이 현재값 반환. 운영자 noop 클릭 audit 노이즈 방지.
+- **target_id NULL** — single-row 정책이라 audit_log row의 `target_id`는 null. `target_type='trash_policy'`만으로 식별. 다른 single-row 시스템 audit 패턴 (SYSTEM_PURGE_EXECUTED 등)과 동형.
+- **TrashRetentionProperties 잔존** — 완전 제거 대신 yml default value source로 retain. Phase B 이후 production 의존성은 service 단방향이지만 record는 부팅 default + 테스트 fixture 양쪽에서 활용.
+- **Test sweep 헬퍼** — 12 slice 테스트에 직접 mock 인라인 추가 대신 `TrashPolicyTestSupport.stubReturning(int)` 단일 helper. DRY.
+
+### 다음 세션 컨텍스트
+
+**Phase C (frontend, 별도 PR)**:
+- `api.updateTrashPolicy(days)` + 회귀 가드.
+- `useUpdateTrashPolicy` hook + invalidate `qk.adminTrashPolicy()` + 회귀 가드.
+- `RetentionPolicyEditor` 컴포넌트 — input + 감소 경고 (`{currentDays}일 → {newDays}일, 신규 삭제부터 적용`) + ConfirmDialog flow.
+- `/admin/retention` page mutation 섹션 wire (admin 보유 + 데이터 로드 시 노출).
+- 회귀 가드 vitest.
+
+---
+
 ## 2026-05-11 — ⌨️ shortcut-cheatsheet 트랙 (`?` 도움말 모달)
 
 ### 범위
