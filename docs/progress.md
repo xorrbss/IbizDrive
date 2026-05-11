@@ -56,6 +56,63 @@
 
 ---
 
+## 2026-05-11 — 🎨 design-fidelity G2/G3 + 사이드바 collapse 트랙
+
+### 범위
+
+`dev/active/design-handoff-gap-report-2026-05-10.md`의 G2(TopBar 3-column grid + 햄버거)·G3(SearchBar ⌘K + 폭) 갭을 사이드바 collapse 구현과 함께 단일 PR로 처리. Plan B(PR #139) 후 사이드바 3-section 구조까지 머지됐으나 collapse 토글이 미구현 상태였음 — 디자인 핸드오프 의도와 함께 closure.
+
+### 변경 핵심
+
+**Store + Layout:**
+- `frontend/src/stores/sidebarChrome.ts` (NEW): `collapsed: boolean` + `setCollapsed/toggle`, `sidebar-chrome:v1` localStorage persist. `sidebarTree`(폴더 expand) 와 책임 분리. 단위 테스트 3건.
+- `frontend/src/app/(explorer)/layout.tsx`: aside 폭 transition (`w-[248px]` ↔ `w-0`) + `transition-[width] duration-200` + `overflow-hidden` + `aria-hidden={collapsed}`. 내부 컨텐츠는 고정 폭 248px wrapper로 잘림 방지. `'use client'` 전환 (store 소비).
+
+**TopBar 3-column grid (G2):**
+- `frontend/src/components/topbar/TopBar.tsx`: `flex justify-between` → `grid grid-cols-[auto_1fr_auto]`. 좌측 햄버거 (`lucide Menu`, `aria-pressed={collapsed}`, `aria-label="사이드바 접기/펴기"`), 중앙 SearchBar 컨테이너 (`mx-auto w-full max-w-[560px]`), 우측 TweaksPanel + Avatar. 햄버거는 collapsed 상태에서도 노출(re-open 진입점).
+- 테스트 3건 (3-col 구조 / 클릭 toggle / aria-pressed sync).
+
+**SearchBar polish (G3):**
+- `frontend/src/components/topbar/SearchBar.tsx`: `h-[30px]` (디자인 styles.css L629), 우측 영역에 query 비어있고 unfocused일 때 `⌘K` kbd 칩 / query 있을 때 clear 버튼(`lucide X`). 폭은 부모 grid가 max-w-[560px]로 결정. placeholder는 "파일 검색"만 — 시각 hint는 kbd 칩이 담당.
+- 테스트 +3건 (h-30 + placeholder / kbd 칩 / focus 시 hint 숨김 / clear 토글) — 누적 7건.
+
+**Global shortcut (G3):**
+- `frontend/src/hooks/useGlobalShortcuts.ts`: `⌘+K` / `Ctrl+K` 분기 추가 (modifier + `key.toLowerCase() === 'k'`, `Shift`/`Alt` 조합 무시). **editable 가드 미적용** — 다른 input에서도 검색 호출 가능 (VS Code 패턴). 기존 `/` 호환 유지(editable 가드 그대로).
+- 테스트 +5건 (Ctrl+K / ⌘K / input 안에서도 dispatch / Ctrl+Shift+K 무시 / 대문자 'K') — 누적 12건.
+
+**Docs:**
+- `docs/01 §2` Sidebar Chrome callout (collapse store, persist 키, 책임 분리).
+- `docs/01 §10` 글로벌 단축키 callout (`⌘K`/`Ctrl+K` + editable 가드 차이).
+- `docs/01 §17` TopBar 3-column grid + aside transition callout.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run` 174 file / **1264/1264 PASS** (신규 sidebarChrome 3 + TopBar 3 + SearchBar +3 + useGlobalShortcuts +5 = 누적 신규/보강 14건).
+
+### 결정/편차
+
+- **store 분리** — `sidebarTree`(폴더 expand + 30일 TTL + section collapsed) 와 책임 분리. 단일 boolean 분리가 추후 mobile-view(G7) 통합에도 명확.
+- **w-0 transition 채택 (display:none 미사용)** — UX 부드러움 + 자식 컴포넌트 unmount 회피(렌더 비용 + state 보존). `overflow-hidden + aria-hidden` 로 SR/시각 모두 처리.
+- **⌘K editable 가드 미적용** — 다른 input에서도 검색 호출 가능해야 운영자 UX 자연. `/` 는 의도된 차이(editable 안에서 슬래시 입력 보호).
+- **placeholder 단순화** — "파일 검색 ( / )" → "파일 검색". 단축키 시각 hint는 우측 kbd 칩이 owns. 단축키 변경 시 placeholder 텍스트 분기 회피.
+- **layout 'use client' 전환** — 기존 AuthGuard/DndProvider/TopBar 가 모두 client였으므로 server-only 가치 없음. KISS.
+
+### 트랙 외 후속
+
+- **G4 FileTable 6열** — M7 권한 마일스톤 종속.
+- **G5 density 토글** — viewStore 신규 또는 sidebarChrome 확장.
+- **G6 GridView 172px** — PR #148에서 처리됨.
+- **G7 mobile-view** — `lg:` breakpoint + sidebar/RP auto-hide. 본 트랙 store와 통합.
+- **단축키 cheat sheet (`?`)** — v1.x backlog.
+
+### dev-docs
+
+- `dev/active/design-topbar-sidebar-collapse/{plan,context,tasks}.md` — 머지 후 별도 archive PR.
+
+---
+
 ## 2026-05-11 — chore/dev-active-archive (orphan dev-docs 2건 → `dev/completed/`)
 
 ### 범위

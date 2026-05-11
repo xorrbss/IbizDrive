@@ -76,4 +76,44 @@ describe('useGlobalShortcuts', () => {
     window.dispatchEvent(event)
     expect(listener).not.toHaveBeenCalled()
   })
+
+  // ─── 디자인 핸드오프 G3 — ⌘K / Ctrl+K ───
+  it('"Ctrl+K" → dispatch', () => {
+    renderHook(() => useGlobalShortcuts())
+    const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })
+    window.dispatchEvent(event)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('"⌘K"(metaKey) → dispatch', () => {
+    renderHook(() => useGlobalShortcuts())
+    const event = new KeyboardEvent('keydown', { key: 'k', metaKey: true })
+    window.dispatchEvent(event)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  it('"Ctrl+K"는 input 안에서도 dispatch (editable 가드 미적용)', () => {
+    renderHook(() => useGlobalShortcuts())
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true })
+    Object.defineProperty(event, 'target', { value: input })
+    window.dispatchEvent(event)
+    expect(listener).toHaveBeenCalledTimes(1)
+    document.body.removeChild(input)
+  })
+
+  it('"Ctrl+Shift+K"는 무시 (다른 modifier 조합)', () => {
+    renderHook(() => useGlobalShortcuts())
+    const event = new KeyboardEvent('keydown', { key: 'k', ctrlKey: true, shiftKey: true })
+    window.dispatchEvent(event)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('대문자 "K"도 dispatch (key.toLowerCase 비교)', () => {
+    renderHook(() => useGlobalShortcuts())
+    const event = new KeyboardEvent('keydown', { key: 'K', ctrlKey: true })
+    window.dispatchEvent(event)
+    expect(listener).toHaveBeenCalledTimes(1)
+  })
 })
