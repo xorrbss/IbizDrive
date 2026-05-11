@@ -5,6 +5,48 @@
 
 ---
 
+## 2026-05-11 — 🏁 trash-retention-mutation 트랙 종료 (Phase A → B → C 모두 머지, dev-docs archive)
+
+### 범위
+
+휴지통 보존 정책 mutation UI 트랙 closure. 코드 0줄 — dev-docs 3종을 `dev/active/` → `dev/completed/`로 이동 + plan.md frontmatter status 갱신.
+
+### 트랙 closure 표
+
+| Phase | PR | 머지 | 산출물 |
+|---|---|---|---|
+| A — spec | #167 | 2026-05-11 | docs/02 §2.12 V17 schema + §7.11.1 PUT spec, docs/03 §4.1 audit event(`admin.retention.changed`) + §6.4.3 dual-approval 표 갱신, docs/04 §8.3/§9.2/§15.6 운영 명세, dev-docs 3종 |
+| B — backend | #169 | 2026-05-11 | V17 migration + TrashPolicy entity/repo/service + RetentionPolicyChangedEvent + TrashPolicyAuditListener + AdminTrashPolicyController PUT + FileMutationService/FolderMutationService 호출 전환 + 단위/slice 테스트 21건 |
+| C — frontend | #173 | 2026-05-11 | api.updateAdminTrashPolicy + useUpdateAdminTrashPolicy + RetentionPolicyEditor (감소 경고 + ConfirmDialog) + page wire + 회귀 가드 17건 |
+
+### 핵심 결정 (회고)
+
+- **저장 전략 Option A** — single-row `trash_policy` (id=1 CHECK + retention_days BETWEEN 7 AND 90). KISS/YAGNI, 일반화 `app_settings`는 후속 트랙(quota 등) 패턴 확정 후 검토.
+- **신규 row만 적용** — 기존 trash row의 `purge_after`는 재계산 안 함. 일수 감소 시 hard purge 폭증 회피. UI confirm dialog + audit `appliesTo:'new-deletes-only'` 명시.
+- **단일-approver MVP** — 단일 ADMIN 즉시 적용. 2인 승인 framework는 v1.x++ deferred. 본 endpoint는 framework 도입 시 hook point (`app.dual-approval.retention-change.enabled`).
+- **`@PostConstruct` ensure-row** — V17 migration이 INSERT 안 함, service 부팅 시 yml 값으로 idempotent INSERT (운영자 yml override 이력 보존 + 다중 instance race는 PK + CHECK가 흡수).
+- **No-op same value** — `updateRetentionDays(currentDays, ...)`는 row touch + audit emit 없이 현재값 반환.
+
+### 사용자 가시 결과
+
+- `/admin/retention` 페이지에서 ADMIN이 보존 일수(7~90)를 무중단 변경
+- 감소 시 인라인 경고 + ConfirmDialog 재확인 (hard purge 폭증 회피)
+- audit_log `admin.retention.changed` 자동 기록
+- 운영자 yml 직접 수정 + 재기동 의존 해소 (docs/04 §15.6 backlog 처리)
+
+### 함께 처리된 부수 작업
+
+- PR #169에서 co-session이 master에 push한 `TopBar.test.tsx` lint error 1줄 fix (unblock)
+- 두 차례 master drift conflict 해결 (#168, #171, #169 머지 사이)
+
+### 다음 트랙 후보
+
+- **quota mutation UI** — 같은 패턴(single-row 테이블 또는 `app_settings` 일반화 검토 시점). docs/04 §6.1 spec.
+- **2인 승인 framework** — trash + quota + role 모두 hook into. ADR #47 활성화 트랙. 가장 큰 트랙.
+- **uploadFile XHR async cleanup** — csrf-helper-sweep(#165)의 의도적 예외 해소. useUpload 호출자 변경 필요.
+
+---
+
 ## 2026-05-11 — 🧹 dev-active-archive sweep (design-topbar-sidebar-collapse + shortcut-cheatsheet)
 
 ### 범위
