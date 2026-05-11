@@ -310,7 +310,7 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
   - 단건 복원/영구삭제: 기존 endpoint 재사용 (`POST /api/files|folders/{id}/restore` + `DELETE /api/trash/{type}/{id}` — ADMIN ROLE이 SpEL 가드 통과)
   - 정책 viewer (`/admin/retention`, T7-P2 rename) — wave2-trash-policy-viewer (Wave 2 T9 follow-up, 2026-05-09): 현재 보존 일수 + 변경 절차 + cron cross-link.
   - **정책 mutation UI** — trash-retention-mutation (Phase A spec 2026-05-11, Phase B/C 별도 PR): V17 `trash_policy` single-row 테이블 + `PUT /api/admin/trash/policy` + frontend mutation editor + `RETENTION_POLICY_CHANGED` audit. **단일-approver MVP** — 단일 ADMIN 즉시 적용. 변경은 신규 soft-delete만 적용 (기존 `purge_after` 재계산 안 함, hard purge 폭증 회피).
-  - 2인 승인 framework: v1.x deferred (§15.4 — `app.dual-approval.retention-change.enabled`. 도입 시 본 endpoint hook point로 사용).
+  - 2인 승인 framework: v1.x deferred (§16 / ADR #47 — `app.dual-approval.retention-change.enabled`. 도입 시 본 endpoint hook point로 사용).
 - [x] 일괄 복원·영구삭제 (admin-trash-bulk, Wave 2 T9 follow-up, 2026-05-08)
   - endpoint: `POST /api/admin/trash/bulk` (`action: 'restore' | 'purge'` + `items: 1..200`, docs/02 §7.11)
   - UI: 행 좌측 체크박스 + 헤더 select-all (페이지 한정) + BulkActionBar (선택 N개 / 전체 해제 / 일괄 복원 / 일괄 영구삭제). 일괄 영구삭제는 ConfirmDialog 거침.
@@ -375,7 +375,7 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
               ↳ 변경 영향: 신규 soft-delete만 새 일수 적용. 기존 trash row의 `purge_after`는 재계산 안 함.
               ↳ 0/음수 입력은 backend 사전 검증으로 400 (CHECK 제약과 동기, docs/02 §2.12)
               ↳ hard delete는 별개 cron — A7 `app.purge.cron`, `app.purge.max-per-run`
-              ↳ 2인 승인은 v1.x++ deferred (§15.4)
+              ↳ 2인 승인은 v1.x++ deferred (§16 / ADR #47 — `app.dual-approval.retention-change.enabled`)
 버전 보존: v1.x deferred (현재 모든 버전 영구 보관, A5 closure)
 감사 로그 보존: 영구 — DB-level append-only (`V4__audit_log_revoke.sql`).
               ↳ 파티션/아카이빙은 v1.x (ADR #9)
@@ -868,7 +868,7 @@ archive PR 등 master 위 작업도 본 패턴으로 분리한다 (메인 worktr
 |---|---|---|---|
 | `role_change` | `PATCH /api/admin/users/:id` (role 필드 변경) | ADMIN 권한 부여 = 보안 critical | `app.dual-approval.role-change.enabled` |
 | `trash_purge` | `DELETE /api/admin/trash/:type/:id`, `POST /api/admin/trash/bulk` (action='purge') | 회복 불가 영구 삭제 | `app.dual-approval.trash-purge.enabled` |
-| `retention_change` | `PUT /api/admin/trash/policy` (deferred — wave2-trash-policy-viewer mutation 후속) | 일수 감소 시 hard purge 폭증 | `app.dual-approval.retention-change.enabled` |
+| `retention_change` | `PUT /api/admin/trash/policy` (단일-approver MVP closure 2026-05-11 #173 — framework 활성화 시 hook) | 일수 감소 시 hard purge 폭증 | `app.dual-approval.retention-change.enabled` |
 
 > Tier 1 (cron_toggle, user_deactivate)는 v1.x 후속. Legal Hold release는 ADR #46 본 framework 이관 (v1.x V_ 마이그레이션 + payload_json='legal_hold_release').
 

@@ -5,6 +5,34 @@
 
 ---
 
+## 2026-05-11 — dual-approval-spec-mini (§16 ref drift 정정)
+
+### 범위
+
+Dual-approval framework (ADR #47) docs ref drift 정정. ADR #47 본문은 매우 정밀(데이터 모델·state machine·Tier 0·audit·API·config 모두 명세)하므로 본 PR은 추가 정밀화가 아닌 stale ref/표현 정정에 한정 (docs-only).
+
+### 발견된 drift
+
+- `docs/04 §6.5` (line 313) 및 §13 (line 378): "2인 승인 framework: v1.x deferred (**§15.4**)" — §15.4는 "운영 cron 4종 변경 절차"라 dual-approval과 무관. 정확한 ref는 §16 (Dual-Approval 운영 sub-section) / ADR #47.
+- `docs/04 §16.1` Tier 0 표 line 871의 retention_change row 진입점이 "**deferred** — wave2-trash-policy-viewer mutation 후속"이라 stale. 실제 trash-retention-mutation #173 (Phase C frontend mutation editor)은 2026-05-11 머지 완료, 단일-approver MVP closure 상태. dual-approval은 framework 활성화 시 hook으로 표현 갱신.
+
+### 변경 (1 file, +3/-3)
+
+- §6.5 retention 정책 mutation UI 카드 ref: §15.4 → §16 / ADR #47
+- §13 trash retention cron 절차 ref: §15.4 → §16 / ADR #47
+- §16.1 Tier 0 표 retention_change row: deferred → "단일-approver MVP closure 2026-05-11 #173 — framework 활성화 시 hook"
+
+### 결정/편차
+
+- **frontend ref 정정은 별도 트랙으로 분리** — `frontend/src/app/admin/retention/page.tsx`의 "2인 승인" 카드 본문도 §15.4를 직간접 ref하나 vitest 회귀 가드(`page.test.tsx`) 영향 가능성. docs-only로 한정해 single-shot fit 유지. frontend ref 정정은 다음 트랙에서 묶음.
+- **ADR #47 본문 무변경** — 데이터 모델/state machine/Tier 0/audit/API 모두 이미 정밀 명세. 추가 정밀화 over-engineering, drift 해소 목적과 무관.
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: quota Phase 3~5 (V18 backend service + UI + enforcement) / 2인 승인 framework 실 구현 (v1.x V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI) / progress streaming SSE / admin/permissions 전역 grant resource picker / frontend retention page §16 ref 정정.
+
+---
+
 ## 2026-05-11 — quota-phase2-v18-migration (Phase 2: schema-only)
 
 ### 범위
