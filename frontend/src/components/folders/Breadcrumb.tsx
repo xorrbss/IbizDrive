@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import { ChevronRight, Star } from 'lucide-react'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { usePermission } from '@/hooks/usePermission'
 import { useShareUiStore } from '@/stores/shareUi'
@@ -35,7 +36,21 @@ function useWorkspaceHeadCrumb(): HeadCrumb | null {
   return null
 }
 
-export function Breadcrumb() {
+/**
+ * Breadcrumb — design zip components.jsx 의 `function Breadcrumb` 매핑.
+ *
+ * 기존 도메인 로직(workspace head crumb 교체, 폴더 공유 진입점, dnd droppable)을 유지하면서
+ * zip CSS spec (`.breadcrumb*`, 13.5px / 마지막 항목 15px·600, ChevronRight size 10, Star size 13)을 충족.
+ *
+ * props는 모두 optional — v1.x 즐겨찾기 트랙 미진입이라 onToggleStar 미전달 시 별 버튼 비표시.
+ * 트랙 진입 시 부모(ClientFilesPage 등)에서 isStarred/onToggleStar 주입하면 그대로 노출.
+ */
+export interface BreadcrumbProps {
+  isStarred?: boolean
+  onToggleStar?: () => void
+}
+
+export function Breadcrumb({ isStarred, onToggleStar }: BreadcrumbProps = {}) {
   const { folderId, breadcrumb, isLoading } = useCurrentFolder()
   // F5.3: 폴더 공유 진입점 — 현재 폴더 권한 기준으로 SHARE 가능할 때만 노출.
   // 현재 폴더 = breadcrumb 마지막 항목 (= folderId 동일). 루트 외 폴더에서 동작.
@@ -87,8 +102,8 @@ export function Breadcrumb() {
         return (
           <span key={c.id} className="inline-flex items-center">
             {i > 0 && (
-              <span className="text-fg-subtle px-0.5" aria-hidden>
-                ›
+              <span className="text-fg-subtle inline-flex px-0.5" aria-hidden>
+                <ChevronRight size={10} />
               </span>
             )}
             {last ? (
@@ -101,6 +116,20 @@ export function Breadcrumb() {
           </span>
         )
       })}
+      {onToggleStar && current && (
+        <button
+          type="button"
+          onClick={onToggleStar}
+          aria-label={isStarred ? `${current.name} 즐겨찾기 해제` : `${current.name} 즐겨찾기`}
+          aria-pressed={!!isStarred}
+          title="즐겨찾기"
+          className={`ml-0.5 inline-flex items-center justify-center p-[3px] rounded-sm hover:bg-surface-2 transition-colors ${
+            isStarred ? 'text-warn' : 'text-fg-subtle hover:text-warn'
+          }`}
+        >
+          <Star size={13} fill={isStarred ? 'currentColor' : 'none'} />
+        </button>
+      )}
       {showShare && current && (
         <button
           type="button"
