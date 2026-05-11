@@ -1,9 +1,11 @@
 ---
 task: trash-retention-mutation
-status: in_progress
+status: completed
 created: 2026-05-11
+completed: 2026-05-11
+merged: PR #167 (Phase A spec) + PR #169 (Phase B backend) + PR #173 (Phase C frontend)
 spec: docs/04 §8.3 (현재 read-only viewer) + §9.2 (보존 정책 외부화) + §15.4 (2인 승인 deferred)
-branch: feat/trash-retention-mutation
+branch: feat/trash-retention-mutation*
 worktree: C:/project/IbizDrive/.claude/worktrees/trash-policy
 ---
 
