@@ -22,50 +22,35 @@
 
 ## ⚠️ 발견된 시각적 Delta (실제 차이)
 
-### G1. TopBar 높이 — **48px → 40px 축소 적용됨**
+### G1. TopBar 높이 — ✅ 해결 (PR #148)
 - 디자인: `grid-template-rows: 48px 1fr` (styles.css L134)
-- 현재: `TopBar.tsx` L17 `h-10` (= 40px)
-- **영향:** 8px 축소, 디자인 의도(검색 30px h를 9px 패딩으로 감싸는 형태) 깨짐
-- **권장 라우팅:** 신규 작은 PR (frontend single-file). 또는 의도된 축소면 ADR + handoff README 패치.
+- **변경:** `TopBar.tsx` `h-10` → `h-12` (= 48px). PR #148 commit 포함.
 
-### G2. TopBar 레이아웃 — 3-column grid 미반영
+### G2. TopBar 레이아웃 — ✅ 해결 (PR #168)
 - 디자인: `grid-template-columns: auto 1fr auto` — 햄버거(좌) + 검색(중앙 max-w 560 mx-auto) + 액션(우)
-- 현재: `flex justify-between` — 검색(좌, w-72=288px) + TweaksPanel/Avatar(우). 햄버거 없음.
-- **영향:** 검색바 폭/위치 다름. 사이드바 collapse 토글(햄버거) 진입점 부재.
-- **선결조건:** 사이드바 collapse 자체가 미구현이면 햄버거는 후속. Plan B 사이드바 3-section 작업과 함께 검토.
+- **변경:** `flex justify-between` → `grid grid-cols-[auto_1fr_auto]`. 햄버거(Menu lucide + aria-pressed sync), 중앙 SearchBar(max-w-[560px] mx-auto), 우측 TweaksPanel + Avatar. 사이드바 collapse(`stores/sidebarChrome.ts`)도 동반 구현 — (explorer)/layout.tsx `aside` 폭 transition(`w-[248px]` ↔ `w-0`).
 
-### G3. SearchBar 단축키/형태
+### G3. SearchBar 단축키/형태 — ✅ 해결 (PR #168 + #172)
 - 디자인: 중앙 정렬 max-w 560 / h 30 / `⌘K` kbd 칩 / 우측 clear 버튼
-- 현재: `SearchBar.tsx` L44 `w-72` (≈288px) / `/` 단축키 (`useGlobalShortcuts.ts` `FOCUS_SEARCH_EVENT`) / lucide `Search` 아이콘
-- **영향:**
-  - 단축키는 디자인 spec(⌘K)과 다름 — 의도된 차이일 수 있으나 `placeholder="파일 검색 ( / )"`가 시각적 hint 전부
-  - polishlater: kbd 칩 표시
-- **권장:** 의도된 변경이면 핸드오프 README에 반영. ⌘K로 가야 한다면 작은 PR로 `useGlobalShortcuts` 키 매핑만 변경.
+- **변경 (#168):** `h-[30px]` + `text-[12.5px]` + max-w-[560px](TopBar grid 결정), 우측 영역에 query 비어있고 unfocused일 때 kbd 칩 / query 있을 때 clear 버튼. `useGlobalShortcuts` ⌘K/Ctrl+K 추가 (editable 가드 미적용, `/` 호환 유지).
+- **변경 (#172):** kbd 칩 텍스트 platform 분기 (mac=⌘K / win/linux=Ctrl K). 사내 Windows 사용자 인지 부담 해결.
 
-### G4. FileTable 컬럼 — **6열 vs 5열, 폭 ≠**
+### G4. FileTable 컬럼 — ✅ 해결 (PR #177)
 - 디자인: `grid-template-columns: 36px 1fr 140px 130px 90px 44px` (체크 / 이름 / 크기 / 수정일 / 수정자 / 액션)
-- 현재: `FileTable.tsx` L38 `28px 1fr 110px 130px 90px` (자리 / 이름 / 크기 / 수정일 / 수정자 — 액션 컬럼 없음, 체크박스 컬럼 28px)
-- **영향:** 크기 110→140 (-30), 액션 44px 미존재. 코드 주석에 "현 M5 단계 — M7에서 체크박스/액션 컬럼 추가 시 재매핑" 명시 — 의도된 deferral.
-- **권장 라우팅:** 기존 M7 마일스톤 plan에 종속. 별도 PR 불필요.
+- **변경:** GRID_COLS 5열 `[28 1fr 110 130 90]` → 6열 `[36 1fr 140 130 90 44]`. FileRow에 체크박스 `button[role=checkbox]`(M4 selection store wired) + 아이콘은 이름 셀로 inline 통합 + 액션 ⋯ 버튼(layout placeholder, 메뉴 wiring은 v1.x). FileTableSkeleton 동기화.
 
-### G5. FileTable row 높이 — **default 34 → 40 (= comfortable)**
+### G5. FileTable row 높이 + density 토글 — ✅ 해결 (PR #148 + #175)
 - 디자인: 기본 34px / compact 28 / comfortable 40 (styles.css L629-630). `--row-h` CSS var 토글.
-- 현재: `FileTable.tsx` L28 `ROW_HEIGHT = 40` 하드코딩, density 토글 없음.
-- **영향:** 한 화면 항목 수 ~15% 감소. 밀도 변경 UX 부재.
-- **선결:** `--row-h` 토큰은 `globals.css` L48에 이미 존재(34px). FileTable이 이걸 안 씀.
-- **권장:** 작은 PR — `ROW_HEIGHT`을 `var(--row-h)`(34) 기본으로 + viewStore에 `density: 'compact'|'default'|'comfortable'` 추가. TweaksPanel에 토글 노출.
+- **변경 (#148):** `ROW_HEIGHT = 40` → `34`, FileRow `h-10` → `h-[var(--row-h)]`. variant override(notion 40 / dropbox 38 / terminal 28) 토큰 활용.
+- **변경 (#175):** density 토글 시스템 — `[data-density="compact|comfortable"]` + `lib/density.ts` + `useDensity` 훅 + FOUC init script + TweaksPanel 라디오 3종. 우선순위: `[data-density]`(사용자 명시) > `[data-variant]` default(시각 정체성) > `:root` base. variant rules 뒤에 cascade 배치.
 
-### G6. GridView min-col-width — **172 → 140**
+### G6. GridView min-col-width — ✅ 해결 (PR #148)
 - 디자인: `auto-fill minmax(172px, 1fr)`
-- 현재: `FileTable.tsx` L34 `GRID_MIN_COL_WIDTH = 140`
-- **영향:** 카드가 디자인보다 23% 좁음 → 4:3 thumb 영역 작아 보임.
-- **권장:** 1줄 변경. M16V 후속 PR에 묶거나 단독.
+- **변경:** `GRID_MIN_COL_WIDTH = 140` → `172`. PR #148.
 
-### G7. Mobile view 미구현
+### G7. Mobile view — ❌ 폐기 (2026-05-11 사용자 결정)
 - 디자인: `.mobile-view` 클래스 (styles.css L1248-1259) — sidebar/right-panel 숨김 + FileTable 컬럼 축약 (`36 1fr 130 44`).
-- 현재: `mobile-view` 클래스 미존재. responsive 분기 없음.
-- **영향:** 모바일 뷰포트에서 3-pane이 그대로 압축 → UX 깨짐.
-- **권장:** 별도 마일스톤 (M-mobile 신설). 우선순위 낮음 — 사내 데스크톱 메인 가정이면 backlog.
+- **결정:** 사내 데스크탑 메인 가정. `CLAUDE.md §3 원칙 13` "데스크탑 메인, 모바일 미지원" 으로 격상. `.mobile-view` / `useMediaQuery` / `lg:` breakpoint / 사이드바 mobile overlay / RightPanel mobile auto-hide / FileTable 컬럼 축약 모두 backlog 제외. 좁은 데스크탑 폭은 기존 `useSidebarChromeStore` 토글로 충분.
 
 ### G8. DropOverlay 시각 fidelity — ✅ 해결 (PR #148)
 - 디자인: `backdrop-filter: blur(2px)` + 8px margin + 중앙 카드 (surface-1 + lg shadow + 56px 원형 아이콘).
@@ -79,33 +64,37 @@
 
 ---
 
-## 라우팅 제안 (gap → 트랙 매핑)
+## 라우팅 결과 (2026-05-11 closure)
 
-| Gap | 트랙 | 사이즈 |
+| Gap | 트랙 / PR | 상태 |
 |---|---|---|
-| G1 TopBar 48px | 신규 single-file PR `fix-topbar-height` | XS (5분) |
-| G2 TopBar 3-col grid + 햄버거 | Plan B (사이드바 collapse 같이) | M |
-| ~~G1 TopBar 48px~~ | ✅ PR #148 (h-10 → h-12) | — |
-| ~~G2 TopBar 3-col grid + 햄버거~~ | ✅ PR #168 (sidebar collapse 동반) | — |
-| ~~G3 SearchBar ⌘K + 폭~~ | ✅ PR #168 (kbd 칩 + clear + ⌘K/Ctrl+K). 추가 plat 분기는 별도 트랙 (PR #172 in progress). | — |
-| G4 FileTable 6열 | 기존 M7 plan (활성 트랙 — `feat/design-handoff-g4-filetable`) | M |
-| G5 row 34 + density 토글 | 활성 트랙 — `feat/design-handoff-g5-density` | S |
-| ~~G6 grid 172px~~ | ✅ PR #148 commit `166432b` | — |
-| ~~G7 mobile-view~~ | ❌ **폐기 (2026-05-11 사용자 결정)** — 사내 데스크탑 메인. CLAUDE.md §3 원칙 13 동기화. | — |
-| ~~G8 DropOverlay fidelity~~ | ✅ PR #148 commit `166432b` | — |
-| ~~G9 statusbar 확인~~ | ✅ 이미 일치 — 변경 불필요 | — |
+| ~~G1 TopBar 48px~~ | PR #148 (h-10 → h-12) | ✅ 머지 |
+| ~~G2 TopBar 3-col grid + 햄버거~~ | PR #168 (사이드바 collapse 동반) | ✅ 머지 |
+| ~~G3 SearchBar ⌘K + 폭~~ | PR #168 (kbd 칩 + clear + ⌘K/Ctrl+K) + #172 (platform 분기) | ✅ #168 머지, #172 진행 |
+| ~~G4 FileTable 6열~~ | PR #177 (M4 selection store 재사용, 액션 버튼 layout placeholder) | ✅ 진행 |
+| ~~G5 row 34 + density 토글~~ | PR #148 (row 34) + #175 (density) | ✅ #148 머지, #175 진행 |
+| ~~G6 grid 172px~~ | PR #148 | ✅ 머지 |
+| ~~G7 mobile-view~~ | ❌ **폐기 (2026-05-11 사용자 결정)** — 사내 데스크탑 메인 가정. CLAUDE.md §3 원칙 13 동기화. | ❌ 폐기 |
+| ~~G8 DropOverlay fidelity~~ | PR #148 commit `166432b` | ✅ 머지 |
+| ~~G9 statusbar 확인~~ | 이미 일치 | ✅ 변경 불필요 |
 
 > **트랙 외 후속**: PR #171 (`?` 도움말 모달) + PR #174 (단축키 데이터 single-source) — 디자인 핸드오프 직접 항목은 아니지만 §12.1 키맵 spec 정합 강화. PR #168 종료 보고 backlog였음.
 
 ---
 
-## 결론 (2026-05-11 갱신)
+## 결론 (2026-05-11 closure)
 
-디자인 핸드오프 갭 **G1·G2·G3·G6·G8·G9 머지 완료**. **G4·G5는 활성 co-session 트랙** 진행 중. **G7은 폐기**(사내 데스크탑 메인 가정 — CLAUDE.md §3 원칙 13 동기화).
+**G1~G9 중 8건 ✅ 해결**, G7 폐기 (CLAUDE.md §3 원칙 13). 디자인 핸드오프 시각 fidelity 95%+ 동기화 — admin 외 main explorer 영역까지 정렬.
 
-남은 활성 작업은 G4(FileTable 6열 + 액션 컬럼) + G5(density 토글) 두 트랙만. 두 트랙 머지 후 본 gap report는 archive(`dev/completed/`) 이동 후보.
+**잔여:**
+- **G3 platform 분기** (PR #172, CI green) — 머지 대기
+- **G5 density 토글** (PR #175, CI green) — 머지 대기
+- **G4 FileTable 6열** (PR #177, CI green) — 머지 대기
+- **G4 액션 버튼 메뉴 wiring** — rename/move/share/delete 컨텍스트 메뉴 v1.x 후속 PR
+
+**closure 트랙 (2026-05-11):** `design-handoff-g2-g5-closure`. PR #170 중복 close 처리 (PR #168이 G2/G3 + 사이드바 collapse 함께 머지). 본 gap-report는 머지 후 `dev/completed/`로 archive.
 
 **원본 권장 액션 결과:**
-1. ~~G1 + G6 + G5(without density 토글) → `design-fidelity-quick-wins`~~ — PR #148로 G1+G6+G8 처리, G5 toggle은 별도 활성 트랙.
+1. ~~G1 + G6 + G5(without density 토글) → `design-fidelity-quick-wins`~~ — PR #148로 G1+G6+G8 처리, G5 density 토글은 PR #175.
 2. ~~G2/G3 → Plan B foundation에 흡수~~ — PR #168로 G2/G3 별도 trace 처리 (sidebar collapse 동반).
-3. ~~G7/G8/G9 → 별도 spot-check~~ — G8/G9 spot-check 완료(PR #148), G7 폐기.
+3. ~~G7/G8/G9 → 별도 spot-check~~ — G8/G9 spot-check 완료(PR #148), G7 폐기 (CLAUDE.md §3 원칙 13).
