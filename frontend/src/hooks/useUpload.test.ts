@@ -142,15 +142,15 @@ describe('useUpload', () => {
     vi.unstubAllGlobals()
   })
 
-  it('enqueue normal 파일 → done + filesInFolder invalidate', () => {
+  it('enqueue normal 파일 → done + filesInFolder invalidate', async () => {
     const invalidateSpy = vi.spyOn(client, 'invalidateQueries')
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
 
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('ok.txt')], 'folder_x')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
 
     const t = useUploadStore.getState().queue[0]
@@ -159,7 +159,7 @@ describe('useUpload', () => {
     expect(invalidateSpy).toHaveBeenCalled()
   })
 
-  it('enqueue 409 + envelope details → status conflict + conflictWith 설정', () => {
+  it('enqueue 409 + envelope details → status conflict + conflictWith 설정', async () => {
     MockXHR.responses.set('conflict.pdf', {
       kind: 'load',
       status: 409,
@@ -172,11 +172,11 @@ describe('useUpload', () => {
       }),
     })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('conflict.pdf')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
 
     const t = useUploadStore.getState().queue[0]
@@ -185,7 +185,7 @@ describe('useUpload', () => {
     expect(t.conflictWith?.fileId).toBe('f_conflict')
   })
 
-  it('409 envelope details 부재 → conflict 상태 + conflictWith undefined (UI는 file.name 폴백)', () => {
+  it('409 envelope details 부재 → conflict 상태 + conflictWith undefined (UI는 file.name 폴백)', async () => {
     MockXHR.responses.set('bare.pdf', {
       kind: 'load',
       status: 409,
@@ -194,11 +194,11 @@ describe('useUpload', () => {
       }),
     })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('bare.pdf')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
 
     const t = useUploadStore.getState().queue[0]
@@ -206,70 +206,70 @@ describe('useUpload', () => {
     expect(t.conflictWith).toBeUndefined()
   })
 
-  it('network 실패 → failed + kind network', () => {
+  it('network 실패 → failed + kind network', async () => {
     MockXHR.responses.set('net_fail.any', { kind: 'error' })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('net_fail.any')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(useUploadStore.getState().queue[0].error?.kind).toBe('network')
   })
 
-  it('403 → failed + kind permission', () => {
+  it('403 → failed + kind permission', async () => {
     MockXHR.responses.set('deny.txt', { kind: 'load', status: 403 })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('deny.txt')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(useUploadStore.getState().queue[0].error?.kind).toBe('permission')
   })
 
-  it('413 → failed + kind quota', () => {
+  it('413 → failed + kind quota', async () => {
     MockXHR.responses.set('huge.bin', { kind: 'load', status: 413 })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('huge.bin')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(useUploadStore.getState().queue[0].error?.kind).toBe('quota')
   })
 
-  it('500 → failed + kind server', () => {
+  it('500 → failed + kind server', async () => {
     MockXHR.responses.set('srv_500.any', { kind: 'load', status: 500 })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('srv_500.any')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(useUploadStore.getState().queue[0].error?.kind).toBe('server')
   })
 
-  it('cancel → XHR abort + 이후 progress 업데이트 없음', () => {
+  it('cancel → XHR abort + 이후 progress 업데이트 없음', async () => {
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('normal.txt')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(200)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(200)
     })
     const id = useUploadStore.getState().queue[0].id
     const progressBefore = useUploadStore.getState().queue[0].progress
 
-    act(() => {
+    await act(async () => {
       result.current.cancel(id)
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
 
     const t = useUploadStore.getState().queue[0]
@@ -277,24 +277,24 @@ describe('useUpload', () => {
     expect(t.progress).toBe(progressBefore)
   })
 
-  it('retry → 실패 task 재시도', () => {
+  it('retry → 실패 task 재시도', async () => {
     MockXHR.responses.set('net_fail.any', { kind: 'error' })
     const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
-    act(() => {
+    await act(async () => {
       result.current.enqueue([fakeFile('net_fail.any')], 'f')
     })
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
     const id = useUploadStore.getState().queue[0].id
     expect(useUploadStore.getState().queue[0].status).toBe('failed')
 
-    act(() => {
+    await act(async () => {
       result.current.retry(id)
     })
     expect(['queued', 'uploading']).toContain(useUploadStore.getState().queue[0].status)
-    act(() => {
-      vi.advanceTimersByTime(2000)
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
     })
     expect(useUploadStore.getState().queue[0].status).toBe('failed')
   })
