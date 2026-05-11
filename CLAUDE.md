@@ -125,6 +125,7 @@ app/               Next.js App Router
 | `src/types/permission.ts` | docs/03 §3 | 권한 enum |
 | `src/types/audit.ts` | docs/03 §4 | 감사 이벤트 enum |
 | `src/lib/errors.ts` | docs/02 §8 | 에러 코드 상수 |
+| `src/lib/keyboardShortcuts.ts` | docs/01 §12.1 | 키보드 단축키 cheat sheet 데이터 |
 
 ---
 

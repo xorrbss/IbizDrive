@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { OPEN_SHORTCUTS_EVENT } from '@/hooks/useGlobalShortcuts'
+import { KEYBOARD_SHORTCUTS } from '@/lib/keyboardShortcuts'
 
 /**
  * 단축키 cheat sheet 모달 — `?` 키 또는 `app:open-shortcuts` 이벤트로 open (2026-05-11).
@@ -9,58 +10,8 @@ import { OPEN_SHORTCUTS_EVENT } from '@/hooks/useGlobalShortcuts'
  * <p>self-contained: 자기 visibility state를 owns, props 없음. layout root에 1회 마운트.
  * ESC / X 버튼으로 닫기. 이전 focus 복귀 (ShareDialog/GrantPermissionDialog 패턴 답습).
  *
- * <p>단축키 데이터는 컴포넌트 내부 정적 array — docs/01 §12.1 키맵의 동등 표현. 통합 source는
- * 추후 별도 PR (YAGNI).
+ * <p>단축키 데이터는 {@link KEYBOARD_SHORTCUTS} — docs/01 §12.1 키맵의 single source.
  */
-
-interface Shortcut {
-  keys: string  // 표시용 — `⌘K`, `Ctrl/⌘+A`, `↑↓` 등
-  description: string
-}
-
-interface ShortcutCategory {
-  title: string
-  items: Shortcut[]
-}
-
-const SHORTCUTS: ShortcutCategory[] = [
-  {
-    title: '검색',
-    items: [
-      { keys: '/', description: '검색창 포커스' },
-      { keys: '⌘K · Ctrl+K', description: '검색창 포커스 (어디서나)' },
-    ],
-  },
-  {
-    title: '내비게이션',
-    items: [
-      { keys: '↑ ↓', description: '행 이동 (Grid: column stride)' },
-      { keys: '← →', description: '항목 이동 (Grid 모드 전용)' },
-      { keys: 'Enter', description: '폴더 열기 또는 파일 detail panel' },
-      { keys: 'Esc', description: '선택 해제 / detail panel 닫기' },
-    ],
-  },
-  {
-    title: '선택',
-    items: [
-      { keys: 'Space', description: '현재 항목 선택 토글' },
-      { keys: 'Shift + ↑↓←→', description: '범위 확장' },
-      { keys: 'Ctrl/⌘ + ↑↓', description: '포커스만 이동 (선택 유지)' },
-      { keys: 'Ctrl/⌘ + A', description: '전체 선택' },
-    ],
-  },
-  {
-    title: '액션',
-    items: [
-      { keys: 'F2', description: '이름 변경' },
-      { keys: 'Delete', description: '휴지통으로 이동' },
-    ],
-  },
-  {
-    title: '도움말',
-    items: [{ keys: '?', description: '이 도움말 표시' }],
-  },
-]
 
 export function ShortcutsCheatSheet() {
   const [open, setOpen] = useState(false)
@@ -117,7 +68,7 @@ export function ShortcutsCheatSheet() {
           </button>
         </div>
         <div className="overflow-y-auto px-4 py-3 flex flex-col gap-4">
-          {SHORTCUTS.map((cat) => (
+          {KEYBOARD_SHORTCUTS.map((cat) => (
             <section key={cat.title}>
               <h3 className="text-[11px] uppercase tracking-[0.04em] font-medium text-fg-muted mb-1.5">
                 {cat.title}
