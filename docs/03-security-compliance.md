@@ -748,6 +748,7 @@ type AuditEventType =
   | 'admin.department.updated'      // Wave 2 T4 활성화 — PATCH (rename + reactivate 흡수, before/after JSON)
   | 'admin.department.deactivated'  // Wave 2 T4 활성화 — PATCH isActive=false (제재 분기)
   | 'admin.cron.toggled'            // admin-cron-policy-toggle 활성화 (2026-05-08) — PUT /api/admin/system/cron/{key}, metadata={key, fromEnabled, toEnabled}
+  | 'admin.retention.changed'       // trash-retention-mutation 활성화 (2026-05-11) — PUT /api/admin/trash/policy. target_type='trash_policy', target_id='1', metadata={before:{retentionDays}, after:{retentionDays}, appliesTo:'new-deletes-only'}. dual-approval은 v1.x++ deferred(`app.dual-approval.retention-change.enabled`).
   // 팀
   | 'team.created'                 // team-centric-pivot Plan A 활성화 (2026-05-09) — POST /api/teams
   | 'team.member.added'            // team-centric-pivot Plan A — OWNER 초대
@@ -1071,7 +1072,7 @@ REQUESTED → APPROVED  (secondary 승인 + action 실행)
 |---|---|---|---|
 | `role_change` | 보안 critical (ADMIN 부여 = 시스템 게이트 우회) | `PATCH /api/admin/users/:id` (role 필드 변경 요청) | `{userId, fromRole, toRole, reason}` |
 | `trash_purge` | 회복 불가 | `DELETE /api/admin/trash/:type/:id`, `POST /api/admin/trash/bulk` (action='purge') | `{type, ids[], reason?}` |
-| `retention_change` | 데이터 손실 (감소 시 hard purge 폭증) | `PUT /api/admin/trash/policy` (deferred — wave2-trash-policy-viewer mutation 후속) | `{fromDays, toDays, reason}` |
+| `retention_change` | 데이터 손실 (감소 시 hard purge 폭증) | `PUT /api/admin/trash/policy` (trash-retention-mutation, 2026-05-11 — 단일-approver MVP 활성화. dual-approval framework 도입 시 hook point) | `{fromDays, toDays, reason}` |
 
 > **Tier 1 (v1.x 후속)**: `cron_toggle` (admin-cron-toggle #102 backlog "파괴적 토글 보호"), `user_deactivate`. 추가 액션은 framework 호환 — controller 진입점에서 `pendingAdminApprovalService.enqueue(action_type, payload)` 호출만 추가.
 >

@@ -5,6 +5,57 @@
 
 ---
 
+## 2026-05-11 — trash-retention-mutation Phase A (spec 설계 + dev-docs 부트스트랩)
+
+### 범위
+
+휴지통 보존 정책 mutation UI 트랙 진입 — Phase A는 **spec 설계 + dev-docs 부트스트랩** docs-only PR. backend/frontend 코드 변경 없음. Phase B/C는 별도 PR로 분리.
+
+### 변경 핵심
+
+- `dev/active/trash-retention-mutation/` plan/tasks/context 3종 신규.
+- `docs/02 §2.12` `trash_policy` 테이블 schema (V17 — single-row, CHECK days BETWEEN 7 AND 90).
+- `docs/02 §7.11` PUT `/api/admin/trash/policy` endpoint 명세 추가 + 본문 §7.11.1 신규 (request body / response / 적용 정책 / 2인 승인 v1.x deferred).
+- `docs/03 §4.1` `admin.retention.changed` audit event 추가 (target_type='trash_policy', metadata `{before, after, appliesTo:'new-deletes-only'}`).
+- `docs/03 §6.4.3` dual-approval action_type 표 — `retention_change` 행 갱신 ("deferred" → "단일-approver MVP 활성화 + framework hook point").
+- `docs/04 §8.3` 휴지통 정책 항목 — read-only viewer + mutation UI 활성 마커.
+- `docs/04 §9.2` 보존 정책 — yml + V17 테이블 dual-source + 변경 영향(신규만 적용, 기존 row 재계산 안 함) 명시.
+- `docs/04 §15.6` Wave 2 backlog → v1.x 전환 표 — `/admin/trash/policy` UI 항목 strikethrough + trash-retention-mutation 트랙 backlink.
+
+### 핵심 결정 (Phase A)
+
+- **저장 전략**: Option A — single-row `trash_policy` 테이블 (`id=1` CHECK, `retention_days BETWEEN 7 AND 90` CHECK). KISS/YAGNI — 일반화된 `app_settings` 패턴은 quota 등 후속 트랙에서 검토.
+- **신규 row 적용 정책**: 변경은 신규 soft-delete만 적용. 기존 trash row의 `purge_after`는 재계산 안 함 — 일수 감소 시 hard purge 폭증 회피. UI confirm dialog + audit metadata `appliesTo:'new-deletes-only'`로 명시.
+- **2인 승인**: 단일-approver MVP (단일 ADMIN 즉시 적용). Framework는 v1.x++ deferred(`app.dual-approval.retention-change.enabled`). 본 endpoint는 framework 도입 시 hook point로 사용.
+- **CHECK 제약**: 7..90 (docs/04 §8.1 spec과 일치). 0/음수/100+ 입력은 backend에서 400 VALIDATION_ERROR.
+- **TrashRetentionProperties yml** 잔존 — V17 migration이 row 부재 시 yml 값으로 idempotent INSERT (Phase B에서 `ApplicationReadyEvent` listener 또는 `@PostConstruct` 기반). 운영자 yml override 이력 보존.
+
+### 검증
+
+- 코드 0줄 — typecheck/lint/test 무관.
+- spec 정합성 self-review: docs/02 schema ↔ docs/03 audit event ↔ docs/04 운영 명세 ↔ dev-docs plan 4중 일관성 확인.
+
+### 다음 세션 컨텍스트
+
+**Phase B (별도 PR — backend)**:
+- V17 migration `trash_policy` (single-row, CHECK, FK updated_by ON DELETE SET NULL)
+- `TrashPolicy` entity + `TrashPolicyRepository` + `TrashPolicyService` (`getRetentionDays`, `updateRetentionDays`)
+- `RetentionPolicyChangedEvent` + `TrashPolicyAuditListener` (TeamAuditListener 패턴 답습)
+- `AuditEventType.RETENTION_POLICY_CHANGED` + `AuditTargetType.TRASH_POLICY`
+- `AdminTrashPolicyController.update(PUT)` + DTO + GlobalExceptionHandler 매핑
+- `FileMutationService` + `FolderMutationService` `TrashRetentionProperties.days()` → `trashPolicyService.getRetentionDays()` 전환
+- `TrashRetentionProperties` 처리 — V17 row 부재 시 app 부팅 시 yml 값으로 INSERT
+- 회귀 가드 backend test 추가
+
+**Phase C (별도 PR — frontend)**:
+- `api.updateTrashPolicy(days)` + 회귀 가드
+- `useUpdateTrashPolicy` hook + invalidate `qk.adminTrashPolicy()` + 회귀 가드
+- `RetentionPolicyEditor` 컴포넌트 — input + 감소 경고 + ConfirmDialog flow
+- `/admin/retention` page mutation 섹션 wire (admin 보유 + 데이터 로드 시 노출)
+- 회귀 가드 vitest 추가
+
+---
+
 ## 2026-05-11 — chore/dev-active-archive (orphan dev-docs 2건 → `dev/completed/`)
 
 ### 범위

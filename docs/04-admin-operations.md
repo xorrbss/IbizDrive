@@ -295,8 +295,9 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 - [x] 전체 사용자의 휴지통 파일 (관리자 전용) — `/admin/trash/all` (Wave 2 T9, 2026-05-07)
   - 목록: `GET /api/admin/trash` (admin DTO: owner/originalParent/size + V10 `deletedById`/`deletedByEmail` 노출 — docs/02 §7.11, §6.5.1)
   - 단건 복원/영구삭제: 기존 endpoint 재사용 (`POST /api/files|folders/{id}/restore` + `DELETE /api/trash/{type}/{id}` — ADMIN ROLE이 SpEL 가드 통과)
-  - 정책 read-only viewer (`/admin/trash/policy`) — wave2-trash-policy-viewer (Wave 2 T9 follow-up, 2026-05-09): 현재 보존 일수 + 변경 절차 + cron cross-link. mutation은 v1.x deferred (`@ConfigurationProperties` 부팅 바인딩).
-  - 정책 mutation UI / 2인 승인: v1.x deferred
+  - 정책 viewer (`/admin/retention`, T7-P2 rename) — wave2-trash-policy-viewer (Wave 2 T9 follow-up, 2026-05-09): 현재 보존 일수 + 변경 절차 + cron cross-link.
+  - **정책 mutation UI** — trash-retention-mutation (Phase A spec 2026-05-11, Phase B/C 별도 PR): V17 `trash_policy` single-row 테이블 + `PUT /api/admin/trash/policy` + frontend mutation editor + `RETENTION_POLICY_CHANGED` audit. **단일-approver MVP** — 단일 ADMIN 즉시 적용. 변경은 신규 soft-delete만 적용 (기존 `purge_after` 재계산 안 함, hard purge 폭증 회피).
+  - 2인 승인 framework: v1.x deferred (§15.4 — `app.dual-approval.retention-change.enabled`. 도입 시 본 endpoint hook point로 사용).
 - [x] 일괄 복원·영구삭제 (admin-trash-bulk, Wave 2 T9 follow-up, 2026-05-08)
   - endpoint: `POST /api/admin/trash/bulk` (`action: 'restore' | 'purge'` + `items: 1..200`, docs/02 §7.11)
   - UI: 행 좌측 체크박스 + 헤더 select-all (페이지 한정) + BulkActionBar (선택 N개 / 전체 해제 / 일괄 복원 / 일괄 영구삭제). 일괄 영구삭제는 ConfirmDialog 거침.
@@ -351,13 +352,17 @@ Legal Hold 대상: 영구 보존 (정책과 무관)
 
 ### 9.2 보존 정책
 
-> **MVP 부분 구현**: 휴지통 보존은 A7 cron + `app.purge.*` config로 운영자 제어. 버전 보존은 v1.x.
+> **MVP 거의 완전 구현**: 휴지통 보존은 A7 cron + DB-backed `trash_policy` 테이블(V17, trash-retention-mutation)로 운영자 무중단 제어. 버전 보존은 v1.x.
 
 ```text
-삭제된 파일 보존: 30일 default — `app.trash.retention.days` (외부화, wave2-trash-retention-config)
-              ↳ 운영자가 application.yml에서 일수 변경 + 재기동 (무중단은 v1.x++)
-              ↳ 0/음수 입력은 30일로 보정 (즉시 hard purge 사고 방지)
+삭제된 파일 보존: 30일 default → 운영자 무중단 변경 (DB-backed runtime mutation)
+              ↳ Phase A: yml `app.trash.retention.days` (외부화, wave2-trash-retention-config)
+              ↳ Phase B/C: V17 single-row 테이블 `trash_policy` (id=1, retention_days CHECK 7..90)
+              ↳ 변경 endpoint: PUT /api/admin/trash/policy (단일-approver MVP)
+              ↳ 변경 영향: 신규 soft-delete만 새 일수 적용. 기존 trash row의 `purge_after`는 재계산 안 함.
+              ↳ 0/음수 입력은 backend 사전 검증으로 400 (CHECK 제약과 동기, docs/02 §2.12)
               ↳ hard delete는 별개 cron — A7 `app.purge.cron`, `app.purge.max-per-run`
+              ↳ 2인 승인은 v1.x++ deferred (§15.4)
 버전 보존: v1.x deferred (현재 모든 버전 영구 보관, A5 closure)
 감사 로그 보존: 영구 — DB-level append-only (`V4__audit_log_revoke.sql`).
               ↳ 파티션/아카이빙은 v1.x (ADR #9)
@@ -749,7 +754,7 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 본 런북이 차선 경로로 운영하는 동안 v1.x 트랙 후보 (T9 closure note 인용):
 
 - `deletedBy` 컬럼 V10 마이그레이션 → §15.1 SQL 의존 제거.
-- `/admin/trash/policy` UI → cron 런타임 토글 (§15.4 의 재기동 의존 해소).
+- ~~`/admin/trash/policy` UI → cron 런타임 토글 (§15.4 의 재기동 의존 해소).~~ → **trash-retention-mutation (Phase A spec 2026-05-11, Phase B/C 별도 PR)**: V17 single-row 테이블 + PUT endpoint + frontend mutation editor로 무중단 변경 도입. 단일-approver MVP, dual-approval은 별도 framework 트랙.
 - 휴지통 bulk restore/purge → §15.2 단건 제약 해소.
 - 휴지통 날짜 범위 필터 + full path resolve → §15.1 운영자 식별 공수 축소.
 - T7 KPI 확장 (오늘 업로드/다운로드, 쿼터 알림, 비정상 패턴) → §15.5 일일 점검 자동화.
