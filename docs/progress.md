@@ -5,6 +5,69 @@
 
 ---
 
+## 2026-05-11 — 🎨 design-handoff G2~G5 closure (track 종료)
+
+### 범위
+
+Claude Design 핸드오프 (`q_E8bGXpCKkbcXTFb4TiTg`) 와 frontend 시각 fidelity gap-report (`dev/active/design-handoff-gap-report-2026-05-10.md`) 의 잔여 항목 G2~G5 정렬 + 트랙 closure.
+
+### 완료된 PR (이 세션 생성)
+
+| # | 제목 | 상태 |
+|---|---|---|
+| #172 | `feat(searchbar-kbd): platform별 kbd 칩 텍스트 분기 (⌘K / Ctrl K)` — #168 follow-up | CI green, OPEN |
+| #175 | `feat(design-handoff-g5): density 토글 (compact\|default\|comfortable)` | CI green, OPEN |
+| #177 | `feat(design-handoff-g4): FileTable 6열 + 체크박스/action 컬럼 시각화` | CI 진행, OPEN |
+| (본 PR) | `docs(design-handoff-g2-g5): track closure — gap-report 갱신 + progress.md` | - |
+
+### Closed (중복)
+
+- **PR #170** `feat(design-handoff-g3): SearchBar 중앙정렬 + ⌘K kbd 칩 + clear 버튼`
+  - 다른 세션이 #168에서 G2+G3+사이드바 collapse 동시 머지하여 중복 발생
+  - 차별점(kbd platform 분기)은 #172로 분리
+
+### gap-report 결과
+
+| Gap | 결과 | PR |
+|---|---|---|
+| G1 TopBar 48px | ✅ 머지 | #148 |
+| G2 TopBar 3-col grid + 햄버거 | ✅ 머지 (다른 세션) | #168 |
+| G3 SearchBar ⌘K + 폭 | ✅ 머지 / 진행 | #168 + #172 |
+| G4 FileTable 6열 | ✅ 진행 | #177 |
+| G5 row 34 + density 토글 | ✅ 머지 / 진행 | #148 + #175 |
+| G6 grid 172px | ✅ 머지 | #148 |
+| G7 mobile-view | ⏸ backlog | M-mobile (사내 데스크톱 메인 가정) |
+| G8 DropOverlay | ✅ 머지 | #148 (`166432b`) |
+| G9 statusbar | ✅ 변경 불필요 | — |
+
+**총 8/9 해결**, G7만 backlog 명시.
+
+### 핵심 결정
+
+- **D1 — density 우선순위**: `[data-density]` (사용자 명시) > `[data-variant]` default (시각 정체성). CSS cascade로 variant rules 뒤에 배치하여 override.
+- **D2 — ⌘K + `/` 공존**: muscle memory 보호 (현 `/` 단축키 유지) + 디자인 spec 따름 (⌘K/Ctrl+K 추가). editable target 가드 차이로 분리.
+- **D3 — kbd 칩 platform 분기**: 사내 Windows 다수 → `Ctrl K` 표시. macOS만 `⌘K`. navigator.platform 으로 분기 (#172).
+- **D4 — G7 backlog**: 사내 데스크톱 메인. mobile-view 우선순위 낮음 (사용자 확인).
+- **D5 — G4 액션 버튼 placeholder**: 메뉴 wiring (rename/move/share/delete 컨텍스트 메뉴) 은 v1.x 후속 PR. 본 PR은 layout fidelity 만.
+
+### 회고
+
+**좋았던 점:**
+- M4 selection store가 이미 wired 상태였음을 사전 점검으로 확인 → G4 scope이 visual layer 만으로 압축 (Plan A2 검증된 state-check-first pattern).
+- variant pattern(`lib/variant.ts` + `useVariant.ts` + FOUC inline script + TweaksPanel radio) 을 G5 density 에서 1:1 mirror → KISS + 검증 비용 최소화.
+
+**learning:**
+- **Co-session 충돌**: 세션 진행 중 다른 세션이 #167/#168/#171/#174/#176/#178 등 다수 머지. PR #170 (G2+G3) 이 #168 (G2+G3+sidebar) 와 완전 중복 → close 처리. 시작 시 state check 했으나 세션 중 master 이동 빈도가 컸음.
+- **PR 작성 후 즉시 mergeStateStatus 확인 필요** — 진행 중 다른 세션의 #168 이 같은 영역을 머지했음을 PR 생성 후에야 발견 (DIRTY 신호).
+
+### 다음 세션 컨텍스트
+
+- PR #172/#175/#177 머지 후 본 closure PR 머지 + gap-report 를 `dev/active/` → `dev/completed/` 이동.
+- G4 액션 버튼 메뉴 wiring 후속 PR (v1.x).
+- M-mobile 신설 시 G7 처리 — `[data-density="compact"]` cascade 와 통합 가능 여부 검토.
+
+---
+
 ## 2026-05-11 — 🧹 dev-active-archive sweep (design-topbar-sidebar-collapse + shortcut-cheatsheet)
 
 ### 범위
