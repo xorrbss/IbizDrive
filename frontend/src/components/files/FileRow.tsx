@@ -1,7 +1,7 @@
 // frontend/src/components/files/FileRow.tsx
 'use client'
 import { useDraggable } from '@dnd-kit/core'
-import { Check } from 'lucide-react'
+import { Check, Star, Lock, Users } from 'lucide-react'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
@@ -17,6 +17,8 @@ type Props = {
   isFocused: boolean
   isSelected: boolean
   isPending: boolean
+  /** RightPanel(`?file=`)에 현재 열려있는 행 — 좌측 2px accent inset border (zip styles.css `.tr.opened`). */
+  isOpened?: boolean
   onClick?: (item: FileItem, e: React.MouseEvent) => void
   onDoubleClick?: (item: FileItem) => void
   onKeyDown?: (e: React.KeyboardEvent) => void
@@ -46,6 +48,7 @@ export function FileRow({
   isFocused,
   isSelected,
   isPending,
+  isOpened = false,
   onClick,
   onDoubleClick,
   onKeyDown,
@@ -91,12 +94,19 @@ export function FileRow({
           : undefined
       : undefined
 
+  // zip styles.css `.tr` 사양:
+  //   - hover: bg-surface-2 (L631)
+  //   - selected: bg-accent-soft (L632) + dark theme color-mix accent 18% (L633, .row-selected via globals.css)
+  //   - selected:hover: color-mix accent 22% (L634)
+  //   - pending: opacity .55 (L638)
+  //   - opened (외부 prop): inset 2px 0 0 accent (L635, .row-opened via globals.css)
+  // transition은 background .08s (L627) — Tailwind `duration-[80ms]`로 통일.
   const stateClass = isPending
     ? 'opacity-55 cursor-not-allowed'
     : isDraggingThis
       ? 'opacity-40 cursor-grabbing'
       : isSelected
-        ? 'bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
+        ? 'row-selected bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
         : 'hover:bg-surface-2 cursor-default'
 
   const { Icon, className: iconClassName } = fileIconFor(item)
@@ -116,7 +126,9 @@ export function FileRow({
           : undefined
       }
       tabIndex={isFocused ? 0 : -1}
-      className={`${gridCols} h-[var(--row-h)] select-none border-b border-transparent text-[13px] text-fg transition-colors ${stateClass} ${dropClass}`}
+      className={`${gridCols} h-[var(--row-h)] select-none border-b border-transparent text-[13px] text-fg transition-[background-color] duration-[80ms] ${
+        isOpened ? 'row-opened' : ''
+      } ${stateClass} ${dropClass}`}
       title={dropTitle}
       onClick={(e) => {
         if (isPending) return
@@ -145,7 +157,7 @@ export function FileRow({
           }}
           className={`h-4 w-4 inline-flex items-center justify-center rounded border transition-colors ${
             isSelected
-              ? 'bg-accent border-accent text-accent-text'
+              ? 'bg-accent border-accent text-accent-fg'
               : 'border-border-strong bg-surface-1 hover:border-fg-muted'
           } ${isPending ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
         >
@@ -153,10 +165,43 @@ export function FileRow({
         </button>
       </span>
 
-      {/* 이름 셀: 아이콘 + 파일명 inline */}
+      {/* 이름 셀: 아이콘 + 파일명 + 배지(star/lock/share/itemsCount) inline.
+          zip components.jsx FileRow td-name 구조 답습. 데이터 미존재(undefined) 시 비표시.
+          백엔드 wiring은 v1.x (FileItem.starred/restricted/shareCount/itemsCount 참조). */}
       <span className="flex items-center gap-2 min-w-0" role="gridcell">
         <Icon size={16} className={`flex-shrink-0 ${iconClassName}`} aria-hidden />
         <span className="truncate font-medium text-fg">{item.name}</span>
+        {item.starred && (
+          <Star
+            size={11}
+            className="flex-shrink-0 text-warn fill-warn"
+            aria-label="즐겨찾기"
+          />
+        )}
+        {item.restricted && (
+          <Lock
+            size={11}
+            className="flex-shrink-0 text-fg-muted"
+            aria-label="권한 제한"
+          />
+        )}
+        {typeof item.shareCount === 'number' && item.shareCount > 1 && (
+          <span
+            className="flex-shrink-0 inline-flex items-center gap-0.5 text-[10.5px] text-fg-muted border border-border rounded-full px-1.5 py-0 tabular-nums"
+            aria-label={`${item.shareCount}명 공유`}
+          >
+            <Users size={10} aria-hidden />
+            <span>{item.shareCount}</span>
+          </span>
+        )}
+        {item.type === 'folder' && typeof item.itemsCount === 'number' && (
+          <span
+            className="flex-shrink-0 text-[11px] text-fg-subtle tabular-nums"
+            aria-label={`항목 ${item.itemsCount}개`}
+          >
+            {item.itemsCount}개
+          </span>
+        )}
       </span>
 
       <span className="text-right text-[12.5px] text-fg-muted tabular-nums" role="gridcell">

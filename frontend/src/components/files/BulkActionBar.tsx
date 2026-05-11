@@ -105,7 +105,7 @@ export function BulkActionBar() {
       role="toolbar"
       aria-label="선택 항목 액션"
       aria-live="polite"
-      className="sticky top-0 z-20 flex items-center justify-between gap-2 px-4 py-1.5 bg-accent-soft border-y border-border"
+      className="sticky top-0 z-20 flex items-center justify-between gap-2 px-4 py-1.5 bg-accent-soft border-y border-border anim-bulk-slide"
     >
       <div className="flex items-center gap-2.5">
         <span className="text-[12.5px] font-semibold text-accent">{count}개 선택</span>

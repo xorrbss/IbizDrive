@@ -57,7 +57,9 @@ export function FileTable({ folderId }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
   const router = useRouter()
   const ws = useCurrentWorkspace()
-  const { open: openFile } = useOpenFile()
+  // fileId — RightPanel(`?file=`)에 현재 열린 항목. FileRow/FileCard에 isOpened로 전달해
+  // 좌측 inset border(또는 grid의 accent ring) 시각 표시 (zip styles.css `.tr.opened`).
+  const { open: openFile, fileId: openedFileId } = useOpenFile()
   const { enqueue: enqueueUploads } = useUpload()
   const handleNativeDrop = useCallback(
     (files: File[]) => {
@@ -374,6 +376,7 @@ export function FileTable({ folderId }: Props) {
                     isFocused={focusedIndex === idx}
                     isSelected={selectedIds.has(item.id)}
                     isPending={pendingIds.has(item.id)}
+                    isOpened={openedFileId === item.id}
                     onClick={handleRowClick}
                     onDoubleClick={handleOpen}
                   />
@@ -434,6 +437,7 @@ export function FileTable({ folderId }: Props) {
                   isFocused={focusedIndex === virtualRow.index}
                   isSelected={selectedIds.has(item.id)}
                   isPending={pendingIds.has(item.id)}
+                  isOpened={openedFileId === item.id}
                   onClick={handleRowClick}
                   onDoubleClick={handleOpen}
                   onKeyDown={handleKeyDown}

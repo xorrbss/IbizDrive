@@ -143,6 +143,74 @@ describe('Breadcrumb (F5.3 folder share entry)', () => {
     expect(screen.getByText('내 드라이브')).toBeTruthy()
   })
 
+  // ============ design zip fidelity (Phase 2 sub-phase 1) ============
+  // 분리된 describe로 묶지 않고 동일 컨텍스트에서 검증 — workspace 컨텍스트가 동일.
+
+  // (1) segments 0개 = workspace landing redirect 직전 상태. Breadcrumb 자체는 isLoading false일 때만
+  // 렌더되므로 "breadcrumb 1개 (workspace root만)"를 minimum 케이스로 간주.
+  it('zip fidelity: 최소 breadcrumb(루트 1개) → 별 토글 미전달 시 별 버튼 비표시', () => {
+    ;(useCurrentFolder as ReturnType<typeof vi.fn>).mockReturnValue({
+      folderId: 'root-dept',
+      breadcrumb: [{ id: 'root-dept', name: '내 드라이브', slugPath: [] }],
+      isLoading: false,
+    })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue(ALL_FALSE)
+
+    const qc = new QueryClient()
+    render(<Breadcrumb />, { wrapper: wrap(qc) })
+    expect(screen.queryByRole('button', { name: /즐겨찾기/ })).toBeNull()
+  })
+
+  // (2) segments 2 + 별표 토글 없음 → chevron 1개, 별 버튼 비표시
+  it('zip fidelity: segments 2개 + onToggleStar 없음 → ChevronRight separator 1개, 별 버튼 비표시', () => {
+    ;(useCurrentFolder as ReturnType<typeof vi.fn>).mockReturnValue({
+      folderId: 'fld-2',
+      breadcrumb: [
+        { id: 'root-dept', name: 'workspace root', slugPath: [] },
+        { id: 'fld-2', name: '문서함', slugPath: ['mungseohan'] },
+      ],
+      isLoading: false,
+    })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue(ALL_FALSE)
+
+    const qc = new QueryClient()
+    const { container } = render(<Breadcrumb />, { wrapper: wrap(qc) })
+    // chevron separator: aria-hidden span 안의 lucide svg. displayCrumbs 2개 → separator 1개.
+    const separators = container.querySelectorAll('nav[aria-label="Breadcrumb"] span[aria-hidden]')
+    expect(separators.length).toBe(1)
+    expect(screen.queryByRole('button', { name: /즐겨찾기/ })).toBeNull()
+  })
+
+  // (3) segments 4 + 별표 토글 → 별 버튼 노출 + 클릭 시 onToggleStar 호출
+  it('zip fidelity: segments 4개 + isStarred=true + onToggleStar → 별 버튼 노출/aria-pressed/클릭 콜백', () => {
+    ;(useCurrentFolder as ReturnType<typeof vi.fn>).mockReturnValue({
+      folderId: 'fld-deep',
+      breadcrumb: [
+        { id: 'root-dept', name: 'workspace root', slugPath: [] },
+        { id: 'fld-1', name: '문서함', slugPath: ['mungseohan'] },
+        { id: 'fld-2', name: '2026', slugPath: ['mungseohan', '2026'] },
+        { id: 'fld-deep', name: 'Q2', slugPath: ['mungseohan', '2026', 'q2'] },
+      ],
+      isLoading: false,
+    })
+    ;(usePermission as ReturnType<typeof vi.fn>).mockReturnValue(ALL_FALSE)
+
+    const qc = new QueryClient()
+    const onToggle = vi.fn()
+    const { container } = render(
+      <Breadcrumb isStarred={true} onToggleStar={onToggle} />,
+      { wrapper: wrap(qc) },
+    )
+    // displayCrumbs 4개 → chevron separator 3개.
+    const separators = container.querySelectorAll('nav[aria-label="Breadcrumb"] span[aria-hidden]')
+    expect(separators.length).toBe(3)
+
+    const starBtn = screen.getByRole('button', { name: /Q2 즐겨찾기 해제/ })
+    expect(starBtn.getAttribute('aria-pressed')).toBe('true')
+    fireEvent.click(starBtn)
+    expect(onToggle).toHaveBeenCalledTimes(1)
+  })
+
   // 회귀 가드: workspace pivot 이후 backend breadcrumb은 workspace root부터 시작.
   // 기존 코드 `breadcrumb.slice(1)`은 root id를 두 번 포함시켜 React key 중복 warning을 일으켰다.
   // headCrumb.id 기반 filter로 root entry를 명시적으로 제거해야 한다.

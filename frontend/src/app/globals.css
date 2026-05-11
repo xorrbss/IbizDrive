@@ -87,6 +87,9 @@
   --color-accent-hover: var(--accent-hover);
   --color-accent-soft: var(--accent-soft);
   --color-accent-text: var(--accent-text);
+  /* alias: bg-accent + text-accent-fg pairing (semantic foreground name)
+     동일 변수(--accent-text)를 가리키지만 사용처에서 의미 명확성을 위해 별도 토큰 노출 */
+  --color-accent-fg: var(--accent-text);
   --color-danger: var(--danger);
   --color-warn: var(--warn);
   --color-success: var(--success);
@@ -179,6 +182,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* FileRow `opened` 상태 — RightPanel(?file=)에 열린 행 좌측 2px inset accent border.
+   원본: design-zip styles.css `.tr.opened { box-shadow: inset 2px 0 0 var(--accent); }`.
+   Tailwind arbitrary value(`shadow-[inset_2px_...]`)로 표현 가능하나 selected drop-over 등
+   다른 box-shadow와 cascade 충돌 없이 단일 책임 클래스로 분리 (KISS, transition 통일).
+   transition은 selected/hover와 동일한 background 단축 — 별도 box-shadow transition 불필요. */
+.row-opened { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* FileRow selected dark theme — zip styles.css L633.
+   light: accent-soft, dark: color-mix(in oklch, var(--accent) 18%, transparent).
+   Tailwind 유틸로 분기 어려워 [data-theme] selector 직접 사용. */
+[data-theme="dark"] .row-selected { background: color-mix(in oklch, var(--accent) 18%, transparent); }
+[data-theme="dark"] .row-selected:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
+
 /* 포커스 링 — 모든 interactive 기본값
    개별 컴포넌트가 outline:none을 주지 않는 한 가시성 유지 */
 button:focus-visible,
@@ -190,6 +206,37 @@ select:focus-visible,
 textarea:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* ==============================================================
+   Animation 키프레임 (modal / bulk action bar)
+   원본: design-zip styles.css
+     L544 @keyframes bulkSlide  (translateY -4px → 0, .18s ease-out)
+     L1158 @keyframes modalBg   (opacity 0 → 1, .15s)
+     L1170 @keyframes modalPop  (scale .96 → 1, .18s cubic-bezier(.2,.9,.4,1))
+   Tailwind arbitrary value(`animate-[...]`) 로 표현 가능하나 cubic-bezier 인자에
+   콤마가 들어가 클래스명 파싱이 깨지는 이슈가 있어 globals 키프레임 + 헬퍼 클래스로
+   노출 (KISS, 한 곳에서 duration/curve 관리). 사용처:
+   - .anim-modal-bg : UploadConflictDialog / 후속 모달 backdrop fade
+   - .anim-modal-pop: 동 모달 dialog scale-in
+   - .anim-bulk-slide: BulkActionBar 진입 slide
+   ============================================================== */
+@keyframes modalBg { from { opacity: 0; } to { opacity: 1; } }
+@keyframes modalPop {
+  from { transform: scale(0.96); opacity: 0; }
+  to { transform: scale(1); opacity: 1; }
+}
+@keyframes bulkSlide {
+  from { transform: translateY(-4px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+.anim-modal-bg  { animation: modalBg .15s; }
+.anim-modal-pop { animation: modalPop .18s cubic-bezier(.2, .9, .4, 1); }
+.anim-bulk-slide { animation: bulkSlide .18s ease-out; }
+
+/* prefers-reduced-motion 안전장치 — 키프레임 무효화 (즉시 표시) */
+@media (prefers-reduced-motion: reduce) {
+  .anim-modal-bg, .anim-modal-pop, .anim-bulk-slide { animation: none; }
 }
 
 /* 스크롤바 (webkit) — 디자인 원본 따름 */
