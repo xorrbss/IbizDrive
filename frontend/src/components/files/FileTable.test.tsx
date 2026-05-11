@@ -7,6 +7,7 @@ import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useViewParam } from '@/hooks/useViewParam'
 import { useSortParams } from '@/hooks/useSortParams'
 import { useGridColumns } from '@/hooks/useGridColumns'
+import { useSelectionStore } from '@/stores/selection'
 import type { FileItem } from '@/types/file'
 
 vi.mock('next/navigation', () => ({
@@ -117,6 +118,41 @@ describe('FileTable view 분기 (M16.2)', () => {
     render(wrap(<FileTable folderId="root" />))
     const grid = screen.getByRole('grid', { name: '파일 그리드' })
     expect(grid.getAttribute('data-grid-virtual')).toBe('true')
+  })
+})
+
+// ─── 디자인 핸드오프 G4 — FileTable 6열 (체크박스 + action col) ───
+describe('FileTable G4 — 6열 체크박스/action 시각화', () => {
+  beforeEach(() => {
+    // selection store 격리
+    useSelectionStore.setState({
+      ids: new Set(),
+      lastClickedId: null,
+      pendingIds: new Set(),
+    })
+    vi.mocked(useViewParam).mockReturnValue({ view: 'list', setView: vi.fn() })
+  })
+
+  it('row 당 checkbox 버튼 노출 (aria-checked + name 라벨)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const cb1 = screen.getByRole('checkbox', { name: 'a.pdf 선택' })
+    const cb2 = screen.getByRole('checkbox', { name: 'b.txt 선택' })
+    expect(cb1.getAttribute('aria-checked')).toBe('false')
+    expect(cb2.getAttribute('aria-checked')).toBe('false')
+  })
+
+  it('checkbox 클릭 시 selection store 토글', () => {
+    render(wrap(<FileTable folderId="root" />))
+    const cb1 = screen.getByRole('checkbox', { name: 'a.pdf 선택' })
+    fireEvent.click(cb1)
+    expect(useSelectionStore.getState().ids.has('f1')).toBe(true)
+    fireEvent.click(cb1)
+    expect(useSelectionStore.getState().ids.has('f1')).toBe(false)
+  })
+
+  it('row 당 "더 보기" 버튼 노출 (액션 컬럼 layout placeholder)', () => {
+    render(wrap(<FileTable folderId="root" />))
+    expect(screen.getAllByRole('button', { name: '더 보기' })).toHaveLength(2)
   })
 })
 
