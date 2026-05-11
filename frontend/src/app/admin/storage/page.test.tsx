@@ -89,4 +89,29 @@ describe('AdminStoragePage', () => {
     wrap(<AdminStoragePage />)
     expect(screen.getByRole('heading', { level: 1, name: /스토리지/ })).toBeTruthy()
   })
+
+  it('성공 시 정리 기록 / 부서별 저장공간 위젯 + v1.x callout 노출', () => {
+    hookState = { isLoading: false, isError: false, data: RESPONSE }
+    wrap(<AdminStoragePage />)
+    // SectionCard 타이틀 — 위젯 2종
+    expect(screen.getByRole('heading', { level: 2, name: '정리 기록' })).toBeTruthy()
+    expect(screen.getByRole('heading', { level: 2, name: '부서별 저장공간' })).toBeTruthy()
+    // CleanupList aria-label
+    expect(screen.getByLabelText('정리 기록')).toBeTruthy()
+    expect(screen.getByLabelText('정리 합계')).toBeTruthy()
+    // 부서별 사용량 — 8건 mock (ADMIN_DEPARTMENTS 전체)
+    expect(screen.getByText('8개 부서')).toBeTruthy()
+    expect(screen.getByText('엔지니어링')).toBeTruthy()
+    expect(screen.getByText('법무')).toBeTruthy()
+    // v1.x callout
+    expect(screen.getByLabelText('storage-mock')).toBeTruthy()
+  })
+
+  it('loading/error 상태에서도 위젯/callout 마운트 유지 (실시간 데이터 영역만 분기)', () => {
+    hookState = { isLoading: true, isError: false }
+    wrap(<AdminStoragePage />)
+    // 위젯은 hook 상태와 독립적으로 mock 데이터 렌더
+    expect(screen.getByRole('heading', { level: 2, name: '정리 기록' })).toBeTruthy()
+    expect(screen.getByLabelText('storage-mock')).toBeTruthy()
+  })
 })
