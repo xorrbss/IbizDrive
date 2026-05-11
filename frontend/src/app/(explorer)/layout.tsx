@@ -1,3 +1,4 @@
+'use client'
 import { Suspense } from 'react'
 import { SidebarSections } from '@/components/sidebar/SidebarSections'
 import { TrashLink } from '@/components/trash/TrashLink'
@@ -8,29 +9,39 @@ import { StatusBar } from '@/components/statusbar/StatusBar'
 import { StorageBar } from '@/components/storage/StorageBar'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { UserMenu } from '@/components/auth/UserMenu'
+import { useSidebarChromeStore } from '@/stores/sidebarChrome'
 
 export default function ExplorerLayout({ children }: { children: React.ReactNode }) {
+  // 사이드바 collapse — chrome 토글. 폭은 transition으로 부드럽게 전환, 내부 콘텐츠는
+  // overflow-hidden로 잘림 처리 + aria-hidden로 SR이 collapsed 상태에서 트리를 읽지 않게 함.
+  const collapsed = useSidebarChromeStore((s) => s.collapsed)
+
   return (
     <AuthGuard>
       <DndProvider>
         <div className="flex h-screen w-screen bg-bg text-fg overflow-hidden">
           <aside
             aria-label="사이드바"
-            className="w-[248px] shrink-0 bg-surface-1 border-r border-border flex flex-col gap-1 overflow-y-auto p-2.5"
+            aria-hidden={collapsed}
+            className={`shrink-0 bg-surface-1 border-r border-border flex flex-col gap-1 overflow-hidden transition-[width] duration-200 ease-out ${
+              collapsed ? 'w-0 border-r-0' : 'w-[248px]'
+            }`}
           >
-            <div className="flex items-center gap-2 px-2 pt-1 pb-3">
-              <span
-                aria-hidden
-                className="w-[22px] h-[22px] rounded-sm bg-accent inline-block"
-              />
-              <span className="text-[14px] font-semibold tracking-tight text-fg">IbizDrive</span>
-            </div>
-            <SidebarSections />
-            <div className="mt-auto pt-2 border-t border-border">
-              <SharesLink />
-              <TrashLink />
-              <StorageBar />
-              <UserMenu />
+            <div className="w-[248px] flex flex-col gap-1 overflow-y-auto p-2.5 flex-1">
+              <div className="flex items-center gap-2 px-2 pt-1 pb-3">
+                <span
+                  aria-hidden
+                  className="w-[22px] h-[22px] rounded-sm bg-accent inline-block"
+                />
+                <span className="text-[14px] font-semibold tracking-tight text-fg">IbizDrive</span>
+              </div>
+              <SidebarSections />
+              <div className="mt-auto pt-2 border-t border-border">
+                <SharesLink />
+                <TrashLink />
+                <StorageBar />
+                <UserMenu />
+              </div>
             </div>
           </aside>
           <main className="flex-1 min-w-0 flex flex-col bg-bg overflow-hidden">
