@@ -2,13 +2,15 @@
 import Link from 'next/link'
 import { useAdminTrashPolicy } from '@/hooks/useAdminTrashPolicy'
 import { AdminGuard } from '@/components/auth/AdminGuard'
+import { RetentionPolicyEditor } from '@/components/admin/RetentionPolicyEditor'
 
 /**
- * /admin/trash/policy — 휴지통 보존 정책 read-only viewer
- * (wave2-trash-policy-viewer, Wave 2 T9 follow-up).
+ * /admin/retention — 휴지통 보존 정책 viewer + mutation editor
+ * (wave2-trash-policy-viewer + trash-retention-mutation Phase C).
  *
- * <p>현재 보존 일수(`app.trash.retention.days`, default 30) 단일 카드 + 변경 절차 안내.
- * mutation은 v1.x deferred — 운영자는 `application.yml` 수정 + 재기동으로 변경.
+ * <p>현재 보존 일수(V17 `trash_policy.retention_days`) 카드 + mutation editor + cron cross-link.
+ * mutation은 단일-approver MVP — 단일 ADMIN 즉시 적용. 변경은 신규 soft-delete만 적용
+ * (기존 trash row의 `purge_after`는 재계산 안 함, 일수 감소 시 hard purge 폭증 회피).
  *
  * <p>cron 운영 상태(enabled/cron/zone)는 `/admin/system`이 진실의 출처라 본 페이지는
  * cross-link만 제공하고 직접 노출하지 않는다 (admin-cron-toggle 트랙과 분리).
@@ -32,8 +34,9 @@ function PolicyPageBody() {
       <header>
         <h1 className="text-lg font-semibold">휴지통 보존 정책</h1>
         <p className="text-[12px] text-fg-2 mt-1">
-          현재 적용 중인 휴지통 보존 일수와 변경 절차를 안내합니다. 변경은
-          관리자 yml 수정 + 재기동이 필요합니다 (무중단 변경은 v1.x 예정).
+          현재 적용 중인 휴지통 보존 일수를 확인하고 변경할 수 있습니다. 변경은
+          단일 ADMIN 즉시 적용되며 신규 삭제부터 새 일수가 적용됩니다 (기존 휴지통
+          항목의 영구 삭제일은 변경되지 않음).
         </p>
       </header>
 
@@ -46,21 +49,25 @@ function PolicyPageBody() {
       )}
 
       {data && (
-        <section
-          aria-labelledby="retention-heading"
-          className="rounded border border-border p-4 space-y-2 max-w-md"
-        >
-          <h2 id="retention-heading" className="text-sm font-medium text-fg-2">
-            보존 기간
-          </h2>
-          <p className="tabular-nums text-2xl font-semibold">
-            {data.retentionDays}
-            <span className="text-base font-normal text-fg-2 ml-1">일</span>
-          </p>
-          <p className="text-[12px] text-fg-2">
-            soft-delete 시점 기준. 이 기간이 지난 항목은 hard purge cron의 삭제 후보가 됩니다.
-          </p>
-        </section>
+        <>
+          <section
+            aria-labelledby="retention-heading"
+            className="rounded border border-border p-4 space-y-2 max-w-md"
+          >
+            <h2 id="retention-heading" className="text-sm font-medium text-fg-2">
+              현재 보존 기간
+            </h2>
+            <p className="tabular-nums text-2xl font-semibold">
+              {data.retentionDays}
+              <span className="text-base font-normal text-fg-2 ml-1">일</span>
+            </p>
+            <p className="text-[12px] text-fg-2">
+              soft-delete 시점 기준. 이 기간이 지난 항목은 hard purge cron의 삭제 후보가 됩니다.
+            </p>
+          </section>
+
+          <RetentionPolicyEditor currentDays={data.retentionDays} />
+        </>
       )}
 
       <section
@@ -82,27 +89,16 @@ function PolicyPageBody() {
       </section>
 
       <section
-        aria-labelledby="change-heading"
+        aria-labelledby="approval-heading"
         className="rounded border border-border p-4 space-y-2 max-w-md"
       >
-        <h2 id="change-heading" className="text-sm font-medium text-fg-2">
-          보존 일수 변경 방법
+        <h2 id="approval-heading" className="text-sm font-medium text-fg-2">
+          2인 승인
         </h2>
-        <ol className="list-decimal pl-5 space-y-1 text-[13px] text-fg-2">
-          <li>
-            <code className="bg-bg-2 px-1 rounded">application.yml</code> 의{' '}
-            <code className="bg-bg-2 px-1 rounded">app.trash.retention.days</code> 값 변경
-          </li>
-          <li>backend 재기동 (1회) — Spring `@ConfigurationProperties` 부팅 시 바인딩</li>
-          <li>본 페이지로 돌아와 변경된 값 확인</li>
-        </ol>
         <p className="text-[12px] text-fg-2">
-          0/음수 입력은 default 30으로 보정됩니다 (즉시 hard purge 사고 방지).
-        </p>
-        <p className="text-[12px] text-fg-2 border-t border-border pt-2 mt-2">
-          v1.x 무중단 변경(<code className="bg-bg-2 px-1 rounded">PUT /api/admin/trash/policy</code>)
-          도입 시 <strong>2인 승인(dual-approval)</strong> workflow 적용 예정 — 일수 감소로
-          인한 hard purge 폭증을 방지하기 위함입니다 (운영 런북 docs/04 §15.4).
+          현재는 단일 ADMIN 즉시 적용. v1.x++에서 <strong>2인 승인(dual-approval)</strong>{' '}
+          workflow가 도입되면 본 endpoint(<code className="bg-bg-2 px-1 rounded">PUT /api/admin/trash/policy</code>)
+          가 hook point가 됩니다 (운영 런북 docs/04 §15.4).
         </p>
       </section>
     </div>
