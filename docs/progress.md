@@ -5,7 +5,6 @@
 
 ---
 
-<<<<<<< HEAD
 ## 2026-05-11 — 🎨 design-handoff G2~G5 closure (track 종료)
 
 ### 범위
