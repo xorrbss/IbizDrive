@@ -5,6 +5,32 @@
 
 ---
 
+## 2026-05-11 — 🧹 dev-active-archive sweep (design-topbar-sidebar-collapse + shortcut-cheatsheet)
+
+### 범위
+
+PR #168(design-fidelity G2/G3 + sidebar collapse) + PR #171(shortcut-cheatsheet `?` 모달) 머지 후 잔존하던 dev-docs 2건을 `dev/active/` → `dev/completed/`로 이동. plan front matter `status: in_progress` → `completed` + `merged: PR #...` 마커. 코드 0줄.
+
+본 closure에 포함되지 않은 잔존:
+- `dev/active/design-handoff-gap-report-2026-05-10.md` — 단일 doc gap report, active 유지 (PR #166 결정 동형). G7 항목은 사내 데스크탑 메인 가정으로 폐기됨(사용자 결정).
+- `dev/active/trash-retention-mutation/` — Phase B/C 머지 후 closure는 별도 co-session 트랙에 위임.
+
+### 변경
+
+- `dev/active/design-topbar-sidebar-collapse/` → `dev/completed/` (plan status `completed` + 결과 마커).
+- `dev/active/shortcut-cheatsheet/` → `dev/completed/` (plan status `completed` + `merged: PR #171, 후속 PR #174` 마커).
+
+### 검증
+
+- 코드 0줄 — typecheck/lint/test 무관.
+- `git diff --stat` rename only.
+
+### 트랙 외 (사용자 결정)
+
+- **G7 mobile-view 폐기** — 사내 데스크탑 메인 가정. 자율 모드 후보 표에서 제외 (메모리 `project_no_mobile_support` 기록).
+
+---
+
 ## 2026-05-11 — ♻️ shortcuts-data-tokenize (cheat sheet 데이터 single source 추출)
 
 ### 범위

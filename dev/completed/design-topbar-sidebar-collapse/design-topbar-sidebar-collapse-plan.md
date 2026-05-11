@@ -1,11 +1,14 @@
 ---
 task: design fidelity G2/G3 — TopBar 3-col grid + 사이드바 collapse + ⌘K
-status: in_progress
+status: completed
 created: 2026-05-11
+completed: 2026-05-11
+merged: PR #168
 gap_report: dev/active/design-handoff-gap-report-2026-05-10.md (G2, G3)
 spec: docs/01-frontend-design.md §2 (사이드바), §10 (검색), §17 (라우팅/layout)
 branch: feat/design-topbar-3col-sidebar-collapse
-worktree: C:/project/IbizDrive/.claude/worktrees/design-topbar-sidebar
+worktree: C:/project/IbizDrive/.claude/worktrees/design-topbar-sidebar (제거됨)
+result: vitest 174 file / 1264/1264 PASS, 신규/보강 14건, typecheck/lint exit 0
 ---
 
 # Plan — Design Fidelity G2/G3 + Sidebar Collapse
