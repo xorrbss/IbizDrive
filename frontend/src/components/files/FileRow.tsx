@@ -1,17 +1,19 @@
 // frontend/src/components/files/FileRow.tsx
 'use client'
 import { useDraggable } from '@dnd-kit/core'
-import { MoreHorizontal, Check } from 'lucide-react'
+import { Check } from 'lucide-react'
 import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
 import { useSelectionStore } from '@/stores/selection'
 import { fileIconFor } from '@/lib/fileIcon'
+import { FileRowActionMenu } from './FileRowActionMenu'
 import type { FileItem } from '@/types/file'
 
 type Props = {
   item: FileItem
   rowIndex: number
+  folderId: string
   isFocused: boolean
   isSelected: boolean
   isPending: boolean
@@ -40,6 +42,7 @@ function formatDate(iso: string): string {
 export function FileRow({
   item,
   rowIndex,
+  folderId,
   isFocused,
   isSelected,
   isPending,
@@ -175,23 +178,9 @@ export function FileRow({
         <span className="truncate">{item.updatedBy}</span>
       </span>
 
-      {/* 액션 버튼 — 디자인 핸드오프 G4 layout placeholder. 클릭 시 컨텍스트 메뉴(rename/move/share/delete)
-          연결은 v1.x 후속 PR. 현재는 propagation만 차단해 row 클릭과 분리. */}
+      {/* 액션 메뉴 — G4 follow-up. 5개 액션(다운로드/이동/이름 변경/공유/휴지통) + 권한 게이트. */}
       <span className="flex items-center justify-center" role="gridcell">
-        <button
-          type="button"
-          aria-label="더 보기"
-          disabled={isPending}
-          tabIndex={-1}
-          onClick={(e) => {
-            e.stopPropagation()
-          }}
-          className={`h-7 w-7 inline-flex items-center justify-center rounded text-fg-muted hover:bg-surface-3 hover:text-fg ${
-            isPending ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'
-          }`}
-        >
-          <MoreHorizontal size={14} aria-hidden />
-        </button>
+        <FileRowActionMenu item={item} folderId={folderId} isPending={isPending} />
       </span>
     </div>
   )
