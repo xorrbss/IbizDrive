@@ -37,10 +37,13 @@
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
 | **Quota mutation Phase 4~5** | M | 없음 (Phase 1+2+3 완료 #185/#186/본 트랙) | BETA §7 / progress.md 2026-05-12 | 2개 PR 분할: Phase 4 frontend UI (single-row inline editor) / Phase 5 enforcement(upload `413 QUOTA_EXCEEDED` + `UPDATE storage_used FOR UPDATE`) |
-| **Admin Sharing 페이지 (디자인 zip P1)** | M | 없음 (placeholder #896 + 디자인 핸드오프 admin.jsx L582~706) | `IbizDrive_design.zip` admin.jsx §AdminSharing / sharing/page.tsx | 외부 도메인 정책 + 플래그된 공유 검토 큐 + 도메인 allow/block. 컴포넌트 ~400줄 + backend sharing policy endpoint 3종 신규 + audit emit 신규 enum |
-| **Admin Overview 위젯 보강 (디자인 zip P2)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L98~182 | UploadChart / FlagRow / DeptRow 위젯 3종 추가. KPI 카드 + DashboardSummary 컴포넌트는 이미 존재 |
-| **Admin Storage cleanup-list 위젯 (디자인 zip P2)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L448~517 | 정리 기록 위젯 추가. 기본 StorageOverviewCards/DeptRow는 이미 존재 |
-| **Admin Retention/Audit 스타일 보강 (디자인 zip P3)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L711~782 + L862~922 | LegalRow/legal-list 스타일 (retention) + SeverityTab 필터/audit-stream 가시화 (audit). 기능은 동작, 스타일 fidelity gap만 |
+| ~~Admin Sharing 페이지 (디자인 zip P1)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — frontend visual fidelity 완료, backend endpoint는 별도 v1.x 트랙 |
+| ~~Admin Overview 위젯 보강 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — UploadChart / FlagRow / DeptRow / audit-mini 추가 |
+| ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |
+| ~~Admin Retention/Audit 스타일 보강 (디자인 zip P3)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — LegalHoldList(mock) + SeverityTabs/AuditStream + DashboardKpiCard delta/tone/progress |
+| 잔여 admin 페이지 admin-grid 재구성 (디자인 zip follow-up) | M | 없음 | design-sweep-phase-3 종료 후 잔여 | members/departments/permissions/teams/system/trash 페이지 — admin chrome(AdminTopHeader/TabBar) 안에서 정상 동작이나 admin-grid 레이아웃 재구성은 별도 트랙. fidelity sweep을 넘는 rebuild 수준 |
+| Audit severity backend 컬럼 | S | spec | design-sweep-phase-3 종료 후 잔여 | 현재 `auditSeverity.severityOf` frontend mapping. backend `audit_log.severity` enum 컬럼 추가 시 hook point 교체 |
+| DashboardKpiCard delta 데이터 wiring | S | backend | design-sweep-phase-3 종료 후 잔여 | UI 준비 완료(PR #200). `AdminDashboardSummary.users.delta` 등 backend 컬럼 추가 시 즉시 시각화 |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |
 | **Admin Grant Phase C/D** | M | 없음 (Phase A/B 완료 #157, 진입점 #193) | BETA §7 / docs/01 §14.5 | USER/DEPT picker 컴포넌트 + ResourcePermissionsList 통합 + grant audit emit |
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |
