@@ -208,8 +208,8 @@ audit 분리 이유: deactivated는 제재 의미를 가지므로 별도 enum으
 
 **5-phase plan**:
 
-1. **Phase 1 (본 PR)** — spec drift 정정. `docs/02 §2.1` schema 두 라인에 V18 미도입 callout, `docs/04 §6.1` 잘못된 "quota_bytes" 컬럼명 정정 + 단계 plan 통일.
-2. **Phase 2** — `V18__user_storage_quota.sql`: `ALTER TABLE users ADD storage_quota BIGINT NOT NULL DEFAULT 10737418240, storage_used BIGINT NOT NULL DEFAULT 0`. 기존 row backfill 자동 (DEFAULT).
+1. **Phase 1 (완료, #185 2026-05-11)** — spec drift 정정. `docs/02 §2.1` schema 두 라인에 V18 미도입 callout, `docs/04 §6.1` 잘못된 "quota_bytes" 컬럼명 정정 + 단계 plan 통일.
+2. **Phase 2 (본 PR)** — `V18__user_storage_quota.sql`: `ALTER TABLE users ADD storage_quota BIGINT NOT NULL DEFAULT 10737418240, storage_used BIGINT NOT NULL DEFAULT 0` + named `CHECK (>= 0)` non-negative 제약. 기존 row backfill 자동 (DEFAULT). JPA entity 매핑 무 — Hibernate `ddl-auto: validate`의 extra column 허용으로 부팅 통과 (Phase 3 entity 매핑까지 read 미사용 → noise zero).
 3. **Phase 3** — backend: `AdminUserQuotaService` + `PUT /api/admin/users/{id}/quota` (admin only) + `AuditEventType.USER_QUOTA_UPDATED` + listener. slice test + service test.
 4. **Phase 4** — frontend: `/admin/members` quota 컬럼 또는 별도 `/admin/quota` 페이지 — single-row inline editor (trash-retention-mutation `RetentionPolicyEditor` 패턴). `useUpdateAdminUserQuota` hook + `api.getStorageQuota` mock 제거 + 실 endpoint 호출.
 5. **Phase 5** — enforcement: upload path (`FileUploadController.create`, `FileVersionService.create`, tus init) 진입에서 `users.storage_used + payload.size > storage_quota` 검증 → `413 QUOTA_EXCEEDED`. 성공 시 `UPDATE users SET storage_used = storage_used + size WHERE id = ?` 트랜잭션 (CLAUDE.md §3 원칙 7 `FOR UPDATE`).

@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-11 — quota-phase2-v18-migration (Phase 2: schema-only)
+
+### 범위
+
+quota mutation 5-phase track의 Phase 2 — `users` 테이블에 `storage_quota` / `storage_used` 컬럼을 V18로 활성. JPA entity 매핑 / endpoint / audit / enforcement는 Phase 3~5로 분리. schema-only 단일 SQL + 2 docs callout 갱신.
+
+### 변경
+
+- `backend/src/main/resources/db/migration/V18__user_storage_quota.sql` 신설:
+  - `ALTER TABLE users ADD COLUMN storage_quota BIGINT NOT NULL DEFAULT 10737418240, ADD COLUMN storage_used BIGINT NOT NULL DEFAULT 0`
+  - named CHECK constraint `users_storage_quota_nonneg` / `users_storage_used_nonneg` (>= 0 보호. soft limit `used <= quota`는 Phase 5 application 레벨에서 — quota 변경/grace 운영 유연성)
+  - 컬럼 COMMENT 2건
+- `docs/02 §2.1` 두 라인 callout 갱신: "V18 미도입 예정" → "V18 도입(2026-05-11), CHECK (>=0)".
+- `docs/04 §6.1` 5-phase plan: Phase 1 → "(완료, #185 2026-05-11)", Phase 2 → "(본 PR)" + extra column 허용 사유 명기.
+
+### 검증
+
+- Hibernate `spring.jpa.hibernate.ddl-auto: validate` (`application.yml:13`) — schema의 extra column 허용. User entity는 storage_quota/used 미매핑이므로 V18 후에도 부팅 통과.
+- UserRepository derived query는 quota 무관 (countBy/findBy email/role/dept 기반) — 영향 zero.
+- 본 PR은 backend 코드 변경 zero → vitest/eslint/tsc 영향 zero. CI 검증은 backend (junit) Testcontainers slice가 V18 적용 후 schema validate 통과 여부 (메모리 *Local Docker-skip CI gap* — local에서 SKIPPED → CI 결과 의존).
+
+### 결정/편차
+
+- **JPA entity 매핑 미동반** — Phase 3 service 추가 시점에 함께. KISS + YAGNI. validate mode가 extra column 허용하므로 단계 분리 안전.
+- **soft limit CHECK 미도입** — `used <= quota`는 application 레벨 (Phase 5). 한도 변경 / 운영 grace 시 일시적 over-quota 허용 필요.
+- **Phase 3 진입 의무 없음** — 5-phase 분할은 각 단계 독립 closure. v1.x 다른 backlog로 자유 pivot.
+
+### 다음 세션 컨텍스트
+
+- **Phase 3** — `AdminUserQuotaService` (Spring service) + `PUT /api/admin/users/{id}/quota` endpoint + `AdminUserQuotaController` + `AuditEventType.USER_QUOTA_UPDATED` + `UserQuotaAuditListener`. User entity에 `storage_quota` / `storage_used` 필드 매핑 + getter/changeQuota domain method. slice + service 테스트 (admin-trash-policy 패턴).
+- v1.x backlog 잔여: 2인 승인 framework (ADR #47) / progress streaming SSE / quota Phase 3~5 / admin/permissions 전역 grant resource picker.
+
+---
+
 ## 2026-05-11 — quota-spec-drift-realign (Phase 1: docs-only)
 
 ### 범위
