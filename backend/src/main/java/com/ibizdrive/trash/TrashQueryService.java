@@ -17,7 +17,11 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -112,26 +116,41 @@ public class TrashQueryService {
         // T1 repo wire 계약 — ScopeType.name() 대문자가 들어가지 않도록 dbValue() 사용 (Javadoc 참조).
         String scopeTypeRaw = scopeType.dbValue();
 
-        List<TrashItemDto> merged = new ArrayList<>(fetchSize * 2);
-        if (type == null || type == TrashItemType.FILE) {
-            for (FileItem f : fileRepository.findTrashedPageByScope(
-                scopeTypeRaw, scopeId, cursorAt, cursorId, fetchSize
-            )) {
-                merged.add(new TrashItemDto(
-                    f.getId(), f.getName(), TrashItemType.FILE,
-                    f.getDeletedAt(), f.getPurgeAfter(), f.getOriginalFolderId()
-                ));
-            }
+        List<FileItem> files = (type == null || type == TrashItemType.FILE)
+            ? fileRepository.findTrashedPageByScope(scopeTypeRaw, scopeId, cursorAt, cursorId, fetchSize)
+            : List.of();
+        List<Folder> folders = (type == null || type == TrashItemType.FOLDER)
+            ? folderRepository.findTrashedPageByScope(scopeTypeRaw, scopeId, cursorAt, cursorId, fetchSize)
+            : List.of();
+
+        // 원위치 path batch 조회 — file/folder 양쪽의 NOT NULL parent id 모두 합쳐 1회 CTE로 해소.
+        // 빈 set은 short-circuit (Postgres IN ()는 문법 오류). page 한도 100 row, parent 평균 1개
+        // 가정이라 batch 비용 작음. admin trash와 동일 source 사용.
+        Set<UUID> parentIds = new HashSet<>();
+        for (FileItem f : files) {
+            if (f.getOriginalFolderId() != null) parentIds.add(f.getOriginalFolderId());
         }
-        if (type == null || type == TrashItemType.FOLDER) {
-            for (Folder fd : folderRepository.findTrashedPageByScope(
-                scopeTypeRaw, scopeId, cursorAt, cursorId, fetchSize
-            )) {
-                merged.add(new TrashItemDto(
-                    fd.getId(), fd.getName(), TrashItemType.FOLDER,
-                    fd.getDeletedAt(), fd.getPurgeAfter(), fd.getOriginalParentId()
-                ));
-            }
+        for (Folder fd : folders) {
+            if (fd.getOriginalParentId() != null) parentIds.add(fd.getOriginalParentId());
+        }
+        Map<UUID, String> parentPathById = parentPathsFor(parentIds);
+
+        List<TrashItemDto> merged = new ArrayList<>(fetchSize * 2);
+        for (FileItem f : files) {
+            UUID pid = f.getOriginalFolderId();
+            merged.add(new TrashItemDto(
+                f.getId(), f.getName(), TrashItemType.FILE,
+                f.getDeletedAt(), f.getPurgeAfter(), pid,
+                pid != null ? parentPathById.get(pid) : null
+            ));
+        }
+        for (Folder fd : folders) {
+            UUID pid = fd.getOriginalParentId();
+            merged.add(new TrashItemDto(
+                fd.getId(), fd.getName(), TrashItemType.FOLDER,
+                fd.getDeletedAt(), fd.getPurgeAfter(), pid,
+                pid != null ? parentPathById.get(pid) : null
+            ));
         }
 
         // 정렬: deletedAt DESC, id DESC — repo 정렬과 동일 키
@@ -186,5 +205,19 @@ public class TrashQueryService {
             return DEFAULT_LIMIT;
         }
         return Math.min(requested, MAX_LIMIT);
+    }
+
+    /**
+     * 원위치 부모 폴더의 절대 경로 batch lookup — admin trash와 동일 source
+     * ({@link FolderRepository#findAncestorPaths}). 빈 입력은 short-circuit. 결과 누락 시
+     * map에 없으며 호출자는 NULL로 폴백 — frontend가 "원위치 미상" 표시로 처리.
+     */
+    private Map<UUID, String> parentPathsFor(Set<UUID> parentIds) {
+        if (parentIds.isEmpty()) return Map.of();
+        Map<UUID, String> paths = new HashMap<>(parentIds.size());
+        for (Object[] row : folderRepository.findAncestorPaths(parentIds)) {
+            paths.put((UUID) row[0], (String) row[1]);
+        }
+        return paths;
     }
 }

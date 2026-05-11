@@ -23,6 +23,50 @@
 
 ---
 
+## 2026-05-11 — 🚀 v1.0.0-beta 출시 readiness 확정 (BETA-RELEASE.md sync, PR #188)
+
+### 범위
+
+`BETA-RELEASE.md` 5월 7일~11일 30+ 트랙 closure 동기화 (PR #188). 사내 베타 출시 ceremony의 사전 readiness 확정 — 태그 / golden path 수동 회귀는 별도 트리거.
+
+### 코드 게이트 (BETA-RELEASE.md §9 단일 진실)
+
+- §1 코드 베이스 게이트 ✅ (master CI green, principle FAIL 0, STRIDE 28/28)
+- §3 cron 4종 prod profile 자동 활성 ✅
+- §4 보안 헤더 / §5 인증 ✅
+- §6 감사 / 권한 ✅ — audit emit **58 enum / 51 emit (~88%)**, 미emit 7개 §7 deferred 매핑 (누락 버그 0)
+- §10 RightPanel 4탭 / §11 버전 관리 ✅
+- §2 인프라 게이트 / §8 모니터링 — 운영자 책임, 코드 측 readiness 완료
+
+### v1.x deferred (BETA-RELEASE.md §7 단일 진실)
+
+- 확장자 화이트리스트 / MIME magic / AV 스캔
+- presigned URL / S3 / KMS / cross-region replication
+- MFA / refresh rotation / SCIM (ADR #18)
+- audit_level / `FILE_VIEWED` / `FOLDER_AUDIT_LEVEL_CHANGED` (ADR #9)
+- Legal Hold 전체 (docs/00 §4.3 v2.x)
+- Team-centric pivot Plan A Phase 3+ (21 task), Plan B frontend foundation, Plan F
+- grant-permission-dialog Phase C/D (USER/DEPT picker + ResourcePermissionsList 통합)
+- quota mutation 5-phase Phase 3~5 (mutation UI / endpoint / `ADMIN_QUOTA_CHANGED` emit)
+- 2-admin 승인 framework 실 구현 (spec만 PR #124, ADR #47 본문 정합 PR #189)
+- progress streaming
+- tus 재개 업로드 / SSE 실시간 동기화 (docs/01 §18 v1.x)
+- mobile-view (CLAUDE.md §3 원칙 13 — 폐기 공식화 PR #179)
+
+### 다음 단계
+
+1. **Golden path 수동 회귀** (사용자 직접) — signup → 업로드 → 공유 → 다운로드 → 휴지통 사이클 (체크리스트는 본 트랙 세션 기록 참조)
+2. **`v1.0.0-beta` 태그** (사용자 트리거 — `git tag -a v1.0.0-beta origin/master -m "v1.0.0-beta — 사내 베타 출시" && git push origin v1.0.0-beta`)
+3. **인프라팀 핸드오프** — `BETA-RELEASE.md` §2 (HTTPS/CORS/DB secret) + §8 (모니터링) + `docs/local-dev.md` 전달, 추가 작성 0건
+4. **사내 베타 사용자 그룹 공지**
+
+### 참조
+
+- 출시 체크리스트 단일 진실: `BETA-RELEASE.md` (Last Updated 2026-05-11)
+- 직전 머지: PR #188 (BETA-RELEASE.md sync, 4-edit diff), PR #189 (dual-approval-spec drift 정정)
+
+---
+
 ## 2026-05-11 — dual-approval-spec-mini (§16 ref drift 정정)
 
 ### 범위

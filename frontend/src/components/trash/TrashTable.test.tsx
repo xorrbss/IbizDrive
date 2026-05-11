@@ -31,6 +31,7 @@ const itemFile: TrashItem = {
   deletedAt: '2026-04-30T10:00:00Z',
   purgeAfter: '2026-05-30T10:00:00Z',
   originalParentId: 'p1',
+  originalParentPath: '/회사/팀A/문서',
 }
 const itemFolder: TrashItem = {
   id: 'd1',
@@ -39,11 +40,8 @@ const itemFolder: TrashItem = {
   deletedAt: '2026-04-30T11:00:00Z',
   purgeAfter: '2026-05-30T11:00:00Z',
   originalParentId: null,
+  originalParentPath: null,
 }
-
-// TrashTable currently uses tree=undefined → originalParentId 있어도 "원위치 폴더
-// 삭제됨" 폴백으로 표시. tree prop 활용 시점(Tasks 17+ 대기)에 mockTree fixture는
-// git 히스토리에서 복원 가능 — 현재는 lint 회피 위해 dead-code 제거.
 
 function setHook(opts: {
   isLoading?: boolean
@@ -90,7 +88,7 @@ describe('TrashTable', () => {
     expect(screen.getByText('휴지통이 비어있습니다')).toBeTruthy()
   })
 
-  it('items 렌더 + aria-rowcount (tree=undefined → path 폴백)', () => {
+  it('items 렌더 + aria-rowcount + 서버 path 노출', () => {
     setHook({ items: [itemFile, itemFolder] })
     const qc = new QueryClient()
     render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
@@ -99,18 +97,24 @@ describe('TrashTable', () => {
     expect(grid.getAttribute('aria-rowcount')).toBe('3')
     expect(screen.getByText('제안서.pdf')).toBeTruthy()
     expect(screen.getByText('계약서')).toBeTruthy()
-    // tree=undefined → originalParentId가 있으면 "원위치 폴더 삭제됨" (Tasks 17+ 대기)
-    expect(screen.getByText('원위치 폴더 삭제됨')).toBeTruthy()
+    // backend `originalParentPath` 그대로 노출 (BLOCKED TODO 해소, 2026-05-11)
+    expect(screen.getByText('/회사/팀A/문서')).toBeTruthy()
     // folder는 originalParentId=null → '최상위'
     expect(screen.getByText('최상위')).toBeTruthy()
   })
 
-  it('originalParentId가 있으면 tree=undefined → "원위치 폴더 삭제됨" 폴백', () => {
-    const orphan: TrashItem = { ...itemFile, id: 'f2', name: '고아.pdf', originalParentId: 'gone' }
+  it('originalParentId 있으나 path null (chain 종착 실패) → "원위치 미상" 폴백', () => {
+    const orphan: TrashItem = {
+      ...itemFile,
+      id: 'f2',
+      name: '고아.pdf',
+      originalParentId: 'gone',
+      originalParentPath: null,
+    }
     setHook({ items: [orphan] })
     const qc = new QueryClient()
     render(<TrashTable scopeType="department" scopeId="d1" />, { wrapper: wrap(qc) })
-    expect(screen.getByText('원위치 폴더 삭제됨')).toBeTruthy()
+    expect(screen.getByText('원위치 미상')).toBeTruthy()
   })
 
   it('ADMIN → 영구 삭제 버튼 표시', () => {
