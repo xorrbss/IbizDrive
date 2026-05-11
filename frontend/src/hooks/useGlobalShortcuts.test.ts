@@ -1,17 +1,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook } from '@testing-library/react'
-import { useGlobalShortcuts, FOCUS_SEARCH_EVENT } from './useGlobalShortcuts'
+import { useGlobalShortcuts, FOCUS_SEARCH_EVENT, OPEN_SHORTCUTS_EVENT } from './useGlobalShortcuts'
 
 describe('useGlobalShortcuts', () => {
   let listener: ReturnType<typeof vi.fn>
+  let shortcutsListener: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
     listener = vi.fn()
+    shortcutsListener = vi.fn()
     window.addEventListener(FOCUS_SEARCH_EVENT, listener)
+    window.addEventListener(OPEN_SHORTCUTS_EVENT, shortcutsListener)
   })
 
   afterEach(() => {
     window.removeEventListener(FOCUS_SEARCH_EVENT, listener)
+    window.removeEventListener(OPEN_SHORTCUTS_EVENT, shortcutsListener)
   })
 
   it('"/" 키 → app:focus-search 이벤트 디스패치', () => {
@@ -115,5 +119,32 @@ describe('useGlobalShortcuts', () => {
     const event = new KeyboardEvent('keydown', { key: 'K', ctrlKey: true })
     window.dispatchEvent(event)
     expect(listener).toHaveBeenCalledTimes(1)
+  })
+
+  // ─── `?` cheat sheet ───
+  it('"?" 키 → app:open-shortcuts 이벤트 디스패치 (FOCUS_SEARCH은 무관)', () => {
+    renderHook(() => useGlobalShortcuts())
+    const event = new KeyboardEvent('keydown', { key: '?' })
+    window.dispatchEvent(event)
+    expect(shortcutsListener).toHaveBeenCalledTimes(1)
+    expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('input 안에서 "?" → 무시 (editable 가드)', () => {
+    renderHook(() => useGlobalShortcuts())
+    const input = document.createElement('input')
+    document.body.appendChild(input)
+    const event = new KeyboardEvent('keydown', { key: '?' })
+    Object.defineProperty(event, 'target', { value: input })
+    window.dispatchEvent(event)
+    expect(shortcutsListener).not.toHaveBeenCalled()
+    document.body.removeChild(input)
+  })
+
+  it('"Ctrl+?" 등 modifier 조합은 무시', () => {
+    renderHook(() => useGlobalShortcuts())
+    const event = new KeyboardEvent('keydown', { key: '?', ctrlKey: true })
+    window.dispatchEvent(event)
+    expect(shortcutsListener).not.toHaveBeenCalled()
   })
 })

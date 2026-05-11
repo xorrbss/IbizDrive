@@ -9,6 +9,7 @@ import { StatusBar } from '@/components/statusbar/StatusBar'
 import { StorageBar } from '@/components/storage/StorageBar'
 import { AuthGuard } from '@/components/auth/AuthGuard'
 import { UserMenu } from '@/components/auth/UserMenu'
+import { ShortcutsCheatSheet } from '@/components/topbar/ShortcutsCheatSheet'
 import { useSidebarChromeStore } from '@/stores/sidebarChrome'
 
 export default function ExplorerLayout({ children }: { children: React.ReactNode }) {
@@ -55,6 +56,8 @@ export default function ExplorerLayout({ children }: { children: React.ReactNode
             </Suspense>
           </main>
         </div>
+        {/* `?` 단축키 cheat sheet — self-managed visibility, 단 1회 마운트로 충분. */}
+        <ShortcutsCheatSheet />
       </DndProvider>
     </AuthGuard>
   )

@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-05-11 — ⌨️ shortcut-cheatsheet 트랙 (`?` 도움말 모달)
+
+### 범위
+
+design-fidelity G2/G3(PR #168) 종료 보고에서 v1.x backlog로 분리됐던 단축키 cheat sheet. 사용자 가시 진입점 추가 — `?` 키 → 모달 → 카테고리별 단축키 표. 새 컴포넌트 + 훅 분기 + layout 마운트 + spec 갱신.
+
+### 변경 핵심
+
+**Hook:**
+- `hooks/useGlobalShortcuts.ts`: `?` 분기 추가 (editable 가드 + Ctrl/Meta/Alt modifier 무시). `OPEN_SHORTCUTS_EVENT = 'app:open-shortcuts'` 신규 export. `Shift+/`로 입력되는 `?`는 별도 modifier 검사 불필요.
+
+**Component (NEW):**
+- `components/topbar/ShortcutsCheatSheet.tsx`: self-contained 모달 — props 없음, `useState` owns visibility, `OPEN_SHORTCUTS_EVENT` listen → open. ESC/X 버튼으로 close + 이전 focus 복귀. 카테고리 5종(검색·내비게이션·선택·액션·도움말), 단축키 데이터는 컴포넌트 내부 정적 array(docs/01 §12.1 동등 표현).
+
+**Layout:**
+- `(explorer)/layout.tsx`: 모달 1회 마운트 (DndProvider 자식).
+
+**Docs:**
+- `docs/01 §12.1` 키맵 표에 `⌘K / Ctrl+K`, `?` row 추가 + cheat sheet callout.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0 (PR #168 머지 후 잔존했던 `TopBar.test.tsx` `container` unused 정리 — 동일 머지에서 새로 들어온 lint rule이 잡음).
+- `pnpm test --run` 175 file / **1273/1273 PASS** (신규 9건 — useGlobalShortcuts `?` 3 + ShortcutsCheatSheet 6).
+
+### 결정/편차
+
+- **self-contained 모달** — store 신설 불필요. 외부 trigger도 없음(키 입력만). YAGNI.
+- **단축키 데이터 컴포넌트 내부** — 통합 source 토큰화는 별도 v1.x PR. 현재는 docs/01 §12.1이 truth, 컴포넌트는 동등 표현.
+- **`?` editable 가드 적용 (vs `⌘K` 미적용)** — `/`와 동형. 다른 input에서 `?` 입력 보호.
+- **`Shift` modifier 검사 제외** — `?`는 자연스럽게 `Shift+/`로 입력되므로 `e.key === '?'` 직접 매칭이 명확.
+- **lint cleanup 부수 처리** — `TopBar.test.tsx` `container` unused 처리. 별도 PR로 분리할 가치 없음 (1줄).
+
+### 트랙 외 후속
+
+- 단축키 데이터 토큰화 (`lib/keyboardShortcuts.ts` single source) — v1.x.
+- G7 mobile-view — 별도 마일스톤.
+- 단축키 사용량 분석 (audit 또는 telemetry) — v2.x.
+
+### dev-docs
+
+- `dev/active/shortcut-cheatsheet/{plan,context,tasks}.md` — 머지 후 별도 archive PR.
+
+---
+
 ## 2026-05-11 — trash-retention-mutation Phase A (spec 설계 + dev-docs 부트스트랩)
 
 ### 범위
