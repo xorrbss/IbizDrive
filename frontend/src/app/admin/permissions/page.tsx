@@ -12,14 +12,21 @@ import {
   type AdminSubjectType,
 } from '@/types/permission'
 import { AdminGuard } from '@/components/auth/AdminGuard'
+import { AdminGrantPermissionTrigger } from '@/components/admin/AdminGrantPermissionTrigger'
 
 /**
  * /admin/permissions — 관리자 권한 매트릭스 (admin-permission-matrix, Wave 2 T5, docs/04 §9).
  *
- * <p>viewer + 단일 row revoke (admin-permission-revoke follow-up). grant는 subject/resource
- * picker가 별도 트랙(v1.x backlog)이므로 본 페이지는 revoke만 지원 — 운영자가 만료 임박
- * 또는 잘못 부여된 권한을 즉시 정리할 수 있게 한다. 만료된 grant도 결과에 포함되어 "만료됨"
- * 빨간 배지로 표시되고 동일 "철회" 버튼으로 정리 가능 (cron 정리 전 즉시 회수).
+ * <p>viewer + 단일 row revoke + grant 진입점 (admin-permission-grant, 2026-05-11).
+ * 운영자가 만료 임박 또는 잘못 부여된 권한을 즉시 정리할 수 있고, 신규 grant도 콘솔에서
+ * 부여 가능 — 출시 후 DB 직접 수정 의존을 제거.
+ *
+ * <p>grant는 별도 컴포넌트 {@link AdminGrantPermissionTrigger}로 분리. 2-step picker
+ * (ResourceType + UUID) → file/folder 컨텍스트와 동일 {@link GrantPermissionDialog} 재사용 →
+ * `invalidations.afterPermissionGrant`가 본 페이지 list 자동 갱신.
+ *
+ * <p>만료된 grant도 결과에 포함되어 "만료됨" 빨간 배지로 표시되고 동일 "철회" 버튼으로
+ * 정리 가능 (cron 정리 전 즉시 회수).
  *
  * <p>구성:
  * <ol>
@@ -37,12 +44,15 @@ export default function AdminPermissionsPage() {
   return (
     <AdminGuard>
       <div className="flex-1 overflow-auto p-6 space-y-6">
-        <header>
-          <h1 className="text-lg font-semibold">권한 매트릭스</h1>
-          <p className="text-[12px] text-fg-2 mt-1">
-            폴더/파일 권한 grant 전체 목록을 검색·조회합니다. 만료된 grant 도 표시되며 빨간 배지로
-            구분됩니다 (cron 정리 전 가시화).
-          </p>
+        <header className="flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-lg font-semibold">권한 매트릭스</h1>
+            <p className="text-[12px] text-fg-2 mt-1">
+              폴더/파일 권한 grant 전체 목록을 검색·조회합니다. 만료된 grant 도 표시되며 빨간 배지로
+              구분됩니다 (cron 정리 전 가시화).
+            </p>
+          </div>
+          <AdminGrantPermissionTrigger />
         </header>
         <PermissionsView />
       </div>
