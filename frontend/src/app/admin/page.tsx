@@ -60,11 +60,7 @@ export default function AdminDashboardPage() {
             title="플래그된 공유"
             subtitle="자동 탐지 · 검토 대기"
             right={
-              <Link
-                href="/admin/sharing"
-                className="btn-ghost btn-xs"
-                style={{ textDecoration: 'none' }}
-              >
+              <Link href="/admin/sharing" className="btn-ghost btn-xs">
                 전체 보기 →
               </Link>
             }
@@ -85,11 +81,7 @@ export default function AdminDashboardPage() {
             title="부서별 저장공간"
             subtitle="할당량 대비 사용량"
             right={
-              <Link
-                href="/admin/storage"
-                className="btn-ghost btn-xs"
-                style={{ textDecoration: 'none' }}
-              >
+              <Link href="/admin/storage" className="btn-ghost btn-xs">
                 관리 →
               </Link>
             }
@@ -105,11 +97,7 @@ export default function AdminDashboardPage() {
             title="최근 활동"
             subtitle="감사 로그 — 상위 5건"
             right={
-              <Link
-                href="/admin/audit"
-                className="btn-ghost btn-xs"
-                style={{ textDecoration: 'none' }}
-              >
+              <Link href="/admin/audit" className="btn-ghost btn-xs">
                 전체 →
               </Link>
             }
