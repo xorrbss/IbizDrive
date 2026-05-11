@@ -4,6 +4,7 @@ import { SectionCard } from '@/components/admin/SectionCard'
 import { UploadChart } from '@/components/admin/overview/UploadChart'
 import { FlagRow } from '@/components/admin/overview/FlagRow'
 import { DeptRow } from '@/components/admin/overview/DeptRow'
+import { AuditMiniPanel } from '@/components/admin/overview/AuditMiniPanel'
 import { AdminGuard } from '@/components/auth/AdminGuard'
 import {
   ADMIN_DEPARTMENTS,
@@ -98,6 +99,22 @@ export default function AdminDashboardPage() {
                 <DeptRow key={d.id} dept={d} />
               ))}
             </div>
+          </SectionCard>
+
+          <SectionCard
+            title="최근 활동"
+            subtitle="감사 로그 — 상위 5건"
+            right={
+              <Link
+                href="/admin/audit"
+                className="btn-ghost btn-xs"
+                style={{ textDecoration: 'none' }}
+              >
+                전체 →
+              </Link>
+            }
+          >
+            <AuditMiniPanel />
           </SectionCard>
         </div>
       </div>
