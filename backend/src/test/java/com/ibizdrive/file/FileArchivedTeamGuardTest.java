@@ -80,7 +80,7 @@ class FileArchivedTeamGuardTest {
                                                       ObjectMapper mapper,
                                                       TeamRepository teamRepo) {
             return new FileMutationService(fileRepo, folderRepo, audit, mapper,
-                new com.ibizdrive.trash.TrashRetentionProperties(30),
+                com.ibizdrive.trash.TrashPolicyTestSupport.stubReturning(30),
                 org.mockito.Mockito.mock(com.ibizdrive.folder.CrossWorkspaceMoveService.class),
                 new TeamArchiveGuard(teamRepo));
         }

@@ -14,7 +14,6 @@ import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.team.TeamArchiveGuard;
-import com.ibizdrive.trash.TrashRetentionProperties;
 import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -73,8 +72,15 @@ public class FileMutationService {
     private final FolderRepository folderRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
-    /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (docs/02 §6.5). */
-    private final TrashRetentionProperties retention;
+    /**
+     * 휴지통 보존 기간(일) — V17 {@code trash_policy} 단일 진실의 출처
+     * (trash-retention-mutation Phase B).
+     *
+     * <p>Phase B 이전: yml {@code app.trash.retention.days} ({@code TrashRetentionProperties}).
+     * Phase B 이후: DB-backed runtime mutation. yml은 V17 row 부재 시 첫 INSERT의 default
+     * value source로만 잔존 (운영자 yml override 이력 보존, docs/04 §9.2).
+     */
+    private final com.ibizdrive.trash.TrashPolicyService trashPolicyService;
     /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
     private final CrossWorkspaceMoveService crossWorkspaceMoveService;
     /**
@@ -87,14 +93,14 @@ public class FileMutationService {
                                FolderRepository folderRepository,
                                AuditService auditService,
                                ObjectMapper objectMapper,
-                               TrashRetentionProperties retention,
+                               com.ibizdrive.trash.TrashPolicyService trashPolicyService,
                                CrossWorkspaceMoveService crossWorkspaceMoveService,
                                TeamArchiveGuard teamArchiveGuard) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
-        this.retention = retention;
+        this.trashPolicyService = trashPolicyService;
         this.crossWorkspaceMoveService = crossWorkspaceMoveService;
         this.teamArchiveGuard = teamArchiveGuard;
     }
@@ -264,7 +270,7 @@ public class FileMutationService {
 
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
         target.setDeletedAt(now);
-        target.setPurgeAfter(now.plus(retention.days(), ChronoUnit.DAYS));
+        target.setPurgeAfter(now.plus(trashPolicyService.getRetentionDays(), ChronoUnit.DAYS));
         target.setOriginalFolderId(target.getFolderId());
         // V10 — admin global trash UI에서 cross-owner 복원 시 deleter 식별용 (audit_log 별도 lookup 우회).
         target.setDeletedBy(actorId);

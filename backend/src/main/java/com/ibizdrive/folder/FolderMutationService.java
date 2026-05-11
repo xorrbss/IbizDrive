@@ -10,7 +10,6 @@ import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.common.normalize.NormalizeUtil;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.team.TeamArchiveGuard;
-import com.ibizdrive.trash.TrashRetentionProperties;
 import jakarta.annotation.Nullable;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -86,8 +85,11 @@ public class FolderMutationService {
     private final FileRepository fileRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
-    /** 휴지통 보존 기간(일) — application.yml {@code app.trash.retention-days} (FileMutationService와 동일 source). */
-    private final TrashRetentionProperties retention;
+    /**
+     * 휴지통 보존 기간(일) — V17 {@code trash_policy} 단일 진실의 출처
+     * (trash-retention-mutation Phase B, FileMutationService와 동일 source).
+     */
+    private final com.ibizdrive.trash.TrashPolicyService trashPolicyService;
     /** Plan D — cross-workspace move 위임 (allowCrossScope=true 분기). */
     private final CrossWorkspaceMoveService crossWorkspaceMoveService;
     /**
@@ -100,14 +102,14 @@ public class FolderMutationService {
                                  FileRepository fileRepository,
                                  AuditService auditService,
                                  ObjectMapper objectMapper,
-                                 TrashRetentionProperties retention,
+                                 com.ibizdrive.trash.TrashPolicyService trashPolicyService,
                                  CrossWorkspaceMoveService crossWorkspaceMoveService,
                                  TeamArchiveGuard teamArchiveGuard) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
-        this.retention = retention;
+        this.trashPolicyService = trashPolicyService;
         this.crossWorkspaceMoveService = crossWorkspaceMoveService;
         this.teamArchiveGuard = teamArchiveGuard;
     }
@@ -435,7 +437,7 @@ public class FolderMutationService {
         List<UUID> descendantIds = collectDescendantFolderIds(root.getId());
 
         Instant now = Instant.now().truncatedTo(ChronoUnit.MICROS);
-        Instant purgeAfter = now.plus(retention.days(), ChronoUnit.DAYS);
+        Instant purgeAfter = now.plus(trashPolicyService.getRetentionDays(), ChronoUnit.DAYS);
 
         // 후손 폴더 batch UPDATE — 비어 있으면 skip (Hibernate가 빈 IN(...)을 거부하는 환경 보호).
         // V10: actorId 전파 — cascade 후손도 root와 동일한 deleter로 기록.

@@ -11,7 +11,7 @@ import com.ibizdrive.permission.Permission;
 import com.ibizdrive.permission.PermissionRepository;
 import com.ibizdrive.permission.PermissionResolver;
 import com.ibizdrive.share.ShareRepository;
-import com.ibizdrive.trash.TrashRetentionProperties;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.jdbc.AutoConfigureTestDatabase;
@@ -121,7 +121,7 @@ class FileMoveAllowCrossScopeTest {
                                                  com.ibizdrive.team.TeamRepository teamRepo) {
             return new FileMutationService(
                 fileRepo, folderRepo, audit, mapper,
-                new TrashRetentionProperties(30),
+                com.ibizdrive.trash.TrashPolicyTestSupport.stubReturning(30),
                 crossWorkspaceMoveService,
                 new com.ibizdrive.team.TeamArchiveGuard(teamRepo)
             );
