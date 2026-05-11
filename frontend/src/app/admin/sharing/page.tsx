@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react'
 import { AdminGuard } from '@/components/auth/AdminGuard'
+import { SectionCard } from '@/components/admin/SectionCard'
 import { SharingPolicies } from '@/components/admin/sharing/SharingPolicies'
 import { SharingDomains } from '@/components/admin/sharing/SharingDomains'
 import { SharingFlagged } from '@/components/admin/sharing/SharingFlagged'
@@ -79,26 +79,3 @@ function BacklogCallout() {
   )
 }
 
-/**
- * Admin 페이지 공통 SectionCard wrapper — admin.css `.section-card`/`-head`/`-body`
- * 클래스 1:1 매핑. 추후 다른 admin 페이지에서도 재사용되면 components/admin로 승격.
- */
-interface SectionCardProps {
-  title: string
-  subtitle?: string
-  children: ReactNode
-}
-
-function SectionCard({ title, subtitle, children }: SectionCardProps) {
-  return (
-    <section className="section-card">
-      <header className="section-card-head">
-        <div>
-          <h2 className="section-card-title">{title}</h2>
-          {subtitle && <p className="section-card-sub">{subtitle}</p>}
-        </div>
-      </header>
-      <div className="section-card-body">{children}</div>
-    </section>
-  )
-}
