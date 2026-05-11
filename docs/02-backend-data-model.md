@@ -492,7 +492,28 @@ CREATE INDEX idx_pending_approvals_decided
 - 신규 에러 코드 4종 (docs/02 §8)
 - `pending_admin_approvals` entity + repository + service + controller + expiration cron + email listener
 
-### 2.12 ER 요약
+### 2.12 trash_policy (V17 — trash-retention-mutation)
+
+```sql
+-- 휴지통 보존 정책 single-row 테이블. yml 부팅 바인딩 (TrashRetentionProperties)을
+-- DB-backed runtime mutation으로 이관. id=1 강제(다중 row 차단), 7..90 범위 강제.
+-- 기존 yml 값(`app.trash.retention.days`)은 V17 적용 시점에 row 부재면 app 부팅 시
+-- TrashPolicyService가 idempotent INSERT — operator가 yml로 default를 override한
+-- 이력이 보존된다.
+CREATE TABLE trash_policy (
+    id              SMALLINT PRIMARY KEY DEFAULT 1 CHECK (id = 1),
+    retention_days  INT      NOT NULL CHECK (retention_days BETWEEN 7 AND 90),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_by      UUID REFERENCES users(id) ON DELETE SET NULL
+);
+```
+
+- **단일 row** (`id = 1`) — 운영자 실수로 다중 row INSERT 차단 (CHECK).
+- **7..90 범위** — docs/04 §8.1 spec과 일치. 운영자가 7일 미만/90일 초과 입력 차단.
+- **`updated_by ON DELETE SET NULL`** — 운영자 계정 hard-delete 시 정책 row는 보존 (자체 audit_log가 actor 보존).
+- **이력은 audit_log** — `RETENTION_POLICY_CHANGED` event(`docs/03 §4.1`)가 `before/after` 보존. 별도 `trash_policy_history` 미도입 (YAGNI).
+
+### 2.13 ER 요약
 
 ```text
 users ──┬── departments
@@ -1752,6 +1773,7 @@ GET /api/me/effective-permissions[?nodeId={uuid}]
 | GET | `/api/admin/trash` (Wave 2 T9) | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→LIKE escape (case-insensitive) | **`WHERE deleted_at IS NOT NULL`** | 400 VALIDATION_ERROR(invalid type/ownerId/q>200/deletedFrom·deletedTo 형식 또는 from≥to), 401, 403 |
 | POST | `/api/admin/trash/bulk` (Wave 2 T9 follow-up) | `hasRole('ADMIN')` | — (per-item 단건 service 트랜잭션, fan-out) | — | per-item: 단건 endpoint와 동일 (restore: SET NULL+UNIQUE 재검사 / purge: row+versions cascade) | 200(부분 실패 허용 — `failed[]`로 표현), 400 VALIDATION_ERROR(invalid action / items.size ∉ [1,200]), 401, 403 |
 | GET | `/api/admin/trash/policy` (Wave 2 T9 follow-up, wave2-trash-policy-viewer) | `hasRole('ADMIN')` | — | — | — (read-only) | 401, 403 |
+| PUT | `/api/admin/trash/policy` (trash-retention-mutation) | `hasRole('ADMIN')` | REQUIRED (single-row UPDATE) | — | — (정책 row UPDATE, 기존 trash row의 `purge_after`는 재계산 안 함 — 신규 soft-delete만 새 일수 적용) | 400 VALIDATION_ERROR(`days` 누락 또는 7~90 범위 위반), 401, 403 |
 | POST | `/api/files/:id/restore` (A6 + Plan E T5) | `hasPermission(#id, 'file', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + **archive guard** + **cross-scope mismatch 검사** (Plan E T5) | 404, 409 RESTORE_CONFLICT (`reason='name_conflict' \| 'scope_mismatch'`), 423 TEAM_ARCHIVED |
 | POST | `/api/folders/:id/restore` (A6 + Plan E T4) | `hasPermission(#id, 'folder', 'DELETE')` | REQUIRED + FOR UPDATE | — | `SET deleted_at = NULL` + UNIQUE 재검사 + descendant cascade + **archive guard** + **cross-scope mismatch 검사** (Plan E T4) | 404, 409 RESTORE_CONFLICT (`reason='name_conflict' \| 'scope_mismatch'`), 423 TEAM_ARCHIVED |
 | DELETE | `/api/trash/:type/:id` (A8, ADR #32) | `hasRole('ADMIN')` | REQUIRED | — | (purge: row + file_versions cascade. S3 객체는 ADR #31 deferred) | 400 VALIDATION_ERROR(invalid type), 403, 404 |
@@ -1916,6 +1938,32 @@ A7 cron: 0 0 0 * * * (Asia/Seoul)
 **FK 정합 (line 37 backlink)**: `file_versions: 삭제 불가`는 soft-delete/restore 컨텍스트 한정. hard purge 시 file row와 cascade 삭제.
 
 **`FILE_PURGED`/`FOLDER_PURGED` 이벤트는 A8 reserve** — `/api/trash/:id` (manual purge) 트랙에서 per-row 발행.
+
+#### 7.11.1 휴지통 보존 정책 mutation (trash-retention-mutation)
+
+```text
+GET /api/admin/trash/policy
+  Guard:    hasRole('ADMIN')
+  Response: 200 { "retentionDays": 30 }       (single-row TrashPolicy id=1)
+            401 미인증 / 403 비-ADMIN
+
+PUT /api/admin/trash/policy
+  Guard:    hasRole('ADMIN')
+  Body:     { "days": 14 }                    (정수, 7..90)
+  TX:       REQUIRED — single-row UPDATE on `trash_policy WHERE id = 1`
+            audit emit (RETENTION_POLICY_CHANGED) AFTER_COMMIT (REQUIRES_NEW)
+  Response: 200 { "retentionDays": 14 }       (적용된 값)
+            400 VALIDATION_ERROR — `days` 누락 또는 범위 위반
+            401, 403
+
+  적용 정책: 변경 시점 이후의 신규 soft-delete만 새 일수 적용. 기존
+            trash row의 `purge_after`는 재계산하지 않음 (일수 감소 시
+            hard purge 폭증 위험 회피, docs/04 §15.4).
+
+  2인 승인: v1.x deferred. 본 endpoint는 단일 ADMIN 즉시 적용 (MVP).
+            framework 도입 시 `app.dual-approval.retention-change.enabled=true`로
+            체크인 가드 추가 예정 (docs/03 §7).
+```
 
 ### 7.12 관리자 (Admin)
 
