@@ -24,11 +24,41 @@ describe('SearchBar', () => {
     vi.useRealTimers()
   })
 
-  it('searchbox role + placeholder 노출', () => {
+  it('searchbox role + placeholder + h-30', () => {
     render(wrap(<SearchBar />))
-    const input = screen.getByRole('searchbox', { name: /파일 검색/ })
+    const input = screen.getByRole('searchbox', { name: /파일 검색/ }) as HTMLInputElement
     expect(input).toBeTruthy()
-    expect(input.getAttribute('placeholder')).toMatch(/\//)
+    expect(input.getAttribute('placeholder')).toBe('파일 검색')
+    // 디자인 styles.css L629 — 검색 입력 h-30 (px 단위, 1px 단위 토큰 미사용)
+    expect(input.className).toMatch(/h-\[30px\]/)
+  })
+
+  it('비어있고 unfocused일 때 ⌘K kbd 칩 노출', () => {
+    render(wrap(<SearchBar />))
+    expect(screen.getByText('⌘K')).toBeTruthy()
+    expect(screen.queryByLabelText('검색어 지우기')).toBeNull()
+  })
+
+  it('focus 후에는 kbd 칩이 숨고, 비어있어도 clear 버튼은 없음', () => {
+    render(wrap(<SearchBar />))
+    const input = screen.getByRole('searchbox') as HTMLInputElement
+    fireEvent.focus(input)
+    expect(screen.queryByText('⌘K')).toBeNull()
+    expect(screen.queryByLabelText('검색어 지우기')).toBeNull()
+  })
+
+  it('query 입력 시 clear 버튼 노출 + 클릭 시 입력 초기화', () => {
+    render(wrap(<SearchBar />))
+    const input = screen.getByRole('searchbox') as HTMLInputElement
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: '문서' } })
+
+    const clearBtn = screen.getByLabelText('검색어 지우기')
+    expect(clearBtn).toBeTruthy()
+    expect(screen.queryByText('⌘K')).toBeNull()
+
+    fireEvent.click(clearBtn)
+    expect(input.value).toBe('')
   })
 
   it('FOCUS_SEARCH_EVENT 디스패치 시 input에 focus', () => {

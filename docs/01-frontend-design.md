@@ -99,6 +99,8 @@ normalizedFileName = NFC.normalize(name).trim().toLowerCase()
 > **Plan B 변경**: `/files/[...parts]` 단일 루트를 폐기하고 workspace prefix 3-route 체계로 전환.
 > `VIRTUAL_ROOT_ID('root')` 개념도 함께 폐기 — workspace root folder ID는 서버가 내려주는 실제 UUID.
 
+> **Sidebar Chrome (G2 / 2026-05-11)**: 사이드바 자체의 collapse 토글은 TopBar 좌측 햄버거 버튼이 owns. `useSidebarChromeStore` (`sidebar-chrome:v1` localStorage persist) 의 `collapsed: boolean` 만으로 외곽 폭 (`w-[248px]` ↔ `w-0`)을 전환. 폴더 expand state(`sidebarTree`)와 책임 분리 — chrome=외곽 토글, tree=내부 expand. `aria-hidden`로 SR이 collapsed 상태에서 트리를 읽지 않게 함.
+
 ### 2.1 패턴: workspace prefix + folderId catch-all (Plan B)
 
 ```text
@@ -877,6 +879,12 @@ remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리
 
 ## 10. 검색 견고성 (v3 보강)
 
+> **글로벌 단축키** (`useGlobalShortcuts`, 디자인 핸드오프 G3 — 2026-05-11):
+> - `/`             → `app:focus-search` dispatch — input/textarea/contenteditable에서는 무시(editable 가드).
+> - `⌘+K` / `Ctrl+K` → `app:focus-search` dispatch — **editable 가드 미적용** (다른 input에서도 검색 호출 가능, VS Code 패턴). modifier 외 조합(`Shift`/`Alt`)은 무시.
+>
+> TopBar `SearchBar` 의 우측 영역은 query 비어있고 unfocused일 때 `⌘K` kbd 칩, query 있을 때 clear 버튼(`X`) 노출. placeholder 텍스트는 "파일 검색"만 — 시각 hint는 kbd 칩이 담당.
+
 ```ts
 // hooks/useSearch.ts
 import { useQuery } from '@tanstack/react-query'
@@ -944,8 +952,12 @@ export function normalizeFileName(s: string): string {
 | Ctrl/Meta + A | 전체 선택 | 전체 선택 |
 | Esc | 선택 해제 / RightPanel 닫기 (`?file=` 제거) | 동일 |
 | / | 검색창 포커스 | 동일 |
+| ⌘K / Ctrl+K | 검색창 포커스 (editable 안에서도) | 동일 |
+| ? | 단축키 cheat sheet 모달 open (editable 외) | 동일 |
 
 > Grid 2D 내비게이션은 pure helper `frontend/src/lib/gridNav.ts:computeNextIndex`로 분리. ↓ overshoot 시 마지막 partial row에 항목이 있으면 `length-1`로 clamp, 없으면 stay. ↑은 첫 행에서 stay. pendingIds는 같은 stride 방향(↑/↓ = columns, ←/→ = 1)으로 skip하며 후보가 없으면 stay (M16VK).
+
+> **Shortcut Cheat Sheet (2026-05-11)**: `?` 키 → `ShortcutsCheatSheet` 모달 open. self-contained (props 없음, `(explorer)/layout.tsx`에 1회 마운트). 단축키 데이터는 컴포넌트 내부 정적 array — 본 키맵의 동등 표현. 통합 source 토큰화는 v1.x 후속 PR (YAGNI).
 
 ### 12.2 Virtualization + aria
 
@@ -1472,6 +1484,8 @@ type AuditEntry = {
 > **Plan B 변경**: §17.1~17.3은 기존 `/files/[...parts]` 기반 템플릿에서 workspace prefix 체계로 교체.
 > `FolderTree` / `useFolderTree` / `folderPath.ts` / `useViewStore.expandedFolderIds` 모두 폐기.
 > `VIRTUAL_ROOT_ID('root')` 사용 금지.
+
+> **TopBar 레이아웃 (디자인 핸드오프 G2 / 2026-05-11)**: TopBar는 `grid auto / 1fr / auto` 3-column 구조 (`prototype/styles.css` L134). 좌측 햄버거 (`useSidebarChromeStore.toggle`, `aria-pressed={collapsed}`), 중앙 SearchBar (`max-w-[560px] mx-auto`), 우측 TweaksPanel + Avatar. (explorer)/layout.tsx의 `<aside>`는 `collapsed`에 따라 `w-[248px]` ↔ `w-0` 폭 transition (`transition-[width] duration-200 ease-out`) + `overflow-hidden` + `aria-hidden`.
 
 ### 17.1 workspace prefix catch-all 라우트 (Plan B)
 
