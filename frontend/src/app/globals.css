@@ -150,6 +150,21 @@
   letter-spacing: -0.01em;
 }
 
+/* ==============================================================
+   Density 시스템 (data-density)
+   원본: design-reference/styles.css L629-635 (.row.compact / .row.comfortable)
+   우선순위: [data-density] (사용자 명시) > [data-variant] default --row-h
+   variant rules 뒤에 위치하여 cascade 로 override.
+   값: compact=28 / default=base 유지 / comfortable=40
+   ============================================================== */
+
+[data-density="compact"] {
+  --row-h: 28px;
+}
+[data-density="comfortable"] {
+  --row-h: 40px;
+}
+
 /* ============ 전역 리셋 / 바디 ============ */
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; height: 100%; }

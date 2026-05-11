@@ -1,14 +1,16 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { render, screen, fireEvent, act } from '@testing-library/react'
+import { render, screen, fireEvent, act, within } from '@testing-library/react'
 import { TweaksPanel } from './TweaksPanel'
 import { VARIANT_STORAGE_KEY } from '@/lib/variant'
 import { THEME_STORAGE_KEY } from '@/lib/theme'
+import { DENSITY_STORAGE_KEY } from '@/lib/density'
 
 describe('TweaksPanel', () => {
   beforeEach(() => {
     window.localStorage.clear()
     document.documentElement.removeAttribute('data-variant')
     document.documentElement.removeAttribute('data-theme')
+    document.documentElement.removeAttribute('data-density')
     // 시스템 prefers-color-scheme = light 고정
     vi.spyOn(window, 'matchMedia').mockImplementation((q) => ({
       matches: false,
@@ -44,7 +46,8 @@ describe('TweaksPanel', () => {
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: '설정' }))
     })
-    const radios = screen.getAllByRole('radio')
+    const group = screen.getByRole('radiogroup', { name: '디자인 변형' })
+    const radios = within(group).getAllByRole('radio')
     expect(radios).toHaveLength(4)
     const checked = radios.find((r) => r.getAttribute('aria-checked') === 'true')
     expect(checked?.textContent).toContain('기본')
@@ -55,8 +58,9 @@ describe('TweaksPanel', () => {
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: '설정' }))
     })
+    const group = screen.getByRole('radiogroup', { name: '디자인 변형' })
     act(() => {
-      fireEvent.click(screen.getByRole('radio', { name: /Terminal/ }))
+      fireEvent.click(within(group).getByRole('radio', { name: /Terminal/ }))
     })
     expect(document.documentElement.getAttribute('data-variant')).toBe('terminal')
     expect(window.localStorage.getItem(VARIANT_STORAGE_KEY)).toBe('terminal')
@@ -67,15 +71,59 @@ describe('TweaksPanel', () => {
     act(() => {
       fireEvent.click(screen.getByRole('button', { name: '설정' }))
     })
+    const group = screen.getByRole('radiogroup', { name: '디자인 변형' })
     act(() => {
-      fireEvent.click(screen.getByRole('radio', { name: /Notion/ }))
+      fireEvent.click(within(group).getByRole('radio', { name: /Notion/ }))
     })
     expect(document.documentElement.getAttribute('data-variant')).toBe('notion')
     act(() => {
-      fireEvent.click(screen.getByRole('radio', { name: /기본/ }))
+      fireEvent.click(within(group).getByRole('radio', { name: /기본/ }))
     })
     expect(document.documentElement.getAttribute('data-variant')).toBeNull()
     expect(window.localStorage.getItem(VARIANT_STORAGE_KEY)).toBe('default')
+  })
+
+  // ─── 디자인 핸드오프 G5 — 밀도 토글 (compact|default|comfortable) ───
+  it('exposes 3 density radios with default checked initially', () => {
+    render(<TweaksPanel />)
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: '설정' }))
+    })
+    const group = screen.getByRole('radiogroup', { name: '밀도' })
+    const radios = within(group).getAllByRole('radio')
+    expect(radios).toHaveLength(3)
+    const checked = radios.find((r) => r.getAttribute('aria-checked') === 'true')
+    expect(checked?.textContent).toContain('기본')
+  })
+
+  it('applies data-density on density radio click and persists', () => {
+    render(<TweaksPanel />)
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: '설정' }))
+    })
+    const group = screen.getByRole('radiogroup', { name: '밀도' })
+    act(() => {
+      fireEvent.click(within(group).getByRole('radio', { name: /촘촘/ }))
+    })
+    expect(document.documentElement.getAttribute('data-density')).toBe('compact')
+    expect(window.localStorage.getItem(DENSITY_STORAGE_KEY)).toBe('compact')
+  })
+
+  it('removes data-density when default selected after non-default', () => {
+    render(<TweaksPanel />)
+    act(() => {
+      fireEvent.click(screen.getByRole('button', { name: '설정' }))
+    })
+    const group = screen.getByRole('radiogroup', { name: '밀도' })
+    act(() => {
+      fireEvent.click(within(group).getByRole('radio', { name: /넉넉/ }))
+    })
+    expect(document.documentElement.getAttribute('data-density')).toBe('comfortable')
+    act(() => {
+      fireEvent.click(within(group).getByRole('radio', { name: /기본/ }))
+    })
+    expect(document.documentElement.getAttribute('data-density')).toBeNull()
+    expect(window.localStorage.getItem(DENSITY_STORAGE_KEY)).toBe('default')
   })
 
   it('embeds ThemeToggle that toggles data-theme', () => {
