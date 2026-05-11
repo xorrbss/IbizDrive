@@ -5,6 +5,7 @@ import { SearchBar } from './SearchBar'
 import { Avatar } from './Avatar'
 import { useSidebarChromeStore } from '@/stores/sidebarChrome'
 import { OPEN_SHORTCUTS_EVENT } from '@/hooks/useGlobalShortcuts'
+import { useMe } from '@/hooks/useMe'
 
 /**
  * 탐색기 상단 바 — 디자인 핸드오프 G2 (3-column grid, 2026-05-11).
@@ -20,11 +21,15 @@ import { OPEN_SHORTCUTS_EVENT } from '@/hooks/useGlobalShortcuts'
  * <p>키보드 도움말 버튼은 `?` 단축키 미인지 사용자의 발견성(discoverability) 진입점.
  * 클릭 시 {@link OPEN_SHORTCUTS_EVENT} dispatch — {@code ShortcutsCheatSheet}가 listen.
  *
- * <p>Avatar는 M14 placeholder — 백엔드 `/api/me` 신설 후 useMe() 훅으로 교체.
+ * <p>Avatar는 {@link useMe}의 displayName/initial을 받아 본인 식별을 노출. 미인증/loading은
+ * {@code Avatar} 자체 default("U")로 fallback — (explorer) layout 401 guard가 정상적으로
+ * 비인증 사용자를 차단하므로 본 fallback은 hydration 직후 짧은 윈도우만 보인다.
  */
 export function TopBar() {
   const collapsed = useSidebarChromeStore((s) => s.collapsed)
   const toggle = useSidebarChromeStore((s) => s.toggle)
+  const me = useMe()
+  const displayName = me.data?.user.name
 
   const openShortcuts = () => {
     window.dispatchEvent(new CustomEvent(OPEN_SHORTCUTS_EVENT))
@@ -58,7 +63,7 @@ export function TopBar() {
           <Keyboard size={16} aria-hidden />
         </button>
         <TweaksPanel />
-        <Avatar />
+        <Avatar initial={displayName} displayName={displayName} />
       </div>
     </div>
   )
