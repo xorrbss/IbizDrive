@@ -21,6 +21,16 @@ vi.mock('@/hooks/useAdminTrashPolicy', () => ({
   useAdminTrashPolicy: () => hookState,
 }))
 
+// Phase C — mutation editor 의존성. 본 페이지 테스트는 editor 본체 행위는 별도
+// (RetentionPolicyEditor.test.tsx)가 책임 — 여기서는 stub으로 page 통합만 검증.
+vi.mock('@/components/admin/RetentionPolicyEditor', () => ({
+  RetentionPolicyEditor: ({ currentDays }: { currentDays: number }) => (
+    <div data-testid="retention-policy-editor-stub">
+      editor for {currentDays}일
+    </div>
+  ),
+}))
+
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ replace: vi.fn(), push: vi.fn(), back: vi.fn() }),
 }))
@@ -61,11 +71,18 @@ describe('/admin/trash/policy', () => {
     expect(screen.getByRole('alert')).toBeTruthy()
   })
 
-  it('success → retentionDays 노출 + 변경 절차 안내', () => {
+  it('success → retentionDays 노출 + mutation editor 마운트 (Phase C)', () => {
     hookState = { isLoading: false, isError: false, data: { retentionDays: 30 } }
     wrap(<AdminTrashPolicyPage />)
     expect(screen.getByText('30')).toBeTruthy()
-    expect(screen.getByText(/application\.yml/)).toBeTruthy()
+    expect(screen.getByTestId('retention-policy-editor-stub')).toBeTruthy()
+    expect(screen.getByText(/editor for 30일/)).toBeTruthy()
+  })
+
+  it('loading/error 상태에서는 mutation editor 미마운트', () => {
+    hookState = { isLoading: true, isError: false }
+    wrap(<AdminTrashPolicyPage />)
+    expect(screen.queryByTestId('retention-policy-editor-stub')).toBeNull()
   })
 
   it('non-default retention 값도 그대로 노출 (default 30 가정 회귀 가드)', () => {
@@ -87,12 +104,14 @@ describe('/admin/trash/policy', () => {
     expect(screen.getByRole('heading', { level: 1, name: /휴지통 보존 정책/ })).toBeTruthy()
   })
 
-  // trash-policy-dual-approval-callout — 무중단 변경 도입 시 dual-approval 의존성을
-  // 페이지 안내에 미리 노출. 운영자가 yml 직접 변경 외 우회 경로가 없음을 사전 인지하도록.
-  it('보존 일수 변경 안내에 v1.x dual-approval 의존성 명시', () => {
+  // trash-policy-dual-approval-callout — Phase B/C 활성화 후에도 2인 승인은 v1.x++ deferred
+  // 명시. 운영자가 단일-approver 즉시 적용 사실을 인지하도록.
+  it('2인 승인 deferred 안내 노출 — 단일-approver MVP 명시', () => {
     hookState = { isLoading: false, isError: false, data: { retentionDays: 30 } }
     wrap(<AdminTrashPolicyPage />)
-    expect(screen.getByText(/2인 승인/)).toBeTruthy()
+    // 페이지 본문 "2인 승인" 섹션이 하나는 heading, 하나는 본문 → getAllByText
+    const occurrences = screen.getAllByText(/2인 승인/)
+    expect(occurrences.length).toBeGreaterThanOrEqual(1)
     expect(screen.getByText(/dual-approval/)).toBeTruthy()
   })
 })

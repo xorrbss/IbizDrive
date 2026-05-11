@@ -2096,11 +2096,11 @@ export async function adminBulkTrash(
 }
 
 /**
- * `/admin/trash/policy` — 휴지통 보존 정책 read-only viewer (Wave 2 T9 follow-up,
+ * `/admin/trash/policy` — 휴지통 보존 정책 viewer (Wave 2 T9 follow-up,
  * wave2-trash-policy-viewer). ADMIN role 전용. 401/403/200 외 에러 코드 없음.
  *
- * <p>현재 `retentionDays` 단일 필드. cron 운영 상태는 `/admin/system` 별도. mutation은
- * v1.x deferred (`@ConfigurationProperties` 부팅 바인딩).
+ * <p>응답 `{retentionDays}`는 V17 `trash_policy` single-row 테이블의 현재 값
+ * (trash-retention-mutation Phase B). cron 운영 상태는 `/admin/system` 별도.
  */
 export async function getAdminTrashPolicy(): Promise<import('@/types/admin-trash-policy').AdminTrashPolicy> {
   const res = await fetch('/api/admin/trash/policy', {
@@ -2110,6 +2110,39 @@ export async function getAdminTrashPolicy(): Promise<import('@/types/admin-trash
   })
   if (!res.ok) {
     throw await buildApiError(res, `getAdminTrashPolicy failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-trash-policy').AdminTrashPolicy
+}
+
+/**
+ * `PUT /api/admin/trash/policy` — 휴지통 보존 일수 변경
+ * (trash-retention-mutation Phase C, docs/02 §7.11.1). ADMIN role 전용.
+ *
+ * <p>변경은 신규 soft-delete만 적용 — 기존 trash row의 `purge_after`는 재계산 안 함
+ * (일수 감소 시 hard purge 폭증 회피, docs/04 §15.4). audit emit
+ * (`admin.retention.changed`)은 backend가 발행. 단일-approver MVP — 2인 승인은 v1.x++ deferred.
+ *
+ * <p>CSRF 헤더 필수 (다른 mutation 동형). 응답 `200 { retentionDays: <적용값> }`.
+ * 4xx envelope은 {@link buildApiError}가 status/code 매핑 후 throw:
+ * - 400 VALIDATION_ERROR — `days` 누락 또는 7~90 범위 위반
+ * - 401 미인증 / 403 비-ADMIN
+ */
+export async function updateAdminTrashPolicy(
+  days: number,
+): Promise<import('@/types/admin-trash-policy').AdminTrashPolicy> {
+  const csrf = await ensureCsrfToken()
+  const res = await fetch('/api/admin/trash/policy', {
+    method: 'PUT',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-CSRF-TOKEN': csrf,
+    },
+    body: JSON.stringify({ days }),
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `updateAdminTrashPolicy failed: ${res.status}`)
   }
   return (await res.json()) as import('@/types/admin-trash-policy').AdminTrashPolicy
 }
