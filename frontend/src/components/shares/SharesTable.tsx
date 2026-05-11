@@ -70,7 +70,7 @@ export function SharesTable() {
               role="row"
               aria-rowindex={idx + 2}
               data-share-id={it.id}
-              className={`${GRID_COLS} h-[40px] border-b border-border text-[13px] hover:bg-surface-2`}
+              className={`${GRID_COLS} h-[var(--row-h)] border-b border-border text-[13px] hover:bg-surface-2`}
             >
               <span className="truncate" role="gridcell">
                 <span aria-hidden className="mr-1.5">{isFolder ? '📁' : '📄'}</span>
