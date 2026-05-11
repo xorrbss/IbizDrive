@@ -4,6 +4,7 @@ import { usePathname } from 'next/navigation'
 import { Home, Users, Lock, Folder, Share2, Clock, Archive } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { ADMIN_TABS, isTabVisible, type AdminTabId } from '@/lib/adminTabs'
+import { ADMIN_FLAGGED } from '@/lib/admin/sharingMock'
 
 /**
  * 관리자 콘솔 탭바 — 디자인 핸드오프 2026-05-10 admin.jsx §AdminTabBar
@@ -15,8 +16,9 @@ import { ADMIN_TABS, isTabVisible, type AdminTabId } from '@/lib/adminTabs'
  * - AUDITOR: audit 만 노출 (wave1.5-auditor-admin-ui-access 답습)
  * - 그 외: 빈 nav (layout AdminGuard가 정상 경로 차단; 방어용)
  *
- * 활성 탭에 `aria-current="page"`. 디자인의 admin-tab-badge는 후속 트랙
- * (sharing 검토 큐 카운트)에서 props로 추가.
+ * 활성 탭에 `aria-current="page"`. sharing 탭 우측에 ADMIN_FLAGGED 카운트
+ * badge (design L86~88) — 실 backend flagged-share endpoint 는 v1.x backlog,
+ * mock 데이터의 length 를 그대로 사용한다.
  */
 
 const TAB_ICONS: Record<AdminTabId, React.ComponentType<{ size?: number; 'aria-hidden'?: boolean }>> = {
@@ -41,6 +43,7 @@ export function AdminTabBar() {
       {visibleTabs.map((tab) => {
         const isActive = tab.isActive(pathname)
         const Icon = TAB_ICONS[tab.id]
+        const flaggedCount = tab.id === 'sharing' ? ADMIN_FLAGGED.length : 0
         return (
           <Link
             key={tab.id}
@@ -50,6 +53,15 @@ export function AdminTabBar() {
           >
             <Icon size={13} aria-hidden />
             <span>{tab.label}</span>
+            {flaggedCount > 0 && (
+              <span
+                className="admin-tab-badge"
+                aria-label={`검토 대기 ${flaggedCount}건`}
+                data-testid="admin-tab-badge-sharing"
+              >
+                {flaggedCount}
+              </span>
+            )}
           </Link>
         )
       })}

@@ -20,6 +20,17 @@ vi.mock('@/hooks/useAdminDashboardSummary', () => ({
   useAdminDashboardSummary: () => dashboardState,
 }))
 
+// AuditMiniPanel (Phase 3e) 가 useAuditLogs 로 backend 호출을 시도하지 않도록
+// hook 격리. 빈 entries 로 응답 → "감사 이벤트가 없습니다." 노출 (panel 마운트
+// 만 검증).
+vi.mock('@/hooks/useAuditLogs', () => ({
+  useAuditLogs: () => ({
+    data: { entries: [], total: 0, page: 1, pageSize: 5 },
+    isLoading: false,
+    isError: false,
+  }),
+}))
+
 // AdminGuard 의존성 mock — /admin 페이지가 default `<AdminGuard>`로 감싸이게
 // 변경되었으므로 (wave1.5-auditor-admin-ui-access) useMe + next/navigation을
 // 격리. ADMIN role을 줘야 children이 렌더된다.
@@ -102,5 +113,55 @@ describe('AdminDashboardPage', () => {
   it('v1.x deferred 안내 박스가 더 이상 노출되지 않는다 (회귀 가드)', () => {
     wrap(<AdminDashboardPage />)
     expect(screen.queryByText(/v1.x에서 추가 예정/)).toBeNull()
+  })
+
+  // ------------------------------------------------------------------
+  // Phase 3b — design overview 위젯 3종 (UploadChart / FlagRow / DeptRow)
+  // ------------------------------------------------------------------
+
+  it('overview 위젯 SectionCard 4개 타이틀이 렌더된다 (audit-mini 포함)', () => {
+    wrap(<AdminDashboardPage />)
+    expect(screen.getByText('업로드 추이')).toBeTruthy()
+    expect(screen.getByText('플래그된 공유')).toBeTruthy()
+    expect(screen.getByText('부서별 저장공간')).toBeTruthy()
+    expect(screen.getByText('최근 활동')).toBeTruthy()
+  })
+
+  it('mock 안내 callout(role=note "overview-mock")이 노출된다', () => {
+    wrap(<AdminDashboardPage />)
+    expect(screen.getByRole('note', { name: 'overview-mock' })).toBeTruthy()
+  })
+
+  it('UploadChart svg 가 aria-label 로 노출된다', () => {
+    wrap(<AdminDashboardPage />)
+    expect(screen.getByRole('img', { name: '최근 28일 업로드 추이' })).toBeTruthy()
+  })
+
+  it('FlagRow — mock 플래그 2건의 파일명이 노출된다 + "전체 보기" 링크', () => {
+    wrap(<AdminDashboardPage />)
+    expect(screen.getByText('ingest-pipeline.py')).toBeTruthy()
+    expect(screen.getByText('고객 명부 2026.xlsx')).toBeTruthy()
+    const allLink = screen.getByRole('link', { name: /전체 보기/ })
+    expect(allLink.getAttribute('href')).toBe('/admin/sharing')
+  })
+
+  it('DeptRow — mock 부서 5개 이름이 노출된다 + "관리" 링크', () => {
+    wrap(<AdminDashboardPage />)
+    expect(screen.getByText('엔지니어링')).toBeTruthy()
+    expect(screen.getByText('디자인')).toBeTruthy()
+    expect(screen.getByText('영업')).toBeTruthy()
+    expect(screen.getByText('마케팅')).toBeTruthy()
+    expect(screen.getByText('인사')).toBeTruthy()
+    // 6번째(재무)는 slice(0, 5)로 노출되지 않아야 한다
+    expect(screen.queryByText('재무')).toBeNull()
+    const manageLink = screen.getByRole('link', { name: /관리/ })
+    expect(manageLink.getAttribute('href')).toBe('/admin/storage')
+  })
+
+  it('AuditMiniPanel — "전체 →" 링크가 /admin/audit 로 이동 (Phase 3e)', () => {
+    wrap(<AdminDashboardPage />)
+    const allLinks = screen.getAllByRole('link', { name: /전체/ })
+    const auditLink = allLinks.find((l) => l.getAttribute('href') === '/admin/audit')
+    expect(auditLink).toBeTruthy()
   })
 })

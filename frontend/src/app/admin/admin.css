@@ -50,7 +50,12 @@
   font-weight: 500;
   transition: background .12s, border-color .12s, color .12s;
   white-space: nowrap;
+  /* anchor (Link) 로 렌더되는 케이스에서도 밑줄 제거 — admin 페이지의 우측
+     상단 보조 액션 (SectionCard right 슬롯의 "전체 보기 →" 등)에서 inline
+     style 중복을 막는다 (Phase 3e link-styles). */
+  text-decoration: none;
 }
+.btn:hover, .btn-primary:hover, .btn-ghost:hover { text-decoration: none; }
 .btn {
   background: var(--surface-1);
   border-color: var(--border-strong);

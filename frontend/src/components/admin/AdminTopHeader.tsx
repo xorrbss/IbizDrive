@@ -18,7 +18,7 @@ export function AdminTopHeader({ tab }: { tab: AdminTabId | null }) {
 
   return (
     <div className="admin-header">
-      <div>
+      <div className="admin-header-left">
         <div className="admin-crumb">
           <Lock size={11} aria-hidden />
           <span>관리자</span>
@@ -27,11 +27,13 @@ export function AdminTopHeader({ tab }: { tab: AdminTabId | null }) {
         </div>
         <h1 className="admin-title">{title}</h1>
       </div>
-      <div className="admin-tenant" aria-label="조직 정보">
-        <span className="admin-tenant-dot" aria-hidden />
-        <div>
-          <div className="admin-tenant-name">Ibiz Software Inc.</div>
-          <div className="admin-tenant-sub">Workspace · Business Plus</div>
+      <div className="admin-header-right">
+        <div className="admin-tenant" aria-label="조직 정보">
+          <span className="admin-tenant-dot" aria-hidden />
+          <div>
+            <div className="admin-tenant-name">Ibiz Software Inc.</div>
+            <div className="admin-tenant-sub">Workspace · Business Plus</div>
+          </div>
         </div>
       </div>
     </div>
