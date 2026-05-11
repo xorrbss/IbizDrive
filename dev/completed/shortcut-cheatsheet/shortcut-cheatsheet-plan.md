@@ -1,10 +1,13 @@
 ---
 task: 단축키 cheat sheet `?` 모달
-status: in_progress
+status: completed
 created: 2026-05-11
+completed: 2026-05-11
+merged: PR #171 (데이터 single-source 추출은 후속 PR #174)
 spec: docs/01-frontend-design.md §12.1 (키맵)
 branch: feat/shortcut-cheatsheet-modal
-worktree: C:/project/IbizDrive/.claude/worktrees/shortcut-cheatsheet
+worktree: C:/project/IbizDrive/.claude/worktrees/shortcut-cheatsheet (제거됨)
+result: vitest 175 file / 1273/1273 PASS, 신규 9건, typecheck/lint exit 0
 ---
 
 # Plan — Shortcut Cheat Sheet (`?` 모달)
