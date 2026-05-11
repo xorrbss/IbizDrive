@@ -7,6 +7,8 @@ type Props = {
   isFocused: boolean
   isSelected: boolean
   isPending: boolean
+  /** RightPanel(`?file=`)에 현재 열려있는 카드 — selected와 동일한 accent ring (zip `.grid-card.opened` 미정의이나 일관성 위해 동일 시각). */
+  isOpened?: boolean
   onClick?: (item: FileItem, e: React.MouseEvent) => void
   onDoubleClick?: (item: FileItem) => void
 }
@@ -22,16 +24,25 @@ export function FileCard({
   isFocused,
   isSelected,
   isPending,
+  isOpened = false,
   onClick,
   onDoubleClick,
 }: Props) {
   const { Icon, className: iconColor } = fileIconFor(item)
 
+  // zip styles.css `.grid-card` 사양:
+  //   - hover: border-strong + shadow-sm (L712~714, background 변화 없음)
+  //   - selected: border-accent + ring-1 accent (L716~718, "box-shadow: 0 0 0 1px var(--accent)")
+  //   - pending: opacity .55 (L720)
+  //   - transition: border-color .12s, box-shadow .12s (L710, Tailwind duration-[120ms])
+  // selected의 ring은 Tailwind `ring-1` + `ring-accent` 로 표현. ring-2 → ring-1로 정정
+  // (이전 구현은 `bg-accent-soft + ring-2` 였으나 zip 사양에는 bg 변화 없고 1px outline).
+  const isAccented = isSelected || isOpened
   const stateClass = isPending
     ? 'opacity-55 cursor-not-allowed'
-    : isSelected
-      ? 'bg-accent-soft ring-2 ring-accent cursor-default'
-      : 'hover:bg-surface-2 cursor-default'
+    : isAccented
+      ? 'border-accent ring-1 ring-accent cursor-default'
+      : 'hover:border-border-strong hover:shadow-sm cursor-default'
 
   return (
     <div
@@ -48,7 +59,7 @@ export function FileCard({
         if (isPending) return
         onDoubleClick?.(item)
       }}
-      className={`select-none rounded-md border border-border ${stateClass} flex flex-col items-center justify-center p-3 text-center transition-colors`}
+      className={`select-none rounded-md border border-border bg-surface-1 ${stateClass} flex flex-col items-center justify-center p-3 text-center transition-[border-color,box-shadow] duration-[120ms]`}
     >
       <Icon size={36} className={iconColor} aria-hidden />
       <div

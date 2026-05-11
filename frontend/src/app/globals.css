@@ -182,6 +182,19 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* FileRow `opened` 상태 — RightPanel(?file=)에 열린 행 좌측 2px inset accent border.
+   원본: design-zip styles.css `.tr.opened { box-shadow: inset 2px 0 0 var(--accent); }`.
+   Tailwind arbitrary value(`shadow-[inset_2px_...]`)로 표현 가능하나 selected drop-over 등
+   다른 box-shadow와 cascade 충돌 없이 단일 책임 클래스로 분리 (KISS, transition 통일).
+   transition은 selected/hover와 동일한 background 단축 — 별도 box-shadow transition 불필요. */
+.row-opened { box-shadow: inset 2px 0 0 var(--accent); }
+
+/* FileRow selected dark theme — zip styles.css L633.
+   light: accent-soft, dark: color-mix(in oklch, var(--accent) 18%, transparent).
+   Tailwind 유틸로 분기 어려워 [data-theme] selector 직접 사용. */
+[data-theme="dark"] .row-selected { background: color-mix(in oklch, var(--accent) 18%, transparent); }
+[data-theme="dark"] .row-selected:hover { background: color-mix(in oklch, var(--accent) 22%, transparent); }
+
 /* 포커스 링 — 모든 interactive 기본값
    개별 컴포넌트가 outline:none을 주지 않는 한 가시성 유지 */
 button:focus-visible,

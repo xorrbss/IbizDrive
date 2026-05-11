@@ -72,7 +72,9 @@ describe('FileCard (M16.1)', () => {
     expect(onDoubleClick).toHaveBeenCalledTimes(1)
   })
 
-  it('selected 상태 — ring-accent 클래스 + aria-selected=true', () => {
+  it('selected 상태 — ring-1 accent 클래스 + aria-selected=true', () => {
+    // zip styles.css `.grid-card.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) }`.
+    // Tailwind 표현: `border-accent ring-1 ring-accent` (background 변화 없음, 1px outline).
     render(
       <FileCard
         item={ITEM}
@@ -82,9 +84,28 @@ describe('FileCard (M16.1)', () => {
       />,
     )
     const cell = screen.getByRole('gridcell')
-    expect(cell.className).toMatch(/ring-2/)
+    expect(cell.className).toMatch(/ring-1/)
     expect(cell.className).toMatch(/ring-accent/)
+    expect(cell.className).toMatch(/border-accent/)
     expect(cell.getAttribute('aria-selected')).toBe('true')
+  })
+
+  it('opened 상태 — selected와 동일한 accent ring', () => {
+    // RightPanel(`?file=`)에 열린 카드. zip은 `.grid-card.opened` 미정의이나
+    // selected와 동일 시각(border + ring accent) 적용 — FileRow.opened가 inset 2px와 다른 이유:
+    // grid 카드는 좌측 inset border가 불가(border-radius 깨짐). 1px ring으로 통일.
+    render(
+      <FileCard
+        item={ITEM}
+        isFocused={false}
+        isSelected={false}
+        isPending={false}
+        isOpened={true}
+      />,
+    )
+    const cell = screen.getByRole('gridcell')
+    expect(cell.className).toMatch(/ring-1/)
+    expect(cell.className).toMatch(/ring-accent/)
   })
 
   it('pending 상태 — 클릭 무시 + aria-disabled', () => {
