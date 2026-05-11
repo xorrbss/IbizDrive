@@ -36,8 +36,11 @@ const CARD_ROW_HEIGHT = 168
 const GRID_MIN_COL_WIDTH = 172
 const GRID_GAP = 12
 
-// 현 M5 단계 — 5열 유지 (M7에서 체크박스/액션 컬럼 추가 시 재매핑)
-const GRID_COLS = 'grid grid-cols-[28px_1fr_110px_130px_90px] gap-3 items-center px-4'
+// 디자인 핸드오프 G4 (2026-05-11): 6열 grid — 체크박스 / 이름 / 크기 / 수정일 / 수정자 / 액션.
+// 원본: prototype/styles.css `.file-table .row { grid-template-columns: 36px 1fr 140px 130px 90px 44px }`.
+// 체크박스는 M4 selection store (`useSelectionStore`) 와 연결, 액션 버튼은 layout placeholder
+// (메뉴 wiring은 v1.x — rename/move/share/delete 컨텍스트 메뉴 별도 PR).
+const GRID_COLS = 'grid grid-cols-[36px_1fr_140px_130px_90px_44px] gap-3 items-center px-4'
 
 type Props = {
   folderId: string
@@ -400,6 +403,7 @@ export function FileTable({ folderId }: Props) {
         <span className="text-right" role="columnheader">크기</span>
         <span className="text-right" role="columnheader">수정일</span>
         <span className="text-right" role="columnheader">수정자</span>
+        <span role="columnheader" aria-hidden />
       </div>
 
       <div

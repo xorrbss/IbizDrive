@@ -16,9 +16,19 @@ function wrap(node: ReactNode) {
   return <QueryClientProvider client={qc}>{node}</QueryClientProvider>
 }
 
+function mockPlatform(platform: string) {
+  Object.defineProperty(navigator, 'platform', {
+    value: platform,
+    configurable: true,
+    writable: true,
+  })
+}
+
 describe('SearchBar', () => {
   beforeEach(() => {
     vi.useFakeTimers()
+    // 디자인 핸드오프 G3 — kbd 칩 platform 분기. JSDOM 기본은 Linux이지만 명시화.
+    mockPlatform('MacIntel')
   })
   afterEach(() => {
     vi.useRealTimers()
@@ -33,9 +43,17 @@ describe('SearchBar', () => {
     expect(input.className).toMatch(/h-\[30px\]/)
   })
 
-  it('비어있고 unfocused일 때 ⌘K kbd 칩 노출', () => {
+  it('비어있고 unfocused + mac 플랫폼 → ⌘K kbd 칩 노출', () => {
     render(wrap(<SearchBar />))
     expect(screen.getByText('⌘K')).toBeTruthy()
+    expect(screen.queryByLabelText('검색어 지우기')).toBeNull()
+  })
+
+  it('비어있고 unfocused + win/linux 플랫폼 → Ctrl K kbd 칩 노출', () => {
+    mockPlatform('Win32')
+    render(wrap(<SearchBar />))
+    expect(screen.getByText(/Ctrl/)).toBeTruthy()
+    expect(screen.queryByText('⌘K')).toBeNull()
     expect(screen.queryByLabelText('검색어 지우기')).toBeNull()
   })
 

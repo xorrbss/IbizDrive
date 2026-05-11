@@ -957,7 +957,7 @@ export function normalizeFileName(s: string): string {
 
 > Grid 2D 내비게이션은 pure helper `frontend/src/lib/gridNav.ts:computeNextIndex`로 분리. ↓ overshoot 시 마지막 partial row에 항목이 있으면 `length-1`로 clamp, 없으면 stay. ↑은 첫 행에서 stay. pendingIds는 같은 stride 방향(↑/↓ = columns, ←/→ = 1)으로 skip하며 후보가 없으면 stay (M16VK).
 
-> **Shortcut Cheat Sheet (2026-05-11)**: `?` 키 → `ShortcutsCheatSheet` 모달 open. self-contained (props 없음, `(explorer)/layout.tsx`에 1회 마운트). 단축키 데이터는 `frontend/src/lib/keyboardShortcuts.ts` `KEYBOARD_SHORTCUTS` — **single source of truth** (본 §12.1 ↔ 코드 표현). 변경 시 양쪽 동기화 (CLAUDE.md §4 계약 파일 원칙).
+> **Shortcut Cheat Sheet (2026-05-11)**: `?` 키 또는 TopBar 우측 Keyboard 아이콘 버튼 → `ShortcutsCheatSheet` 모달 open. 버튼은 `?` 단축키 미인지 사용자의 발견성(discoverability) 진입점 — `app:open-shortcuts` CustomEvent dispatch로 동일 모달 트리거. self-contained (props 없음, `(explorer)/layout.tsx`에 1회 마운트). 단축키 데이터는 `frontend/src/lib/keyboardShortcuts.ts` `KEYBOARD_SHORTCUTS` — **single source of truth** (본 §12.1 ↔ 코드 표현). 변경 시 양쪽 동기화 (CLAUDE.md §4 계약 파일 원칙).
 
 ### 12.2 Virtualization + aria
 
@@ -1485,7 +1485,7 @@ type AuditEntry = {
 > `FolderTree` / `useFolderTree` / `folderPath.ts` / `useViewStore.expandedFolderIds` 모두 폐기.
 > `VIRTUAL_ROOT_ID('root')` 사용 금지.
 
-> **TopBar 레이아웃 (디자인 핸드오프 G2 / 2026-05-11)**: TopBar는 `grid auto / 1fr / auto` 3-column 구조 (`prototype/styles.css` L134). 좌측 햄버거 (`useSidebarChromeStore.toggle`, `aria-pressed={collapsed}`), 중앙 SearchBar (`max-w-[560px] mx-auto`), 우측 TweaksPanel + Avatar. (explorer)/layout.tsx의 `<aside>`는 `collapsed`에 따라 `w-[248px]` ↔ `w-0` 폭 transition (`transition-[width] duration-200 ease-out`) + `overflow-hidden` + `aria-hidden`.
+> **TopBar 레이아웃 (디자인 핸드오프 G2 / 2026-05-11)**: TopBar는 `grid auto / 1fr / auto` 3-column 구조 (`prototype/styles.css` L134). 좌측 햄버거 (`useSidebarChromeStore.toggle`, `aria-pressed={collapsed}`), 중앙 SearchBar (`max-w-[560px] mx-auto`), 우측 Keyboard 도움말 버튼 + TweaksPanel + Avatar. 도움말 버튼은 `app:open-shortcuts` CustomEvent dispatch → `ShortcutsCheatSheet` 모달 (§12.1 callout). (explorer)/layout.tsx의 `<aside>`는 `collapsed`에 따라 `w-[248px]` ↔ `w-0` 폭 transition (`transition-[width] duration-200 ease-out`) + `overflow-hidden` + `aria-hidden`.
 
 ### 17.1 workspace prefix catch-all 라우트 (Plan B)
 
@@ -1685,6 +1685,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
 | 12 | **감사 로그 UI** (도메인에 따라) | `/admin/audit-logs` 필터/export |
 | 13 | **디자인 토큰 적용** (M13, 완료 2026-04-25) | `:root` 토큰 + `@theme inline` + 모든 className 토큰화. 기준: `design-reference/IbizDrive.html` |
 | 13.1 | **Variant 시스템 + Tweaks** (M13.1, 완료 2026-05-08) | `[data-variant]` 4종(default/notion/dropbox/terminal) + `lib/variant.ts` 5함수 + `useVariant` 훅 + `layout.tsx` FOUC init script + `TweaksPanel` (TopBar settings → popover, ThemeToggle 임베드 + variant 라디오 4종). 누락 토큰 보충 (`--accent-text`, `--success-soft`). 옵션 B (KISS): terminal 17 selector 폰트 override 는 `:root --font-sans` 토글 + body letter-spacing 두 줄로 흡수. 자세한 내용은 `docs/design-system.md` §11. |
+| 13.2 | **Density 토글** (G5, 완료 2026-05-11) | `[data-density]` 3종(compact=28 / default=base / comfortable=40) + `lib/density.ts` 5함수 + `useDensity` 훅 + `layout.tsx` FOUC init script + `TweaksPanel` density 라디오 3종 추가. 우선순위: `[data-density]` (사용자 명시) > `[data-variant]` default `--row-h`. CSS cascade로 variant rules 뒤에 배치하여 override. |
 | 14 | **Visual Identity** | TopBar(검색/테마 토글/아바타) + Lucide 아이콘 도입 + FileRow 밀도 재조정 + StatusBar 하단. M13 토큰 위에서 JSX 추가 |
 | 15 | **Layout Extras** | SortChip(정렬 드롭다운) + ViewSwitch(List/Grid 토글) + StorageBar(사이드바 하단) + RightPanel 탭(세부정보/버전/활동/권한) |
 | 16 | **Grid View** | FileTable에 grid 모드 추가 (썸네일 카드형). M14의 ViewSwitch에서 토글. 본체 closed 2026-04-29 (PR #16). 가상화 closed 2026-05-01 (M16V follow-up: `useGridColumns` + row 단위 `useVirtualizer` + 키보드 scrollToIndex `Math.floor(idx/columns)` 매핑). v1.x 잔여: 2D 키보드 wrap / DnD / 썸네일 / 가변 높이. |

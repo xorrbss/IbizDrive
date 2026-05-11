@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { useSearch } from '@/hooks/useSearch'
 import { FOCUS_SEARCH_EVENT } from '@/hooks/useGlobalShortcuts'
@@ -21,6 +21,13 @@ export function SearchBar() {
   const [open, setOpen] = useState(false)
   const [focused, setFocused] = useState(false)
   const search = useSearch(query)
+
+  // 사내 환경은 다수가 Windows. mac의 ⌘ 기호는 Windows 사용자에게 인지 부담.
+  // navigator.platform 으로 분기 (deprecated이나 deterministic; userAgentData는 점진 도입).
+  const kbdLabel = useMemo(() => {
+    if (typeof navigator === 'undefined') return '⌘K'
+    return /Mac|iPhone|iPad/i.test(navigator.platform) ? '⌘K' : 'Ctrl K'
+  }, [])
 
   // `/` 또는 `⌘K`/`Ctrl+K` 단축키 → 입력 focus
   useEffect(() => {
@@ -96,7 +103,7 @@ export function SearchBar() {
           aria-hidden
           className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 inline-flex items-center px-1.5 py-px rounded border border-border bg-surface-1 text-[10.5px] font-medium text-fg-muted"
         >
-          ⌘K
+          {kbdLabel}
         </kbd>
       )}
       {open && (
