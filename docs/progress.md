@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-05-11 — quota-spec-drift-realign (Phase 1: docs-only)
+
+### 범위
+
+quota mutation UI 트랙 진입 사전 점검에서 발견된 spec drift 정정. backend 도메인 부재 + frontend mock + docs/04 §6.1 잘못된 컬럼명("quota_bytes")이 동시 노출됐고, 본 PR은 5-phase plan으로 분할한 Phase 1 (docs-only).
+
+### 발견된 drift
+
+- `docs/02 §2.1` schema에 `users.storage_quota` / `users.storage_used` 컬럼이 정의돼 있으나 V2~V17 어떤 마이그레이션에도 ALTER 미적용 (`V2__users_auth.sql` 주석 "후속 phase에서 추가"가 ground truth).
+- `docs/04 §6.1` callout이 `quota_bytes` 컬럼명을 언급 — 실제 spec 이름은 `storage_quota` (drift 2건의 충돌).
+- frontend `api.getStorageQuota`는 mock placeholder ("백엔드 미존재... 실제 quota API 신설 시 본 mock만 fetch로 교체"). impl 부재가 mock 주석에는 명시됐으나 docs callout에는 누락.
+- upload path 에러 contract(`docs/02 §7.6 / §8`)의 `413 QUOTA_EXCEEDED`는 정의만 있고 enforcement 미구현 — docs/04 §6.1 callout에 별도 명시 누락.
+
+### 변경 핵심
+
+- `docs/02 §2.1` schema 두 라인에 V18 미도입 callout 추가 (행 주석에 `⚠️ V2~V17 ALTER 미적용 — V18 도입 예정`). schema 라인은 보존 (spec = 최종 의도 상태).
+- `docs/04 §6.1` 정정 + 5-phase plan 통일:
+  - 컬럼명 "quota_bytes" → 정확한 `storage_quota` / `storage_used` 명기 + `V2__users_auth.sql` 주석 ground truth 인용
+  - Phase 1 (본 PR) → Phase 5 (enforcement) 의 trajectory를 한 곳에서 추적 가능하도록 명세화
+  - frontend mock 상태와 `413` enforcement 미구현 상태도 명시
+- `docs/02 §8` 에러 contract 표는 무수정 — 계약은 정의 그대로 유지, "Phase 5까지 미발생" 상태는 §6.1 plan에서 명시.
+
+### 검증
+
+docs-only. typecheck/lint/test 무영향. 본 PR이 후속 Phase 2~5의 trajectory를 단일 anchor (`docs/04 §6.1`)에 고정 → 후속 PR이 "현재 어느 Phase까지 머지됐는가"를 명확히 표기 가능.
+
+### 결정/편차
+
+- **§2.1 schema 라인 보존** — 두 라인 삭제(spec 후퇴) vs 인라인 callout(spec 유지 + 현황 표시) 중 후자. spec drift 정정의 목적은 spec/impl 일치 *명시*이지 spec 후퇴 아님.
+- **5-phase 분할** — 각 phase가 독립 PR로 완결 가능. Phase 1 closure 후에도 후속 phase 진입 의무 없음. 다음 트랙(2인 승인 framework, audit streaming 등)으로 자유 pivot.
+
+### 다음 세션 컨텍스트
+
+- **quota Phase 2 (V18 migration)**: `backend/src/main/resources/db/migration/V18__user_storage_quota.sql` — `ALTER TABLE users ADD storage_quota BIGINT NOT NULL DEFAULT 10737418240, storage_used BIGINT NOT NULL DEFAULT 0`. 기존 row는 DEFAULT로 backfill. testcontainers slice는 V18 적용 후 schema 검증.
+- v1.x backlog 잔여: 휴지통 보존(완료) / quota Phase 2~5 / 2인 승인 framework 실 구현(ADR #47, trash+role hook into) / progress streaming SSE / admin/permissions 전역 grant resource picker.
+
+---
+
 ## 2026-05-11 — upload-xhr-csrf-helper (csrf-helper-sweep #165 follow-up)
 
 ### 범위

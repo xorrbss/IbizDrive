@@ -193,13 +193,26 @@ audit 분리 이유: deactivated는 제재 의미를 가지므로 별도 enum으
 
 ### 6.1 쿼터 정책
 
-> **v1.x deferred**. quota 시스템 미구현 (DB `quota_bytes` 컬럼 0). MVP는 `spring.servlet.multipart.max-file-size=100MB` (per-request cap)로만 1차 보호.
+> **v1.x deferred → quota mutation 5-phase track으로 분할 진행 (Phase 1: 본 PR — spec drift 정정)**.
+>
+> 현재 impl 상태:
+> - `users.storage_quota` / `users.storage_used` 컬럼은 `docs/02 §2.1` schema에 정의돼 있으나 **V2~V17 어디에도 ALTER 미적용**. `V2__users_auth.sql` 주석 "후속 phase에서 추가"가 ground truth — Phase 2 V18에서 도입.
+> - upload path의 `413 QUOTA_EXCEEDED` 분기(`docs/02 §7.6` POST `/api/files`·`/api/files/upload`·`/api/files/:id/versions` + `docs/02 §8` 에러 contract)는 표에 정의돼 있으나 **enforcement 미구현 — Phase 5 도입**. MVP는 `spring.servlet.multipart.max-file-size=100MB` (per-request cap)로만 1차 보호.
+> - frontend `api.getStorageQuota` (`frontend/src/lib/api.ts`)는 mock placeholder (75% 사용 고정). Phase 4 frontend 트랙에서 실 endpoint로 교체.
 
 ```text
-기본 쿼터: 사용자당 10GB (config)         ← v1.x deferred
-부서 쿼터: 부서 전체 총합 제한 (optional)  ← v1.x deferred
-쿼터 초과 시 동작: 업로드 차단 (413 응답)  ← v1.x deferred
+기본 쿼터: 사용자당 10GB (config)         ← v1.x deferred (V18 도입 시 활성)
+부서 쿼터: 부서 전체 총합 제한 (optional)  ← v1.x deferred (Phase 2+ scope 외)
+쿼터 초과 시 동작: 업로드 차단 (413 응답)  ← v1.x deferred (Phase 5 enforcement)
 ```
+
+**5-phase plan**:
+
+1. **Phase 1 (본 PR)** — spec drift 정정. `docs/02 §2.1` schema 두 라인에 V18 미도입 callout, `docs/04 §6.1` 잘못된 "quota_bytes" 컬럼명 정정 + 단계 plan 통일.
+2. **Phase 2** — `V18__user_storage_quota.sql`: `ALTER TABLE users ADD storage_quota BIGINT NOT NULL DEFAULT 10737418240, storage_used BIGINT NOT NULL DEFAULT 0`. 기존 row backfill 자동 (DEFAULT).
+3. **Phase 3** — backend: `AdminUserQuotaService` + `PUT /api/admin/users/{id}/quota` (admin only) + `AuditEventType.USER_QUOTA_UPDATED` + listener. slice test + service test.
+4. **Phase 4** — frontend: `/admin/members` quota 컬럼 또는 별도 `/admin/quota` 페이지 — single-row inline editor (trash-retention-mutation `RetentionPolicyEditor` 패턴). `useUpdateAdminUserQuota` hook + `api.getStorageQuota` mock 제거 + 실 endpoint 호출.
+5. **Phase 5** — enforcement: upload path (`FileUploadController.create`, `FileVersionService.create`, tus init) 진입에서 `users.storage_used + payload.size > storage_quota` 검증 → `413 QUOTA_EXCEEDED`. 성공 시 `UPDATE users SET storage_used = storage_used + size WHERE id = ?` 트랜잭션 (CLAUDE.md §3 원칙 7 `FOR UPDATE`).
 
 ### 6.2 사용량 대시보드
 
