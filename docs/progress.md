@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-05-11 — 🚦 Golden path 회귀 자율 수행 (BETA-RELEASE.md §9 GO 보조)
+
+### 범위
+
+BETA-RELEASE.md §9 출시 ceremony 1번 "Golden path 수동 회귀"를 자율 모드 + PowerShell/curl로 API-level 시퀀스 수행. 코드 변경 0 — 1회성 출시 게이트 evidence 확보(자동화 spec은 KISS+YAGNI로 미작성).
+
+### 결과 (6 step 모두 PASS)
+
+| Step | API | 결과 |
+|---|---|---|
+| 1. signup | `POST /api/auth/signup` | 201. first-user-ADMIN 분기 `SignupService.java:69` 코드 정합 (DB가 dev-preview seed 잔존이라 ADMIN role 직접 검증은 admin@local.test login으로 fallback) |
+| 2. upload | `POST /api/files` multipart | 201 + fileId + size 정합 (34=34) + version=1 |
+| 3. permission grant | `POST /api/files/{id}/permissions` | 201 (everyone/READ) + GET list verify (1건) |
+| 4. download | `GET /api/files/{id}/download` | 200 + byte 일치 + Content-Disposition RFC 5987 (`attachment; filename=...; filename*=UTF-8''...`) |
+| 5. soft delete | `DELETE /api/files/{id}` | 204 + GET `/api/trash?scopeType=department&scopeId=...` items 포함 |
+| 6. restore | `POST /api/files/{id}/restore` | 200 + GET `/api/folders/{id}/items`에 복원 + trash에서 제거 |
+| audit | `GET /api/admin/audit?targetId=...` | 6 events: `file.uploaded` / `permission.granted` / `file.downloaded`×2 / `file.deleted` / `file.restored` (actorId/resourceId 정합) |
+
+### 결정/편차
+
+- **DB 빈 상태 fallback**: backend가 dev-preview-stabilization 트랙 DB 재활용 상태(admin@local.test seed 잔존). 첫 signup 시도가 MEMBER 부여돼 first-user-ADMIN role-binding 직접 검증 실패 → admin@local.test login으로 pivot. ADR #41 분기 자체는 `SignupService.java:69` 코드(`userRepository.count() == 0L ? Role.ADMIN : Role.MEMBER`) + signup endpoint 201 동작으로 확인. 진짜 빈 DB role-binding 회귀는 출시 ceremony 이전 1회 빈 DB 가동 권장(코드 변경 0).
+- **API-level only**: UI 회귀는 vitest 817 + e2e mock 4건 + 사용자 시각 1회로 cover. Playwright spec 자산화는 1회성 게이트라 YAGNI.
+- **Frontend 미가동 영향 0**: 본 회귀는 backend(:8080) 직접 호출. frontend(:3000/:3001)는 별도.
+- **local-dev.md drift 1건**: §5.1 signup 예시 body가 `fullName`이라 명시했으나 실제 DTO는 `displayName`. follow-up backlog(별도 PR).
+
+### BETA-RELEASE.md §9 GO 결정 영향
+
+§1/§3/§4/§5/§6/§10/§11 코드 게이트 ✅ 유지 + 본 회귀로 골든 패스 통합 정합 추가 확보. 남은 GO 조건은 **§2 인프라 게이트 + §8 모니터링 (운영자 sign-off)** + `v1.0.0-beta` 태그.
+
+### 다음 단계
+
+1. **`v1.0.0-beta` 태그 + push** (사용자 트리거)
+2. **인프라팀 핸드오프** (BETA-RELEASE §2 / §8 + `docs/local-dev.md`)
+3. **사내 베타 사용자 그룹 공지**
+4. (선택) local-dev.md §5.1 `fullName` → `displayName` drift 정정
+
+### 참조
+
+- Evidence: `$env:TEMP\golden-path-*` (fixture / download bin+headers / session JSON)
+- 코드 회귀 surface: `SignupService.java:69`, `FileUploadController.java:69`, `PermissionController.java:83`, `FileDownloadController.java`, `FileController.java:143/164`, `TrashController.java:64`, `AuditQueryController.java:89`
+- 출시 체크리스트 SOT: `BETA-RELEASE.md` (Last Updated 2026-05-11)
+
+---
+
 ## 2026-05-11 — retention-page-section-ref-fix (frontend §16 ref 정정 follow-up)
 
 ### 범위
