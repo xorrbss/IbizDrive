@@ -5,6 +5,24 @@
 
 ---
 
+## 2026-05-11 — retention-page-section-ref-fix (frontend §16 ref 정정 follow-up)
+
+### 범위
+
+직전 PR #189 (`dual-approval-spec-mini`)에서 분리한 frontend ref 정정 backlog 해소. 단순 string literal 변경 2건 (docs ref만, code 로직 무변경).
+
+### 변경 (2 file, +2/-2)
+
+- `frontend/src/app/admin/retention/page.tsx` line 101 — `(운영 런북 docs/04 §15.4)` → `(운영 런북 docs/04 §16 / ADR #47)`
+- `frontend/src/components/admin/RetentionPolicyEditor.tsx` line 19 — Javadoc `(docs/04 §15.4)` → `(docs/04 §16 / ADR #47)`
+
+### 검증
+
+- `page.test.tsx`는 "2인 승인" 라벨 및 "dual-approval" 문자열만 검증 (line 113/115) — §15.4/§16 문구 회귀 zero.
+- string literal만 변경, syntax/type 무영향 → typecheck/lint는 CI에 위임.
+
+---
+
 ## 2026-05-11 — dual-approval-spec-mini (§16 ref drift 정정)
 
 ### 범위
