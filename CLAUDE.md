@@ -69,6 +69,7 @@ app/               Next.js App Router
 | 배치 작업 | `docs/04-admin-operations.md` §13 |
 | 사내 베타 운영 런북 (Wave 2 closure) | `docs/04-admin-operations.md` §15 |
 | 로컬 dev preview 셋업 (frontend·backend·DB·시드·트러블슈팅) | `docs/local-dev.md` |
+| v1.x 출시 후 다음 트랙 결정 (우선순위/effort/blocker) | `docs/v1x-backlog.md` |
 
 ### 큰 문서 접근 전략
 
