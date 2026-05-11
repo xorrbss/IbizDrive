@@ -5,9 +5,12 @@
 #   `--spring.profiles.active=prod` JVM 인자.
 #
 # 본 파일이 하는 것:
-#   1. 4개 운영 cron 활성화 (`purge`, `share-expiration`, `permission-expiration`,
-#      `storage-orphan-cleanup`) — 기본값은 `application.yml`에서 모두 false.
-#   2. 세션 쿠키 Secure 강제 (HTTPS only).
+#   1. 세션 쿠키 Secure 강제 (HTTPS only).
+#
+# 운영 cron 4종(`purge` / `share-expiration` / `permission-expiration` /
+# `storage-orphan-cleanup`)의 enabled 토글은 yml-enabled-cleanup 트랙(2026-05-09)에서
+# `cron_policy` DB 테이블로 이관 — V11 시드가 4 row를 enabled=false로 초기화하며,
+# 운영자는 `/admin/system` 토글 또는 `PUT /api/admin/system/cron/{key}`로 활성화한다.
 #
 # 본 파일이 하지 않는 것 (운영자 책임 = 환경 변수 또는 사내 시크릿 저장소 주입):
 #   - `SPRING_DATASOURCE_PASSWORD` — dev default 사용 절대 금지 (`BETA-RELEASE.md` §2.3).
