@@ -35,23 +35,43 @@ export function useUpload() {
   const cancelStore = useUploadStore((s) => s.cancel)
 
   const startTask = useCallback(
-    (task: UploadTask) => {
+    async (task: UploadTask) => {
       const prev = xhrMap.current.get(task.id)
       if (prev) prev.abort()
 
       const newName =
         task.conflictResolution === 'rename' ? renameFile(task.file.name) : undefined
 
-      const xhr = api.uploadFile({
-        file: task.file,
-        folderId: task.targetFolderId,
-        resolution:
-          task.conflictResolution === 'new_version' ||
-          task.conflictResolution === 'rename'
-            ? task.conflictResolution
-            : undefined,
-        newName,
-      })
+      let xhr: XhrLike
+      try {
+        xhr = await api.uploadFile({
+          file: task.file,
+          folderId: task.targetFolderId,
+          resolution:
+            task.conflictResolution === 'new_version' ||
+            task.conflictResolution === 'rename'
+              ? task.conflictResolution
+              : undefined,
+          newName,
+        })
+      } catch {
+        // ensureCsrfToken의 `/api/auth/csrf` 부트스트랩 fetch가 network error로 reject되는 경우.
+        // xhr가 아직 만들어지지 않았으므로 onerror 경로를 탈 수 없음 → 직접 failed 마킹.
+        updateTask(task.id, {
+          status: 'failed',
+          error: { kind: 'network', message: '네트워크 연결을 확인하세요' },
+        })
+        return
+      }
+
+      // csrf 부트스트랩 중 cancel 등으로 task가 'queued'를 벗어났을 수 있음 (#165 follow-up).
+      // xhrMap 등록 전이라 store.cancel이 xhr를 abort하지 못한 상태 → 명시적 abort.
+      const cur = useUploadStore.getState().queue.find((t) => t.id === task.id)
+      if (!cur || cur.status !== 'queued') {
+        xhr.abort()
+        return
+      }
+
       xhrMap.current.set(task.id, xhr)
 
       updateTask(task.id, { status: 'uploading' })

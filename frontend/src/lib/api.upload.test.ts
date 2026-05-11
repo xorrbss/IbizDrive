@@ -60,9 +60,9 @@ describe('api.uploadFile (real XHR wire)', () => {
     vi.unstubAllGlobals()
   })
 
-  it('POST /api/files + withCredentials true', () => {
+  it('POST /api/files + withCredentials true', async () => {
     const file = new File([new Uint8Array(10)], 'a.txt', { type: 'text/plain' })
-    const xhr = api.uploadFile({ file, folderId: 'folder_x' })
+    const xhr = await api.uploadFile({ file, folderId: 'folder_x' })
 
     expect(xhr).toBeInstanceOf(MockXHR)
     expect((xhr as unknown as MockXHR).method).toBe('POST')
@@ -70,9 +70,9 @@ describe('api.uploadFile (real XHR wire)', () => {
     expect((xhr as unknown as MockXHR).withCredentials).toBe(true)
   })
 
-  it('multipart 파트: file + folderId (resolution 없을 때 미포함)', () => {
+  it('multipart 파트: file + folderId (resolution 없을 때 미포함)', async () => {
     const file = new File([new Uint8Array(10)], 'b.txt', { type: 'text/plain' })
-    api.uploadFile({ file, folderId: 'folder_x' })
+    await api.uploadFile({ file, folderId: 'folder_x' })
 
     const form = MockXHR.instances[0].body
     expect(form).toBeInstanceOf(FormData)
@@ -83,22 +83,49 @@ describe('api.uploadFile (real XHR wire)', () => {
     expect((sentFile as File).name).toBe('b.txt')
   })
 
-  it('resolution=new_version → form 필드에 포함', () => {
+  it('resolution=new_version → form 필드에 포함', async () => {
     const file = new File([new Uint8Array(10)], 'c.txt')
-    api.uploadFile({ file, folderId: 'f', resolution: 'new_version' })
+    await api.uploadFile({ file, folderId: 'f', resolution: 'new_version' })
 
     const form = MockXHR.instances[0].body
     expect(form?.get('resolution')).toBe('new_version')
   })
 
-  it('resolution=rename + newName → 새 File 이름으로 전송', () => {
+  it('resolution=rename + newName → 새 File 이름으로 전송', async () => {
     const file = new File([new Uint8Array(10)], 'd.txt', { type: 'text/plain' })
-    api.uploadFile({ file, folderId: 'f', resolution: 'rename', newName: 'd (2).txt' })
+    await api.uploadFile({ file, folderId: 'f', resolution: 'rename', newName: 'd (2).txt' })
 
     const form = MockXHR.instances[0].body
     expect(form?.get('resolution')).toBe('rename')
     const sentFile = form?.get('file') as File
     expect(sentFile.name).toBe('d (2).txt')
     expect(sentFile.type).toBe('text/plain')
+  })
+
+  it('X-CSRF-Token 헤더가 cookie 부재 cold-start에서도 부트스트랩 후 set된다', async () => {
+    // sweep #165 follow-up의 핵심 회귀 가드 — sync `readCookie` 시절엔 cookie 없으면 헤더 누락 → 403.
+    // 이제 `ensureCsrfToken`이 fetch `/api/auth/csrf`로 부트스트랩한 뒤 헤더 set.
+    const originalCookie = document.cookie
+    document.cookie = 'XSRF-TOKEN=; path=/; max-age=0' // unset
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => {
+      document.cookie = 'XSRF-TOKEN=boot-csrf; path=/'
+      return new Response(null, { status: 204 })
+    })
+    const setHeaderSpy = vi.spyOn(MockXHR.prototype, 'setRequestHeader')
+
+    try {
+      const file = new File([new Uint8Array(10)], 'cold.txt')
+      await api.uploadFile({ file, folderId: 'f' })
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        '/api/auth/csrf',
+        expect.objectContaining({ method: 'GET', credentials: 'include' }),
+      )
+      expect(setHeaderSpy).toHaveBeenCalledWith('X-CSRF-Token', 'boot-csrf')
+    } finally {
+      fetchSpy.mockRestore()
+      setHeaderSpy.mockRestore()
+      document.cookie = originalCookie || 'XSRF-TOKEN=test-csrf-default; path=/'
+    }
   })
 })

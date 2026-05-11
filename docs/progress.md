@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-11 — upload-xhr-csrf-helper (csrf-helper-sweep #165 follow-up)
+
+### 범위
+
+csrf-helper-sweep #165에서 의도적 예외로 분리됐던 `api.uploadFile` (XHR sync 시그니처)을 cold-start 안전하게 정리. backlog 한 줄(`upload XHR 예외 유지 — async 시그니처 도입은 useUpload 호출자 변경 필요 → sweep 범위 초과`) 해소.
+
+### 변경 핵심
+
+- `frontend/src/lib/api.ts` `uploadFile`: `(...): XMLHttpRequest` → `async (...): Promise<XMLHttpRequest>`. `readCookie('XSRF-TOKEN')` → `await ensureCsrfToken()` — cookie 부재 cold-start에서 `/api/auth/csrf` 부트스트랩 후 헤더 set. 기존 의도적 예외 주석 제거.
+- `frontend/src/hooks/useUpload.ts` `startTask`: async 변환 + `await api.uploadFile(...)` + try-catch (ensureCsrfToken fetch network error → task failed/network 마킹) + race 가드 (await 중 cancel로 status가 'queued'를 벗어나면 xhr.abort + return).
+- `frontend/src/lib/api.upload.test.ts`: 4 case async 변환 + cold-start 회귀 가드 1건 추가 (cookie 부재 → fetch `/api/auth/csrf` 호출 + 부트스트랩 토큰으로 `setRequestHeader('X-CSRF-Token', 'boot-csrf')` 호출 확인).
+- `frontend/src/hooks/useUpload.test.ts`: 9 case async 변환 + `act(() => …)` → `await act(async () => …)` + `vi.advanceTimersByTime` → `await vi.advanceTimersByTimeAsync` (fake timer + promise micro task 동기화).
+
+### 검증
+
+- `pnpm --filter frontend typecheck` exit 0.
+- `pnpm --filter frontend lint` exit 0.
+- `pnpm --filter frontend test --run` **1314/1314 PASS** (180 test files). cold-start 가드 1건 추가, 기존 회귀 zero.
+
+### 결정/편차
+
+- **race 가드는 status === 'queued' 비교** — store.cancel은 status를 'failed'로 마킹하므로 await 후 'queued'가 아니면 cancel/retry 사이라는 신호. xhrMap 등록 전이라 store.cancel이 xhr를 abort하지 못한 상태 → 명시적 abort + return.
+- **`if (csrf) xhr.setRequestHeader` 가드 제거** — #165 본문 정합. `ensureCsrfToken`이 빈 문자열이라도 반환 보장하므로 가드 불필요, 다른 16+ 사이트 패턴과 동일.
+- **progress event listener race 미해결** — listener는 여전히 send() 호출 이후 등록 (기존 동작과 동일). 이 race는 #165 sweep과 무관한 별개 risk라 YAGNI로 분리 (필요 시 future track: send를 caller로 노출 + listener 등록 후 명시 send).
+
+### 다음 세션 컨텍스트
+
+- v1.x backlog 잔여: 휴지통 보존 정책 mutation UI(완료) / quota mutation UI (큰 트랙 — spec drift `docs/02 §2.1 storage_quota` impl 누락 + v1.x deferred + per-user 도메인) / 2인 승인 framework 실 구현 (ADR #47, trash + role hook into) / progress streaming SSE.
+- **quota track 진입 전 사전 작업**: docs/02 §2.1 storage_quota 컬럼 spec drift 정정(impl 없음을 명시), docs/04 §6.2 deferred 라벨 유지. enforcement 도입 시점에 upload path `413 QUOTA_EXCEEDED` 분기 신설.
+
+---
+
 ## 2026-05-11 — 🎨 design-handoff G2~G5 closure (track 종료)
 
 ### 범위

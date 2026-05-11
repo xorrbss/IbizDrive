@@ -601,12 +601,12 @@ export const api = {
    *
    * 세션 쿠키 전송을 위해 {@code withCredentials = true}.
    */
-  uploadFile(params: {
+  async uploadFile(params: {
     file: File
     folderId: string
     resolution?: 'new_version' | 'rename'
     newName?: string
-  }): XMLHttpRequest {
+  }): Promise<XMLHttpRequest> {
     const xhr = new XMLHttpRequest()
     const form = new FormData()
     const fileToSend = params.newName
@@ -618,14 +618,8 @@ export const api = {
 
     xhr.open('POST', '/api/files')
     xhr.withCredentials = true
-    // CSRF 토큰: 로그인 후 XSRF-TOKEN 쿠키가 항상 존재. 타 mutation들과 동일 정책 (login/logout 참고).
-    // 누락 시 Spring CSRF 필터가 403 반환 → uploadErrors가 "권한 없음"으로 오해 매핑되는 회귀 방지.
-    //
-    // XHR 경로는 sync 시그니처(`uploadFile`이 동기적으로 XMLHttpRequest 반환)라 `await ensureCsrfToken()`을
-    // 쓸 수 없다. 이 콜사이트는 csrf-helper-sweep의 의도적 예외 — 업로드는 사용자가 인증된 세션 중에만
-    // 발생하므로 cookie 부트스트랩이 필요한 cold-start 경로는 사실상 없음.
-    const csrf = readCookie('XSRF-TOKEN')
-    if (csrf) xhr.setRequestHeader('X-CSRF-Token', csrf)
+    const csrf = await ensureCsrfToken()
+    xhr.setRequestHeader('X-CSRF-Token', csrf)
     xhr.send(form)
     return xhr
   },
