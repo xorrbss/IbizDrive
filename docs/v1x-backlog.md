@@ -36,7 +36,7 @@
 
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
-| **Quota mutation Phase 3~5** | M | 없음 (Phase 1+2 완료 #185/#186) | BETA §7 / progress.md 2026-05-11 | 3개 PR 분할: Phase 3 backend service + endpoint + audit listener / Phase 4 frontend UI / Phase 5 enforcement(upload `413 QUOTA_EXCEEDED`) |
+| **Quota mutation Phase 4~5** | M | 없음 (Phase 1+2+3 완료 #185/#186/본 트랙) | BETA §7 / progress.md 2026-05-12 | 2개 PR 분할: Phase 4 frontend UI (single-row inline editor) / Phase 5 enforcement(upload `413 QUOTA_EXCEEDED` + `UPDATE storage_used FOR UPDATE`) |
 | **Admin Sharing 페이지 (디자인 zip P1)** | M | 없음 (placeholder #896 + 디자인 핸드오프 admin.jsx L582~706) | `IbizDrive_design.zip` admin.jsx §AdminSharing / sharing/page.tsx | 외부 도메인 정책 + 플래그된 공유 검토 큐 + 도메인 allow/block. 컴포넌트 ~400줄 + backend sharing policy endpoint 3종 신규 + audit emit 신규 enum |
 | **Admin Overview 위젯 보강 (디자인 zip P2)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L98~182 | UploadChart / FlagRow / DeptRow 위젯 3종 추가. KPI 카드 + DashboardSummary 컴포넌트는 이미 존재 |
 | **Admin Storage cleanup-list 위젯 (디자인 zip P2)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L448~517 | 정리 기록 위젯 추가. 기본 StorageOverviewCards/DeptRow는 이미 존재 |

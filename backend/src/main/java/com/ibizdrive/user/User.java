@@ -85,6 +85,22 @@ public class User implements Serializable {
     @Column(name = "department_id")
     private UUID departmentId;
 
+    /**
+     * quota mutation Phase 3 — 사용자당 storage 한도(bytes). V18 도입 (`docs/04 §6.1`).
+     * DEFAULT 10GB는 schema 측에서 보장 (V18 ALTER + CHECK >= 0).
+     * 본 트랙은 admin이 변경 가능하며, Phase 5에서 upload path가 enforcement 진입점이 된다.
+     */
+    @Column(name = "storage_quota", nullable = false)
+    private long storageQuota;
+
+    /**
+     * quota mutation Phase 3 — 현재 사용량(bytes). V18 도입.
+     * 본 트랙은 read만 노출(admin 응답). 실제 increment는 Phase 5 enforcement에서 upload
+     * commit 시점 `UPDATE users SET storage_used` 트랜잭션 (`docs/04 §6.1`).
+     */
+    @Column(name = "storage_used", nullable = false)
+    private long storageUsed;
+
     protected User() {
         // JPA
     }
@@ -245,5 +261,35 @@ public class User implements Serializable {
      */
     public void reactivate() {
         this.isActive = true;
+    }
+
+    /** quota mutation Phase 3 — 사용자 storage 한도(bytes) 조회. V18 도입. */
+    public long getStorageQuota() {
+        return storageQuota;
+    }
+
+    /** quota mutation Phase 3 — 현재 사용량(bytes) 조회. V18 도입. Phase 5 enforcement 진입점. */
+    public long getStorageUsed() {
+        return storageUsed;
+    }
+
+    /**
+     * quota mutation Phase 3 — admin이 사용자 quota를 변경. invariant: {@code newQuota >= 0}
+     * (V18 named CHECK `users_storage_quota_nonneg`와 동기).
+     *
+     * <p>호출자({@link com.ibizdrive.admin.user.AdminUserQuotaService})는 동일 트랜잭션 내
+     * {@link UserRepository#save}로 flush + audit event publish 책임을 진다 — `TrashPolicyService`
+     * 패턴 답습.
+     *
+     * <p>한도 < 현재 사용량(over-quota)은 허용 — 운영 grace + 한도 축소 시 일시적 over-quota
+     * 상태에서 신규 업로드만 차단되도록 Phase 5 enforcement가 분기한다.
+     *
+     * @throws IllegalArgumentException newQuota가 음수
+     */
+    public void changeStorageQuota(long newQuota) {
+        if (newQuota < 0) {
+            throw new IllegalArgumentException("storageQuota must be >= 0, got: " + newQuota);
+        }
+        this.storageQuota = newQuota;
     }
 }

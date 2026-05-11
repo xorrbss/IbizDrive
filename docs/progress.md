@@ -5,6 +5,61 @@
 
 ---
 
+## 2026-05-12 — quota-phase3 (admin user storage quota mutation backend)
+
+### 범위
+
+quota mutation 5-phase track의 Phase 3 closure — admin이 사용자별 `storage_quota`를 조회/변경할 수 있는 backend endpoint + audit emit + AFTER_COMMIT listener. Phase 1 (#185 spec drift) + Phase 2 (#186 V18 컬럼) 위에서 V18 컬럼을 JPA entity에 매핑 + service/controller/event/listener 풀세트 + 단위 테스트 10건.
+
+### 변경 (9 file, +408 코드)
+
+backend
+- `user/User.java` — `storage_quota` / `storage_used` 컬럼 매핑 + `getStorageQuota` / `getStorageUsed` / `changeStorageQuota` (invariant `>= 0` 가드).
+- `user/UserStorageQuotaChangedEvent.java` — 도메인 이벤트 record (targetUserId, before/after, actorId).
+- `admin/AdminUserQuotaService.java` — `@Transactional` getQuota/updateQuota. idempotent (same-value no-op, audit emit 생략). 음수 거부 + actor null 거부 + soft-deleted 404. AFTER_COMMIT event publish.
+- `admin/AdminUserQuotaController.java` — `GET/PUT /api/admin/users/{userId}/quota` + `@PreAuthorize("hasRole('ADMIN')")`.
+- `admin/AdminUserQuotaDto.java` + `AdminUserQuotaUpdateRequest.java` — DTO + Bean Validation (`@Min(0)`, `@NotNull`).
+- `audit/UserQuotaAuditListener.java` — `@TransactionalEventListener(AFTER_COMMIT)`. `ADMIN_QUOTA_CHANGED` audit_log row 변환. `before/after.storageQuota` + `metadata.appliesTo="new-uploads-only"`. ADR #24 swallow.
+- `test/.../AdminUserQuotaServiceTest.java` — Mockito 단위 8건 (getQuota happy/404/soft-deleted + updateQuota 음수/actor null/404/soft-deleted/happy + event/no-op/edge values/over-quota 허용).
+- `test/.../UserQuotaAuditListenerTest.java` — Mockito 단위 2건 (happy emit + audit failure swallow).
+
+docs
+- `docs/04 §6.1` Phase 3 plan line — `USER_QUOTA_UPDATED` → `ADMIN_QUOTA_CHANGED` 정정 + closure 마크.
+- `docs/v1x-backlog.md` Tier 1 — Quota Phase 3~5 → Phase 4~5만 잔존, ref 본 트랙으로 갱신.
+- `BETA-RELEASE.md` — Source line + §6 audit coverage `51 → 52 emit (~90%)` + §7 deferred wording + Last Updated 2026-05-12.
+
+### 결정/편차
+
+- **over-quota 허용**: 한도 < 현재 사용량 변경은 service가 허용 (운영 grace). Phase 5 enforcement에서 신규 업로드만 차단하는 분기.
+- **storage_used 미변경 책임**: 본 트랙은 한도만. `storage_used` mutation은 Phase 5 upload commit 트랜잭션에서 `UPDATE ... FOR UPDATE`.
+- **idempotent same-value**: 같은 값 입력 시 row UPDATE + audit emit 모두 생략 — audit_log 폭증 방지.
+- **single-approver MVP**: dual-approval은 framework 활성 시 hook (ADR #47 `app.dual-approval.user-quota-change.enabled` v1.x).
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `./gradlew test --tests "*AdminUserQuotaServiceTest" --tests "*UserQuotaAuditListenerTest"` BUILD SUCCESSFUL (10건 모두 통과).
+- 마스터 통합: 브랜치를 stash + ff-only 머지로 origin/master HEAD에 동기화 후 작업물 복원.
+- 사전 검증: `AuditEventType.ADMIN_QUOTA_CHANGED("admin.quota.changed")` enum 존재 (Phase 1), `AdminUserNotFoundException` 존재, `AdminExceptionHandler` 404 매핑 활용.
+
+### 다음 세션 컨텍스트 — Phase 4/Phase 5
+
+- **Phase 4 (frontend UI)**: `/admin/members` 페이지의 quota 컬럼 또는 `/admin/quota` 별도 페이지 — `RetentionPolicyEditor` 패턴(single-row inline editor) 답습. `useUpdateAdminUserQuota` hook + `api.getAdminUserQuota` 신규. 기존 `api.getStorageQuota` mock 제거 (도입돼 있다면).
+- **Phase 5 (upload enforcement)**: `FileUploadController.create` / `FileVersionService.create` / tus init 진입에서 `users.storage_used + payload.size > storage_quota` 검증 → `413 QUOTA_EXCEEDED`. 성공 시 `UPDATE users SET storage_used = storage_used + size` 트랜잭션 (`FOR UPDATE`, CLAUDE.md §3 원칙 7). 에러 코드 `QUOTA_EXCEEDED`는 docs/02 §8 + frontend `src/lib/errors.ts` 동시 추가.
+- Phase 4/5는 v1x-backlog Tier 1 잔여 (M effort 2 PR 분할).
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/04 §6.1` Phase 3 plan ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
+- `BETA-RELEASE.md` (Source + §6 + §7) ✓
+
+---
+
 ## 2026-05-11 — 🚦 Golden path 회귀 자율 수행 (BETA-RELEASE.md §9 GO 보조)
 
 ### 범위
