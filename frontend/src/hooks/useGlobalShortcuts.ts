@@ -15,20 +15,32 @@ function isEditableTarget(target: EventTarget | null): boolean {
 }
 
 /**
- * 전역 키보드 단축키 — 현재는 `/` 만 처리.
+ * 전역 키보드 단축키:
+ *   - `/` (modifier 없음, editable 밖에서) → FOCUS_SEARCH_EVENT
+ *   - `⌘K` (mac) / `Ctrl+K` (win/linux) → FOCUS_SEARCH_EVENT (editable 안에서도 동작)
  *
- * `/` → window.dispatchEvent(CustomEvent('app:focus-search'))
- *   - 검색 입력 컴포넌트 (M11/M14 예정)에서 mount 시 listener 등록 → 자기에게 focus
- *   - M10 시점에서는 listener 없음 → no-op
+ * 둘 다 검색 입력에 focus를 옮기는 단축키. `/`는 vim-like 기존 muscle memory,
+ * `⌘K`/`Ctrl+K`는 디자인 핸드오프 spec.
  */
 export function useGlobalShortcuts() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== '/') return
-      if (e.ctrlKey || e.metaKey || e.altKey) return
-      if (isEditableTarget(e.target)) return
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent(FOCUS_SEARCH_EVENT))
+      // `/` — no modifier, no editable target
+      if (e.key === '/' && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
+        if (isEditableTarget(e.target)) return
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent(FOCUS_SEARCH_EVENT))
+        return
+      }
+      // ⌘K / Ctrl+K — exactly one of meta/ctrl, no other modifier
+      if (e.key.toLowerCase() === 'k' && !e.shiftKey && !e.altKey) {
+        const meta = e.metaKey
+        const ctrl = e.ctrlKey
+        if ((meta || ctrl) && !(meta && ctrl)) {
+          e.preventDefault()
+          window.dispatchEvent(new CustomEvent(FOCUS_SEARCH_EVENT))
+        }
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)

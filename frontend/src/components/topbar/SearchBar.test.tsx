@@ -16,6 +16,14 @@ function wrap(node: ReactNode) {
   return <QueryClientProvider client={qc}>{node}</QueryClientProvider>
 }
 
+function mockPlatform(platform: string) {
+  Object.defineProperty(navigator, 'platform', {
+    value: platform,
+    configurable: true,
+    writable: true,
+  })
+}
+
 describe('SearchBar', () => {
   beforeEach(() => {
     vi.useFakeTimers()
@@ -28,7 +36,53 @@ describe('SearchBar', () => {
     render(wrap(<SearchBar />))
     const input = screen.getByRole('searchbox', { name: /파일 검색/ })
     expect(input).toBeTruthy()
-    expect(input.getAttribute('placeholder')).toMatch(/\//)
+    expect(input.getAttribute('placeholder')).toMatch(/파일 검색/)
+  })
+
+  it('컨테이너에 max-w-[560px] + mx-auto 적용 (중앙 정렬)', () => {
+    const { container } = render(wrap(<SearchBar />))
+    const root = container.firstChild as HTMLElement
+    expect(root).toBeTruthy()
+    expect(root.className).toContain('max-w-[560px]')
+    expect(root.className).toContain('mx-auto')
+  })
+
+  it('mac 플랫폼 → kbd 칩 ⌘K 표시', () => {
+    mockPlatform('MacIntel')
+    render(wrap(<SearchBar />))
+    expect(screen.getByText('⌘K')).toBeTruthy()
+  })
+
+  it('win/linux 플랫폼 → kbd 칩 Ctrl K 표시', () => {
+    mockPlatform('Win32')
+    render(wrap(<SearchBar />))
+    expect(screen.getByText(/Ctrl/)).toBeTruthy()
+    expect(screen.queryByText('⌘K')).toBeNull()
+  })
+
+  it('query 비어있을 때 clear 버튼 미노출', () => {
+    render(wrap(<SearchBar />))
+    expect(screen.queryByRole('button', { name: /검색어 지우기/ })).toBeNull()
+  })
+
+  it('query 입력 시 clear 버튼 노출', () => {
+    render(wrap(<SearchBar />))
+    const input = screen.getByRole('searchbox') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '가나' } })
+    expect(screen.getByRole('button', { name: /검색어 지우기/ })).toBeTruthy()
+  })
+
+  it('clear 버튼 클릭 시 query 비우고 결과 닫힘', () => {
+    render(wrap(<SearchBar />))
+    const input = screen.getByRole('searchbox') as HTMLInputElement
+    fireEvent.focus(input)
+    fireEvent.change(input, { target: { value: '가나' } })
+    expect(screen.getByText(/2자 이상|결과/)).toBeTruthy()
+
+    const clearBtn = screen.getByRole('button', { name: /검색어 지우기/ })
+    fireEvent.click(clearBtn)
+    expect(input.value).toBe('')
+    expect(screen.queryByRole('button', { name: /검색어 지우기/ })).toBeNull()
   })
 
   it('FOCUS_SEARCH_EVENT 디스패치 시 input에 focus', () => {

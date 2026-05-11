@@ -943,7 +943,8 @@ export function normalizeFileName(s: string): string {
 | F2 | 이름 변경 | 이름 변경 |
 | Ctrl/Meta + A | 전체 선택 | 전체 선택 |
 | Esc | 선택 해제 / RightPanel 닫기 (`?file=` 제거) | 동일 |
-| / | 검색창 포커스 | 동일 |
+| / | 검색창 포커스 (modifier 없음, editable 밖에서) | 동일 |
+| ⌘K (mac) / Ctrl+K (win/linux) | 검색창 포커스 (editable 안에서도 동작, 디자인 핸드오프 spec) | 동일 |
 
 > Grid 2D 내비게이션은 pure helper `frontend/src/lib/gridNav.ts:computeNextIndex`로 분리. ↓ overshoot 시 마지막 partial row에 항목이 있으면 `length-1`로 clamp, 없으면 stay. ↑은 첫 행에서 stay. pendingIds는 같은 stride 방향(↑/↓ = columns, ←/→ = 1)으로 skip하며 후보가 없으면 stay (M16VK).
 
