@@ -3,6 +3,8 @@ import Link from 'next/link'
 import { useAdminTrashPolicy } from '@/hooks/useAdminTrashPolicy'
 import { AdminGuard } from '@/components/auth/AdminGuard'
 import { RetentionPolicyEditor } from '@/components/admin/RetentionPolicyEditor'
+import { SectionCard } from '@/components/admin/SectionCard'
+import { LegalHoldList } from '@/components/admin/retention/LegalHoldList'
 
 /**
  * /admin/retention — 휴지통 보존 정책 viewer + mutation editor
@@ -101,6 +103,43 @@ function PolicyPageBody() {
           가 hook point가 됩니다 (운영 런북 docs/04 §16 / ADR #47).
         </p>
       </section>
+
+      <LegalHoldMockCallout />
+
+      <SectionCard title="법적 보존 (Legal Hold)" subtitle="삭제 보호 중인 항목 — mock 위젯">
+        <LegalHoldList />
+      </SectionCard>
+    </div>
+  )
+}
+
+/**
+ * Legal Hold 위젯 운영자 안내 callout — Legal Hold 본 기능은 `docs/03 §6.3` 에
+ * v2.x deferred. 본 위젯은 design 시각 fidelity 재현이며 backend endpoint
+ * 합류 전이라 mock 데이터를 표시함을 즉시 인지하도록 한다 (상단 보존 정책 +
+ * mutation editor 는 실 데이터이므로 callout 영향 범위는 Legal Hold 위젯에만
+ * 한정된다).
+ */
+function LegalHoldMockCallout() {
+  return (
+    <div
+      role="note"
+      aria-label="legal-hold-mock"
+      className="section-card"
+      style={{
+        background: 'color-mix(in oklch, var(--accent) 5%, var(--surface-1))',
+        borderColor: 'color-mix(in oklch, var(--accent) 24%, var(--border))',
+        maxWidth: 720,
+      }}
+    >
+      <div style={{ padding: '12px 16px', fontSize: 12 }}>
+        <strong style={{ fontSize: 12.5 }}>v2.x 후속 트랙 — Legal Hold mock</strong>
+        <p style={{ margin: '4px 0 0', color: 'var(--fg-muted)' }}>
+          아래 법적 보존 위젯은 디자인 시각 재현 단계이며, Legal Hold 본 기능은
+          docs/03 §6.3 에 v2.x deferred 로 명시되어 있습니다. backend endpoint
+          (GET/PUT /api/admin/legal-holds) 가 합류하면 hook 으로 교체됩니다.
+        </p>
+      </div>
     </div>
   )
 }
