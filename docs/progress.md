@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-05-11 — ♻️ shortcuts-data-tokenize (cheat sheet 데이터 single source 추출)
+
+### 범위
+
+PR #171 (shortcut-cheatsheet) 종료 보고의 v1.x backlog 항목 closure. `ShortcutsCheatSheet.tsx` 컴포넌트 내부에 inline됐던 단축키 데이터 array를 `frontend/src/lib/keyboardShortcuts.ts` single source로 추출. docs/01 §12.1 ↔ 코드 표현 정합 일관성 확보.
+
+### 변경 핵심
+
+- `frontend/src/lib/keyboardShortcuts.ts` (NEW): `KeyboardShortcut` interface + `ShortcutCategory` interface + `KEYBOARD_SHORTCUTS` readonly array 5종 카테고리. 데이터/로직 분리(useGlobalShortcuts는 이벤트 dispatch 책임 유지).
+- `frontend/src/lib/keyboardShortcuts.test.ts` (NEW, 3건): 5 카테고리 순서 / 핵심 키 노출 회귀 / 항목별 비빈 값 가드.
+- `frontend/src/components/topbar/ShortcutsCheatSheet.tsx`: 내부 `SHORTCUTS`/`Shortcut`/`ShortcutCategory` 정의 제거 → `KEYBOARD_SHORTCUTS` import. 본체 로직 무수정 — 회귀 zero.
+- `docs/01 §12.1` callout 갱신 — "컴포넌트 내부 정적 array (YAGNI)" → "`frontend/src/lib/keyboardShortcuts.ts` single source" + 동기화 의무.
+- `CLAUDE.md §4` 계약 파일 표에 `src/lib/keyboardShortcuts.ts` ↔ `docs/01 §12.1` 매핑 추가.
+
+### 검증
+
+- `pnpm typecheck` exit 0.
+- `pnpm lint` exit 0.
+- `pnpm test --run keyboardShortcuts` 3/3 PASS.
+- `pnpm test --run ShortcutsCheatSheet` 6/6 PASS (회귀 zero, import 경로만 변경).
+- 동작 변경 zero — 순수 data 추출 refactor.
+
+### 결정/편차
+
+- **데이터 ↔ 로직 분리 유지** — `KEYBOARD_SHORTCUTS` (data)와 `useGlobalShortcuts` (event dispatch)는 별도 책임. 통합 후보(키 → action 매핑 테이블)는 v2.x backlog (key/action enum 도입 + 다중 listener 패턴 검토 선결).
+- **`as const` + `readonly`** — 데이터 mutation 방지 + 정확한 타입 추론.
+- **테스트 — 데이터 회귀 가드 3건만** — 5 카테고리 순서 + 핵심 키 노출 + 비빈 값 가드. 항목별 라벨 검사는 docs와의 drift 비용 큼 → KISS.
+
+### 트랙 외 후속
+
+- **G7 mobile-view** — 큰 마일스톤. 사이드바/RP auto-hide + 모바일 FileTable 컬럼 축약.
+- **단축키 ↔ action 매핑 통합** — v2.x.
+
+### dev-docs
+
+- 본 PR은 작은 리팩터링이라 dev-docs 부트스트랩 생략 (CLAUDE.md "private helper만 바꾸는 국소 수정은 spec 갱신을 생략할 수 있다" 동형 판단 — spec drift 방지 갱신만 포함).
+
+---
+
 ## 2026-05-11 — trash-retention-mutation Phase C (frontend mutation editor)
 
 ### 범위
@@ -26,20 +65,19 @@ Phase B(PR #169 backend) 의존. `/admin/retention` 페이지에 mutation editor
 - `frontend/src/app/admin/retention/page.tsx` — yml 안내 섹션 제거, `<RetentionPolicyEditor>` 마운트 + 2인 승인 deferred 안내 갱신.
 - `frontend/src/app/admin/retention/page.test.tsx` — RetentionPolicyEditor stub mock + Phase C 통합 테스트 1건 추가.
 
-### 검증
+### 검증 (Phase C)
 
 - `pnpm typecheck` exit 0.
 - `pnpm lint` exit 0.
 - `pnpm test --run` Phase C 4 파일 25/25 PASS.
 - 회귀: 기존 page.test.tsx 일부 갱신 (yml 안내 제거 → editor stub 검증 + multi-text getByText → getAllByText)
 
-### 결정/편차
+### 결정/편차 (Phase C)
 
 - **단일-approver MVP 명시** — page §approval-heading + ConfirmDialog 내부 텍스트 두 곳 모두 "단일 ADMIN 즉시 적용" 명시. v1.x++ dual-approval 도입 시 hook point.
 - **감소 경고 UI 위치** — 입력 변경 시 인라인 + ConfirmDialog 재확인. 두 단계 가드.
 - **input HTML5 min/max + JS 가드 이중화** — 브라우저별 형식 가드 일관성.
 - **page.test.tsx에서 RetentionPolicyEditor stub** — 본체 행위는 RetentionPolicyEditor.test.tsx가 책임. page는 wire만 검증.
-- **co-session 머지 흡수** — Phase C 작업 중 PR #168(design-fidelity)/PR #171(shortcut-cheatsheet) 머지로 master drift. TopBar.test.tsx lint fix는 이미 master에 들어가서 본 PR에서 discard. progress.md는 양쪽 entry 병합.
 
 ---
 
