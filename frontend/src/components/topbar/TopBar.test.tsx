@@ -11,13 +11,27 @@ vi.mock('./SearchBar', () => ({
 vi.mock('./TweaksPanel', () => ({
   TweaksPanel: () => <div data-testid="tweaks-stub" />,
 }))
+// Avatar stub은 props를 data-* 속성으로 노출해 useMe wiring 회귀 가드 가능하게.
 vi.mock('./Avatar', () => ({
-  Avatar: () => <div data-testid="avatar-stub" />,
+  Avatar: (props: { initial?: string; displayName?: string }) => (
+    <div
+      data-testid="avatar-stub"
+      data-initial={props.initial ?? ''}
+      data-display-name={props.displayName ?? ''}
+    />
+  ),
+}))
+
+const useMeMock = vi.fn()
+vi.mock('@/hooks/useMe', () => ({
+  useMe: () => useMeMock(),
 }))
 
 describe('TopBar (G2 — 3-column grid + 햄버거)', () => {
   beforeEach(() => {
     useSidebarChromeStore.setState({ collapsed: false })
+    // 기본은 미인증 — explicit 로그인 케이스에서만 override
+    useMeMock.mockReturnValue({ data: null, isLoading: false, isError: false })
   })
 
   it('3-column grid + 햄버거/검색/액션 3 영역 렌더', () => {
@@ -73,6 +87,33 @@ describe('TopBar (G2 — 3-column grid + 햄버거)', () => {
       render(<TopBar />)
       fireEvent.click(screen.getByLabelText('키보드 단축키 보기'))
       expect(shortcutsListener).toHaveBeenCalledTimes(1)
+    })
+  })
+
+  describe('Avatar useMe wiring (2026-05-11)', () => {
+    it('로그인 상태 시 Avatar에 useMe.data.user.name → displayName/initial 전달', () => {
+      useMeMock.mockReturnValue({
+        data: {
+          user: { id: 'u1', email: 'a@b.com', name: '홍길동', kind: 'human', mustChangePassword: false },
+          departments: [],
+          roles: [],
+          effectivePermissionsCacheKey: 'cache-key',
+        },
+        isLoading: false,
+        isError: false,
+      })
+      render(<TopBar />)
+      const avatar = screen.getByTestId('avatar-stub')
+      expect(avatar.getAttribute('data-display-name')).toBe('홍길동')
+      expect(avatar.getAttribute('data-initial')).toBe('홍길동')
+    })
+
+    it('미인증(data=null) 시 Avatar prop 비어있어 default("U") fallback', () => {
+      useMeMock.mockReturnValue({ data: null, isLoading: false, isError: false })
+      render(<TopBar />)
+      const avatar = screen.getByTestId('avatar-stub')
+      expect(avatar.getAttribute('data-display-name')).toBe('')
+      expect(avatar.getAttribute('data-initial')).toBe('')
     })
   })
 })
