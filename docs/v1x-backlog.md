@@ -37,6 +37,10 @@
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
 | **Quota mutation Phase 3~5** | M | 없음 (Phase 1+2 완료 #185/#186) | BETA §7 / progress.md 2026-05-11 | 3개 PR 분할: Phase 3 backend service + endpoint + audit listener / Phase 4 frontend UI / Phase 5 enforcement(upload `413 QUOTA_EXCEEDED`) |
+| **Admin Sharing 페이지 (디자인 zip P1)** | M | 없음 (placeholder #896 + 디자인 핸드오프 admin.jsx L582~706) | `IbizDrive_design.zip` admin.jsx §AdminSharing / sharing/page.tsx | 외부 도메인 정책 + 플래그된 공유 검토 큐 + 도메인 allow/block. 컴포넌트 ~400줄 + backend sharing policy endpoint 3종 신규 + audit emit 신규 enum |
+| **Admin Overview 위젯 보강 (디자인 zip P2)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L98~182 | UploadChart / FlagRow / DeptRow 위젯 3종 추가. KPI 카드 + DashboardSummary 컴포넌트는 이미 존재 |
+| **Admin Storage cleanup-list 위젯 (디자인 zip P2)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L448~517 | 정리 기록 위젯 추가. 기본 StorageOverviewCards/DeptRow는 이미 존재 |
+| **Admin Retention/Audit 스타일 보강 (디자인 zip P3)** | S | 없음 | `IbizDrive_design.zip` admin.jsx L711~782 + L862~922 | LegalRow/legal-list 스타일 (retention) + SeverityTab 필터/audit-stream 가시화 (audit). 기능은 동작, 스타일 fidelity gap만 |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |
 | **Admin Grant Phase C/D** | M | 없음 (Phase A/B 완료 #157, 진입점 #193) | BETA §7 / docs/01 §14.5 | USER/DEPT picker 컴포넌트 + ResourcePermissionsList 통합 + grant audit emit |
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |
