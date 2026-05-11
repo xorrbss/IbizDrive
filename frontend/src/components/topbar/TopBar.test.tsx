@@ -43,7 +43,7 @@ describe('TopBar (G2 — 3-column grid + 햄버거)', () => {
   })
 
   it('SearchBar 컨테이너에 max-w-[560px] mx-auto 적용', () => {
-    const { container } = render(<TopBar />)
+    render(<TopBar />)
     const searchWrapper = screen.getByTestId('searchbar-stub').parentElement
     expect(searchWrapper?.className).toMatch(/max-w-\[560px\]/)
     expect(searchWrapper?.className).toMatch(/mx-auto/)
