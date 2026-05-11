@@ -85,22 +85,27 @@
 |---|---|---|
 | G1 TopBar 48px | 신규 single-file PR `fix-topbar-height` | XS (5분) |
 | G2 TopBar 3-col grid + 햄버거 | Plan B (사이드바 collapse 같이) | M |
-| G3 SearchBar ⌘K + 폭 | 단독 또는 Plan B | S |
-| G4 FileTable 6열 | 기존 M7 plan | M |
-| G5 row 34 + density 토글 | 신규 small PR `density-toggle` | S |
-| G6 grid 172px | M16V 후속 또는 단독 1라인 | XS |
-| G7 mobile-view | 신규 마일스톤 (낮은 우선순위) | L |
+| ~~G1 TopBar 48px~~ | ✅ PR #148 (h-10 → h-12) | — |
+| ~~G2 TopBar 3-col grid + 햄버거~~ | ✅ PR #168 (sidebar collapse 동반) | — |
+| ~~G3 SearchBar ⌘K + 폭~~ | ✅ PR #168 (kbd 칩 + clear + ⌘K/Ctrl+K). 추가 plat 분기는 별도 트랙 (PR #172 in progress). | — |
+| G4 FileTable 6열 | 기존 M7 plan (활성 트랙 — `feat/design-handoff-g4-filetable`) | M |
+| G5 row 34 + density 토글 | 활성 트랙 — `feat/design-handoff-g5-density` | S |
+| ~~G6 grid 172px~~ | ✅ PR #148 commit `166432b` | — |
+| ~~G7 mobile-view~~ | ❌ **폐기 (2026-05-11 사용자 결정)** — 사내 데스크탑 메인. CLAUDE.md §3 원칙 13 동기화. | — |
 | ~~G8 DropOverlay fidelity~~ | ✅ PR #148 commit `166432b` | — |
 | ~~G9 statusbar 확인~~ | ✅ 이미 일치 — 변경 불필요 | — |
 
+> **트랙 외 후속**: PR #171 (`?` 도움말 모달) + PR #174 (단축키 데이터 single-source) — 디자인 핸드오프 직접 항목은 아니지만 §12.1 키맵 spec 정합 강화. PR #168 종료 보고 backlog였음.
+
 ---
 
-## 결론
+## 결론 (2026-05-11 갱신)
 
-핸드오프 디자인의 **구조적 부분(레이아웃, 토큰, 컴포넌트 매핑, variants)은 이미 80% 이상 동기화**되어 있다.
-남은 gap은 대부분 **치수/세부 폭/density 같은 polish 항목**이며, M7·M16V·Plan B 같은 기존 트랙 안에 자연스럽게 흡수된다.
+디자인 핸드오프 갭 **G1·G2·G3·G6·G8·G9 머지 완료**. **G4·G5는 활성 co-session 트랙** 진행 중. **G7은 폐기**(사내 데스크탑 메인 가정 — CLAUDE.md §3 원칙 13 동기화).
 
-**권장 다음 액션:**
-1. **G1** + **G6** + **G5**(without density 토글) → 30분 짜리 단일 PR (`design-fidelity-quick-wins`)
-2. **G2/G3** → Plan B 프론트엔드 foundation에 흡수
-3. **G7/G8/G9** → 별도 spot-check 세션
+남은 활성 작업은 G4(FileTable 6열 + 액션 컬럼) + G5(density 토글) 두 트랙만. 두 트랙 머지 후 본 gap report는 archive(`dev/completed/`) 이동 후보.
+
+**원본 권장 액션 결과:**
+1. ~~G1 + G6 + G5(without density 토글) → `design-fidelity-quick-wins`~~ — PR #148로 G1+G6+G8 처리, G5 toggle은 별도 활성 트랙.
+2. ~~G2/G3 → Plan B foundation에 흡수~~ — PR #168로 G2/G3 별도 trace 처리 (sidebar collapse 동반).
+3. ~~G7/G8/G9 → 별도 spot-check~~ — G8/G9 spot-check 완료(PR #148), G7 폐기.

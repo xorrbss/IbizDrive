@@ -5,6 +5,43 @@
 
 ---
 
+## 2026-05-11 — 📜 docs/no-mobile-support-policy (CLAUDE.md §3 원칙 13 + G7 폐기 명시)
+
+### 범위
+
+사용자 결정(2026-05-11): IbizDrive는 사내 데스크탑 메인 가정, 모바일 미지원. 프로젝트 차원 invariant로 명시해 모든 세션·co-session이 같은 가드 적용. 코드 0줄, doc-only PR.
+
+### 변경
+
+- **CLAUDE.md §3 핵심 원칙 13 추가** — "데스크탑 메인, 모바일 미지원" 원칙. `lg:` breakpoint / `.mobile-view` / `useMediaQuery` / 사이드바 mobile overlay / RightPanel mobile auto-hide / FileTable 컬럼 축약 모두 backlog 제외. 좁은 데스크탑 폭은 기존 `useSidebarChromeStore` 사용자 토글로 충분.
+- **`dev/active/design-handoff-gap-report-2026-05-10.md` 진행 상태 갱신**:
+  - G1/G2/G3/G6/G8/G9 ✅ 머지 완료 마커 (PR #148, #168 등).
+  - G4 활성 트랙 마커 (`feat/design-handoff-g4-filetable` co-session).
+  - G5 활성 트랙 마커 (`feat/design-handoff-g5-density` co-session).
+  - **G7 폐기** 마커 (CLAUDE.md §3 원칙 13 backlink).
+  - 결론 섹션 2026-05-11 시점으로 갱신.
+  - PR #171/#174 (`?` 모달 + 데이터 single-source) backlink — 직접 항목은 아니나 §12.1 spec 정합 강화.
+
+### 검증
+
+- 코드 0줄 — typecheck/lint/test 무관.
+- spec 정합성 자체 리뷰: 메모리 `project_no_mobile_support` ↔ CLAUDE.md §3 원칙 13 ↔ design-handoff-gap-report G7 마커 3중 일관성.
+
+### 결정/편차
+
+- **CLAUDE.md §3 원칙 13으로 격상** — 메모리는 본 세션 한정이라 co-session에 전파 안 됨. 프로젝트 invariant로 격상해야 모든 세션이 G7류 작업 회피.
+- **gap report는 active 유지** — G4/G5 활성 + co-session 진행 중. 두 트랙 머지 후 archive 후보.
+- **dev-docs 부트스트랩 생략** — doc-only 정렬 작업, KISS.
+
+### 다음 자율 후보 (모바일 제외)
+
+- G4 / G5 (co-session 진행 중) — 충돌 회피.
+- **admin/permissions 전역 grant — resource picker** (큰 가치, 분할 가능).
+- audit JSON streaming / progress streaming (SSE/WS) — backend 영역.
+- ROLE/TEAM grant 평가 (v2.x backend resolver).
+
+---
+
 ## 2026-05-11 — 🧹 dev-active-archive sweep (design-topbar-sidebar-collapse + shortcut-cheatsheet)
 
 ### 범위
