@@ -5,6 +5,45 @@
 
 ---
 
+## 2026-05-12 — 🎨 design-fidelity-sweep (디자인 zip 메인 탐색기 + Admin Console 전체 반영, PR #199 + #200)
+
+### 범위
+
+`IbizDrive_design.zip` (2026-05-10 export) 기준 frontend 전체 visual fidelity sweep. v1.0.0-beta 출시 직전 사용자 회귀에서 "디자인 미반영" 발견 → 3-phase 분할 sweep (Phase 1 토큰 / Phase 2 메인 탐색기 / Phase 3 Admin Console).
+
+### 진행
+
+- **Phase 1 — Tokens**: closure (globals.css `:root` 27개 + `[data-theme="dark"]` 16개 + variants(notion/dropbox/terminal) + density 모두 이미 정합. G1~G8 누적 효과)
+- **Phase 2 — 메인 탐색기** (PR #199, 8 commits): Breadcrumb fidelity / FileRow star·lock·share·items 배지 + Sidebar NewButton + storage bar 재정렬 / `@theme inline` `--color-accent-fg` 매핑 fix(40+ 파일 영향) / VersionTab 좌측 dot+라인 타임라인 / FileTable/GridView hover·selected·opened(`box-shadow: inset 2px 0 0 var(--accent)`) / `--row-h` 일관성(TrashTable/SharesTable 정정) / `text-accent-text` → `text-accent-fg` 통일 / modalBg+modalPop+bulkSlide 키프레임 + `prefers-reduced-motion` 가드
+- **Phase 3 — Admin Console** (PR #200, 10 commits): AdminSharing 전체 신규(policies/domains/flagged 3 섹션, mock) / SectionCard 공통 추출 / Overview UploadChart(28일 SVG)+FlagRow+DeptRow+audit-mini(useAuditLogs 재사용) / Storage CleanupList / Retention LegalHoldList(v2.x mock) / Audit SeverityTabs+AuditStream(실 backend + frontend severity 매핑) / AdminTopHeader header-left·right + sharing badge / DashboardKpiCard delta·tone·progress props + `.kpi-card` 클래스 wiring / `.btn-*` text-decoration:none + inline style 제거
+
+### 결정/편차
+
+- **variants**: base `linear`만 채택. notion/dropbox/terminal은 globals.css 정의 보존, 토글 UI 미마운트 (v1.x backlog)
+- **mobile**: CLAUDE.md §3 원칙 13 폐기 유지
+- **backend endpoint 호출 0건 신규** — AdminSharing/LegalHold mock, AdminAudit는 기존 `useAuditLogs` 재사용
+- **AuditTable.tsx 보존** (페이지에서 AuditStream으로 swap, 컴포넌트 자체 제거 안 함 — KISS)
+- **신규 CSS 최소화** — admin.css에 클래스 이미 포팅됨, Phase 3는 wiring만(boilerplate `.btn` text-decoration 1줄 외 0)
+
+### 검증
+
+- `pnpm typecheck && pnpm lint`: PASS (각 sub-phase 게이트)
+- CI green (PR #199 / #200 모두 머지 통과)
+- 회귀 세션이 master로 sync하면 디자인 반영 확인 가능
+
+### 다음 세션 컨텍스트 (closure follow-ups)
+
+- **v1.x backlog 잔여**: 잔여 admin 페이지 admin-grid 재구성 / audit severity backend 컬럼 / DashboardKpiCard delta backend 컬럼 / AdminSharing backend endpoint / LegalHold backend(v2.x)
+- **v1.0.0-beta 출시 ceremony** — design sweep closure로 readiness 갱신 완료, 사용자가 golden path 회귀 통과 후 `git tag v1.0.0-beta && git push` 트리거
+
+### 참조
+
+- `IbizDrive_design.zip` (2026-05-10 export, `.claude/design-zip-extract/`)
+- `docs/v1x-backlog.md` Tier 1 design gap 4건 closure 표시
+- BETA-RELEASE.md 헤더 design-fidelity-sweep 트랙 추가
+
+---
+
 ## 2026-05-12 — quota-phase3 (admin user storage quota mutation backend)
 
 ### 범위
