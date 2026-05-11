@@ -430,6 +430,7 @@ export function FileTable({ folderId }: Props) {
                 <FileRow
                   item={item}
                   rowIndex={virtualRow.index + 2}
+                  folderId={folderId}
                   isFocused={focusedIndex === virtualRow.index}
                   isSelected={selectedIds.has(item.id)}
                   isPending={pendingIds.has(item.id)}
