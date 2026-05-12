@@ -28,7 +28,7 @@
 | 회귀에서 발견된 critical bug fix | TBD | 없음 | golden path 회귀 결과 | 회귀 통과 직후 inventory. 현재 미정 |
 | Storage 용량 TB 단위 표시 (1024 GB+) | S | 없음 | progress.md 2026-05-09 (T17 storage overview) | `formatBytes` 1개 함수 확장 + test. PB 미도입 (KISS) |
 | 단축키 ↔ action 매핑 통합 | S | spec decision | progress.md 2026-05-10 (#174) | `KEYBOARD_SHORTCUTS`에 action 필드 + dispatcher 통합. v2.x 후보였으나 v1.0.x에서도 가능 |
-| ~~docs drift 정정 — schema §2 (V17 trash_policy) + API §7.12 endpoint spec 3건~~ | — | — | ✓ 2026-05-12 tier0-drift-sweep (PR #TBD) | **closure** — (a) §2.12 `trash_policy` 표 entry **이미 존재** (drift check 자체가 stale, line 495). (b) §7.12 `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend/frontend 0건 = never-implemented. **AdminAudit 통합으로 대체** → deprecation marker 채택 (본 PR). (c) audit enum 정합 OK |
+| ~~docs drift 정정 — schema §2 (V17 trash_policy) + API §7.12 endpoint spec 3건~~ | — | — | ✓ 2026-05-12 tier0-drift-sweep (PR #202) | **closure** — (a) §2.12 `trash_policy` 표 entry **이미 존재** (drift check 자체가 stale, line 495). (b) §7.12 `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend/frontend 0건 = never-implemented. **AdminAudit 통합으로 대체** → deprecation marker 채택 (본 PR). (c) audit enum 정합 OK |
 
 ---
 

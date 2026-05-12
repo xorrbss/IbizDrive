@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #TBD)
+## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #202)
 
 ### 범위
 
@@ -30,7 +30,7 @@ v1.0.0-beta 출시 직후 다음 트랙 결정 state-check 단계에서 `v1x-bac
 
 - **deprecation marker 채택 (wire spec 보강 X)** — backend 0건 상태에서 wire spec 작성은 YAGNI 위반. row 제거는 `docs/01 §16.2`까지 sync 확대 → KISS 위반. blockquote marker가 가장 가벼움.
 - **row 자체는 §7.12 table에 보존** — 운영자가 endpoint path 추적 시 마지막 결정 출처 보존. row 제거하면 "왜 없지?" → 또 다른 drift 유발.
-- **PR # TBD** — closure entry 안에 본 PR # 미확정. PR open 후 followup commit으로 정정 또는 다음 트랙 closure에서 함께 정정.
+- **PR # 정정 followup commit** — 첫 commit은 `PR #TBD` placeholder, PR open 직후 followup commit으로 `PR #202` 정정 (force push 회피, memory `feedback_co_session_collab`).
 
 ### 검증
 
