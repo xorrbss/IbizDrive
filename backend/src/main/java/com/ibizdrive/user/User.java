@@ -292,4 +292,20 @@ public class User implements Serializable {
         }
         this.storageQuota = newQuota;
     }
+
+    /**
+     * quota mutation Phase 5 — upload commit 시점에 `storage_used`를 증가.
+     * 호출자({@link com.ibizdrive.user.UserQuotaEnforcer})가 동일 트랜잭션 내
+     * pessimistic write lock 획득 + quota 가드 통과 후 호출.
+     *
+     * <p>invariant: {@code delta >= 0} (음수 입력은 별도 release 경로 — Phase 6).
+     *
+     * @throws IllegalArgumentException delta가 음수
+     */
+    public void consumeStorage(long delta) {
+        if (delta < 0) {
+            throw new IllegalArgumentException("storage consume delta must be >= 0, got: " + delta);
+        }
+        this.storageUsed = this.storageUsed + delta;
+    }
 }

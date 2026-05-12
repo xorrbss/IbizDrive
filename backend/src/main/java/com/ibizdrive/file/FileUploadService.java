@@ -13,6 +13,7 @@ import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
 import com.ibizdrive.storage.StorageClient;
 import com.ibizdrive.team.TeamArchiveGuard;
+import com.ibizdrive.user.UserQuotaEnforcer;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,6 +65,7 @@ public class FileUploadService {
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
     private final TeamArchiveGuard teamArchiveGuard;
+    private final UserQuotaEnforcer userQuotaEnforcer;
 
     public FileUploadService(FileRepository fileRepository,
                              FileVersionRepository fileVersionRepository,
@@ -71,7 +73,8 @@ public class FileUploadService {
                              StorageClient storageClient,
                              AuditService auditService,
                              ObjectMapper objectMapper,
-                             TeamArchiveGuard teamArchiveGuard) {
+                             TeamArchiveGuard teamArchiveGuard,
+                             UserQuotaEnforcer userQuotaEnforcer) {
         this.fileRepository = fileRepository;
         this.fileVersionRepository = fileVersionRepository;
         this.folderRepository = folderRepository;
@@ -79,6 +82,7 @@ public class FileUploadService {
         this.auditService = auditService;
         this.objectMapper = objectMapper;
         this.teamArchiveGuard = teamArchiveGuard;
+        this.userQuotaEnforcer = userQuotaEnforcer;
     }
 
     public UploadResult upload(UUID folderId,
@@ -106,6 +110,12 @@ public class FileUploadService {
         // spec §2.2 — archived 팀 컨테이너로의 업로드 차단 (DEPARTMENT는 가드 내부 no-op).
         // 부모 fetch 후, conflict 검사/storage write/DB insert 모든 경로 진입 전에 1회 호출.
         teamArchiveGuard.assertNotArchived(parent.getScopeType(), parent.getScopeId());
+
+        // quota mutation Phase 5 — 사용자별 한도 가드 + storage_used 증분.
+        // storage write 이전에 호출해 객체 orphan 차단. lock은 동시 업로드 race를 차단
+        // (`UPDATE storage_used FOR UPDATE`, CLAUDE.md §3 원칙 7). 한도 초과 시 QuotaExceededException →
+        // GlobalExceptionHandler가 HTTP 413 + QUOTA_EXCEEDED envelope으로 매핑 (docs/02 §8).
+        userQuotaEnforcer.consumeOrThrow(actorId, sizeBytes);
 
         boolean conflict = fileRepository.existsActiveByFolderAndNormalizedName(folderId, normalizedName);
 
