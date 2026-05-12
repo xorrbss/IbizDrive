@@ -25,6 +25,7 @@ v1.0.0-beta 출시 직후 다음 트랙 결정 state-check 단계에서 `v1x-bac
 - `docs/02-backend-data-model.md` §7.12 — table 직후 deprecation note blockquote (3 ghost endpoint 명시 + AdminAudit/AdminStorage/dashboard summary 대체 매핑 + 부활 조건)
 - `docs/01-frontend-design.md` §16.2 — admin 페이지 4 라우트 중 3건 inline marker(`[v1.x 미구현 — AdminAudit ... filter로 대체]`) + 동일 deprecation note blockquote (§7.12 동기 backlink)
 - `docs/progress.md` — 본 closure entry
+- `frontend/src/app/admin/storage/page.test.tsx` — master 사이드 회귀 fix 동봉 (cherry-pick c397b55 from `feat/quota-phase4-frontend-ui`). design-sweep-phase-3 (#200)이 `cleanup-meta` 라인 추가로 `getByText(/7/)` 중복 매칭 → `getAllByText('7').length >= 1` 가드. master vitest CI green 회복
 
 ### 결정/편차
 
@@ -34,9 +35,9 @@ v1.0.0-beta 출시 직후 다음 트랙 결정 state-check 단계에서 `v1x-bac
 
 ### 검증
 
-- 코드 0줄 — `pnpm typecheck`/`pnpm lint`/`pnpm test` 무관.
-- `git diff --stat` 결과: 4 파일 (`docs/01-frontend-design.md`, `docs/02-backend-data-model.md`, `docs/v1x-backlog.md`, `docs/progress.md`).
-- 회귀 영향: 0 — docs only.
+- docs 변경 4 파일 + 회귀 fix 1 파일 (cherry-pick c397b55, 1 line 변경).
+- master vitest CI는 design-sweep-phase-3 (#200) 이후 fail 상태였음 (memory `feedback_local_skip_ci_gap` 시나리오). 본 PR이 master fix 동봉으로 green 회복.
+- 회귀 영향: 0 — docs + test 가드 강화만.
 
 ### 다음 세션 컨텍스트
 
