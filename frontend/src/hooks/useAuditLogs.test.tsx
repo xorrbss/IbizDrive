@@ -17,6 +17,7 @@ const sampleEntry: AuditLogEntry = {
   resourceName: '제안서.pdf',
   ip: '10.0.1.1',
   metadata: null,
+  severity: 'info',
 }
 
 vi.mock('@/lib/api', () => ({

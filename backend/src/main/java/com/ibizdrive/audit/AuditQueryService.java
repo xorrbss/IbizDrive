@@ -47,7 +47,8 @@ public class AuditQueryService {
         "u.display_name AS actor_name, " +
         "a.target_type, a.target_id, " +
         "host(a.actor_ip) AS actor_ip_str, " +
-        "a.metadata::text AS metadata_json";
+        "a.metadata::text AS metadata_json, " +
+        "a.severity";
 
     private static final String FROM_JOIN =
         "FROM audit_log a LEFT JOIN users u ON u.id = a.actor_id";
@@ -238,7 +239,8 @@ public class AuditQueryService {
             targetId,
             null,                                 // resourceName: not stored — v1.x
             rs.getString("actor_ip_str"),
-            metadata
+            metadata,
+            AuditSeverity.from(rs.getString("severity"))
         );
     }
 

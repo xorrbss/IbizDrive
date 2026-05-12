@@ -34,8 +34,9 @@ class AuditCsvWriterTest {
         String text = out.toString(StandardCharsets.UTF_8);
 
         assertThat(text).startsWith("\uFEFF");
+        // V19 \u2014 severity \uCEEC\uB7FC\uC774 metadata \uC9C1\uC804.
         assertThat(text).isEqualTo(
-            "\uFEFFid,occurredAt,eventType,actorId,actorName,resourceType,resourceId,resourceName,ip,metadata\r\n"
+            "\uFEFFid,occurredAt,eventType,actorId,actorName,resourceType,resourceId,resourceName,ip,severity,metadata\r\n"
         );
     }
 
@@ -53,7 +54,8 @@ class AuditCsvWriterTest {
             target,
             null,
             "10.0.0.1",
-            Map.of("rowCount", 7)
+            Map.of("rowCount", 7),
+            AuditSeverity.INFO
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -62,10 +64,33 @@ class AuditCsvWriterTest {
         String[] lines = out.toString(StandardCharsets.UTF_8).split("\r\n");
         assertThat(lines).hasSize(2);
         // metadata JSON은 `"` 를 포함하므로 RFC 4180에 의해 전체 인용 + 내부 " → ""로 escape.
+        // severity 컬럼은 metadata 직전 (V19).
         assertThat(lines[1]).isEqualTo(
             "42,2026-05-06T01:02:03Z,audit.exported," + actor + ",Alice,audit," + target +
-            ",,10.0.0.1,\"{\"\"rowCount\"\":7}\""
+            ",,10.0.0.1,info,\"{\"\"rowCount\"\":7}\""
         );
+    }
+
+    @Test
+    void writesSeverityWireValue_warnAndDanger() throws Exception {
+        // V19 — DTO 의 AuditSeverity enum 은 wire() 로 lower-case 출력.
+        AuditLogEntryDto warn = new AuditLogEntryDto(
+            "100", OffsetDateTime.parse("2026-05-08T00:00:00Z"),
+            "permission.revoked", null, null, "permission", null, null, null, null,
+            AuditSeverity.WARN
+        );
+        AuditLogEntryDto danger = new AuditLogEntryDto(
+            "101", OffsetDateTime.parse("2026-05-08T00:00:01Z"),
+            "share.created", null, null, "share", null, null, null, null,
+            AuditSeverity.DANGER
+        );
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writer.write(out, List.of(warn, danger));
+        String[] lines = out.toString(StandardCharsets.UTF_8).split("\r\n");
+
+        assertThat(lines[1]).contains(",warn,");
+        assertThat(lines[2]).contains(",danger,");
     }
 
     @Test
@@ -88,7 +113,8 @@ class AuditCsvWriterTest {
 
         AuditLogEntryDto entry = new AuditLogEntryDto(
             "1", OffsetDateTime.parse("2026-01-01T00:00:00Z"),
-            "audit.exported", null, null, "audit", null, null, null, meta
+            "audit.exported", null, null, "audit", null, null, null, meta,
+            AuditSeverity.INFO
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -100,10 +126,12 @@ class AuditCsvWriterTest {
 
     @Test
     void handlesNullActorAndTarget() throws Exception {
-        // 시스템 이벤트(actor 없음) — null 필드는 빈 셀로.
+        // 시스템 이벤트(actor 없음) — null 필드는 빈 셀로. severity 도 null 허용 (방어적 — 실제
+        // DB row 는 NOT NULL 이지만 fixture 자체는 nullable 유지로 graceful).
         AuditLogEntryDto entry = new AuditLogEntryDto(
             "9", OffsetDateTime.parse("2026-01-01T00:00:00Z"),
-            "system.purge.executed", null, null, "system", null, null, null, null
+            "system.purge.executed", null, null, "system", null, null, null, null,
+            null
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -112,8 +140,9 @@ class AuditCsvWriterTest {
 
         // OffsetDateTime#toString은 seconds==0 && nanos==0이면 ":00"을 생략 (java.time 사양).
         // 결과는 여전히 valid ISO-8601이며 frontend(JSON serializer)와 동일 포맷이므로 양 측 호환.
+        // 컬럼 11개 — severity 와 metadata 모두 null → 둘 다 빈 셀 (콤마 사이 공백 없음).
         assertThat(lines[1]).isEqualTo(
-            "9,2026-01-01T00:00Z,system.purge.executed,,,system,,,,"
+            "9,2026-01-01T00:00Z,system.purge.executed,,,system,,,,,"
         );
     }
 }

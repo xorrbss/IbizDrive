@@ -787,6 +787,46 @@ folders.audit_level:
 - [ ] application role과 admin role 분리
 - [ ] 파티션 분리 + WORM storage (v1.x)
 
+### 4.5 감사 이벤트 심각도 (severity)
+
+> **단일 진실**: backend `com.ibizdrive.audit.AuditSeverityMapper.of(AuditEventType)`. V19 마이그레이션의 backfill CASE 와 동치이며, `AuditSeverityMapperTest` 가 양쪽 동치성을 검증한다. frontend 는 wire 응답의 `entry.severity` 를 그대로 사용한다 (frontend-only 매핑 폐기 — 2026-05-12, P3 트랙).
+
+분류 기준:
+
+| severity | 의미 | UX 메시지 |
+|---|---|---|
+| `info` | 일상 운영 이벤트 (기본값). 명시 매핑이 없는 모든 이벤트. | 정보 |
+| `warn` | 외부 도메인 공유 / 권한 회수·만료 / 대량 삭제·purge / 관리자 정책 변경. 검토 대상이지만 즉시 위험은 아니다. | 주의 |
+| `danger` | 외부 노출 가능성 / 정책 위반 가능성. 운영자가 즉시 검토해야 한다. | 긴급 |
+
+명시 매핑 (V19 시점, 17건):
+
+| event_type | severity | 비고 |
+|---|---|---|
+| `share.created` | danger | 외부 공유 — 정책 위반 가능성 |
+| `user.login.failed` | warn | 단건 기준. 연속 실패 danger 승격은 alerting 트랙 (v1.x++) |
+| `permission.revoked` | warn | |
+| `permission.expired` | warn | |
+| `share.revoked` | warn | |
+| `share.expired` | warn | |
+| `admin.legal_hold.placed` | warn | |
+| `admin.legal_hold.released` | warn | |
+| `admin.user.deactivated` | warn | |
+| `admin.role.changed` | warn | |
+| `admin.cron.toggled` | warn | |
+| `file.deleted` | warn | 휴지통 이동 — purge 와 구분 |
+| `file.purged` | warn | 영구 삭제 |
+| `folder.deleted` | warn | |
+| `folder.purged` | warn | |
+| `team.archived` | warn | |
+| `system.purge.executed` | warn | |
+| (그 외 모든 이벤트) | info | default |
+
+운영 노트:
+
+- 본 표 변경 시 `AuditSeverityMapper` Java 파일 + V19/이후 마이그레이션 backfill SQL 양쪽 동기.
+- "연속 N회 실패 → danger 승격" 같은 동적 승격 정책은 별도 alerting 트랙 (audit_log 자체는 immutable, 승격은 alert 계층 책임).
+
 ---
 
 ## 5. 저장소 보안

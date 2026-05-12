@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-12 — P4 admin-dashboard-kpi-delta-backend (closure — co-session 우발 흡수)
+## 2026-05-12 — P4 admin-dashboard-kpi-delta-backend (closure — co-session 우발 흡수, PR #205)
 
 ### 범위
 
@@ -42,7 +42,99 @@
 
 - 메모리 `feedback_edit_path_main_repo_pitfall` (가칭) 신규 — worktree 진입 후 Edit 도구 path가 worktree path를 사용하는지 확인 가드.
 - Worktree `feat/admin-dashboard-kpi-delta-backend` 제거 (commit 0건, 의도된 work는 master 흡수됨).
-- 잔여 Tier 1: 2인 승인 framework (L), 잔여 admin 페이지 admin-grid 재구성 (M), Audit severity backend 컬럼 (S, 별도 worktree 진행 중).
+- 잔여 Tier 1: 2인 승인 framework (L), audit_level + FILE_VIEWED emit (M, ADR #9 blocker), 확장자 whitelist (M, spec 부재), MFA (M, ADR #18 blocker).
+
+---
+
+## 2026-05-12 — audit-severity-backend (audit_log.severity 컬럼 + emitter + query + export wire)
+
+### 범위
+
+Phase 3d (design-fidelity-sweep PR #200) 에서 `SeverityTab` / `AuditStream` / `severityOf` frontend fallback 으로 추가한 severity UX 의 backend 합류. `audit_log.severity` 컬럼 + 단일 매핑 진실 + emitter/query/export 일괄 wire + frontend fallback 폐기. v1.x backlog Tier 1 "audit severity backend 컬럼" closure.
+
+### 변경 (worktree `feat/audit-severity-backend`)
+
+backend
+- `db/migration/V19__audit_severity.sql` (신규) — 컬럼 ADD + backfill CASE(17건) + NOT NULL/DEFAULT/CHECK + 부분 인덱스 (`severity != 'info'`).
+- `audit/AuditSeverity.java` (신규) — enum + wire lower-case (`info|warn|danger`) + @JsonValue/@JsonCreator.
+- `audit/AuditSeverityMapper.java` (신규) — `of(AuditEventType)` 단일 매핑 진실. V19 backfill CASE 와 동치.
+- `audit/AuditService.java` — record() 가 mapper 호출 → severity 자동 결정 후 INSERT.
+- `audit/dto/AuditLogEntryDto.java` — `AuditSeverity severity` 필드 추가 (frontend AuditLogEntry 와 1:1).
+- `audit/AuditQueryService.java` — SELECT 컬럼 + RowMapper severity 매핑.
+- `audit/AuditCsvWriter.java` — HEADERS + toRow 에 severity (metadata 직전). frontend client-side CSV 동기 주석 폐기.
+- `audit/AuditNdjsonWriter.java` / `AuditJsonWriter.java` — DTO 직렬화로 자동 반영 (코드 변경 없음, test 보강).
+- 테스트: `AuditSeverityMapperTest` (신규, 8 케이스), `AuditLogSchemaTest` (severity 컬럼/CHECK/DEFAULT/부분 인덱스 4 케이스 추가), `AuditServiceTest` (FILE_UPLOADED→info, SHARE_CREATED→danger, PERMISSION_REVOKED→warn), `AuditQueryServiceTest` (entry.severity == INFO), `AuditCsvWriterTest`/`AuditJsonWriterTest`/`AuditNdjsonWriterTest` (severity wire 직렬화 + null fixture 갱신), `AuditQueryControllerTest` (response jsonPath `entries[0].severity = "info"`).
+
+frontend
+- `types/audit.ts` — `AuditSeverity` 타입 + `AuditLogEntry.severity` 필드 (NOT NULL — backend 항상 반환).
+- `lib/admin/auditSeverity.ts` — `severityOf` / `SEVERITY_MAP` 삭제, `AuditSeverity` 재export + `SEVERITY_LABEL` / `SeverityFilter` 만 유지.
+- `components/audit/{SeverityTabs,AuditStream}.tsx` + `components/admin/overview/AuditMiniRow.tsx` + `app/admin/audit/page.tsx` — `severityOf(entry.eventType)` → `entry.severity` 직접 사용.
+- 6 fixture test 파일 — `severity: 'info'` 추가 (TS strict 안정성).
+
+docs
+- `docs/02-backend-data-model.md` §2.8 — audit_log 컬럼/CHECK/부분 인덱스 갱신.
+- `docs/03-security-compliance.md` §4.5 신규 — severity 분류 기준 + 명시 매핑표 (17건 + default info) + 단일 진실 위치 명시.
+
+### 결정/편차
+
+- **단일 매핑 진실 = backend `AuditSeverityMapper`**. V19 backfill SQL CASE 와 frontend 임시표는 같은 표였고, frontend 표는 본 PR 에서 폐기됨.
+- **`AuditEvent` record 는 불변** — severity 는 derived. AuditService 내부에서 mapper 호출. 호출자(`@Audited` AOP / Security listener) 는 severity 모르고도 record 가능.
+- **부분 인덱스** (`WHERE severity != 'info'`) — info 가 압도적 다수일 것이라 hot path(danger/warn) 만 인덱스화로 저장 비용 절감.
+- **"user.login.failed" 단건 = warn**. "연속 N회 실패 → danger 승격" 은 alerting 트랙으로 분리 (out of scope, v1.x++).
+- **V4 REVOKE 충돌 없음** — Flyway 가 superuser connection 으로 DDL/UPDATE 실행, `app_user` 의 INSERT/SELECT 제약은 그대로 유지.
+
+### 검증
+
+- `./gradlew :backend:test --tests "*Audit*"` — local 통과 예정 (Testcontainers slice 는 CI 첫 결과로 정합 확인 — memory `Local Docker-skip CI gap`).
+- `pnpm --filter frontend typecheck && pnpm --filter frontend test --run` — 통과 예정 (TS strict).
+- AuditSeverityMapperTest 가 V19 backfill CASE 와 mapper 동치성 검증.
+
+### 다음 세션 컨텍스트
+
+- **alerting 트랙 (v1.x++)**: 연속 실패/대량 권한 회수 등 동적 severity 승격 — audit_log 자체는 불변, alert 계층 책임.
+- **audit_log 파티셔닝** (docs/02 §9.4) — severity 인덱스 추가로 partition migration 시 SQL 영향 점검 필요.
+- **v1x-backlog** Tier 1 "audit severity backend 컬럼" closure 표시 필요 (PR 머지 후).
+
+### 참조
+
+- worktree: `C:/project/IbizDrive/.claude/worktrees/audit-severity` (branch `feat/audit-severity-backend`)
+- dev/active/audit-severity-backend/{plan,context,tasks}.md
+
+---
+
+## 2026-05-12 — 🎨 admin-grid-rebuild (잔여 6 admin 페이지 wrapper 통일, PR #207)
+
+### 범위
+
+`v1x-backlog.md` Tier 1 "잔여 admin 페이지 admin-grid 재구성" closure. design-sweep-phase-3 종료 후 잔여 6 페이지(members/departments/permissions/teams/system/trash)의 wrapper utility를 통일된 `admin-grid` 클래스로 교체. 옵션 B (사용자 결정 2026-05-12) — KISS: wrapper만 통일, 위젯 추가 rebuild 회피.
+
+### 변경 (6 파일, +15/-13)
+
+- `frontend/src/app/admin/members/page.tsx` — `flex-1 overflow-auto p-6 space-y-10` → `admin-grid`
+- `frontend/src/app/admin/departments/page.tsx` — 동일 패턴
+- `frontend/src/app/admin/permissions/page.tsx` — `flex-1 overflow-auto p-6 space-y-6` → `admin-grid`
+- `frontend/src/app/admin/teams/page.tsx` — 4 wrapper 위치(loading/error/empty/main) `flex-1 overflow-auto p-6` → `admin-grid` 일괄
+- `frontend/src/app/admin/system/page.tsx` — `p-8 max-w-[960px]` → `admin-grid` + h1/p `<header>` wrapper로 묶음 (다른 페이지 패턴과 정합), mb-6 제거(gap 16px가 처리)
+- `frontend/src/app/admin/trash/all/page.tsx` — `flex-1 overflow-auto p-6 space-y-4` → `admin-grid`
+
+### 결정/편차
+
+- **옵션 B 채택 (사용자 결정)** — wrapper 통일만. 디자인 zip의 sub-tab 위젯 풀세트 재현은 옵션 A로 분리(backend endpoint 신설 + 새 위젯 컴포넌트 동반). v1.x 트랙 부재 시 필요 시점에 별도.
+- **system 페이지 max-w 960px 제거** — admin-grid의 max-width 1400px 통일. 카드 grid `sm:grid-cols-2`는 1400px에서도 정상 (디자인 zip 다른 페이지와 정합).
+- **system 페이지 h1/p header wrapper** — storage/sharing 등 다른 페이지의 `<header>` 패턴 답습. mb-6 → admin-grid gap 16px가 자식 간격 처리.
+- **teams 페이지 4 wrapper 일괄** — loading/error/empty/main 4개 conditional render branch 모두 admin-grid wrapper. 단일 wrapper class로 통일하면 sub-state 시각 일관성 회복.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run src/app/admin` ✓ **11 files / 116 tests PASS** (회귀 0)
+
+### 다음 세션 컨텍스트
+
+- **잔여 Tier 1 backlog**: 2인 승인 framework(L), 잔여 admin 위젯 추가 rebuild(옵션 A 분리), audit_level emit(M, ADR #9 blocker), 확장자 whitelist(M, spec 부재), MFA(M, ADR #18 blocker)
+- **다른 세션 활성 트랙**: `feat/audit-severity-backend`, `feat/quota-phase5-upload-enforcement` (master HEAD에서 작업 시작 단계)
+- **Housekeeping 잔여**: `dev/active/design-fidelity-sweep/` archive, `quota-phase3` worktree 제거 (PR #198 머지됨), `quota-phase4` worktree 제거 (PR #203 머지됨), `v1.0.0-beta` 태그 push (사용자 게이트)
 
 ---
 
