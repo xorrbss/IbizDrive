@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-12 — 🎨 admin-grid-rebuild (잔여 6 admin 페이지 wrapper 통일, PR #TBD)
+## 2026-05-12 — 🎨 admin-grid-rebuild (잔여 6 admin 페이지 wrapper 통일, PR #207)
 
 ### 범위
 
