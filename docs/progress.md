@@ -37,6 +37,69 @@
 
 ---
 
+## 2026-05-12 — quota-phase5 (upload enforcement + 413 QUOTA_EXCEEDED)
+
+### 범위
+
+quota mutation 5-phase track의 **Phase 5 closure** — 5-phase 트랙 전체 완료. Phase 4 (#203) 위에서 `FileUploadService.upload` 진입에 사용자 한도 가드 + `storage_used` 증분 + HTTP 413 매핑. storage write 이전에 가드 호출 → 객체 orphan 차단.
+
+### 변경 (8 file, +363 추가)
+
+backend (6 file)
+- `user/User.java` — `consumeStorage(long delta)` 메서드 추가 (Phase 3에 추가된 `changeStorageQuota`와 짝). invariant `delta >= 0`.
+- `user/UserRepository.java` — `lockActiveById(UUID)` 신규 — `@Lock(PESSIMISTIC_WRITE)` + soft-delete 제외. CLAUDE.md §3 원칙 7 (`FOR UPDATE`).
+- `user/UserQuotaEnforcer.java` (신규) — `TeamArchiveGuard` 패턴 답습. `consumeOrThrow(userId, delta)` 단일 메서드: 행 락 → 가드 → 통과 시 `consumeStorage` + save.
+- `user/QuotaExceededException.java` (신규) — userId/currentUsed/quota/requestedDelta 노출.
+- `file/FileUploadService.java` — 생성자에 `UserQuotaEnforcer` 주입 + `upload()`에서 conflict 검사 직후, storage write 직전에 `consumeOrThrow(actorId, sizeBytes)` 1회 호출.
+- `common/error/GlobalExceptionHandler.java` — `QuotaExceededException` → HTTP 413 PAYLOAD_TOO_LARGE + envelope `QUOTA_EXCEEDED` (details: currentUsed/quota/requestedDelta).
+
+tests (4 file, 1 신규)
+- `test/user/UserQuotaEnforcerTest.java` (신규, 8건) — Mockito 단위: userId null / delta 음수 / user 미존재 → 가드, over-quota / 정확히 한도 경계 / 정상 증분 / delta=0 lock-but-no-save / over-quota shrink (admin 한도 축소 시나리오).
+- `test/file/FileUploadServiceTest.java` — Testcontainers slice 4건 추가 (`upload_overQuota_throws...` / `upload_withinQuota_increments...` / `upload_atExactQuota_succeeds...` / `upload_zeroByteFile_locks...`) + `insertUserWithQuota` helper + TestConfig에 UserRepository 주입.
+- `test/file/FileScopeInheritanceTest.java` + `FileUploadArchivedTeamGuardTest.java` — TestConfig만 UserRepository 추가 (기존 테스트 정합).
+
+docs
+- `docs/04 §6.1` Phase 4 ref → #203 / Phase 5 closure 마크.
+- `docs/v1x-backlog.md` Tier 1 — Quota Phase 5 → closure entry. **Quota Phase 6 (storage_used 감소)** 신규 backlog 추가.
+- `BETA-RELEASE.md` — Last Updated + Source line + §7 deferred wording. 5-phase 전체 closure 명시.
+
+### 결정/편차
+
+- **`UserQuotaEnforcer` 분리** (vs FileUploadService 안에 inline) — `TeamArchiveGuard` 패턴 답습. 의도가 service 호출 한 줄로 명확하고 unit test가 Postgres 없이 Mockito로 완결.
+- **`>` strict 가드** (vs `>=`) — `used + delta == quota`는 통과. Phase 3의 admin grace와 동기 (한도 정확히 채울 수 있음).
+- **storage write 이전 가드** — 가드 후 storage write → DB INSERT → audit emit. write 실패 시 outer @Transactional rollback으로 storage_used 증분도 함께 롤백 (audit-but-no-update 불일치 회피).
+- **delta=0 시 lock-but-no-save** — 빈 파일도 락은 획득(동시성 의미 통일) + save skip(deflate-free no-op).
+- **storage_used 증분만, 감소 없음 (monotonic)** — Phase 6에서 휴지통 영구 삭제/admin hard delete 경로에 감소 트랜잭션 추가. 본 PR 범위 명확화.
+- **`FileVersionMutationService.restoreVersion` 등 storage 신규 객체 미생성 경로** — 동일 storageKey 재활용이라 quota 영향 zero. 본 트랙 scope 밖.
+- **tus init enforcement** — 현재 코드에 별도 tus init endpoint가 활성화돼 있지 않음 (`docs/02 §1495` 명세). 본 트랙은 활성 경로(`FileUploadService.upload`)만 가드. tus 활성화 시 진입에서 동일 enforcer 호출.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `./gradlew test --tests "*UserQuotaEnforcerTest"` BUILD SUCCESSFUL (8/8 PASS).
+- `FileUploadServiceTest`는 Testcontainers slice라 로컬 Docker Desktop Windows에서 SKIPPED (Memory: Docker Desktop Windows + Testcontainers 비호환) — CI Linux 결과 의존.
+- `frontend/src/lib/errors.ts`의 `QUOTA_EXCEEDED` export는 이미 존재 (도입 시 mirror) — drift 없음.
+- `docs/02 §8 line 2577` + endpoint specs (1360/1365/1415/1472/1495)이 이미 413 QUOTA_EXCEEDED 명시 — drift 없음.
+
+### 다음 세션 컨텍스트 — Phase 6 (storage_used 감소)
+
+- `purge.expired` cron이 휴지통에서 영구 삭제 시 `users.storage_used -= file.size_bytes` 트랜잭션 (`UserQuotaEnforcer.release(userId, delta)` 신설 or `consumeStorage` 음수 허용 시 분기).
+- admin trash bulk hard delete (`POST /api/admin/trash/bulk` action=purge)도 동일 경로.
+- 새 audit emit 0 (감소는 보조 효과). 음수 가드 (`storage_used - delta >= 0`) — 누락된 backfill row 보호.
+- 테스트: `PurgeCronTest`/`AdminTrashBulkServiceTest`에 storage_used decrement assertion 추가.
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/04 §6.1` Phase 5 closure 마크 ✓
+- `docs/v1x-backlog.md` Tier 1 ✓ (Phase 5 → closure, Phase 6 신규)
+- `BETA-RELEASE.md` (Last Updated + Source + §7) ✓
+
+---
+
 ## 2026-05-12 — P4 admin-dashboard-kpi-delta-backend (closure — co-session 우발 흡수, PR #205)
 
 ### 범위

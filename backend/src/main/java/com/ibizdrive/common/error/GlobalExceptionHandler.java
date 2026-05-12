@@ -14,6 +14,7 @@ import com.ibizdrive.permission.PermissionDenyContext;
 import com.ibizdrive.share.ShareExceedsMembershipException;
 import com.ibizdrive.team.LastOwnerRequiredException;
 import com.ibizdrive.team.TeamArchivedException;
+import com.ibizdrive.user.QuotaExceededException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -83,6 +84,23 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiError> handleFileNameConflict(FileNameConflictException ex) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
             .body(ApiError.of("RENAME_CONFLICT", "동일 이름의 파일이 이미 존재합니다", null));
+    }
+
+    /**
+     * 사용자 storage quota 초과 — quota mutation Phase 5 (docs/04 §6.1, docs/02 §8).
+     *
+     * <p>HTTP **413 PAYLOAD_TOO_LARGE** + envelope code {@code QUOTA_EXCEEDED}.
+     * 본문 details에 {@code currentUsed}/{@code quota}/{@code requestedDelta}(bytes)를 노출 —
+     * frontend가 "남은 용량 부족 (X GB 중 Y GB 사용)" 메시지를 사용자에게 표시할 수 있도록.
+     */
+    @ExceptionHandler(QuotaExceededException.class)
+    public ResponseEntity<ApiError> handleQuotaExceeded(QuotaExceededException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("currentUsed", ex.getCurrentUsed());
+        details.put("quota", ex.getQuota());
+        details.put("requestedDelta", ex.getRequestedDelta());
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+            .body(ApiError.of("QUOTA_EXCEEDED", "저장 용량 한도를 초과했습니다", details));
     }
 
     /**
