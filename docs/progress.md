@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-12 — 🎨 admin-grid-rebuild (잔여 6 admin 페이지 wrapper 통일, PR #TBD)
+
+### 범위
+
+`v1x-backlog.md` Tier 1 "잔여 admin 페이지 admin-grid 재구성" closure. design-sweep-phase-3 종료 후 잔여 6 페이지(members/departments/permissions/teams/system/trash)의 wrapper utility를 통일된 `admin-grid` 클래스로 교체. 옵션 B (사용자 결정 2026-05-12) — KISS: wrapper만 통일, 위젯 추가 rebuild 회피.
+
+### 변경 (6 파일, +15/-13)
+
+- `frontend/src/app/admin/members/page.tsx` — `flex-1 overflow-auto p-6 space-y-10` → `admin-grid`
+- `frontend/src/app/admin/departments/page.tsx` — 동일 패턴
+- `frontend/src/app/admin/permissions/page.tsx` — `flex-1 overflow-auto p-6 space-y-6` → `admin-grid`
+- `frontend/src/app/admin/teams/page.tsx` — 4 wrapper 위치(loading/error/empty/main) `flex-1 overflow-auto p-6` → `admin-grid` 일괄
+- `frontend/src/app/admin/system/page.tsx` — `p-8 max-w-[960px]` → `admin-grid` + h1/p `<header>` wrapper로 묶음 (다른 페이지 패턴과 정합), mb-6 제거(gap 16px가 처리)
+- `frontend/src/app/admin/trash/all/page.tsx` — `flex-1 overflow-auto p-6 space-y-4` → `admin-grid`
+
+### 결정/편차
+
+- **옵션 B 채택 (사용자 결정)** — wrapper 통일만. 디자인 zip의 sub-tab 위젯 풀세트 재현은 옵션 A로 분리(backend endpoint 신설 + 새 위젯 컴포넌트 동반). v1.x 트랙 부재 시 필요 시점에 별도.
+- **system 페이지 max-w 960px 제거** — admin-grid의 max-width 1400px 통일. 카드 grid `sm:grid-cols-2`는 1400px에서도 정상 (디자인 zip 다른 페이지와 정합).
+- **system 페이지 h1/p header wrapper** — storage/sharing 등 다른 페이지의 `<header>` 패턴 답습. mb-6 → admin-grid gap 16px가 자식 간격 처리.
+- **teams 페이지 4 wrapper 일괄** — loading/error/empty/main 4개 conditional render branch 모두 admin-grid wrapper. 단일 wrapper class로 통일하면 sub-state 시각 일관성 회복.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run src/app/admin` ✓ **11 files / 116 tests PASS** (회귀 0)
+
+### 다음 세션 컨텍스트
+
+- **잔여 Tier 1 backlog**: 2인 승인 framework(L), 잔여 admin 위젯 추가 rebuild(옵션 A 분리), audit_level emit(M, ADR #9 blocker), 확장자 whitelist(M, spec 부재), MFA(M, ADR #18 blocker)
+- **다른 세션 활성 트랙**: `feat/audit-severity-backend`, `feat/quota-phase5-upload-enforcement` (master HEAD에서 작업 시작 단계)
+- **Housekeeping 잔여**: `dev/active/design-fidelity-sweep/` archive, `quota-phase3` worktree 제거 (PR #198 머지됨), `quota-phase4` worktree 제거 (PR #203 머지됨), `v1.0.0-beta` 태그 push (사용자 게이트)
+
+---
+
 ## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #202)
 
 ### 범위

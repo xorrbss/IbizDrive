@@ -4,7 +4,7 @@
 >
 > **단일 진실의 출처**: 항목 자체는 `BETA-RELEASE.md` §7 + `docs/progress.md` 각 트랙 closure entry. 본 문서는 그 항목들의 **우선순위/시점**만 다룬다. 새 항목 추가 시 양쪽 동시 갱신.
 >
-> **Last Updated**: 2026-05-12 (tier0-drift-sweep — Admin Grant Phase C/D + docs drift entry closure)
+> **Last Updated**: 2026-05-12 (admin-grid-rebuild — 잔여 6 admin 페이지 wrapper 통일)
 
 ---
 
@@ -41,7 +41,7 @@
 | ~~Admin Overview 위젯 보강 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — UploadChart / FlagRow / DeptRow / audit-mini 추가 |
 | ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |
 | ~~Admin Retention/Audit 스타일 보강 (디자인 zip P3)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — LegalHoldList(mock) + SeverityTabs/AuditStream + DashboardKpiCard delta/tone/progress |
-| 잔여 admin 페이지 admin-grid 재구성 (디자인 zip follow-up) | M | 없음 | design-sweep-phase-3 종료 후 잔여 | members/departments/permissions/teams/system/trash 페이지 — admin chrome(AdminTopHeader/TabBar) 안에서 정상 동작이나 admin-grid 레이아웃 재구성은 별도 트랙. fidelity sweep을 넘는 rebuild 수준 |
+| ~~잔여 admin 페이지 admin-grid 재구성 (디자인 zip follow-up)~~ | — | — | ✓ 2026-05-12 admin-grid-rebuild (PR #TBD) | **closure (옵션 B — wrapper 통일)** — 6 페이지(members/departments/permissions/teams/system/trash) wrapper utility(`flex-1 overflow-auto p-6 space-y-*`/`p-8 max-w-[960px]`) → `admin-grid` 통일. `admin-body`가 overflow+padding 처리, `admin-grid`는 flex-col gap 16px max-width 1400px 표준 layout. 위젯 추가 rebuild는 별도 트랙(필요 시) |
 | Audit severity backend 컬럼 | S | spec | design-sweep-phase-3 종료 후 잔여 | 현재 `auditSeverity.severityOf` frontend mapping. backend `audit_log.severity` enum 컬럼 추가 시 hook point 교체 |
 | DashboardKpiCard delta 데이터 wiring | S | backend | design-sweep-phase-3 종료 후 잔여 | UI 준비 완료(PR #200). `AdminDashboardSummary.users.delta` 등 backend 컬럼 추가 시 즉시 시각화 |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |

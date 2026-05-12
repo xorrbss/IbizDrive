@@ -138,7 +138,7 @@ function AdminTeamsBody() {
 
   if (teamsQ.isLoading) {
     return (
-      <div className="flex-1 overflow-auto p-6">
+      <div className="admin-grid">
         <p className="text-sm text-fg-2">불러오는 중…</p>
       </div>
     )
@@ -146,7 +146,7 @@ function AdminTeamsBody() {
 
   if (teamsQ.isError) {
     return (
-      <div className="flex-1 overflow-auto p-6">
+      <div className="admin-grid">
         <p role="alert" className="text-sm text-red-600">
           팀 목록을 불러오지 못했습니다.
         </p>
@@ -156,7 +156,7 @@ function AdminTeamsBody() {
 
   if (teams.length === 0) {
     return (
-      <div className="flex-1 overflow-auto p-6">
+      <div className="admin-grid">
         <div className="empty-mini" style={{ padding: '64px 0' }}>
           <p style={{ fontSize: 14, color: 'var(--fg)', fontWeight: 500, marginBottom: 6 }}>
             아직 등록된 팀이 없습니다
@@ -183,7 +183,7 @@ function AdminTeamsBody() {
   }
 
   return (
-    <div className="flex-1 overflow-auto p-6">
+    <div className="admin-grid">
       <div className="teams-screen" data-screen-label="admin/teams">
         <TeamsListPanel
           teams={teams}
