@@ -5,6 +5,68 @@
 
 ---
 
+## 2026-05-12 — quota-phase4 (admin user quota frontend UI)
+
+### 범위
+
+quota mutation 5-phase track의 **Phase 4 closure** — Phase 3 backend(#198) 위에서 `/admin/members` 페이지에 quota 컬럼 추가. admin이 사용자별 한도를 row 단위 인라인으로 조회/변경.
+
+### 변경 (9 file, +313 추가)
+
+backend (1 file, +6/-2)
+- `AdminUserSummaryResponse.java`: record에 `storageQuota` + `storageUsed` 필드 추가 + factory에서 `User` 의 신규 getter 호출. list 응답에 quota 동봉 → frontend 행 단위 추가 fetch 회피.
+
+frontend (8 file)
+- `lib/api.ts` (3 추가)
+  - `AdminUserSummary` interface에 `storageQuota` + `storageUsed` 필드 추가
+  - `adminUpdateUserQuota(id, storageQuota)` mutation 추가 — `PUT /api/admin/users/{id}/quota` 호출
+- `hooks/useAdminUpdateUserQuota.ts` (신규) — `useAdminUpdateUser` 패턴 답습. 성공 시 admin users prefix 무효화.
+- `components/admin/AdminUserQuotaCell.tsx` (신규) — display/edit 토글 인라인 셀. GB 단위 정수 입력, `formatBytes` 표시, over-quota 경고(저장 허용 — 운영 grace), 음수/범위 외 거부, sonner toast on success.
+- `app/admin/members/page.tsx` — 테이블에 "용량" 컬럼 추가 (상태와 동작 사이) + `AdminUserQuotaCell` mount.
+- 테스트:
+  - `hooks/useAdminUpdateUserQuota.test.tsx` (신규, 3건) — 성공 + 404 + 400 분기.
+  - `app/admin/members/page.test.tsx` — `useAdminUpdateUserQuota` mock + PAGE_DATA fixture에 quota 필드 + 새 describe 블록 7건 (헤더/비율/GB→bytes 변환/same-value 거부/over-quota 경고/음수 거부/취소/404 인라인).
+- 다른 fixture 정합 (테스트 type 통과): `hooks/useAdminUpdateUser.test.tsx`, `hooks/useAdminUsers.test.tsx`, `lib/api.adminUsers.test.ts` — SUMMARY/PAGE에 quota 필드 추가.
+
+docs
+- `docs/04 §6.1` Phase 3 ref → #198 / Phase 4 closure 마크 본 PR.
+- `docs/v1x-backlog.md` Tier 1: Phase 4~5 → Phase 5만 잔존.
+- `BETA-RELEASE.md`: Source line + §7 deferred wording.
+
+### 결정/편차
+
+- **GB 입력 단위**: bytes 직접 입력은 UX 비현실적. integer GB만 허용(0~10240) + 내부에서 `* 1024^3` 변환. 백엔드는 bytes 그대로 받음.
+- **0 GB 허용**: "신규 업로드 즉시 차단" 시나리오 (Phase 5 enforcement에서 분기) — 사용자 deactivate vs quota=0의 의미 분리.
+- **over-quota 경고만**: 한도 < 현재 사용량 입력 시 인라인 경고만 표시하고 저장은 허용. backend도 운영 grace로 받음(Phase 3 결정 답습).
+- **AdminUserSummaryResponse에 quota 동봉**: row 단위 별도 fetch 회피. quota는 list endpoint 응답에 들어가고, Phase 3 단건 endpoint는 부가 용도(refresh)로 유지.
+- **getStorageQuota mock 미제거**: 그 mock은 user-self quota (StorageBar) 용. 본 트랙은 admin 시점 only. user-self는 `/api/me/storage` 신설 필요 → 별도 트랙(scope 분리).
+- **옵티미스틱 업데이트 미적용**: CLAUDE.md §3 원칙 3 — quota 변경은 destructive scope에 가까움. pending 상태로 표시.
+
+### 검증
+
+- `pnpm typecheck` ✓ (5 test 파일 fixture 정합 포함)
+- `pnpm lint` ✓
+- `pnpm test --run` (targeted, 5 files) — **48/48 PASS** (`useAdminUpdateUserQuota` 3 + `page` 7신규 + 기존 회귀 38).
+- `./gradlew compileJava compileTestJava` ✓ BUILD SUCCESSFUL (backend record 변경 + factory 호환).
+
+### 다음 세션 컨텍스트 — Phase 5
+
+- **upload enforcement**: `FileUploadController.create` / `FileVersionService.create` / tus init 진입에서 `users.storage_used + payload.size > storage_quota` 검증 → `413 QUOTA_EXCEEDED`. 성공 시 `UPDATE users SET storage_used = storage_used + size WHERE id = ?` 트랜잭션 (`FOR UPDATE`, CLAUDE.md §3 원칙 7).
+- 새 에러 코드 `QUOTA_EXCEEDED`는 docs/02 §8 + frontend `src/lib/errors.ts` 동시 추가 (CLAUDE.md §3 §12 contract).
+- 단위 테스트: `FileUploadServiceTest` (over-quota → 413), `UserRepositoryTest` (storage_used `FOR UPDATE` 동시성).
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/04 §6.1` Phase 3 ref + Phase 4 closure ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
+- `BETA-RELEASE.md` (Source + §7) ✓
+
+---
+
 ## 2026-05-12 — 🎨 design-fidelity-sweep (디자인 zip 메인 탐색기 + Admin Console 전체 반영, PR #199 + #200)
 
 ### 범위

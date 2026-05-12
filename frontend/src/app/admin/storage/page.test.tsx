@@ -81,7 +81,10 @@ describe('AdminStoragePage', () => {
     wrap(<AdminStoragePage />)
     expect(screen.getByText('전체 파일')).toBeTruthy()
     expect(screen.getByText('100')).toBeTruthy()
-    expect(screen.getByText(/7/)).toBeTruthy()
+    // lastDeletedCount=7 — design-sweep-phase-3 (#200)이 cleanup-meta line
+    // ("MM/DD HH:mm · N건 처리")을 추가해 시간/카운트 안의 "7" 자리수와
+    // 중복 매칭되므로 regex /7/ 대신 정확한 노드 카운트로 가드.
+    expect(screen.getAllByText('7').length).toBeGreaterThanOrEqual(1)
   })
 
   it('h1 페이지 제목 존재', () => {
