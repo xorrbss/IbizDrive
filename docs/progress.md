@@ -5,6 +5,62 @@
 
 ---
 
+## 2026-05-12 — audit-severity-backend (audit_log.severity 컬럼 + emitter + query + export wire)
+
+### 범위
+
+Phase 3d (design-fidelity-sweep PR #200) 에서 `SeverityTab` / `AuditStream` / `severityOf` frontend fallback 으로 추가한 severity UX 의 backend 합류. `audit_log.severity` 컬럼 + 단일 매핑 진실 + emitter/query/export 일괄 wire + frontend fallback 폐기. v1.x backlog Tier 1 "audit severity backend 컬럼" closure.
+
+### 변경 (worktree `feat/audit-severity-backend`)
+
+backend
+- `db/migration/V19__audit_severity.sql` (신규) — 컬럼 ADD + backfill CASE(17건) + NOT NULL/DEFAULT/CHECK + 부분 인덱스 (`severity != 'info'`).
+- `audit/AuditSeverity.java` (신규) — enum + wire lower-case (`info|warn|danger`) + @JsonValue/@JsonCreator.
+- `audit/AuditSeverityMapper.java` (신규) — `of(AuditEventType)` 단일 매핑 진실. V19 backfill CASE 와 동치.
+- `audit/AuditService.java` — record() 가 mapper 호출 → severity 자동 결정 후 INSERT.
+- `audit/dto/AuditLogEntryDto.java` — `AuditSeverity severity` 필드 추가 (frontend AuditLogEntry 와 1:1).
+- `audit/AuditQueryService.java` — SELECT 컬럼 + RowMapper severity 매핑.
+- `audit/AuditCsvWriter.java` — HEADERS + toRow 에 severity (metadata 직전). frontend client-side CSV 동기 주석 폐기.
+- `audit/AuditNdjsonWriter.java` / `AuditJsonWriter.java` — DTO 직렬화로 자동 반영 (코드 변경 없음, test 보강).
+- 테스트: `AuditSeverityMapperTest` (신규, 8 케이스), `AuditLogSchemaTest` (severity 컬럼/CHECK/DEFAULT/부분 인덱스 4 케이스 추가), `AuditServiceTest` (FILE_UPLOADED→info, SHARE_CREATED→danger, PERMISSION_REVOKED→warn), `AuditQueryServiceTest` (entry.severity == INFO), `AuditCsvWriterTest`/`AuditJsonWriterTest`/`AuditNdjsonWriterTest` (severity wire 직렬화 + null fixture 갱신), `AuditQueryControllerTest` (response jsonPath `entries[0].severity = "info"`).
+
+frontend
+- `types/audit.ts` — `AuditSeverity` 타입 + `AuditLogEntry.severity` 필드 (NOT NULL — backend 항상 반환).
+- `lib/admin/auditSeverity.ts` — `severityOf` / `SEVERITY_MAP` 삭제, `AuditSeverity` 재export + `SEVERITY_LABEL` / `SeverityFilter` 만 유지.
+- `components/audit/{SeverityTabs,AuditStream}.tsx` + `components/admin/overview/AuditMiniRow.tsx` + `app/admin/audit/page.tsx` — `severityOf(entry.eventType)` → `entry.severity` 직접 사용.
+- 6 fixture test 파일 — `severity: 'info'` 추가 (TS strict 안정성).
+
+docs
+- `docs/02-backend-data-model.md` §2.8 — audit_log 컬럼/CHECK/부분 인덱스 갱신.
+- `docs/03-security-compliance.md` §4.5 신규 — severity 분류 기준 + 명시 매핑표 (17건 + default info) + 단일 진실 위치 명시.
+
+### 결정/편차
+
+- **단일 매핑 진실 = backend `AuditSeverityMapper`**. V19 backfill SQL CASE 와 frontend 임시표는 같은 표였고, frontend 표는 본 PR 에서 폐기됨.
+- **`AuditEvent` record 는 불변** — severity 는 derived. AuditService 내부에서 mapper 호출. 호출자(`@Audited` AOP / Security listener) 는 severity 모르고도 record 가능.
+- **부분 인덱스** (`WHERE severity != 'info'`) — info 가 압도적 다수일 것이라 hot path(danger/warn) 만 인덱스화로 저장 비용 절감.
+- **"user.login.failed" 단건 = warn**. "연속 N회 실패 → danger 승격" 은 alerting 트랙으로 분리 (out of scope, v1.x++).
+- **V4 REVOKE 충돌 없음** — Flyway 가 superuser connection 으로 DDL/UPDATE 실행, `app_user` 의 INSERT/SELECT 제약은 그대로 유지.
+
+### 검증
+
+- `./gradlew :backend:test --tests "*Audit*"` — local 통과 예정 (Testcontainers slice 는 CI 첫 결과로 정합 확인 — memory `Local Docker-skip CI gap`).
+- `pnpm --filter frontend typecheck && pnpm --filter frontend test --run` — 통과 예정 (TS strict).
+- AuditSeverityMapperTest 가 V19 backfill CASE 와 mapper 동치성 검증.
+
+### 다음 세션 컨텍스트
+
+- **alerting 트랙 (v1.x++)**: 연속 실패/대량 권한 회수 등 동적 severity 승격 — audit_log 자체는 불변, alert 계층 책임.
+- **audit_log 파티셔닝** (docs/02 §9.4) — severity 인덱스 추가로 partition migration 시 SQL 영향 점검 필요.
+- **v1x-backlog** Tier 1 "audit severity backend 컬럼" closure 표시 필요 (PR 머지 후).
+
+### 참조
+
+- worktree: `C:/project/IbizDrive/.claude/worktrees/audit-severity` (branch `feat/audit-severity-backend`)
+- dev/active/audit-severity-backend/{plan,context,tasks}.md
+
+---
+
 ## 2026-05-12 — 🎨 admin-grid-rebuild (잔여 6 admin 페이지 wrapper 통일, PR #207)
 
 ### 범위

@@ -231,7 +231,8 @@ class AuditQueryControllerTest {
             UUID.fromString("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"),
             null,
             "203.0.113.42",
-            Map.of("size", 1024)
+            Map.of("size", 1024),
+            AuditSeverity.INFO
         );
         when(queryService.search(any(), anyInt(), anyInt(), any(), any()))
             .thenReturn(new AuditLogPageDto(List.of(entry), 1L, 1, 20));
@@ -247,6 +248,7 @@ class AuditQueryControllerTest {
             .andExpect(jsonPath("$.entries[0].resourceId").value("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"))
             .andExpect(jsonPath("$.entries[0].ip").value("203.0.113.42"))
             .andExpect(jsonPath("$.entries[0].metadata.size").value(1024))
+            .andExpect(jsonPath("$.entries[0].severity").value("info"))
             .andExpect(jsonPath("$.total").value(1))
             .andExpect(jsonPath("$.page").value(1))
             .andExpect(jsonPath("$.pageSize").value(20));

@@ -1,5 +1,7 @@
 package com.ibizdrive.audit.dto;
 
+import com.ibizdrive.audit.AuditSeverity;
+
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -19,6 +21,8 @@ import java.util.UUID;
  *   <li>{@code actorName}: {@code users.display_name} LEFT JOIN. 시스템 이벤트(actor null) 또는
  *       삭제된 사용자는 null 가능 (프론트 v1.0은 null 미상정 — A2.6 fetch 교체 시 폴백 결정).</li>
  *   <li>{@code resourceName}: 현재 audit_log에 미저장 — 항상 null. 폴더/파일 메타 lookup은 v1.x.</li>
+ *   <li>{@code severity}: V19 audit_log.severity NOT NULL 컬럼. wire 는 lower-case
+ *       ({@code info|warn|danger}). 프론트 {@code AuditSeverity} 유니언과 1:1.</li>
  * </ul>
  *
  * <p>{@code @JsonInclude(NON_NULL)}는 적용하지 않음 — 프론트는 명시적 null을 기대 (TS optional이 아닌
@@ -34,6 +38,7 @@ public record AuditLogEntryDto(
     UUID resourceId,
     String resourceName,
     String ip,
-    Map<String, Object> metadata
+    Map<String, Object> metadata,
+    AuditSeverity severity
 ) {
 }

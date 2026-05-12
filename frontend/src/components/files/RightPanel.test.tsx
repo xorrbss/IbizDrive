@@ -194,6 +194,7 @@ describe('RightPanel', () => {
           resourceName: null,
           ip: '203.0.113.10',
           metadata: null,
+          severity: 'info',
         },
       ],
       total: 1,

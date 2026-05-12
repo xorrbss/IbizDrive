@@ -40,7 +40,8 @@ class AuditJsonWriterTest {
     }
 
     @Test
-    void singleEntryHasAllTenFields() throws Exception {
+    void singleEntryHasAllElevenFields() throws Exception {
+        // V19 — severity 포함 11 필드.
         Map<String, Object> meta = new LinkedHashMap<>();
         meta.put("reason", "BAD_PASSWORD");
         AuditLogEntryDto entry = new AuditLogEntryDto(
@@ -53,7 +54,8 @@ class AuditJsonWriterTest {
             UUID.fromString("00000000-0000-0000-0000-000000000003"),
             "kim@example.com",
             "10.0.0.1",
-            meta
+            meta,
+            AuditSeverity.WARN
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -68,6 +70,29 @@ class AuditJsonWriterTest {
         assertThat(row.get("ip").asText()).isEqualTo("10.0.0.1");
         assertThat(row.get("metadata").isObject()).isTrue();
         assertThat(row.get("metadata").get("reason").asText()).isEqualTo("BAD_PASSWORD");
+        // V19 severity — @JsonValue 로 lower-case wire 출력.
+        assertThat(row.get("severity").asText()).isEqualTo("warn");
+    }
+
+    @Test
+    void severityWireValues_serializeAsLowerCase() throws Exception {
+        AuditLogEntryDto info = new AuditLogEntryDto(
+            "1", OffsetDateTime.parse("2026-05-08T00:00:00Z"),
+            "file.uploaded", null, null, "file", null, null, null, null,
+            AuditSeverity.INFO
+        );
+        AuditLogEntryDto danger = new AuditLogEntryDto(
+            "2", OffsetDateTime.parse("2026-05-08T00:00:01Z"),
+            "share.created", null, null, "share", null, null, null, null,
+            AuditSeverity.DANGER
+        );
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writer.write(out, List.of(info, danger));
+
+        JsonNode arr = mapper.readTree(out.toByteArray());
+        assertThat(arr.get(0).get("severity").asText()).isEqualTo("info");
+        assertThat(arr.get(1).get("severity").asText()).isEqualTo("danger");
     }
 
     @Test
@@ -76,7 +101,8 @@ class AuditJsonWriterTest {
             "10",
             OffsetDateTime.parse("2026-05-08T12:00:00+09:00"),
             "system.cron.tick",
-            null, null, null, null, null, null, null
+            null, null, null, null, null, null, null,
+            null
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -86,6 +112,7 @@ class AuditJsonWriterTest {
         assertThat(row.get("actorId").isNull()).isTrue();
         assertThat(row.get("actorName").isNull()).isTrue();
         assertThat(row.get("metadata").isNull()).isTrue();
+        assertThat(row.get("severity").isNull()).isTrue();
     }
 
     @Test
@@ -96,7 +123,8 @@ class AuditJsonWriterTest {
             "user.created",
             null,
             "한글이름",
-            null, null, null, null, null
+            null, null, null, null, null,
+            AuditSeverity.INFO
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();

@@ -105,6 +105,44 @@ class AuditServiceTest {
         assertNotNull(row.get("after_state"));
         assertNotNull(row.get("metadata"));
         assertNotNull(row.get("occurred_at"));
+        // V19 severity — FILE_UPLOADED 는 명시 매핑 없으므로 default 'info'.
+        assertEquals("info", row.get("severity"));
+    }
+
+    @Test
+    void record_assignsSeverity_fromMapper() throws Exception {
+        // record() 가 AuditSeverityMapper 를 호출해 severity 컬럼을 자동 채우는지 검증.
+        UUID actorId = seedUser("share-danger@example.com");
+
+        // SHARE_CREATED → danger
+        auditService.record(new AuditEvent(
+            AuditEventType.SHARE_CREATED,
+            actorId,
+            InetAddress.getByName("198.51.100.1"),
+            "ua",
+            AuditTargetType.SHARE,
+            UUID.randomUUID(),
+            null, null,
+            "{\"scope\":\"public\"}"
+        ));
+        String dangerSev = jdbc.queryForObject(
+            "SELECT severity FROM audit_log WHERE event_type='share.created' ORDER BY id DESC LIMIT 1",
+            String.class
+        );
+        assertEquals("danger", dangerSev, "SHARE_CREATED 는 danger 로 INSERT 되어야 함");
+
+        // PERMISSION_REVOKED → warn
+        auditService.record(new AuditEvent(
+            AuditEventType.PERMISSION_REVOKED,
+            actorId, null, null,
+            AuditTargetType.PERMISSION, UUID.randomUUID(),
+            null, null, null
+        ));
+        String warnSev = jdbc.queryForObject(
+            "SELECT severity FROM audit_log WHERE event_type='permission.revoked' ORDER BY id DESC LIMIT 1",
+            String.class
+        );
+        assertEquals("warn", warnSev, "PERMISSION_REVOKED 는 warn 으로 INSERT 되어야 함");
     }
 
     @Test
