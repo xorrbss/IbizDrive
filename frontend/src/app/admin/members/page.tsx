@@ -33,7 +33,7 @@ type Role = 'MEMBER' | 'AUDITOR' | 'ADMIN'
 export default function AdminUsersPage() {
   return (
     <AdminGuard>
-      <div className="flex-1 overflow-auto p-6 space-y-10">
+      <div className="admin-grid">
         <InviteSection />
         <ListSection />
       </div>
