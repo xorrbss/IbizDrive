@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-12 — 🎨 design-sweep-file-type-icons (10 kind 컬러 SVG, PR #TBD)
+## 2026-05-12 — 🎨 design-sweep-file-type-icons (10 kind 컬러 SVG, PR #211)
 
 ### 범위
 
