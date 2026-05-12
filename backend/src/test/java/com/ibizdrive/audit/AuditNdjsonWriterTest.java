@@ -55,7 +55,8 @@ class AuditNdjsonWriterTest {
             UUID.fromString("00000000-0000-0000-0000-000000000003"),
             "kim@example.com",
             "10.0.0.1",
-            meta
+            meta,
+            AuditSeverity.WARN
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -74,6 +75,8 @@ class AuditNdjsonWriterTest {
         assertThat(row.get("id").asText()).isEqualTo("1");
         assertThat(row.get("eventType").asText()).isEqualTo("user.login.failed");
         assertThat(row.get("metadata").get("reason").asText()).isEqualTo("BAD_PASSWORD");
+        // V19 severity — @JsonValue lower-case
+        assertThat(row.get("severity").asText()).isEqualTo("warn");
     }
 
     @Test
@@ -104,7 +107,8 @@ class AuditNdjsonWriterTest {
             "user.created",
             null,
             "한글이름",
-            null, null, null, null, null
+            null, null, null, null, null,
+            AuditSeverity.INFO
         );
 
         ByteArrayOutputStream out = new ByteArrayOutputStream();
@@ -115,12 +119,30 @@ class AuditNdjsonWriterTest {
         assertThat(bytes[0]).isEqualTo((byte) '{');
     }
 
+    @Test
+    void severityWireValues_serializeAsLowerCase() throws Exception {
+        AuditLogEntryDto warn = entry("100", "permission.revoked", AuditSeverity.WARN);
+        AuditLogEntryDto danger = entry("101", "share.created", AuditSeverity.DANGER);
+
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        writer.write(out, List.of(warn, danger));
+        String[] lines = out.toString("UTF-8").split("\n", -1);
+
+        assertThat(mapper.readTree(lines[0]).get("severity").asText()).isEqualTo("warn");
+        assertThat(mapper.readTree(lines[1]).get("severity").asText()).isEqualTo("danger");
+    }
+
     private static AuditLogEntryDto entry(String id, String eventType) {
+        return entry(id, eventType, AuditSeverity.INFO);
+    }
+
+    private static AuditLogEntryDto entry(String id, String eventType, AuditSeverity severity) {
         return new AuditLogEntryDto(
             id,
             OffsetDateTime.parse("2026-05-08T12:00:00+09:00"),
             eventType,
-            null, null, null, null, null, null, null
+            null, null, null, null, null, null, null,
+            severity
         );
     }
 }

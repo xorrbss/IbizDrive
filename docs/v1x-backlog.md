@@ -42,7 +42,7 @@
 | ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |
 | ~~Admin Retention/Audit 스타일 보강 (디자인 zip P3)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — LegalHoldList(mock) + SeverityTabs/AuditStream + DashboardKpiCard delta/tone/progress |
 | 잔여 admin 페이지 admin-grid 재구성 (디자인 zip follow-up) | M | 없음 | design-sweep-phase-3 종료 후 잔여 | members/departments/permissions/teams/system/trash 페이지 — admin chrome(AdminTopHeader/TabBar) 안에서 정상 동작이나 admin-grid 레이아웃 재구성은 별도 트랙. fidelity sweep을 넘는 rebuild 수준 |
-| Audit severity backend 컬럼 | S | spec | design-sweep-phase-3 종료 후 잔여 | 현재 `auditSeverity.severityOf` frontend mapping. backend `audit_log.severity` enum 컬럼 추가 시 hook point 교체 |
+| ~~Audit severity backend 컬럼~~ | — | — | ✓ 2026-05-12 audit-severity-backend | **closure** — V19 `audit_log.severity` + `AuditSeverityMapper` 단일 진실 + emitter/query/export wire + frontend `severityOf` 폐기 |
 | DashboardKpiCard delta 데이터 wiring | S | backend | design-sweep-phase-3 종료 후 잔여 | UI 준비 완료(PR #200). `AdminDashboardSummary.users.delta` 등 backend 컬럼 추가 시 즉시 시각화 |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |
 | **Admin Grant Phase C/D** | M | 없음 (Phase A/B 완료 #157, 진입점 #193) | BETA §7 / docs/01 §14.5 | USER/DEPT picker 컴포넌트 + ResourcePermissionsList 통합 + grant audit emit |

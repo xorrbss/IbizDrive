@@ -1,5 +1,4 @@
 import type { AuditLogEntry } from '@/types/audit'
-import { severityOf } from '@/lib/admin/auditSeverity'
 
 /**
  * Overview 페이지용 audit mini row — 디자인 핸드오프 2026-05-10 admin.jsx
@@ -10,7 +9,8 @@ import { severityOf } from '@/lib/admin/auditSeverity'
  * admin 위젯은 explorer 의 Avatar 컴포넌트와 의존성 분리(KISS).
  *
  * <p>data source: 실 backend `useAuditLogs` 의 `entries` 를 그대로 슬라이스해
- * 사용한다. mock 아님. severity 컬럼은 frontend 매핑(`auditSeverity.severityOf`).
+ * 사용한다. mock 아님. severity 는 V19 backend `audit_log.severity` 단일 진실 —
+ * `entry.severity` 를 그대로 사용한다.
  *
  * <p>style: `.audit-mini`, `.audit-mini-line`, `.audit-mini-target`,
  * `.audit-mini-time`, `.sev-dot.sev-{info|warn|danger}` (admin.css L533~547).
@@ -20,7 +20,7 @@ export interface AuditMiniRowProps {
 }
 
 export function AuditMiniRow({ entry }: AuditMiniRowProps) {
-  const sev = severityOf(entry.eventType)
+  const sev = entry.severity
   const target = entry.resourceName ?? (entry.resourceType ? `[${entry.resourceType}]` : '—')
   return (
     <div className="audit-mini">

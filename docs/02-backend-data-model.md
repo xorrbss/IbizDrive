@@ -276,9 +276,12 @@ CREATE TABLE audit_log (
   before_state   JSONB,
   after_state    JSONB,
   metadata       JSONB,                             -- 추가 컨텍스트
+  severity       VARCHAR(10) NOT NULL DEFAULT 'info', -- V19, AuditSeverityMapper 단일 진실 (docs/03 §4.5)
 
   -- V3 baseline: 7개. V9(Wave 2 T4)에서 'department' 추가 → 8개.
-  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit', 'department'))
+  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit', 'department')),
+  -- V19: severity wire 셋 (info/warn/danger), backend AuditSeverity enum 과 동기.
+  CONSTRAINT audit_log_severity_check CHECK (severity IN ('info', 'warn', 'danger'))
 );
 
 -- 🔑 append-only 강제: DB 사용자 권한으로 UPDATE/DELETE 차단
@@ -292,6 +295,9 @@ CREATE INDEX idx_audit_occurred_at ON audit_log(occurred_at DESC);
 CREATE INDEX idx_audit_actor       ON audit_log(actor_id, occurred_at DESC);
 CREATE INDEX idx_audit_target      ON audit_log(target_type, target_id, occurred_at DESC);
 CREATE INDEX idx_audit_event       ON audit_log(event_type, occurred_at DESC);
+-- V19: severity 부분 인덱스 — info 가 대다수이므로 danger/warn 만 인덱스화 (hot path).
+CREATE INDEX idx_audit_severity_occurred ON audit_log(severity, occurred_at DESC)
+  WHERE severity != 'info';
 ```
 
 ### 2.9 upload_sessions (v1.x tus용, MVP는 선택)

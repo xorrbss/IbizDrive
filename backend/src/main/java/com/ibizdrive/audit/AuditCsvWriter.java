@@ -17,9 +17,9 @@ import java.util.Map;
 /**
  * 감사 로그 CSV 직렬화 — {@code GET /api/admin/audit/export} 응답 본문 작성기.
  *
- * <p><b>frontend {@code lib/auditCsv.ts}와 1:1 동치</b>: 헤더 컬럼 순서, RFC 4180 quoting,
- * UTF-8 BOM, {@code \r\n} 구분자 모두 동일. 양 구현이 어긋나면 client-side(legacy 경로) ↔
- * server-side(본 경로) export 결과가 달라져 회귀를 일으키므로 변경 시 양쪽 동기 필수.
+ * <p>frontend 의 client-side CSV writer 는 서버 export 로 완전 대체되어 현재 frontend 측
+ * 동위 모듈은 존재하지 않는다. 본 writer 가 export 의 단일 진실 (RFC 4180 quoting,
+ * UTF-8 BOM, {@code \r\n} 구분자).
  *
  * <p><b>설계 결정</b>: 별도 라이브러리(opencsv 등) 미도입. 컬럼 10개 + 단순 quoting이라 직접
  * 구현이 의존성·성능 모두 우위. KISS (CLAUDE.md §3 원칙 1).
@@ -33,10 +33,13 @@ public class AuditCsvWriter {
     /** RFC 4180 line terminator. frontend `\r\n`과 일치. */
     private static final String LINE_TERMINATOR = "\r\n";
 
-    /** 헤더 — frontend AUDIT_CSV_HEADERS와 1:1 (auditCsv.ts). */
+    /**
+     * 헤더 — V19 에서 severity 추가 (metadata 직전 — 분석/필터에 자주 쓰는 컬럼은 자유 형식
+     * metadata 보다 앞).
+     */
     static final String[] HEADERS = {
         "id", "occurredAt", "eventType", "actorId", "actorName",
-        "resourceType", "resourceId", "resourceName", "ip", "metadata"
+        "resourceType", "resourceId", "resourceName", "ip", "severity", "metadata"
     };
 
     private final ObjectMapper objectMapper;
@@ -74,6 +77,7 @@ public class AuditCsvWriter {
             cell(e.resourceId() == null ? null : e.resourceId().toString()),
             cell(e.resourceName()),
             cell(e.ip()),
+            cell(e.severity() == null ? null : e.severity().wire()),
             cell(metadataToJson(e.metadata()))
         );
     }

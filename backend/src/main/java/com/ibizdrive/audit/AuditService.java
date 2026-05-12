@@ -33,13 +33,18 @@ public class AuditService {
         this.jdbc = jdbc;
     }
 
+    /**
+     * 감사 row INSERT. {@code severity} 는 {@link AuditSeverityMapper} 로 자동 결정 — 호출자
+     * (Audited AOP / Security listener) 는 severity 를 모르고도 record 가능 (단일 진실 분리).
+     */
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void record(AuditEvent event) {
+        AuditSeverity severity = AuditSeverityMapper.of(event.eventType());
         jdbc.update(
             "INSERT INTO audit_log " +
             "(event_type, actor_id, actor_ip, user_agent, target_type, target_id, " +
-            " before_state, after_state, metadata) " +
-            "VALUES (?, ?, ?::inet, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb)",
+            " before_state, after_state, metadata, severity) " +
+            "VALUES (?, ?, ?::inet, ?, ?, ?, ?::jsonb, ?::jsonb, ?::jsonb, ?)",
             event.eventType().wire(),
             event.actorId(),
             ipString(event.actorIp()),
@@ -48,7 +53,8 @@ public class AuditService {
             event.targetId(),
             event.beforeState(),
             event.afterState(),
-            event.metadata()
+            event.metadata(),
+            severity.wire()
         );
     }
 

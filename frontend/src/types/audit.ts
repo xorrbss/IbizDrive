@@ -71,6 +71,15 @@ export type AuditEventType =
 
 export type AuditResourceType = 'file' | 'folder' | 'user' | 'permission' | 'share' | 'system' | 'audit' | 'department' | 'team'
 
+/**
+ * 감사 이벤트 심각도 (docs/03 §4 mirror).
+ *
+ * <p>backend `audit_log.severity` (V19, NOT NULL DEFAULT 'info') 와 1:1 wire 동기.
+ * 분류 결정은 backend `AuditSeverityMapper` 의 단일 진실이며, frontend 는 응답의
+ * `entry.severity` 를 그대로 사용한다.
+ */
+export type AuditSeverity = 'info' | 'warn' | 'danger'
+
 export interface AuditLogEntry {
   /** UUID. 백엔드는 audit_log.id (BIGINT) → 노출 시 hashId로 변환 권장이나 v1.0 mock은 string. */
   id: string
@@ -87,6 +96,8 @@ export interface AuditLogEntry {
   ip: string | null
   /** before/after diff 또는 자유 형식 컨텍스트. UI는 v1.0에서 raw JSON 표시. */
   metadata: Record<string, unknown> | null
+  /** V19 — backend audit_log.severity 직접 노출. */
+  severity: AuditSeverity
 }
 
 export interface AuditLogFilters {
