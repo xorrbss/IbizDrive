@@ -78,12 +78,12 @@ class AdminDashboardControllerTest {
     @Test
     void summary_adminAuthenticated_returns200WithEnvelope() throws Exception {
         AdminDashboardSummaryResponse.SummaryData data = new AdminDashboardSummaryResponse.SummaryData(
-            new AdminDashboardSummaryResponse.Users(42L, 38L),
-            new AdminDashboardSummaryResponse.Departments(7L, 7L),
-            new AdminDashboardSummaryResponse.Folders(1234L),
-            new AdminDashboardSummaryResponse.Files(9876L, 123L),
-            new AdminDashboardSummaryResponse.Audit(456L),
-            new AdminDashboardSummaryResponse.Storage(1234567890L)
+            new AdminDashboardSummaryResponse.Users(42L, 38L, 0.05d, -0.10d),
+            new AdminDashboardSummaryResponse.Departments(7L, 7L, 0.0d),
+            new AdminDashboardSummaryResponse.Folders(1234L, 0.5d),
+            new AdminDashboardSummaryResponse.Files(9876L, 123L, 0.2d, -0.05d),
+            new AdminDashboardSummaryResponse.Audit(456L, 0.25d),
+            new AdminDashboardSummaryResponse.Storage(1234567890L, null)
         );
         when(adminDashboardService.getSummary()).thenReturn(data);
 
@@ -91,13 +91,22 @@ class AdminDashboardControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.summary.users.total").value(42))
             .andExpect(jsonPath("$.summary.users.active").value(38))
+            .andExpect(jsonPath("$.summary.users.totalDelta").value(0.05d))
+            .andExpect(jsonPath("$.summary.users.activeDelta").value(-0.10d))
             .andExpect(jsonPath("$.summary.departments.total").value(7))
             .andExpect(jsonPath("$.summary.departments.active").value(7))
+            .andExpect(jsonPath("$.summary.departments.totalDelta").value(0.0d))
             .andExpect(jsonPath("$.summary.folders.active").value(1234))
+            .andExpect(jsonPath("$.summary.folders.activeDelta").value(0.5d))
             .andExpect(jsonPath("$.summary.files.active").value(9876))
             .andExpect(jsonPath("$.summary.files.trashed").value(123))
+            .andExpect(jsonPath("$.summary.files.activeDelta").value(0.2d))
+            .andExpect(jsonPath("$.summary.files.trashedDelta").value(-0.05d))
             .andExpect(jsonPath("$.summary.audit.last24h").value(456))
-            .andExpect(jsonPath("$.summary.storage.usedBytes").value(1234567890));
+            .andExpect(jsonPath("$.summary.audit.last24hDelta").value(0.25d))
+            .andExpect(jsonPath("$.summary.storage.usedBytes").value(1234567890))
+            // null delta는 JSON에 null로 직렬화 — frontend는 delta == null을 "변화 정보 없음"으로 처리.
+            .andExpect(jsonPath("$.summary.storage.usedBytesDelta").value(org.hamcrest.Matchers.nullValue()));
     }
 
     @Test

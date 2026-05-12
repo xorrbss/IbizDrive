@@ -8,6 +8,7 @@ import org.springframework.data.repository.query.Param;
 
 import jakarta.persistence.QueryHint;
 
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -94,4 +95,14 @@ public interface FileVersionRepository extends JpaRepository<FileVersion, UUID> 
      */
     @Query("SELECT COALESCE(SUM(v.sizeBytes), 0) FROM FileVersion v")
     long sumAllVersionSizeBytes();
+
+    /**
+     * admin-dashboard delta — {@code asOf} 시점에 이미 업로드되어 있던 version size 합 snapshot.
+     *
+     * <p>{@code uploaded_at <= asOf} 단일 조건. file row가 hard purge되면 cascade로 version row도
+     * 삭제되어 본 합계에서 자연 제외 — A7 purge 빈도가 낮은 MVP 단계에서 storage 추세 지표로 수용.
+     * {@link #sumAllVersionSizeBytes()}와 짝 ({@code asOf == now}이면 결과 동일).
+     */
+    @Query("SELECT COALESCE(SUM(v.sizeBytes), 0) FROM FileVersion v WHERE v.uploadedAt <= :asOf")
+    long sumVersionSizeBytesAsOf(@Param("asOf") Instant asOf);
 }

@@ -293,6 +293,16 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     long countByDeletedAtIsNull();
 
     /**
+     * admin-dashboard delta — {@code asOf} 시점에 살아있던 폴더 수.
+     *
+     * <p>{@code created_at <= asOf AND (deleted_at IS NULL OR deleted_at > asOf)}. 30d 비교 분모.
+     * UserRepository.countAliveAsOf와 동일 패턴 (Folder는 entity 시간 필드가 {@link Instant}).
+     */
+    @Query("SELECT COUNT(f) FROM Folder f WHERE f.createdAt <= :asOf "
+         + "AND (f.deletedAt IS NULL OR f.deletedAt > :asOf)")
+    long countAliveAsOf(@Param("asOf") Instant asOf);
+
+    /**
      * 주어진 leaf 폴더들의 절대 경로 일괄 조회. 휴지통 list(user/admin 양쪽)에서 원위치 path 표시에 사용.
      *
      * <p>각 leaf id에 대해 {@code parent_id}를 따라 root까지 거슬러 올라가며 폴더 이름을 누적하여
