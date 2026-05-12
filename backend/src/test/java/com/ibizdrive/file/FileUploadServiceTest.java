@@ -89,9 +89,11 @@ class FileUploadServiceTest {
                                                   StorageClient storage,
                                                   AuditService audit,
                                                   ObjectMapper mapper,
-                                                  TeamRepository teamRepo) {
+                                                  TeamRepository teamRepo,
+                                                  com.ibizdrive.user.UserRepository userRepo) {
             return new FileUploadService(fileRepo, versionRepo, folderRepo, storage, audit, mapper,
-                new TeamArchiveGuard(teamRepo));
+                new TeamArchiveGuard(teamRepo),
+                new com.ibizdrive.user.UserQuotaEnforcer(userRepo));
         }
     }
 
@@ -261,6 +263,86 @@ class FileUploadServiceTest {
     }
 
     // ──────────────────────────────────────────────────────────────────
+    // quota mutation Phase 5 — enforcement (docs/04 §6.1)
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void upload_overQuota_throwsQuotaExceededAndNoStorageWrite() throws IOException {
+        // quota=1000 / used=900 → 100 byte 업로드는 OK, 200 byte는 차단.
+        UUID owner = insertUserWithQuota("u-quota-fail@test", "uqf", 1000L, 900L);
+        UUID folder = insertFolder(owner, "FolderQuotaFail");
+        reset(auditService, storageClient);
+
+        byte[] body = new byte[200];
+        assertThatThrownBy(() -> service.upload(folder, owner, "big.bin", "application/octet-stream",
+            body.length, new ByteArrayInputStream(body), null))
+            .isInstanceOf(com.ibizdrive.user.QuotaExceededException.class);
+
+        // storage 객체 orphan 차단 검증 — write가 1회도 호출되지 않아야 한다.
+        verify(storageClient, never())
+            .write(anyString(), org.mockito.ArgumentMatchers.any(InputStream.class), anyLong(), anyString());
+
+        // DB에 file/version row가 생성되지 않았는지 확인 (트랜잭션 롤백 + storage_used 미증가).
+        Long usedAfter = jdbc.queryForObject(
+            "SELECT storage_used FROM users WHERE id=?", Long.class, owner);
+        assertThat(usedAfter).isEqualTo(900L);
+    }
+
+    @Test
+    void upload_withinQuota_incrementsStorageUsed() throws IOException {
+        // quota=10_000 / used=100 → 200 byte 업로드는 OK, used=300으로 증분.
+        UUID owner = insertUserWithQuota("u-quota-ok@test", "uqo", 10_000L, 100L);
+        UUID folder = insertFolder(owner, "FolderQuotaOk");
+        reset(auditService, storageClient);
+
+        byte[] body = new byte[200];
+        UploadResult result = service.upload(folder, owner, "ok.bin",
+            "application/octet-stream", body.length, new ByteArrayInputStream(body), null);
+
+        assertThat(result.file().getSizeBytes()).isEqualTo(200L);
+
+        Long usedAfter = jdbc.queryForObject(
+            "SELECT storage_used FROM users WHERE id=?", Long.class, owner);
+        assertThat(usedAfter).isEqualTo(300L);
+    }
+
+    @Test
+    void upload_atExactQuota_succeeds_edgeCase() throws IOException {
+        // quota=1000 / used=900 → exactly 100 byte는 통과 (`used + delta > quota` strict).
+        UUID owner = insertUserWithQuota("u-quota-edge@test", "uqe", 1000L, 900L);
+        UUID folder = insertFolder(owner, "FolderQuotaEdge");
+        reset(auditService, storageClient);
+
+        byte[] body = new byte[100];
+        UploadResult result = service.upload(folder, owner, "edge.bin",
+            "application/octet-stream", body.length, new ByteArrayInputStream(body), null);
+
+        assertThat(result.file().getSizeBytes()).isEqualTo(100L);
+
+        Long usedAfter = jdbc.queryForObject(
+            "SELECT storage_used FROM users WHERE id=?", Long.class, owner);
+        assertThat(usedAfter).isEqualTo(1000L);
+    }
+
+    @Test
+    void upload_zeroByteFile_locksAndPasses_noStorageUsedChange() throws IOException {
+        // delta=0은 quota check는 통과(0 증분), storage_used 변화 없음, 락은 여전히 획득.
+        UUID owner = insertUserWithQuota("u-quota-zero@test", "uqz", 1000L, 1000L);
+        UUID folder = insertFolder(owner, "FolderQuotaZero");
+        reset(auditService, storageClient);
+
+        byte[] body = new byte[0];
+        UploadResult result = service.upload(folder, owner, "zero.bin",
+            "application/octet-stream", 0L, new ByteArrayInputStream(body), null);
+
+        assertThat(result.file().getSizeBytes()).isEqualTo(0L);
+
+        Long usedAfter = jdbc.queryForObject(
+            "SELECT storage_used FROM users WHERE id=?", Long.class, owner);
+        assertThat(usedAfter).isEqualTo(1000L); // 변경 없음
+    }
+
+    // ──────────────────────────────────────────────────────────────────
     // helpers
     // ──────────────────────────────────────────────────────────────────
 
@@ -277,6 +359,18 @@ class FileUploadServiceTest {
     private UUID insertUser(String email, String displayName) {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO users(id, email, display_name) VALUES (?, ?, ?)", id, email, displayName);
+        return id;
+    }
+
+    /**
+     * quota mutation Phase 5 — 명시적 quota/used로 테스트 사용자 삽입.
+     * V18 default(quota=10GB / used=0)를 override해 over-quota 시나리오를 작성.
+     */
+    private UUID insertUserWithQuota(String email, String displayName, long quota, long used) {
+        UUID id = UUID.randomUUID();
+        jdbc.update(
+            "INSERT INTO users(id, email, display_name, storage_quota, storage_used) VALUES (?, ?, ?, ?, ?)",
+            id, email, displayName, quota, used);
         return id;
     }
 

@@ -1,8 +1,10 @@
 package com.ibizdrive.user;
 
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -110,4 +112,16 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * 정책과 동형의 "로그인 가능 사용자" 정의.
      */
     long countByDeletedAtIsNullAndIsActiveTrue();
+
+    /**
+     * quota mutation Phase 5 — upload commit 시점 pessimistic write lock 획득
+     * ({@code SELECT ... FOR UPDATE}). 동일 사용자의 동시 업로드를 직렬화해
+     * {@code storage_used} 갱신 race를 차단 (CLAUDE.md §3 원칙 7).
+     *
+     * <p>soft-deleted 사용자는 빈 Optional — 업로드 자체가 인증된 활성 사용자만 가능하므로
+     * 호출자({@link UserQuotaEnforcer})는 미존재 시 IllegalStateException으로 폴백.
+     */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT u FROM User u WHERE u.id = :id AND u.deletedAt IS NULL")
+    Optional<User> lockActiveById(@Param("id") UUID id);
 }
