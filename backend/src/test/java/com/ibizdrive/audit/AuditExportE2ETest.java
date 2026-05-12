@@ -171,7 +171,8 @@ class AuditExportE2ETest {
         String[] lines = body.split("\r\n");
         assertThat(lines).hasSizeGreaterThanOrEqualTo(7);
         assertThat(lines[0])
-            .isEqualTo("\uFEFFid,occurredAt,eventType,actorId,actorName,resourceType,resourceId,resourceName,ip,metadata");
+            .isEqualTo("\uFEFFid,occurredAt,eventType,actorId,actorName,resourceType,resourceId,resourceName,ip,severity,metadata");
+        // V19 \u2014 user.login.failed \uB294 mapper \uC5D0\uC11C warn. CSV row \uC5D0 `,warn,` \uAC00 \uD3EC\uD568\uB418\uC5B4\uC57C \uD568.
         long failedLines = java.util.Arrays.stream(lines)
             .filter(l -> l.contains(",user.login.failed,"))
             .count();
