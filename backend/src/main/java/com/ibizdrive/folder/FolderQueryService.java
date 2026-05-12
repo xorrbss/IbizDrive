@@ -9,6 +9,7 @@ import com.ibizdrive.folder.dto.FolderItemDto;
 import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
 import com.ibizdrive.folder.dto.ScopeRef;
+import com.ibizdrive.permission.PermissionRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,10 +36,16 @@ public class FolderQueryService {
 
     private final FolderRepository folderRepository;
     private final FileRepository fileRepository;
+    private final PermissionRepository permissionRepository;
 
-    public FolderQueryService(FolderRepository folderRepository, FileRepository fileRepository) {
+    public FolderQueryService(
+        FolderRepository folderRepository,
+        FileRepository fileRepository,
+        PermissionRepository permissionRepository
+    ) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
+        this.permissionRepository = permissionRepository;
     }
 
     /**
@@ -138,11 +145,38 @@ public class FolderQueryService {
         List<FileItem> sortedFiles = new ArrayList<>(subFiles);
         sortedFiles.sort(fileCmp);
 
+        // P2c — batch share-count per resource. items가 비어있으면 IN() invalid SQL 회피 (empty 가드).
+        // Map miss → null → FolderItemDto.shareCount=null → JsonInclude로 키 omit → FE 배지 미표시.
+        Map<UUID, Integer> folderShareCount = sortedFolders.isEmpty()
+            ? Map.of()
+            : toCountMap(permissionRepository.countActiveByResources(
+                "folder",
+                sortedFolders.stream().map(Folder::getId).toList()
+            ));
+        Map<UUID, Integer> fileShareCount = sortedFiles.isEmpty()
+            ? Map.of()
+            : toCountMap(permissionRepository.countActiveByResources(
+                "file",
+                sortedFiles.stream().map(FileItem::getId).toList()
+            ));
+
         List<FolderItemDto> items = new ArrayList<>(sortedFolders.size() + sortedFiles.size());
-        for (Folder f : sortedFolders) items.add(FolderItemDto.fromFolder(f));
-        for (FileItem fi : sortedFiles) items.add(FolderItemDto.fromFile(fi));
+        for (Folder f : sortedFolders) items.add(FolderItemDto.fromFolder(f, folderShareCount.get(f.getId())));
+        for (FileItem fi : sortedFiles) items.add(FolderItemDto.fromFile(fi, fileShareCount.get(fi.getId())));
 
         return new FolderItemsResponse(items);
+    }
+
+    /**
+     * {@link PermissionRepository#countActiveByResources}의 {@code List<Object[]{UUID, Long}>}을
+     * {@code Map<UUID, Integer>}로 평탄화. count는 항상 1 이상이므로 0/null 항목은 자연 미포함.
+     */
+    private static Map<UUID, Integer> toCountMap(List<Object[]> rows) {
+        Map<UUID, Integer> result = new HashMap<>(rows.size() * 2);
+        for (Object[] row : rows) {
+            result.put((UUID) row[0], ((Number) row[1]).intValue());
+        }
+        return result;
     }
 
     /**

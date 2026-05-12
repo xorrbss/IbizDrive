@@ -19,6 +19,11 @@ import java.util.UUID;
  *
  * <p>{@link #updatedBy}는 entity의 {@code ownerId} (UUID) 문자열 표현. 사용자 displayName join은 후속
  * Phase에서 별도 wire (현재 frontend도 string으로 그대로 노출 — Phase B 회귀 없음).
+ *
+ * <p>{@link #shareCount} (P2c) — 이 resource 자체에 부여된 active grant 수. 상속 grant 미포함.
+ * 0이면 {@code null} → 키 omit. FE FileRow는 임계값 {@code > 1}에서만 배지 노출 (1건 단발 공유는
+ * 시각적 노이즈로 의도적 hide). {@link com.ibizdrive.permission.PermissionRepository#countActiveByResources}
+ * 의 계약과 동기.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record FolderItemDto(
@@ -30,9 +35,10 @@ public record FolderItemDto(
     Instant updatedAt,
     String updatedBy,
     UUID parentId,
-    ScopeRef scope
+    ScopeRef scope,
+    Integer shareCount
 ) {
-    public static FolderItemDto fromFolder(Folder f) {
+    public static FolderItemDto fromFolder(Folder f, Integer shareCount) {
         return new FolderItemDto(
             f.getId(),
             "folder",
@@ -42,11 +48,12 @@ public record FolderItemDto(
             f.getUpdatedAt(),
             f.getOwnerId() != null ? f.getOwnerId().toString() : null,
             f.getParentId(),
-            ScopeRef.of(f.getScopeType(), f.getScopeId())
+            ScopeRef.of(f.getScopeType(), f.getScopeId()),
+            shareCount
         );
     }
 
-    public static FolderItemDto fromFile(FileItem file) {
+    public static FolderItemDto fromFile(FileItem file, Integer shareCount) {
         return new FolderItemDto(
             file.getId(),
             "file",
@@ -56,7 +63,8 @@ public record FolderItemDto(
             file.getUpdatedAt(),
             file.getOwnerId() != null ? file.getOwnerId().toString() : null,
             file.getFolderId(),
-            ScopeRef.of(file.getScopeType(), file.getScopeId())
+            ScopeRef.of(file.getScopeType(), file.getScopeId()),
+            shareCount
         );
     }
 }

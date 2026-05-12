@@ -351,6 +351,107 @@ class PermissionRepositoryTest {
         assertThat(ids).isEmpty();
     }
 
+    // ====================== P2c — share count (countActiveByResources) ======================
+
+    @Test
+    void countActiveByResources_singleGrant_returnsOne() {
+        UUID granter = insertUser("count-1@test", "g1");
+        UUID viewer = insertUser("count-1v@test", "v1");
+        UUID folder = insertFolder(null, "shareCount-folder-1", granter);
+        insertPermission("folder", folder, "user", viewer, "read", granter);
+
+        List<Object[]> rows = permissionRepository.countActiveByResources(
+            "folder", List.of(folder));
+
+        assertEquals(1, rows.size());
+        assertEquals(folder, rows.get(0)[0]);
+        assertEquals(1L, ((Number) rows.get(0)[1]).longValue());
+    }
+
+    @Test
+    void countActiveByResources_multipleDistinctSubjects_returnsCount() {
+        UUID granter = insertUser("count-2@test", "g2");
+        UUID u1 = insertUser("count-2a@test", "u2a");
+        UUID u2 = insertUser("count-2b@test", "u2b");
+        UUID folder = insertFolder(null, "shareCount-folder-2", granter);
+        insertPermission("folder", folder, "user", u1, "read", granter);
+        insertPermission("folder", folder, "user", u2, "edit", granter);
+        insertPermissionEveryone("folder", folder, "read", granter);
+
+        List<Object[]> rows = permissionRepository.countActiveByResources(
+            "folder", List.of(folder));
+
+        // 3 distinct grants (u1, u2, everyone) — UNIQUE INDEX는 (subject_type, COALESCE(subject_id)) 기준.
+        assertEquals(1, rows.size());
+        assertEquals(3L, ((Number) rows.get(0)[1]).longValue());
+    }
+
+    @Test
+    void countActiveByResources_expiredGrantExcluded() {
+        UUID granter = insertUser("count-3@test", "g3");
+        UUID active = insertUser("count-3a@test", "u3a");
+        UUID expired = insertUser("count-3b@test", "u3b");
+        UUID folder = insertFolder(null, "shareCount-folder-3", granter);
+        insertPermission("folder", folder, "user", active, "read", granter);
+        insertPermissionWithExpiry("folder", folder, "user", expired, "read", granter,
+            Instant.now().minus(1, ChronoUnit.HOURS));
+
+        List<Object[]> rows = permissionRepository.countActiveByResources(
+            "folder", List.of(folder));
+
+        // 만료된 grant는 findEffective와 동일하게 제외 → count=1.
+        assertEquals(1, rows.size());
+        assertEquals(1L, ((Number) rows.get(0)[1]).longValue());
+    }
+
+    @Test
+    void countActiveByResources_fileResourceType_isolatedFromFolderRows() {
+        UUID granter = insertUser("count-4@test", "g4");
+        UUID viewer = insertUser("count-4v@test", "v4");
+        UUID folder = insertFolder(null, "shareCount-folder-4", granter);
+        UUID file = insertFile(folder, "doc.txt", granter);
+        insertPermission("folder", folder, "user", viewer, "read", granter);
+        insertPermission("file", file, "user", viewer, "read", granter);
+
+        List<Object[]> folderRows = permissionRepository.countActiveByResources(
+            "folder", List.of(folder));
+        List<Object[]> fileRows = permissionRepository.countActiveByResources(
+            "file", List.of(file));
+
+        // resource_type 필터가 격리 — folder query는 folder grant 1건, file query는 file grant 1건만.
+        assertEquals(1, folderRows.size());
+        assertEquals(1L, ((Number) folderRows.get(0)[1]).longValue());
+        assertEquals(1, fileRows.size());
+        assertEquals(1L, ((Number) fileRows.get(0)[1]).longValue());
+    }
+
+    @Test
+    void countActiveByResources_groupingMultipleResources_returnsRowPerResource() {
+        UUID granter = insertUser("count-5@test", "g5");
+        UUID v1 = insertUser("count-5a@test", "v5a");
+        UUID v2 = insertUser("count-5b@test", "v5b");
+        UUID folder1 = insertFolder(null, "shareCount-folder-5a", granter);
+        UUID folder2 = insertFolder(null, "shareCount-folder-5b", granter);
+        UUID folder3 = insertFolder(null, "shareCount-folder-5c-empty", granter);
+        insertPermission("folder", folder1, "user", v1, "read", granter);
+        insertPermission("folder", folder1, "user", v2, "read", granter);
+        insertPermission("folder", folder2, "user", v1, "edit", granter);
+        // folder3에는 grant 없음 → 결과에 미포함
+
+        List<Object[]> rows = permissionRepository.countActiveByResources(
+            "folder", List.of(folder1, folder2, folder3));
+
+        // 0건 resource는 GROUP BY 결과에 자연 미포함 — 호출자가 Map miss로 처리.
+        assertEquals(2, rows.size());
+        java.util.Map<UUID, Long> byId = new java.util.HashMap<>();
+        for (Object[] r : rows) {
+            byId.put((UUID) r[0], ((Number) r[1]).longValue());
+        }
+        assertEquals(2L, byId.get(folder1));
+        assertEquals(1L, byId.get(folder2));
+        assertEquals(null, byId.get(folder3));
+    }
+
     // ====================== Wave 2 T5 — admin matrix (findAllForAdminPageable) ======================
 
     @Test

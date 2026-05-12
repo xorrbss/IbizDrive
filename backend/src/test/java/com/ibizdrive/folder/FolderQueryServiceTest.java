@@ -4,6 +4,7 @@ import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.dto.BreadcrumbCrumbDto;
 import com.ibizdrive.folder.dto.FolderDetailResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
+import com.ibizdrive.permission.PermissionRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -36,6 +37,7 @@ class FolderQueryServiceTest {
 
     @Mock private FolderRepository folderRepository;
     @Mock private FileRepository fileRepository;
+    @Mock private PermissionRepository permissionRepository;
     @InjectMocks private FolderQueryService service;
 
     private static Folder folder(UUID id, UUID parentId, String name, String slug) {
