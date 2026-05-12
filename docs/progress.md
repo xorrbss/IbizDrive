@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-12 — 🎨 design-sweep-file-type-icons (10 kind 컬러 SVG, PR #TBD)
+
+### 범위
+
+design-sweep-admin-members-fidelity (PR #208) 종료 후 잔여 디자인 미반영 영역 중 **icons.jsx §ICONS (L4~73)** 풀세트 fidelity. 이전 `fileIconFor`가 lucide-react 단색 5종(`Folder`/`FileIcon`/`FileText`/`FileImage`/`FileSpreadsheet`)이었으나 디자인 zip 정의는 brand color 컬러 SVG 10종 → 1:1 매핑.
+
+### 변경 (5 파일, +257/-23)
+
+- `frontend/src/components/icons/FileTypeIcon.tsx` (신규) — 10 kind inline SVG, props `kind` + `size` + `className` + `folderColor`. doc(#4A89DC)/pdf(#E0564B)/sheet(#3EA971)/slides(#E89B3C)/image(#B06BCC)/video(#C95A7B)/figma(#8B5CF6)/code(#5A7C9E)/archive(#8A8270) + folder(currentColor 상속 — accent 표시 호환).
+- `frontend/src/lib/fileIcon.ts` rewrite — `fileIconFor`(`{Icon, className}` 반환) → `fileIconKind(item)` mime + 파일명 확장자 → kind 매핑. image/video/archive(zip/rar/7z 등)/pdf/sheet(spreadsheet)/slides(presentation)/figma/code(text+코드 확장자 20+) 분기 + 기본 'doc'.
+- `frontend/src/components/files/FileRow.tsx` — `fileIconFor` → `fileIconKind` + `<FileTypeIcon>` swap. folder는 `text-accent` className 유지(currentColor 상속).
+- `frontend/src/components/files/FileCard.tsx` — 동일 패턴 swap.
+
+### 결정/편차
+
+- **단일 SVG 컴포넌트 vs kind별 export**: switch 단일 컴포넌트 채택. tree-shaking 손실 미미(10 kind = ~250 라인 SVG inline). 새 kind 추가 시 case 한 줄만.
+- **folder kind는 currentColor 상속**: 디자인 zip §ICONS folder가 `color || currentColor` 패턴이고, 기존 코드에서 `text-accent` className으로 accent 강조. 호환성 위해 currentColor 상속 유지.
+- **그 외 kind는 brand color hardcoded**: 디자인 zip이 fix color (theme 미연동). dark theme에서도 동일. 추후 theme-aware 색상 필요 시 admin.css 변수 도입.
+- **mime + 파일명 확장자 dual 매핑**: backend `files.mime_type`이 항상 정확하지는 않음(application/octet-stream fallback 가능). 파일명 확장자 fallback으로 보강. archive/code/figma 등.
+- **lucide-react 의존성 보존**: FileRow의 Star/Lock/Share 등 다른 아이콘은 lucide-react 그대로. file type만 컬러 SVG.
+
+### 검증
+
+- `pnpm typecheck` ✓
+- `pnpm lint` ✓
+- `pnpm test --run src/components/files src/lib/fileIcon` ✓ **132/132 PASS** (회귀 0)
+
+### 다음 세션 컨텍스트
+
+- **잔여 디자인 미반영**: panels.jsx 703 라인 RightPanel fidelity (액션 버튼 3개 + preview 영역 + detail row 풀세트 — backend response 확장 동반).
+- **UIIcon**: design-zip의 `UIIcon` (icons.jsx L81~119) 33종 stroke 아이콘은 frontend가 이미 lucide-react로 대체 — fidelity 손실 미미.
+
+---
+
 ## 2026-05-12 — 🎨 design-sweep-admin-members-fidelity (AdminMembers visual fidelity, PR #208)
 
 ### 범위
