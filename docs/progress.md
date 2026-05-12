@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-12 — P4 admin-dashboard-kpi-delta-backend (closure — co-session 우발 흡수)
+
+### 범위
+
+`v1x-backlog.md` line 46 (DashboardKpiCard delta 데이터 wiring, S effort) 트랙 시작 → backend `AdminDashboardSummaryResponse.*Delta` 8 필드 + `AdminDashboardService.computeDelta` + repo `count*AsOf` (User/Department/Folder/File/FileVersion 5 repo) + frontend types/admin + DashboardSummary 8 wiring + 테스트 구현.
+
+### 결정
+
+- 비교 윈도우: stock 30d (frontend `DashboardKpiCard.tsx` aria-label "전월 대비"와 정합) + audit prev 24h (자연 윈도우).
+- delta type: `Double` nullable, 분모 0 → null (frontend `delta != null` 가드).
+- active 카운트 근사: 현재 `is_active`를 historical에 적용 (User.is_active mutation 이력 미보존 — Javadoc 한계 명시).
+- storage delta: `uploaded_at <= T-30d` snapshot (A7 hard purge 빈도 낮은 MVP에서 trend 지표).
+
+### 사고 — co-session edit absorption
+
+**원인**: P4 worktree (`feat/admin-dashboard-kpi-delta-backend`) 생성 후 Edit/Write 도구가 worktree path가 아닌 main repo path (`C:/project/IbizDrive/...`)로 14 파일 수정. 동시에 다른 세션이 main repo working tree에서 `docs/tier0-drift-sweep-v1x-closure` 브랜치 작업 중이었고, master merge 시점(`cfb63c5 Merge branch 'master' into docs/tier0-drift-sweep-v1x-closure`)에 working tree의 P4 unstaged edits가 함께 commit. PR #202 (`829c6c2`) 머지로 P4 backend 전체가 master로 진입.
+
+**현실**: P4 의도 코드는 master에 정확히 반영됨 (DTO 10 Delta 매칭 + service 14 delta 메서드 검증). 다만 commit 메시지/PR description은 P4 의도를 반영하지 않음.
+
+**결정**: 트랙 종료. 별도 P4 PR 생성하지 않음 — duplicate revert/re-PR이 KISS·YAGNI 위반. 본 closure PR로 (a) backlog mark, (b) progress.md absorption history, (c) memory entry로 재발 방지만.
+
+### 변경 (docs only, 2 파일)
+
+- `docs/v1x-backlog.md` line 46 — strikethrough + closure note (PR #202 우발 흡수 + 본 closure ref)
+- `docs/progress.md` — 본 entry
+
+### 검증
+
+- master `AdminDashboardSummaryResponse.java` 10 Delta 필드 grep PASS
+- master `AdminDashboardService.java` `computeDelta` + `countAliveAsOf` + `sumVersionSizeBytesAsOf` 14 매칭 PASS
+- frontend `types/admin.ts` 8 delta 필드 + `DashboardSummary.tsx` 8 wiring 반영 확인
+- 로컬 build/test 미실행 — master CI green 의존 (P4 코드는 PR #202 + 본 closure 시점 master HEAD)
+
+### 다음 세션 컨텍스트
+
+- 메모리 `feedback_edit_path_main_repo_pitfall` (가칭) 신규 — worktree 진입 후 Edit 도구 path가 worktree path를 사용하는지 확인 가드.
+- Worktree `feat/admin-dashboard-kpi-delta-backend` 제거 (commit 0건, 의도된 work는 master 흡수됨).
+- 잔여 Tier 1: 2인 승인 framework (L), 잔여 admin 페이지 admin-grid 재구성 (M), Audit severity backend 컬럼 (S, 별도 worktree 진행 중).
+
+---
+
 ## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #202)
 
 ### 범위
