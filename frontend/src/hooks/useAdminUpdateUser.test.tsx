@@ -26,6 +26,8 @@ const SUMMARY: AdminUserSummary = {
   isActive: true,
   createdAt: '2026-01-02T00:00:00Z',
   lastLoginAt: null,
+  storageQuota: 10 * 1024 * 1024 * 1024,
+  storageUsed: 0,
 }
 
 describe('useAdminUpdateUser', () => {
