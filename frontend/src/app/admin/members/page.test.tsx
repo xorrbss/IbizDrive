@@ -245,6 +245,44 @@ describe('AdminUsersPage — list section (admin-user-mgmt)', () => {
     expect(screen.getByLabelText('bob@example.com 비활성화')).toBeTruthy()
   })
 
+  it('KPI 4장 + 필터 바 노출 (design-sweep-admin-members-fidelity)', () => {
+    wrap(<AdminUsersPage />)
+    // KPI 4장: 전체 멤버 (totalElements=2) / 관리자 / 외부 게스트 / MFA 미설정
+    expect(screen.getByText('전체 멤버')).toBeTruthy()
+    expect(screen.getByText('관리자')).toBeTruthy()
+    expect(screen.getByText('외부 게스트')).toBeTruthy()
+    expect(screen.getByText('MFA 미설정')).toBeTruthy()
+    // 필터: 역할 / 상태 select
+    expect(screen.getByLabelText('역할 필터')).toBeTruthy()
+    expect(screen.getByLabelText('상태 필터')).toBeTruthy()
+    // role chip — filter select option + chip 양쪽 매칭이라 최소 2회
+    expect(screen.getAllByText('Admin').length).toBeGreaterThanOrEqual(2)
+    expect(screen.getAllByText('Member').length).toBeGreaterThanOrEqual(2)
+    // status chip — 둘 다 active = '활성' (filter option + 2 row chip 최소 3회)
+    expect(screen.getAllByText('활성').length).toBeGreaterThanOrEqual(3)
+  })
+
+  it('역할 필터 — Admin 선택 시 ADMIN 행만 표시', () => {
+    wrap(<AdminUsersPage />)
+    expect(screen.getByText('alice@example.com')).toBeTruthy()
+    expect(screen.getByText('bob@example.com')).toBeTruthy()
+    fireEvent.change(screen.getByLabelText('역할 필터'), {
+      target: { value: 'ADMIN' },
+    })
+    expect(screen.getByText('alice@example.com')).toBeTruthy()
+    expect(screen.queryByText('bob@example.com')).toBeNull()
+  })
+
+  it('상태 필터 — inactive 선택 시 활성 사용자 0건 → 빈 안내', () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.change(screen.getByLabelText('상태 필터'), {
+      target: { value: 'inactive' },
+    })
+    expect(screen.queryByText('alice@example.com')).toBeNull()
+    expect(screen.queryByText('bob@example.com')).toBeNull()
+    expect(screen.getByText(/필터 조건에 맞는 사용자가 없습니다/)).toBeTruthy()
+  })
+
   it('역할 변경 — useAdminUpdateUser({ id, body: { role } }) 호출', async () => {
     updateMutateAsyncMock.mockResolvedValue({})
     wrap(<AdminUsersPage />)
