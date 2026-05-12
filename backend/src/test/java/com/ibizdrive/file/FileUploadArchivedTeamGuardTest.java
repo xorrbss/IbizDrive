@@ -84,9 +84,11 @@ class FileUploadArchivedTeamGuardTest {
                                                   StorageClient storage,
                                                   AuditService audit,
                                                   ObjectMapper mapper,
-                                                  TeamRepository teamRepo) {
+                                                  TeamRepository teamRepo,
+                                                  com.ibizdrive.user.UserRepository userRepo) {
             return new FileUploadService(fileRepo, versionRepo, folderRepo, storage, audit, mapper,
-                new TeamArchiveGuard(teamRepo));
+                new TeamArchiveGuard(teamRepo),
+                new com.ibizdrive.user.UserQuotaEnforcer(userRepo));
         }
 
         @Bean FileVersionMutationService fileVersionMutationService(FileRepository fileRepo,
