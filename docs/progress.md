@@ -5,6 +5,44 @@
 
 ---
 
+## 2026-05-12 — 🎨 design-sweep-admin-members-fidelity (AdminMembers visual fidelity, PR #208)
+
+### 범위
+
+design-sweep-phase-3/admin-grid-rebuild 종료 후 admin.jsx §AdminMembers (L280~411) 영역의 시각 fidelity 보강. backend 변경 0, 옵션 B+ 점진적: backend 변경 없이 시각 일관성 회복.
+
+### 변경 (4 파일, +247/-72)
+
+- `frontend/src/components/admin/MemberRoleChip.tsx` (신규) — admin.jsx §RoleChip 1:1. backend Role enum (ADMIN/AUDITOR/MEMBER) 매핑: ADMIN→role-admin, AUDITOR/MEMBER→role-member.
+- `frontend/src/components/admin/MemberStatusChip.tsx` (신규) — admin.jsx §StatusChip 1:1. boolean isActive → active/inactive 매핑. pending은 모델 부재로 미사용.
+- `frontend/src/app/admin/members/page.tsx` ListSection rewrite:
+  - **KPI 4장** (`DashboardKpiCard`): 전체 멤버(real, `totalElements`) / 관리자(frontend filter count) / 외부 게스트(placeholder, v1.x 미지원, tone=warn) / MFA 미설정(placeholder, ADR #18 blocker, tone=danger)
+  - **SectionCard wrapping**: title="멤버 목록", subtitle=`N명 / N명` (필터링 결과 / 전체)
+  - **Filter Bar**: search input(보존, aria-label="사용자 검색") + role select(aria-label="역할 필터") + status select(aria-label="상태 필터"). role/status는 frontend filter (현재 페이지 결과 위에서 좁힘)
+  - **UserRow 시각 보강**: 역할 셀에 `<MemberRoleChip>` + 기존 select 병치, 상태 셀 텍스트 → `<MemberStatusChip>`
+- `frontend/src/app/admin/members/page.test.tsx` — 신규 3 describe (KPI 4장 + Filter Bar + role/status 필터 동작), 기존 26 회귀 가드 보존.
+
+### 결정/편차
+
+- **옵션 B+ 점진적**: table 구조 보존 (디자인 admin-table grid 전체 채택은 옵션 A로 분리). 회귀 가드 보호 + visual fidelity 80% 회복 트레이드오프.
+- **부서 컬럼 미추가**: `AdminUserSummary`에 department 부재 (backend response 확장 + factory 필요). 옵션 A 트랙.
+- **MFA 컬럼 미추가**: ADR #18 blocker (TOTP vs FIDO2 결정 보류). placeholder KPI로만 노출.
+- **role/status filter는 frontend**: backend search(q) 는 email/displayName만 매칭. 컬럼 필터는 현재 page 결과 위에서 좁힘 (전체 페이징 검색은 미지원).
+- **AUDITOR role chip**: 디자인 zip 부재 → `.role-member` 톤(중성) 매핑. 추후 별도 색상 필요 시 admin.css 확장.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run src/app/admin/members src/components/admin` ✓ **29 + 72 = 101 tests PASS** (회귀 0, 신규 3)
+
+### 다음 세션 컨텍스트
+
+- **잔여 디자인 미반영**: panels.jsx 703 라인(RightPanel fidelity 재검토) / icons.jsx 157 라인(누락 아이콘 보강). 본 세션과 별도 트랙.
+- **옵션 A AdminMembers 풀세트**: 부서 컬럼(backend `AdminUserSummary` 확장 필요) + admin-table grid layout 채택(테스트 다수 갱신) — backend 변경 동반 트랙으로 분리.
+
+---
+
 ## 2026-05-12 — quota-phase5 (upload enforcement + 413 QUOTA_EXCEEDED)
 
 ### 범위
