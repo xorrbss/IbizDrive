@@ -48,7 +48,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - [ ] managed Postgres (RDS 또는 동등) + 자동 일일 스냅샷 + PITR
 - [ ] DB role 분리 (V4 `app_user` / `audit_admin` / `db_superuser`) 적용 — `app_user`만 application 사용
 - [ ] storage 디스크 (`ibizdrive.storage.local.root=./uploads`) 백업 정책 (rsync 또는 snapshot)
-- [ ] Flyway 마이그레이션 V1~V7 적용 확인
+- [ ] Flyway 마이그레이션 V1~V18 적용 확인 — **V13(`scope_type` NOT NULL) 적용 전 folders/files 테이블이 비어 있어야 함** (spec `2026-05-09-team-centric-pivot-design.md §6` green-field cutover 전제, `docs/local-dev.md §6.1` 트러블슈팅 참조)
 
 ## 3. 운영 cron 활성화
 
@@ -158,7 +158,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 
 ## 12. 참조
 
-- 트랙 산출: `dev/active/mvp-qa-security-week-11-12/findings/`
+- 트랙 산출: `dev/completed/mvp-qa-security-week-11-12/findings/` (트랙 closure 후 archive)
   - `baseline-report.md` — 1차 베이스라인
   - `adr-index.md` — ADR #1~#38 + 2 superseded
   - `empty-checkbox-inventory.md` — docs/03·04 빈 체크박스 분류
