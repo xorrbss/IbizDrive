@@ -1,7 +1,6 @@
 'use client'
 import { MoreHorizontal } from 'lucide-react'
 import type { AuditLogEntry } from '@/types/audit'
-import { severityOf } from '@/lib/admin/auditSeverity'
 
 /**
  * 감사 로그 stream 시각화 — 디자인 핸드오프 2026-05-10 admin.jsx §AdminAudit
@@ -15,8 +14,8 @@ import { severityOf } from '@/lib/admin/auditSeverity'
  *
  * <p>본 컴포넌트는 design fidelity sweep Phase 3d 의 시각 fidelity 재현이며,
  * 데이터는 backend `/api/admin/audit` 의 entries 를 그대로 사용 (mock 아님).
- * severity 컬럼은 frontend severity 매핑(`auditSeverity.severityOf`) — backend
- * severity 컬럼 추가는 v1.x++ 트랙.
+ * severity 는 V19 backend `audit_log.severity` 가 단일 진실이며 `entry.severity` 를
+ * 그대로 사용한다.
  *
  * <p>style: `.audit-stream`, `.audit-row`, `.audit-row.sev-{warn|danger}`,
  * `.audit-time`, `.audit-rel`, `.audit-abs`, `.audit-sev`, `.audit-actor`,
@@ -64,7 +63,7 @@ export function AuditStream({ entries, isLoading, isError }: AuditStreamProps) {
 }
 
 function AuditStreamRow({ entry }: { entry: AuditLogEntry }) {
-  const sev = severityOf(entry.eventType)
+  const sev = entry.severity
   return (
     <div role="listitem" className={`audit-row sev-${sev}`} data-severity={sev}>
       <div className="audit-time">

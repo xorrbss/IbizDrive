@@ -20,11 +20,13 @@ export default function AdminSystemPage() {
   const isAdmin = me?.roles?.includes('ADMIN') ?? false
 
   return (
-    <div className="p-8 max-w-[960px]">
-      <h1 className="text-[20px] font-semibold text-fg mb-1">시스템 정책</h1>
-      <p className="text-[13px] text-fg-2 mb-6">
-        운영 cron 잡 현재 설정. ADMIN은 enabled를 토글할 수 있습니다(즉시 반영, 다음 tick부터).
-      </p>
+    <div className="admin-grid">
+      <header>
+        <h1 className="text-[20px] font-semibold text-fg mb-1">시스템 정책</h1>
+        <p className="text-[13px] text-fg-2">
+          운영 cron 잡 현재 설정. ADMIN은 enabled를 토글할 수 있습니다(즉시 반영, 다음 tick부터).
+        </p>
+      </header>
       {isLoading && (
         <div className="rounded border border-border p-4 text-[13px] text-fg-2">
           불러오는 중…

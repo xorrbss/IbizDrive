@@ -68,6 +68,181 @@ docs
 
 ---
 
+## 2026-05-12 — P4 admin-dashboard-kpi-delta-backend (closure — co-session 우발 흡수, PR #205)
+
+### 범위
+
+`v1x-backlog.md` line 46 (DashboardKpiCard delta 데이터 wiring, S effort) 트랙 시작 → backend `AdminDashboardSummaryResponse.*Delta` 8 필드 + `AdminDashboardService.computeDelta` + repo `count*AsOf` (User/Department/Folder/File/FileVersion 5 repo) + frontend types/admin + DashboardSummary 8 wiring + 테스트 구현.
+
+### 결정
+
+- 비교 윈도우: stock 30d (frontend `DashboardKpiCard.tsx` aria-label "전월 대비"와 정합) + audit prev 24h (자연 윈도우).
+- delta type: `Double` nullable, 분모 0 → null (frontend `delta != null` 가드).
+- active 카운트 근사: 현재 `is_active`를 historical에 적용 (User.is_active mutation 이력 미보존 — Javadoc 한계 명시).
+- storage delta: `uploaded_at <= T-30d` snapshot (A7 hard purge 빈도 낮은 MVP에서 trend 지표).
+
+### 사고 — co-session edit absorption
+
+**원인**: P4 worktree (`feat/admin-dashboard-kpi-delta-backend`) 생성 후 Edit/Write 도구가 worktree path가 아닌 main repo path (`C:/project/IbizDrive/...`)로 14 파일 수정. 동시에 다른 세션이 main repo working tree에서 `docs/tier0-drift-sweep-v1x-closure` 브랜치 작업 중이었고, master merge 시점(`cfb63c5 Merge branch 'master' into docs/tier0-drift-sweep-v1x-closure`)에 working tree의 P4 unstaged edits가 함께 commit. PR #202 (`829c6c2`) 머지로 P4 backend 전체가 master로 진입.
+
+**현실**: P4 의도 코드는 master에 정확히 반영됨 (DTO 10 Delta 매칭 + service 14 delta 메서드 검증). 다만 commit 메시지/PR description은 P4 의도를 반영하지 않음.
+
+**결정**: 트랙 종료. 별도 P4 PR 생성하지 않음 — duplicate revert/re-PR이 KISS·YAGNI 위반. 본 closure PR로 (a) backlog mark, (b) progress.md absorption history, (c) memory entry로 재발 방지만.
+
+### 변경 (docs only, 2 파일)
+
+- `docs/v1x-backlog.md` line 46 — strikethrough + closure note (PR #202 우발 흡수 + 본 closure ref)
+- `docs/progress.md` — 본 entry
+
+### 검증
+
+- master `AdminDashboardSummaryResponse.java` 10 Delta 필드 grep PASS
+- master `AdminDashboardService.java` `computeDelta` + `countAliveAsOf` + `sumVersionSizeBytesAsOf` 14 매칭 PASS
+- frontend `types/admin.ts` 8 delta 필드 + `DashboardSummary.tsx` 8 wiring 반영 확인
+- 로컬 build/test 미실행 — master CI green 의존 (P4 코드는 PR #202 + 본 closure 시점 master HEAD)
+
+### 다음 세션 컨텍스트
+
+- 메모리 `feedback_edit_path_main_repo_pitfall` (가칭) 신규 — worktree 진입 후 Edit 도구 path가 worktree path를 사용하는지 확인 가드.
+- Worktree `feat/admin-dashboard-kpi-delta-backend` 제거 (commit 0건, 의도된 work는 master 흡수됨).
+- 잔여 Tier 1: 2인 승인 framework (L), audit_level + FILE_VIEWED emit (M, ADR #9 blocker), 확장자 whitelist (M, spec 부재), MFA (M, ADR #18 blocker).
+
+---
+
+## 2026-05-12 — audit-severity-backend (audit_log.severity 컬럼 + emitter + query + export wire)
+
+### 범위
+
+Phase 3d (design-fidelity-sweep PR #200) 에서 `SeverityTab` / `AuditStream` / `severityOf` frontend fallback 으로 추가한 severity UX 의 backend 합류. `audit_log.severity` 컬럼 + 단일 매핑 진실 + emitter/query/export 일괄 wire + frontend fallback 폐기. v1.x backlog Tier 1 "audit severity backend 컬럼" closure.
+
+### 변경 (worktree `feat/audit-severity-backend`)
+
+backend
+- `db/migration/V19__audit_severity.sql` (신규) — 컬럼 ADD + backfill CASE(17건) + NOT NULL/DEFAULT/CHECK + 부분 인덱스 (`severity != 'info'`).
+- `audit/AuditSeverity.java` (신규) — enum + wire lower-case (`info|warn|danger`) + @JsonValue/@JsonCreator.
+- `audit/AuditSeverityMapper.java` (신규) — `of(AuditEventType)` 단일 매핑 진실. V19 backfill CASE 와 동치.
+- `audit/AuditService.java` — record() 가 mapper 호출 → severity 자동 결정 후 INSERT.
+- `audit/dto/AuditLogEntryDto.java` — `AuditSeverity severity` 필드 추가 (frontend AuditLogEntry 와 1:1).
+- `audit/AuditQueryService.java` — SELECT 컬럼 + RowMapper severity 매핑.
+- `audit/AuditCsvWriter.java` — HEADERS + toRow 에 severity (metadata 직전). frontend client-side CSV 동기 주석 폐기.
+- `audit/AuditNdjsonWriter.java` / `AuditJsonWriter.java` — DTO 직렬화로 자동 반영 (코드 변경 없음, test 보강).
+- 테스트: `AuditSeverityMapperTest` (신규, 8 케이스), `AuditLogSchemaTest` (severity 컬럼/CHECK/DEFAULT/부분 인덱스 4 케이스 추가), `AuditServiceTest` (FILE_UPLOADED→info, SHARE_CREATED→danger, PERMISSION_REVOKED→warn), `AuditQueryServiceTest` (entry.severity == INFO), `AuditCsvWriterTest`/`AuditJsonWriterTest`/`AuditNdjsonWriterTest` (severity wire 직렬화 + null fixture 갱신), `AuditQueryControllerTest` (response jsonPath `entries[0].severity = "info"`).
+
+frontend
+- `types/audit.ts` — `AuditSeverity` 타입 + `AuditLogEntry.severity` 필드 (NOT NULL — backend 항상 반환).
+- `lib/admin/auditSeverity.ts` — `severityOf` / `SEVERITY_MAP` 삭제, `AuditSeverity` 재export + `SEVERITY_LABEL` / `SeverityFilter` 만 유지.
+- `components/audit/{SeverityTabs,AuditStream}.tsx` + `components/admin/overview/AuditMiniRow.tsx` + `app/admin/audit/page.tsx` — `severityOf(entry.eventType)` → `entry.severity` 직접 사용.
+- 6 fixture test 파일 — `severity: 'info'` 추가 (TS strict 안정성).
+
+docs
+- `docs/02-backend-data-model.md` §2.8 — audit_log 컬럼/CHECK/부분 인덱스 갱신.
+- `docs/03-security-compliance.md` §4.5 신규 — severity 분류 기준 + 명시 매핑표 (17건 + default info) + 단일 진실 위치 명시.
+
+### 결정/편차
+
+- **단일 매핑 진실 = backend `AuditSeverityMapper`**. V19 backfill SQL CASE 와 frontend 임시표는 같은 표였고, frontend 표는 본 PR 에서 폐기됨.
+- **`AuditEvent` record 는 불변** — severity 는 derived. AuditService 내부에서 mapper 호출. 호출자(`@Audited` AOP / Security listener) 는 severity 모르고도 record 가능.
+- **부분 인덱스** (`WHERE severity != 'info'`) — info 가 압도적 다수일 것이라 hot path(danger/warn) 만 인덱스화로 저장 비용 절감.
+- **"user.login.failed" 단건 = warn**. "연속 N회 실패 → danger 승격" 은 alerting 트랙으로 분리 (out of scope, v1.x++).
+- **V4 REVOKE 충돌 없음** — Flyway 가 superuser connection 으로 DDL/UPDATE 실행, `app_user` 의 INSERT/SELECT 제약은 그대로 유지.
+
+### 검증
+
+- `./gradlew :backend:test --tests "*Audit*"` — local 통과 예정 (Testcontainers slice 는 CI 첫 결과로 정합 확인 — memory `Local Docker-skip CI gap`).
+- `pnpm --filter frontend typecheck && pnpm --filter frontend test --run` — 통과 예정 (TS strict).
+- AuditSeverityMapperTest 가 V19 backfill CASE 와 mapper 동치성 검증.
+
+### 다음 세션 컨텍스트
+
+- **alerting 트랙 (v1.x++)**: 연속 실패/대량 권한 회수 등 동적 severity 승격 — audit_log 자체는 불변, alert 계층 책임.
+- **audit_log 파티셔닝** (docs/02 §9.4) — severity 인덱스 추가로 partition migration 시 SQL 영향 점검 필요.
+- **v1x-backlog** Tier 1 "audit severity backend 컬럼" closure 표시 필요 (PR 머지 후).
+
+### 참조
+
+- worktree: `C:/project/IbizDrive/.claude/worktrees/audit-severity` (branch `feat/audit-severity-backend`)
+- dev/active/audit-severity-backend/{plan,context,tasks}.md
+
+---
+
+## 2026-05-12 — 🎨 admin-grid-rebuild (잔여 6 admin 페이지 wrapper 통일, PR #207)
+
+### 범위
+
+`v1x-backlog.md` Tier 1 "잔여 admin 페이지 admin-grid 재구성" closure. design-sweep-phase-3 종료 후 잔여 6 페이지(members/departments/permissions/teams/system/trash)의 wrapper utility를 통일된 `admin-grid` 클래스로 교체. 옵션 B (사용자 결정 2026-05-12) — KISS: wrapper만 통일, 위젯 추가 rebuild 회피.
+
+### 변경 (6 파일, +15/-13)
+
+- `frontend/src/app/admin/members/page.tsx` — `flex-1 overflow-auto p-6 space-y-10` → `admin-grid`
+- `frontend/src/app/admin/departments/page.tsx` — 동일 패턴
+- `frontend/src/app/admin/permissions/page.tsx` — `flex-1 overflow-auto p-6 space-y-6` → `admin-grid`
+- `frontend/src/app/admin/teams/page.tsx` — 4 wrapper 위치(loading/error/empty/main) `flex-1 overflow-auto p-6` → `admin-grid` 일괄
+- `frontend/src/app/admin/system/page.tsx` — `p-8 max-w-[960px]` → `admin-grid` + h1/p `<header>` wrapper로 묶음 (다른 페이지 패턴과 정합), mb-6 제거(gap 16px가 처리)
+- `frontend/src/app/admin/trash/all/page.tsx` — `flex-1 overflow-auto p-6 space-y-4` → `admin-grid`
+
+### 결정/편차
+
+- **옵션 B 채택 (사용자 결정)** — wrapper 통일만. 디자인 zip의 sub-tab 위젯 풀세트 재현은 옵션 A로 분리(backend endpoint 신설 + 새 위젯 컴포넌트 동반). v1.x 트랙 부재 시 필요 시점에 별도.
+- **system 페이지 max-w 960px 제거** — admin-grid의 max-width 1400px 통일. 카드 grid `sm:grid-cols-2`는 1400px에서도 정상 (디자인 zip 다른 페이지와 정합).
+- **system 페이지 h1/p header wrapper** — storage/sharing 등 다른 페이지의 `<header>` 패턴 답습. mb-6 → admin-grid gap 16px가 자식 간격 처리.
+- **teams 페이지 4 wrapper 일괄** — loading/error/empty/main 4개 conditional render branch 모두 admin-grid wrapper. 단일 wrapper class로 통일하면 sub-state 시각 일관성 회복.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run src/app/admin` ✓ **11 files / 116 tests PASS** (회귀 0)
+
+### 다음 세션 컨텍스트
+
+- **잔여 Tier 1 backlog**: 2인 승인 framework(L), 잔여 admin 위젯 추가 rebuild(옵션 A 분리), audit_level emit(M, ADR #9 blocker), 확장자 whitelist(M, spec 부재), MFA(M, ADR #18 blocker)
+- **다른 세션 활성 트랙**: `feat/audit-severity-backend`, `feat/quota-phase5-upload-enforcement` (master HEAD에서 작업 시작 단계)
+- **Housekeeping 잔여**: `dev/active/design-fidelity-sweep/` archive, `quota-phase3` worktree 제거 (PR #198 머지됨), `quota-phase4` worktree 제거 (PR #203 머지됨), `v1.0.0-beta` 태그 push (사용자 게이트)
+
+---
+
+## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #202)
+
+### 범위
+
+v1.0.0-beta 출시 직후 다음 트랙 결정 state-check 단계에서 `v1x-backlog.md`에 stale entry 2건 발견. 단일 PR로 closure mark + 잔여 spec drift(§7.12 ghost endpoint 3건) deprecation marker.
+
+### 발견
+
+1. **Admin Grant Phase C/D (Tier 1 #48)** — backlog `Last Updated: 2026-05-11`에도 불구하고 entry는 PR #163 머지(2026-05-11 grant-permission-dialog Phase C+D) 반영 누락. `feedback_state_check_first.md` 메모리가 가리킨 함정 — backlog만 보고 트랙 진입했으면 closed 트랙 재구현 위험.
+2. **docs drift entry (Tier 0 #31)** — (a) `docs/02 §2.12 trash_policy`는 이미 line 495에 schema entry 완비 — drift check 자체가 stale. (b) `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend (controller / service) 0건 + frontend hook 0건 = never-implemented ghost. AdminAudit + AdminStorage + `/api/admin/dashboard/summary`로 정보 통합 제공.
+
+### 변경 (docs only, 4 파일)
+
+- `docs/v1x-backlog.md`
+  - Tier 0 #31 `~~docs drift~~` closure mark (a 조건 stale + b 조건 본 PR + c 조건 정합 OK)
+  - Tier 1 #48 `~~Admin Grant Phase C/D~~` closure mark (PR #163 + #193 ref + ROLE/TEAM v2.x 분리 표기)
+  - Last Updated 2026-05-12
+- `docs/02-backend-data-model.md` §7.12 — table 직후 deprecation note blockquote (3 ghost endpoint 명시 + AdminAudit/AdminStorage/dashboard summary 대체 매핑 + 부활 조건)
+- `docs/01-frontend-design.md` §16.2 — admin 페이지 4 라우트 중 3건 inline marker(`[v1.x 미구현 — AdminAudit ... filter로 대체]`) + 동일 deprecation note blockquote (§7.12 동기 backlink)
+- `docs/progress.md` — 본 closure entry
+- `frontend/src/app/admin/storage/page.test.tsx` — master 사이드 회귀 fix 동봉 (cherry-pick c397b55 from `feat/quota-phase4-frontend-ui`). design-sweep-phase-3 (#200)이 `cleanup-meta` 라인 추가로 `getByText(/7/)` 중복 매칭 → `getAllByText('7').length >= 1` 가드. master vitest CI green 회복
+
+### 결정/편차
+
+- **deprecation marker 채택 (wire spec 보강 X)** — backend 0건 상태에서 wire spec 작성은 YAGNI 위반. row 제거는 `docs/01 §16.2`까지 sync 확대 → KISS 위반. blockquote marker가 가장 가벼움.
+- **row 자체는 §7.12 table에 보존** — 운영자가 endpoint path 추적 시 마지막 결정 출처 보존. row 제거하면 "왜 없지?" → 또 다른 drift 유발.
+- **PR # 정정 followup commit** — 첫 commit은 `PR #TBD` placeholder, PR open 직후 followup commit으로 `PR #202` 정정 (force push 회피, memory `feedback_co_session_collab`).
+
+### 검증
+
+- docs 변경 4 파일 + 회귀 fix 1 파일 (cherry-pick c397b55, 1 line 변경).
+- master vitest CI는 design-sweep-phase-3 (#200) 이후 fail 상태였음 (memory `feedback_local_skip_ci_gap` 시나리오). 본 PR이 master fix 동봉으로 green 회복.
+- 회귀 영향: 0 — docs + test 가드 강화만.
+
+### 다음 세션 컨텍스트
+
+- **v1x-backlog 정합성 회복** — 다음 트랙 부트스트랩 시 stale entry 함정 제거.
+- **잔여 Tier 1 후보** (blocker 0): Quota Phase 4~5 (worktree `quota-phase4` locked → co-session 진행 가능성, 확인 필요), 2인 승인 framework (L), 잔여 admin 페이지 admin-grid 재구성 (M).
+- **Housekeeping 잔여**: `dev/active/design-fidelity-sweep/` archive, `quota-phase3` worktree 제거 (PR #198 머지됨), `v1.0.0-beta` 태그 push (사용자 게이트).
+
+---
+
 ## 2026-05-12 — quota-phase4 (admin user quota frontend UI)
 
 ### 범위

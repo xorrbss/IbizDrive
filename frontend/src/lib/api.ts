@@ -922,6 +922,7 @@ export const api = {
         resourceName: string | null
         ip: string | null
         metadata: Record<string, unknown> | null
+        severity?: 'info' | 'warn' | 'danger'
       }>
       total: number
       page: number
@@ -938,6 +939,9 @@ export const api = {
       resourceName: e.resourceName,
       ip: e.ip,
       metadata: e.metadata,
+      // V19 — backend 가 항상 반환. 구 backend (severity 컬럼 미존재) 와의 wire 호환을 위해
+      // raw 가 undefined 인 경우 'info' fallback (graceful degradation; v1.x++ 제거 가능).
+      severity: e.severity ?? 'info',
     }))
     return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   },
@@ -983,6 +987,7 @@ export const api = {
         resourceName: string | null
         ip: string | null
         metadata: Record<string, unknown> | null
+        severity?: 'info' | 'warn' | 'danger'
       }>
       total: number
       page: number
@@ -1000,6 +1005,7 @@ export const api = {
       resourceName: e.resourceName,
       ip: e.ip,
       metadata: e.metadata,
+      severity: e.severity ?? 'info',
     }))
     return { entries, total: raw.total, page: raw.page, pageSize: raw.pageSize }
   },

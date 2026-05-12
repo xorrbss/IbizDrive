@@ -172,6 +172,15 @@ class AuditQueryServiceTest {
     }
 
     @Test
+    void entry_exposesSeverity_fromDbColumn() {
+        // V19 — insertAudit 헬퍼가 severity 미지정 INSERT 하므로 DB DEFAULT 'info' 채워짐.
+        AuditLogPageDto page = queryService.search(
+            AuditQueryFilters.empty(), 1, 50, admin, Role.ADMIN);
+        assertTrue(page.entries().stream().allMatch(e -> e.severity() == AuditSeverity.INFO),
+            "severity 미지정 INSERT 는 DB DEFAULT 'info' 로 채워져 entry.severity() == INFO");
+    }
+
+    @Test
     void auditor_seesAllRows() {
         AuditLogPageDto page = queryService.search(
             AuditQueryFilters.empty(), 1, 50, admin, Role.AUDITOR);

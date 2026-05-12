@@ -35,27 +35,52 @@ export function DashboardSummary() {
     )
   }
 
+  // Jackson은 null Double을 JSON null로 직렬화 → JS는 null. DashboardKpiCard는 `delta != null`
+  // 가드로 null/undefined 양쪽 처리하므로 ?? undefined 변환 불필요.
   return (
     <div className="kpi-row">
       <DashboardKpiCard
         label="등록 사용자"
         value={data.users.total}
         sub={`활성 ${data.users.active}/${data.users.total}`}
+        delta={data.users.totalDelta ?? undefined}
       />
-      <DashboardKpiCard label="활성 사용자" value={data.users.active} />
+      <DashboardKpiCard
+        label="활성 사용자"
+        value={data.users.active}
+        delta={data.users.activeDelta ?? undefined}
+      />
       <DashboardKpiCard
         label="부서"
         value={data.departments.total}
         sub={`활성 ${data.departments.active}/${data.departments.total}`}
+        delta={data.departments.totalDelta ?? undefined}
       />
-      <DashboardKpiCard label="활성 폴더" value={data.folders.active} />
-      <DashboardKpiCard label="활성 파일" value={data.files.active} />
-      <DashboardKpiCard label="휴지통 파일" value={data.files.trashed} />
-      <DashboardKpiCard label="24시간 감사 이벤트" value={data.audit.last24h} />
+      <DashboardKpiCard
+        label="활성 폴더"
+        value={data.folders.active}
+        delta={data.folders.activeDelta ?? undefined}
+      />
+      <DashboardKpiCard
+        label="활성 파일"
+        value={data.files.active}
+        delta={data.files.activeDelta ?? undefined}
+      />
+      <DashboardKpiCard
+        label="휴지통 파일"
+        value={data.files.trashed}
+        delta={data.files.trashedDelta ?? undefined}
+      />
+      <DashboardKpiCard
+        label="24시간 감사 이벤트"
+        value={data.audit.last24h}
+        delta={data.audit.last24hDelta ?? undefined}
+      />
       <DashboardKpiCard
         label="스토리지 사용량"
         value={formatBytes(data.storage.usedBytes)}
         sub="모든 버전 누적 합"
+        delta={data.storage.usedBytesDelta ?? undefined}
       />
     </div>
   )

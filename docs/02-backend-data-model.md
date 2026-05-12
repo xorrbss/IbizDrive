@@ -276,9 +276,12 @@ CREATE TABLE audit_log (
   before_state   JSONB,
   after_state    JSONB,
   metadata       JSONB,                             -- 추가 컨텍스트
+  severity       VARCHAR(10) NOT NULL DEFAULT 'info', -- V19, AuditSeverityMapper 단일 진실 (docs/03 §4.5)
 
   -- V3 baseline: 7개. V9(Wave 2 T4)에서 'department' 추가 → 8개.
-  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit', 'department'))
+  CHECK (target_type IN ('file', 'folder', 'user', 'permission', 'share', 'system', 'audit', 'department')),
+  -- V19: severity wire 셋 (info/warn/danger), backend AuditSeverity enum 과 동기.
+  CONSTRAINT audit_log_severity_check CHECK (severity IN ('info', 'warn', 'danger'))
 );
 
 -- 🔑 append-only 강제: DB 사용자 권한으로 UPDATE/DELETE 차단
@@ -292,6 +295,9 @@ CREATE INDEX idx_audit_occurred_at ON audit_log(occurred_at DESC);
 CREATE INDEX idx_audit_actor       ON audit_log(actor_id, occurred_at DESC);
 CREATE INDEX idx_audit_target      ON audit_log(target_type, target_id, occurred_at DESC);
 CREATE INDEX idx_audit_event       ON audit_log(event_type, occurred_at DESC);
+-- V19: severity 부분 인덱스 — info 가 대다수이므로 danger/warn 만 인덱스화 (hot path).
+CREATE INDEX idx_audit_severity_occurred ON audit_log(severity, occurred_at DESC)
+  WHERE severity != 'info';
 ```
 
 ### 2.9 upload_sessions (v1.x tus용, MVP는 선택)
@@ -1983,6 +1989,8 @@ PUT /api/admin/trash/policy
 | GET | `/api/admin/permissions` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (만료 grant 포함 — `is_expired` 노출) | 400 VALIDATION_ERROR, 401, 403 |
 | GET | `/api/admin/system/cron` | `hasRole('ADMIN') OR hasRole('AUDITOR')` (`@PreAuthorize`, Wave 1 T3 / 1.5 `auditor-cron-readonly`) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
 | GET | `/api/admin/dashboard/summary` | `hasRole('ADMIN')` (`@PreAuthorize`) | `readOnly=true` (count·SUM·audit native COUNT, audit emit 없음) | — | 활성: `deletedAt IS NULL`, 휴지통 파일은 `IS NOT NULL` 별도 카운트 | 401, 403 |
+
+> **v1.x 미구현 (deprecation note, 2026-05-12 tier0-drift-sweep)** — `/api/admin/download-logs`, `/api/admin/permission-logs`, `/api/admin/storage-usage` 3건은 `docs/01 §16.2`에 페이지 라우트로 spec되었으나 backend controller / service / frontend hook 모두 0건. **AdminAudit (`/api/admin/audit` + `/api/admin/audit/export`)이 audit_log 통합 viewer로 `file.downloaded` / `permission.*` filter + storage usage는 `/api/admin/dashboard/summary` `storage.usedBytes`로 동일 정보 제공 → 실 구현 deferred.** 추후 운영 요구로 spec 부활 시 별도 row + wire spec 추가 + ADR 신설.
 
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 

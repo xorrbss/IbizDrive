@@ -8,7 +8,7 @@ import { AuditPagination } from '@/components/audit/AuditPagination'
 import { SeverityTabs } from '@/components/audit/SeverityTabs'
 import { SectionCard } from '@/components/admin/SectionCard'
 import { api } from '@/lib/api'
-import { severityOf, type SeverityFilter } from '@/lib/admin/auditSeverity'
+import { type SeverityFilter } from '@/lib/admin/auditSeverity'
 import type { AuditLogFilters } from '@/types/audit'
 
 const PAGE_SIZE = 20
@@ -47,18 +47,14 @@ export default function AuditLogsPage() {
   const { data, isLoading, isError } = useAuditLogs(filters, page, PAGE_SIZE)
 
   /**
-   * severity 필터는 frontend-only 분류이므로 backend 페이지네이션 결과에 대해
-   * 현재 페이지 entries 를 한 번 더 좁힌다. backend total 은 그대로 유지 (severity
-   * 필터를 적용하면 total 이 부정확해질 수 있으나, frontend-only 분류임을 명시적으로
-   * 노출하는 v1.0 절충안 — backend severity 컬럼 추가 시 정합화).
-   *
-   * `allEntries` 는 data.entries 의 별칭이므로 별도 변수 추출 없이 useMemo 의존성에
-   * 직접 data?.entries 를 사용 (eslint react-hooks/exhaustive-deps 회피).
+   * severity 필터는 응답된 현재 페이지 entries 를 한 번 더 좁힌다. backend total 은
+   * 그대로 유지하여 backend pagination 과 분리한다 (severity-aware count endpoint 는
+   * v1.x++; 일반적으로 사용자는 페이지 범위 내에서 severity 분류를 본다).
    */
   const allEntries = useMemo(() => data?.entries ?? [], [data?.entries])
   const visibleEntries = useMemo(() => {
     if (severity === 'all') return allEntries
-    return allEntries.filter((e) => severityOf(e.eventType) === severity)
+    return allEntries.filter((e) => e.severity === severity)
   }, [allEntries, severity])
 
   const handleFiltersChange = (next: AuditLogFilters) => {

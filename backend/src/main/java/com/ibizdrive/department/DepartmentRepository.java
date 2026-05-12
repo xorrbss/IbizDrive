@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -84,4 +85,14 @@ public interface DepartmentRepository extends JpaRepository<Department, UUID> {
      * 일관성을 위해 dashboard 응답에서 두 필드 모두 본 메서드 결과를 사용.
      */
     long countByDeletedAtIsNull();
+
+    /**
+     * admin-dashboard delta — {@code asOf} 시점에 살아있던 부서 수.
+     *
+     * <p>{@code created_at <= asOf AND (deleted_at IS NULL OR deleted_at > asOf)}. 30d 비교
+     * 분모. UserRepository.countAliveAsOf와 동일 패턴.
+     */
+    @Query("SELECT COUNT(d) FROM Department d WHERE d.createdAt <= :asOf "
+         + "AND (d.deletedAt IS NULL OR d.deletedAt > :asOf)")
+    long countAliveAsOf(@Param("asOf") OffsetDateTime asOf);
 }

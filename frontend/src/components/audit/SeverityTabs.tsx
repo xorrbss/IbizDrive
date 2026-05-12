@@ -1,7 +1,6 @@
 'use client'
 import type { AuditLogEntry } from '@/types/audit'
 import {
-  severityOf,
   SEVERITY_LABEL,
   type AuditSeverity,
   type SeverityFilter,
@@ -18,8 +17,8 @@ import {
  * aggregation endpoint 미존재 — v1.x++). 이는 design 의 frontend-only ADMIN_AUDIT
  * 정적 배열 카운팅 동작과 동등 패턴이다.
  *
- * <p>severity 매핑은 `auditSeverity.severityOf` 사용 — frontend UX 용 분류이며
- * 보안의 진실은 backend 책임 (`@PreAuthorize`).
+ * <p>severity 는 backend `audit_log.severity` (V19) 가 단일 진실이며 본 컴포넌트는
+ * `entry.severity` 를 그대로 사용한다.
  *
  * <p>style: `.audit-header`, `.audit-header-spacer`, `.sev-tab`, `.sev-tab.active`,
  * `.sev-count`, `.sev-dot.sev-{info|warn|danger}` (admin.css L549~580).
@@ -94,7 +93,7 @@ interface Counts {
 function countBySeverity(entries: AuditLogEntry[]): Counts {
   const counts: Counts = { all: entries.length, danger: 0, warn: 0, info: 0 }
   for (const e of entries) {
-    const s: AuditSeverity = severityOf(e.eventType)
+    const s: AuditSeverity = e.severity
     counts[s] += 1
   }
   return counts
