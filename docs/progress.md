@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #TBD)
+
+### 범위
+
+v1.0.0-beta 출시 직후 다음 트랙 결정 state-check 단계에서 `v1x-backlog.md`에 stale entry 2건 발견. 단일 PR로 closure mark + 잔여 spec drift(§7.12 ghost endpoint 3건) deprecation marker.
+
+### 발견
+
+1. **Admin Grant Phase C/D (Tier 1 #48)** — backlog `Last Updated: 2026-05-11`에도 불구하고 entry는 PR #163 머지(2026-05-11 grant-permission-dialog Phase C+D) 반영 누락. `feedback_state_check_first.md` 메모리가 가리킨 함정 — backlog만 보고 트랙 진입했으면 closed 트랙 재구현 위험.
+2. **docs drift entry (Tier 0 #31)** — (a) `docs/02 §2.12 trash_policy`는 이미 line 495에 schema entry 완비 — drift check 자체가 stale. (b) `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend (controller / service) 0건 + frontend hook 0건 = never-implemented ghost. AdminAudit + AdminStorage + `/api/admin/dashboard/summary`로 정보 통합 제공.
+
+### 변경 (docs only, 4 파일)
+
+- `docs/v1x-backlog.md`
+  - Tier 0 #31 `~~docs drift~~` closure mark (a 조건 stale + b 조건 본 PR + c 조건 정합 OK)
+  - Tier 1 #48 `~~Admin Grant Phase C/D~~` closure mark (PR #163 + #193 ref + ROLE/TEAM v2.x 분리 표기)
+  - Last Updated 2026-05-12
+- `docs/02-backend-data-model.md` §7.12 — table 직후 deprecation note blockquote (3 ghost endpoint 명시 + AdminAudit/AdminStorage/dashboard summary 대체 매핑 + 부활 조건)
+- `docs/01-frontend-design.md` §16.2 — admin 페이지 4 라우트 중 3건 inline marker(`[v1.x 미구현 — AdminAudit ... filter로 대체]`) + 동일 deprecation note blockquote (§7.12 동기 backlink)
+- `docs/progress.md` — 본 closure entry
+
+### 결정/편차
+
+- **deprecation marker 채택 (wire spec 보강 X)** — backend 0건 상태에서 wire spec 작성은 YAGNI 위반. row 제거는 `docs/01 §16.2`까지 sync 확대 → KISS 위반. blockquote marker가 가장 가벼움.
+- **row 자체는 §7.12 table에 보존** — 운영자가 endpoint path 추적 시 마지막 결정 출처 보존. row 제거하면 "왜 없지?" → 또 다른 drift 유발.
+- **PR # TBD** — closure entry 안에 본 PR # 미확정. PR open 후 followup commit으로 정정 또는 다음 트랙 closure에서 함께 정정.
+
+### 검증
+
+- 코드 0줄 — `pnpm typecheck`/`pnpm lint`/`pnpm test` 무관.
+- `git diff --stat` 결과: 4 파일 (`docs/01-frontend-design.md`, `docs/02-backend-data-model.md`, `docs/v1x-backlog.md`, `docs/progress.md`).
+- 회귀 영향: 0 — docs only.
+
+### 다음 세션 컨텍스트
+
+- **v1x-backlog 정합성 회복** — 다음 트랙 부트스트랩 시 stale entry 함정 제거.
+- **잔여 Tier 1 후보** (blocker 0): Quota Phase 4~5 (worktree `quota-phase4` locked → co-session 진행 가능성, 확인 필요), 2인 승인 framework (L), 잔여 admin 페이지 admin-grid 재구성 (M).
+- **Housekeeping 잔여**: `dev/active/design-fidelity-sweep/` archive, `quota-phase3` worktree 제거 (PR #198 머지됨), `v1.0.0-beta` 태그 push (사용자 게이트).
+
+---
+
 ## 2026-05-12 — 🎨 design-fidelity-sweep (디자인 zip 메인 탐색기 + Admin Console 전체 반영, PR #199 + #200)
 
 ### 범위

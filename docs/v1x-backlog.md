@@ -4,7 +4,7 @@
 >
 > **단일 진실의 출처**: 항목 자체는 `BETA-RELEASE.md` §7 + `docs/progress.md` 각 트랙 closure entry. 본 문서는 그 항목들의 **우선순위/시점**만 다룬다. 새 항목 추가 시 양쪽 동시 갱신.
 >
-> **Last Updated**: 2026-05-11 (PR #187/#191/#192/#193 머지 직후)
+> **Last Updated**: 2026-05-12 (tier0-drift-sweep — Admin Grant Phase C/D + docs drift entry closure)
 
 ---
 
@@ -28,7 +28,7 @@
 | 회귀에서 발견된 critical bug fix | TBD | 없음 | golden path 회귀 결과 | 회귀 통과 직후 inventory. 현재 미정 |
 | Storage 용량 TB 단위 표시 (1024 GB+) | S | 없음 | progress.md 2026-05-09 (T17 storage overview) | `formatBytes` 1개 함수 확장 + test. PB 미도입 (KISS) |
 | 단축키 ↔ action 매핑 통합 | S | spec decision | progress.md 2026-05-10 (#174) | `KEYBOARD_SHORTCUTS`에 action 필드 + dispatcher 통합. v2.x 후보였으나 v1.0.x에서도 가능 |
-| **docs drift 정정 — schema §2 (V17 trash_policy) + API §7.12 endpoint spec 3건** | S | 없음 | drift check 2026-05-11 | (a) docs/02 §2에 `trash_policy` 표 entry 추가 (현재 §7.11.1만 언급). (b) §7.12 `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 상세 wire spec(request/response/guard) 보강 또는 deprecation marker. C(audit enum)은 정합 OK |
+| ~~docs drift 정정 — schema §2 (V17 trash_policy) + API §7.12 endpoint spec 3건~~ | — | — | ✓ 2026-05-12 tier0-drift-sweep (PR #TBD) | **closure** — (a) §2.12 `trash_policy` 표 entry **이미 존재** (drift check 자체가 stale, line 495). (b) §7.12 `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend/frontend 0건 = never-implemented. **AdminAudit 통합으로 대체** → deprecation marker 채택 (본 PR). (c) audit enum 정합 OK |
 
 ---
 
@@ -45,7 +45,7 @@
 | Audit severity backend 컬럼 | S | spec | design-sweep-phase-3 종료 후 잔여 | 현재 `auditSeverity.severityOf` frontend mapping. backend `audit_log.severity` enum 컬럼 추가 시 hook point 교체 |
 | DashboardKpiCard delta 데이터 wiring | S | backend | design-sweep-phase-3 종료 후 잔여 | UI 준비 완료(PR #200). `AdminDashboardSummary.users.delta` 등 backend 컬럼 추가 시 즉시 시각화 |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |
-| **Admin Grant Phase C/D** | M | 없음 (Phase A/B 완료 #157, 진입점 #193) | BETA §7 / docs/01 §14.5 | USER/DEPT picker 컴포넌트 + ResourcePermissionsList 통합 + grant audit emit |
+| ~~Admin Grant Phase C/D~~ | — | — | ✓ 2026-05-11 grant-permission-dialog Phase C+D (PR #163) + /admin/permissions 진입점 (PR #193) | **closure** — Phase C subject(`everyone`/`user`/`department`) 라디오 + `UserSearchCombobox`/`DepartmentSearchCombobox` 재사용, Phase D `ResourcePermissionsList` 통합("권한 부여" 버튼 + `aria-haspopup`/`aria-expanded`). `/admin/permissions` `AdminGrantPermissionTrigger`는 별도 진입점. ROLE/TEAM grant 평가는 v2.x (PR #162 spec realign) |
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |
 | 확장자 whitelist + MIME magic | M | spec 부재 | BETA §7 / docs/03 §5.3 | Content-Disposition 1차 방어 외 추가 layer. allow-list 정의 필요 |
 | MFA / refresh rotation | M | ADR #18 결정 보류 | BETA §7 / ADR #18 | `USER_MFA_ENABLED` emit deferred. TOTP vs FIDO2 결정 |
