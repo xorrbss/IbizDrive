@@ -1439,6 +1439,37 @@ export const api = {
     return (await res.json()) as AdminUserSummary
   },
 
+  /**
+   * `PUT /api/admin/users/:id/quota` — quota mutation Phase 3 backend (#198), Phase 4 frontend
+   * wiring. `storageQuota`(bytes) >= 0. 응답은 적용 후 `{ storageQuota, storageUsed }`.
+   *
+   * <p>idempotent: 동일 값은 backend service에서 no-op (audit emit 생략) — 호출자는 응답을 그대로
+   * 반영하면 됨. 한도 < 사용량(over-quota) 케이스는 backend가 허용 — Phase 5 enforcement에서만
+   * 신규 업로드 차단.
+   *
+   * <p>호출자 에러 분기: 400 VALIDATION_ERROR(음수/null), 403 ADMIN 부재, 404 USER_NOT_FOUND.
+   */
+  async adminUpdateUserQuota(
+    id: string,
+    storageQuota: number,
+  ): Promise<{ storageQuota: number; storageUsed: number }> {
+    const csrf = await ensureCsrfToken()
+    const res = await fetch(`/api/admin/users/${id}/quota`, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: {
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+        'X-CSRF-TOKEN': csrf,
+      },
+      body: JSON.stringify({ storageQuota }),
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `adminUpdateUserQuota failed: ${res.status}`)
+    }
+    return (await res.json()) as { storageQuota: number; storageUsed: number }
+  },
+
   // ── Admin departments (admin-department-crud, Wave 2 T4, docs/02 §7.x) ────
 
   /**
@@ -1830,6 +1861,10 @@ export interface AdminUserSummary {
   isActive: boolean
   createdAt: string
   lastLoginAt: string | null
+  /** quota mutation Phase 4 — bytes. V18 schema 도입 + Phase 3 (#198) entity 매핑. */
+  storageQuota: number
+  /** quota mutation Phase 4 — bytes. Phase 5 enforcement에서 upload 시점 증가. */
+  storageUsed: number
 }
 
 /**

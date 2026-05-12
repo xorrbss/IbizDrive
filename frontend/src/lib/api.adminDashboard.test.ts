@@ -17,12 +17,12 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const RESPONSE_FIXTURE: AdminDashboardSummaryResponse = {
   summary: {
-    users: { total: 12, active: 10 },
-    departments: { total: 4, active: 4 },
-    folders: { active: 25 },
-    files: { active: 117, trashed: 3 },
-    audit: { last24h: 42 },
-    storage: { usedBytes: 1234567890 },
+    users: { total: 12, active: 10, totalDelta: 0.05, activeDelta: -0.1 },
+    departments: { total: 4, active: 4, totalDelta: 0 },
+    folders: { active: 25, activeDelta: 0.25 },
+    files: { active: 117, trashed: 3, activeDelta: 0.17, trashedDelta: -0.5 },
+    audit: { last24h: 42, last24hDelta: null },
+    storage: { usedBytes: 1234567890, usedBytesDelta: 0.03 },
   },
 }
 

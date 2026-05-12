@@ -61,6 +61,110 @@ docs
 
 ---
 
+## 2026-05-12 — 🧹 tier0-drift-sweep (v1x-backlog stale entry 2건 + §7.12 deprecation marker, PR #202)
+
+### 범위
+
+v1.0.0-beta 출시 직후 다음 트랙 결정 state-check 단계에서 `v1x-backlog.md`에 stale entry 2건 발견. 단일 PR로 closure mark + 잔여 spec drift(§7.12 ghost endpoint 3건) deprecation marker.
+
+### 발견
+
+1. **Admin Grant Phase C/D (Tier 1 #48)** — backlog `Last Updated: 2026-05-11`에도 불구하고 entry는 PR #163 머지(2026-05-11 grant-permission-dialog Phase C+D) 반영 누락. `feedback_state_check_first.md` 메모리가 가리킨 함정 — backlog만 보고 트랙 진입했으면 closed 트랙 재구현 위험.
+2. **docs drift entry (Tier 0 #31)** — (a) `docs/02 §2.12 trash_policy`는 이미 line 495에 schema entry 완비 — drift check 자체가 stale. (b) `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend (controller / service) 0건 + frontend hook 0건 = never-implemented ghost. AdminAudit + AdminStorage + `/api/admin/dashboard/summary`로 정보 통합 제공.
+
+### 변경 (docs only, 4 파일)
+
+- `docs/v1x-backlog.md`
+  - Tier 0 #31 `~~docs drift~~` closure mark (a 조건 stale + b 조건 본 PR + c 조건 정합 OK)
+  - Tier 1 #48 `~~Admin Grant Phase C/D~~` closure mark (PR #163 + #193 ref + ROLE/TEAM v2.x 분리 표기)
+  - Last Updated 2026-05-12
+- `docs/02-backend-data-model.md` §7.12 — table 직후 deprecation note blockquote (3 ghost endpoint 명시 + AdminAudit/AdminStorage/dashboard summary 대체 매핑 + 부활 조건)
+- `docs/01-frontend-design.md` §16.2 — admin 페이지 4 라우트 중 3건 inline marker(`[v1.x 미구현 — AdminAudit ... filter로 대체]`) + 동일 deprecation note blockquote (§7.12 동기 backlink)
+- `docs/progress.md` — 본 closure entry
+- `frontend/src/app/admin/storage/page.test.tsx` — master 사이드 회귀 fix 동봉 (cherry-pick c397b55 from `feat/quota-phase4-frontend-ui`). design-sweep-phase-3 (#200)이 `cleanup-meta` 라인 추가로 `getByText(/7/)` 중복 매칭 → `getAllByText('7').length >= 1` 가드. master vitest CI green 회복
+
+### 결정/편차
+
+- **deprecation marker 채택 (wire spec 보강 X)** — backend 0건 상태에서 wire spec 작성은 YAGNI 위반. row 제거는 `docs/01 §16.2`까지 sync 확대 → KISS 위반. blockquote marker가 가장 가벼움.
+- **row 자체는 §7.12 table에 보존** — 운영자가 endpoint path 추적 시 마지막 결정 출처 보존. row 제거하면 "왜 없지?" → 또 다른 drift 유발.
+- **PR # 정정 followup commit** — 첫 commit은 `PR #TBD` placeholder, PR open 직후 followup commit으로 `PR #202` 정정 (force push 회피, memory `feedback_co_session_collab`).
+
+### 검증
+
+- docs 변경 4 파일 + 회귀 fix 1 파일 (cherry-pick c397b55, 1 line 변경).
+- master vitest CI는 design-sweep-phase-3 (#200) 이후 fail 상태였음 (memory `feedback_local_skip_ci_gap` 시나리오). 본 PR이 master fix 동봉으로 green 회복.
+- 회귀 영향: 0 — docs + test 가드 강화만.
+
+### 다음 세션 컨텍스트
+
+- **v1x-backlog 정합성 회복** — 다음 트랙 부트스트랩 시 stale entry 함정 제거.
+- **잔여 Tier 1 후보** (blocker 0): Quota Phase 4~5 (worktree `quota-phase4` locked → co-session 진행 가능성, 확인 필요), 2인 승인 framework (L), 잔여 admin 페이지 admin-grid 재구성 (M).
+- **Housekeeping 잔여**: `dev/active/design-fidelity-sweep/` archive, `quota-phase3` worktree 제거 (PR #198 머지됨), `v1.0.0-beta` 태그 push (사용자 게이트).
+
+---
+
+## 2026-05-12 — quota-phase4 (admin user quota frontend UI)
+
+### 범위
+
+quota mutation 5-phase track의 **Phase 4 closure** — Phase 3 backend(#198) 위에서 `/admin/members` 페이지에 quota 컬럼 추가. admin이 사용자별 한도를 row 단위 인라인으로 조회/변경.
+
+### 변경 (9 file, +313 추가)
+
+backend (1 file, +6/-2)
+- `AdminUserSummaryResponse.java`: record에 `storageQuota` + `storageUsed` 필드 추가 + factory에서 `User` 의 신규 getter 호출. list 응답에 quota 동봉 → frontend 행 단위 추가 fetch 회피.
+
+frontend (8 file)
+- `lib/api.ts` (3 추가)
+  - `AdminUserSummary` interface에 `storageQuota` + `storageUsed` 필드 추가
+  - `adminUpdateUserQuota(id, storageQuota)` mutation 추가 — `PUT /api/admin/users/{id}/quota` 호출
+- `hooks/useAdminUpdateUserQuota.ts` (신규) — `useAdminUpdateUser` 패턴 답습. 성공 시 admin users prefix 무효화.
+- `components/admin/AdminUserQuotaCell.tsx` (신규) — display/edit 토글 인라인 셀. GB 단위 정수 입력, `formatBytes` 표시, over-quota 경고(저장 허용 — 운영 grace), 음수/범위 외 거부, sonner toast on success.
+- `app/admin/members/page.tsx` — 테이블에 "용량" 컬럼 추가 (상태와 동작 사이) + `AdminUserQuotaCell` mount.
+- 테스트:
+  - `hooks/useAdminUpdateUserQuota.test.tsx` (신규, 3건) — 성공 + 404 + 400 분기.
+  - `app/admin/members/page.test.tsx` — `useAdminUpdateUserQuota` mock + PAGE_DATA fixture에 quota 필드 + 새 describe 블록 7건 (헤더/비율/GB→bytes 변환/same-value 거부/over-quota 경고/음수 거부/취소/404 인라인).
+- 다른 fixture 정합 (테스트 type 통과): `hooks/useAdminUpdateUser.test.tsx`, `hooks/useAdminUsers.test.tsx`, `lib/api.adminUsers.test.ts` — SUMMARY/PAGE에 quota 필드 추가.
+
+docs
+- `docs/04 §6.1` Phase 3 ref → #198 / Phase 4 closure 마크 본 PR.
+- `docs/v1x-backlog.md` Tier 1: Phase 4~5 → Phase 5만 잔존.
+- `BETA-RELEASE.md`: Source line + §7 deferred wording.
+
+### 결정/편차
+
+- **GB 입력 단위**: bytes 직접 입력은 UX 비현실적. integer GB만 허용(0~10240) + 내부에서 `* 1024^3` 변환. 백엔드는 bytes 그대로 받음.
+- **0 GB 허용**: "신규 업로드 즉시 차단" 시나리오 (Phase 5 enforcement에서 분기) — 사용자 deactivate vs quota=0의 의미 분리.
+- **over-quota 경고만**: 한도 < 현재 사용량 입력 시 인라인 경고만 표시하고 저장은 허용. backend도 운영 grace로 받음(Phase 3 결정 답습).
+- **AdminUserSummaryResponse에 quota 동봉**: row 단위 별도 fetch 회피. quota는 list endpoint 응답에 들어가고, Phase 3 단건 endpoint는 부가 용도(refresh)로 유지.
+- **getStorageQuota mock 미제거**: 그 mock은 user-self quota (StorageBar) 용. 본 트랙은 admin 시점 only. user-self는 `/api/me/storage` 신설 필요 → 별도 트랙(scope 분리).
+- **옵티미스틱 업데이트 미적용**: CLAUDE.md §3 원칙 3 — quota 변경은 destructive scope에 가까움. pending 상태로 표시.
+
+### 검증
+
+- `pnpm typecheck` ✓ (5 test 파일 fixture 정합 포함)
+- `pnpm lint` ✓
+- `pnpm test --run` (targeted, 5 files) — **48/48 PASS** (`useAdminUpdateUserQuota` 3 + `page` 7신규 + 기존 회귀 38).
+- `./gradlew compileJava compileTestJava` ✓ BUILD SUCCESSFUL (backend record 변경 + factory 호환).
+
+### 다음 세션 컨텍스트 — Phase 5
+
+- **upload enforcement**: `FileUploadController.create` / `FileVersionService.create` / tus init 진입에서 `users.storage_used + payload.size > storage_quota` 검증 → `413 QUOTA_EXCEEDED`. 성공 시 `UPDATE users SET storage_used = storage_used + size WHERE id = ?` 트랜잭션 (`FOR UPDATE`, CLAUDE.md §3 원칙 7).
+- 새 에러 코드 `QUOTA_EXCEEDED`는 docs/02 §8 + frontend `src/lib/errors.ts` 동시 추가 (CLAUDE.md §3 §12 contract).
+- 단위 테스트: `FileUploadServiceTest` (over-quota → 413), `UserRepositoryTest` (storage_used `FOR UPDATE` 동시성).
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/04 §6.1` Phase 3 ref + Phase 4 closure ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
+- `BETA-RELEASE.md` (Source + §7) ✓
+
+---
+
 ## 2026-05-12 — 🎨 design-fidelity-sweep (디자인 zip 메인 탐색기 + Admin Console 전체 반영, PR #199 + #200)
 
 ### 범위

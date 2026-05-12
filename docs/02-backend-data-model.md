@@ -1990,6 +1990,8 @@ PUT /api/admin/trash/policy
 | GET | `/api/admin/system/cron` | `hasRole('ADMIN') OR hasRole('AUDITOR')` (`@PreAuthorize`, Wave 1 T3 / 1.5 `auditor-cron-readonly`) | — (SELECT only — `@ConfigurationProperties` bean 직렬화) | — | — | 401, 403 |
 | GET | `/api/admin/dashboard/summary` | `hasRole('ADMIN')` (`@PreAuthorize`) | `readOnly=true` (count·SUM·audit native COUNT, audit emit 없음) | — | 활성: `deletedAt IS NULL`, 휴지통 파일은 `IS NOT NULL` 별도 카운트 | 401, 403 |
 
+> **v1.x 미구현 (deprecation note, 2026-05-12 tier0-drift-sweep)** — `/api/admin/download-logs`, `/api/admin/permission-logs`, `/api/admin/storage-usage` 3건은 `docs/01 §16.2`에 페이지 라우트로 spec되었으나 backend controller / service / frontend hook 모두 0건. **AdminAudit (`/api/admin/audit` + `/api/admin/audit/export`)이 audit_log 통합 viewer로 `file.downloaded` / `permission.*` filter + storage usage는 `/api/admin/dashboard/summary` `storage.usedBytes`로 동일 정보 제공 → 실 구현 deferred.** 추후 운영 요구로 spec 부활 시 별도 row + wire spec 추가 + ADR 신설.
+
 > 감사 로그 endpoint는 ADR §1 원칙 8에 따라 read-only — UPDATE/DELETE 노출 금지.
 
 ```text

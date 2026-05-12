@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -110,4 +111,29 @@ public interface UserRepository extends JpaRepository<User, UUID> {
      * 정책과 동형의 "로그인 가능 사용자" 정의.
      */
     long countByDeletedAtIsNullAndIsActiveTrue();
+
+    /**
+     * admin-dashboard delta — {@code asOf} 시점에 살아있던 사용자 수 (soft-delete 제외 기준).
+     *
+     * <p>{@code created_at <= asOf AND (deleted_at IS NULL OR deleted_at > asOf)}. 현재
+     * {@link #countByDeletedAtIsNull()}와 짝 — {@code asOf == now}이면 결과 동일.
+     * 30d 비교에서 분모로 사용되어 변화율 계산 (null 분모 처리는 service 책임).
+     */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt <= :asOf "
+         + "AND (u.deletedAt IS NULL OR u.deletedAt > :asOf)")
+    long countAliveAsOf(@Param("asOf") OffsetDateTime asOf);
+
+    /**
+     * admin-dashboard delta — {@code asOf} 시점의 활성 사용자 수 근사.
+     *
+     * <p>{@link #countByDeletedAtIsNullAndIsActiveTrue()}와 짝. 단,
+     * <b>{@code is_active}는 현재 값을 historical에 그대로 적용</b> — User.is_active mutation 이력은
+     * audit_log 외에 별도 시계열 보존 컬럼이 없어 정확한 T 시점 active 상태 복원이 불가하다.
+     * 결과 의미: "지금 active이고, 동시에 T 시점에도 살아있던" 사용자 수. T 이후 비활성화된
+     * 사용자는 분모에서 누락되어 delta가 상향 편향될 수 있다 (운영 KPI 한계 — Javadoc 한계 명시).
+     */
+    @Query("SELECT COUNT(u) FROM User u WHERE u.createdAt <= :asOf "
+         + "AND (u.deletedAt IS NULL OR u.deletedAt > :asOf) "
+         + "AND u.isActive = TRUE")
+    long countActiveAsOf(@Param("asOf") OffsetDateTime asOf);
 }
