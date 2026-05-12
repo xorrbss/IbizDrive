@@ -310,6 +310,29 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     long countTrashedFiles();
 
     /**
+     * admin-dashboard delta — {@code asOf} 시점에 살아있던(=active) 파일 수.
+     *
+     * <p>{@code created_at <= asOf AND (deleted_at IS NULL OR deleted_at > asOf)}.
+     * {@link #countActiveFiles()}와 짝 ({@code asOf == now}이면 결과 동일).
+     */
+    @Query(value = "SELECT COUNT(*) FROM files WHERE created_at <= :asOf "
+                 + "AND (deleted_at IS NULL OR deleted_at > :asOf)",
+           nativeQuery = true)
+    long countActiveFilesAsOf(@Param("asOf") Instant asOf);
+
+    /**
+     * admin-dashboard delta — {@code asOf} 시점의 휴지통 파일 수 snapshot.
+     *
+     * <p>{@code deleted_at IS NOT NULL AND deleted_at <= asOf} — T 시점에 이미 휴지통에 있던 파일.
+     * {@code purge_after}는 별도 조건 없음 — purge가 발생한 row는 hard delete되어 자연 제외.
+     * MVP 가정에서 purge 빈도 낮아 근사로 수용 (본 KPI는 운영 추세 지표).
+     */
+    @Query(value = "SELECT COUNT(*) FROM files WHERE deleted_at IS NOT NULL "
+                 + "AND deleted_at <= :asOf",
+           nativeQuery = true)
+    long countTrashedFilesAsOf(@Param("asOf") Instant asOf);
+
+    /**
      * 휴지통 점유 바이트 — files current-version size_bytes 합 (deleted_at IS NOT NULL).
      * UI 의미: "휴지통 비우면 회수되는 양". 빈 결과는 COALESCE로 0.
      */

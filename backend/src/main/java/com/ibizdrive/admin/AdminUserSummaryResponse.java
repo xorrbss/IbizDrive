@@ -16,6 +16,11 @@ import java.util.UUID;
  *
  * <p><b>비밀번호 hash 비노출</b> (docs/03 §2.8): {@code passwordHash} 필드 부재 — list/admin 노출 응답
  * 어디에도 포함 금지.
+ *
+ * <p>quota mutation Phase 4 (`docs/04 §6.1`): {@code storageQuota}/{@code storageUsed} 추가 —
+ * `/admin/members` 페이지의 quota 컬럼 + 인라인 editor에서 사용. Phase 3 endpoint
+ * `GET /api/admin/users/{id}/quota`와 동일 값을 list 응답에 미리 실어 행 수 만큼의 추가 fetch를
+ * 회피한다. mutation 후에는 admin list 캐시 prefix 무효화로 갱신.
  */
 public record AdminUserSummaryResponse(
     UUID id,
@@ -24,7 +29,9 @@ public record AdminUserSummaryResponse(
     Role role,
     boolean isActive,
     OffsetDateTime createdAt,
-    OffsetDateTime lastLoginAt
+    OffsetDateTime lastLoginAt,
+    long storageQuota,
+    long storageUsed
 ) {
     public static AdminUserSummaryResponse from(User u) {
         return new AdminUserSummaryResponse(
@@ -34,7 +41,9 @@ public record AdminUserSummaryResponse(
             u.getRole(),
             u.isActive(),
             u.getCreatedAt(),
-            u.getLastLoginAt()
+            u.getLastLoginAt(),
+            u.getStorageQuota(),
+            u.getStorageUsed()
         );
     }
 }

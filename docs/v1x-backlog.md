@@ -36,7 +36,7 @@
 
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
-| **Quota mutation Phase 4~5** | M | 없음 (Phase 1+2+3 완료 #185/#186/본 트랙) | BETA §7 / progress.md 2026-05-12 | 2개 PR 분할: Phase 4 frontend UI (single-row inline editor) / Phase 5 enforcement(upload `413 QUOTA_EXCEEDED` + `UPDATE storage_used FOR UPDATE`) |
+| **Quota mutation Phase 5** | S~M | 없음 (Phase 1+2+3+4 완료 #185/#186/#198/본 트랙) | BETA §7 / progress.md 2026-05-12 | upload enforcement: `FileUploadController`/`FileVersionService`/tus init 진입 `users.storage_used + payload.size > storage_quota` → `413 QUOTA_EXCEEDED` + `UPDATE storage_used FOR UPDATE` 트랜잭션. 새 에러 코드 `QUOTA_EXCEEDED` docs/02 §8 + frontend errors.ts 동시 동기화 |
 | ~~Admin Sharing 페이지 (디자인 zip P1)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — frontend visual fidelity 완료, backend endpoint는 별도 v1.x 트랙 |
 | ~~Admin Overview 위젯 보강 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — UploadChart / FlagRow / DeptRow / audit-mini 추가 |
 | ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |

@@ -5,6 +5,7 @@ import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { useAdminUpdateUser } from '@/hooks/useAdminUpdateUser'
 import { useDebounce } from '@/hooks/useDebounce'
 import { AdminGuard } from '@/components/auth/AdminGuard'
+import { AdminUserQuotaCell } from '@/components/admin/AdminUserQuotaCell'
 import type { AdminUserSummary } from '@/lib/api'
 
 type Role = 'MEMBER' | 'AUDITOR' | 'ADMIN'
@@ -217,6 +218,7 @@ function ListSection() {
                   <th className="text-left px-3 py-2">표시 이름</th>
                   <th className="text-left px-3 py-2">역할</th>
                   <th className="text-left px-3 py-2">상태</th>
+                  <th className="text-left px-3 py-2">용량</th>
                   <th className="text-left px-3 py-2">동작</th>
                 </tr>
               </thead>
@@ -226,7 +228,7 @@ function ListSection() {
                 ))}
                 {query.data.content.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="px-3 py-6 text-center text-fg-2">
+                    <td colSpan={6} className="px-3 py-6 text-center text-fg-2">
                       사용자가 없습니다.
                     </td>
                   </tr>
@@ -375,6 +377,14 @@ function UserRow({ user }: { user: AdminUserSummary }) {
         ) : (
           <span className="text-fg-2">비활성</span>
         )}
+      </td>
+      <td className="px-3 py-2">
+        <AdminUserQuotaCell
+          userId={user.id}
+          userEmail={user.email}
+          storageQuota={user.storageQuota}
+          storageUsed={user.storageUsed}
+        />
       </td>
       <td className="px-3 py-2">
         {user.isActive ? (

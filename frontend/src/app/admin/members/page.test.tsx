@@ -47,6 +47,17 @@ vi.mock('@/hooks/useAdminUpdateUser', () => ({
   }),
 }))
 
+const updateQuotaMutateAsyncMock = vi.fn()
+const updateQuotaIsPendingRef = { current: false }
+vi.mock('@/hooks/useAdminUpdateUserQuota', () => ({
+  useAdminUpdateUserQuota: () => ({
+    mutateAsync: updateQuotaMutateAsyncMock,
+    get isPending() {
+      return updateQuotaIsPendingRef.current
+    },
+  }),
+}))
+
 // AdminGuard 격리 — wave1.5-auditor-admin-ui-access로 페이지가 default
 // `<AdminGuard>` 안쪽에 들어갔으므로 children이 렌더되도록 ADMIN role mock.
 vi.mock('next/navigation', () => ({
@@ -72,6 +83,8 @@ const wrap = (node: React.ReactNode) => {
   return render(<QueryClientProvider client={qc}>{node}</QueryClientProvider>)
 }
 
+const GB = 1024 * 1024 * 1024
+
 const PAGE_DATA: AdminUserPage = {
   content: [
     {
@@ -82,6 +95,8 @@ const PAGE_DATA: AdminUserPage = {
       isActive: true,
       createdAt: '2026-01-01T00:00:00Z',
       lastLoginAt: null,
+      storageQuota: 10 * GB,
+      storageUsed: 2 * GB,
     },
     {
       id: '22222222-2222-2222-2222-222222222222',
@@ -91,6 +106,8 @@ const PAGE_DATA: AdminUserPage = {
       isActive: true,
       createdAt: '2026-01-02T00:00:00Z',
       lastLoginAt: null,
+      storageQuota: 10 * GB,
+      storageUsed: 0,
     },
   ],
   totalElements: 2,
@@ -105,6 +122,8 @@ describe('AdminUsersPage — invite form (m-admin-entry-rewrite P8 회귀)', () 
     inviteIsPendingRef.current = false
     updateMutateAsyncMock.mockReset()
     updateIsPendingRef.current = false
+    updateQuotaMutateAsyncMock.mockReset()
+    updateQuotaIsPendingRef.current = false
     usersQueryState = { isLoading: false, isError: false, data: PAGE_DATA }
   })
 
@@ -213,6 +232,8 @@ describe('AdminUsersPage — list section (admin-user-mgmt)', () => {
     inviteIsPendingRef.current = false
     updateMutateAsyncMock.mockReset()
     updateIsPendingRef.current = false
+    updateQuotaMutateAsyncMock.mockReset()
+    updateQuotaIsPendingRef.current = false
     usersQueryState = { isLoading: false, isError: false, data: PAGE_DATA }
   })
 
@@ -315,6 +336,8 @@ describe('AdminUsersPage — admin-user-search-update (Wave 1 — T1)', () => {
     inviteIsPendingRef.current = false
     updateMutateAsyncMock.mockReset()
     updateIsPendingRef.current = false
+    updateQuotaMutateAsyncMock.mockReset()
+    updateQuotaIsPendingRef.current = false
     useAdminUsersMock.mockClear()
     usersQueryState = { isLoading: false, isError: false, data: PAGE_DATA }
   })
@@ -408,5 +431,110 @@ describe('AdminUsersPage — admin-user-search-update (Wave 1 — T1)', () => {
     fireEvent.click(screen.getByRole('button', { name: '취소' }))
 
     expect(updateMutateAsyncMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('AdminUsersPage — quota 컬럼 (quota mutation Phase 4)', () => {
+  beforeEach(() => {
+    inviteMutateAsyncMock.mockReset()
+    inviteIsPendingRef.current = false
+    updateMutateAsyncMock.mockReset()
+    updateIsPendingRef.current = false
+    updateQuotaMutateAsyncMock.mockReset()
+    updateQuotaIsPendingRef.current = false
+    usersQueryState = { isLoading: false, isError: false, data: PAGE_DATA }
+  })
+
+  it('컬럼 헤더에 "용량" 노출 + 행마다 used/quota 비율 표시', () => {
+    wrap(<AdminUsersPage />)
+    // getByText는 미존재 시 throw — 헤더/비율 모두 노출 검증.
+    expect(screen.getByText('용량')).toBeDefined()
+    // alice: 2 GB / 10 GB → 20%
+    expect(screen.getByText('(20%)')).toBeDefined()
+    // bob: 0 / 10 GB → 0%
+    expect(screen.getByText('(0%)')).toBeDefined()
+  })
+
+  it('용량 편집 — GB 입력 후 저장 시 bytes로 변환되어 mutate 호출', async () => {
+    updateQuotaMutateAsyncMock.mockResolvedValue({
+      storageQuota: 20 * GB,
+      storageUsed: 2 * GB,
+    })
+    wrap(<AdminUsersPage />)
+
+    fireEvent.click(screen.getByLabelText('alice@example.com 용량 편집'))
+    const input = screen.getByLabelText('alice@example.com 새 용량 (GB)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '20' } })
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      expect(updateQuotaMutateAsyncMock).toHaveBeenCalledWith({
+        id: '11111111-1111-1111-1111-111111111111',
+        storageQuota: 20 * GB,
+      })
+    })
+  })
+
+  it('용량 편집 — 같은 값(현재 10 GB) 입력 시 저장 버튼 비활성화 → mutate 호출 없음', () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 용량 편집'))
+    // 현재 alice quota = 10 GB → 입력 초기값도 10
+    const saveBtn = screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
+    expect(saveBtn.disabled).toBe(true)
+  })
+
+  it('용량 편집 — 현재 사용량(2 GB)보다 낮은 한도 입력 시 신규 차단 인라인 경고', () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 용량 편집'))
+    const input = screen.getByLabelText('alice@example.com 새 용량 (GB)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '1' } })
+
+    const alerts = screen.getAllByRole('alert')
+    expect(
+      alerts.some((a) => /신규 업로드만 차단/.test(a.textContent ?? '')),
+    ).toBe(true)
+    // 저장은 여전히 허용 (운영 grace)
+    const saveBtn = screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
+    expect(saveBtn.disabled).toBe(false)
+  })
+
+  it('용량 편집 — 음수 입력 시 범위 에러 + 저장 비활성화', () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 용량 편집'))
+    const input = screen.getByLabelText('alice@example.com 새 용량 (GB)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '-1' } })
+
+    const alerts = screen.getAllByRole('alert')
+    expect(alerts.some((a) => /범위의 정수만/.test(a.textContent ?? ''))).toBe(true)
+    const saveBtn = screen.getByRole('button', { name: '저장' }) as HTMLButtonElement
+    expect(saveBtn.disabled).toBe(true)
+  })
+
+  it('용량 편집 — 취소 시 mutate 호출 없음 + 편집 모드 종료', () => {
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 용량 편집'))
+    const input = screen.getByLabelText('alice@example.com 새 용량 (GB)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '99' } })
+    fireEvent.click(screen.getByRole('button', { name: '취소' }))
+
+    expect(updateQuotaMutateAsyncMock).not.toHaveBeenCalled()
+    // 편집 모드 종료 — 입력 사라지고 편집 버튼 복귀
+    expect(screen.getByLabelText('alice@example.com 용량 편집').tagName).toBe('BUTTON')
+  })
+
+  it('용량 편집 — 404 응답 시 인라인 에러 메시지', async () => {
+    updateQuotaMutateAsyncMock.mockRejectedValue(
+      Object.assign(new Error('404'), { status: 404 }),
+    )
+    wrap(<AdminUsersPage />)
+    fireEvent.click(screen.getByLabelText('alice@example.com 용량 편집'))
+    const input = screen.getByLabelText('alice@example.com 새 용량 (GB)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: '50' } })
+    fireEvent.click(screen.getByRole('button', { name: '저장' }))
+
+    await waitFor(() => {
+      const alerts = screen.getAllByRole('alert')
+      expect(alerts.some((a) => /찾을 수 없습니다/.test(a.textContent ?? ''))).toBe(true)
+    })
   })
 })
