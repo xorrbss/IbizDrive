@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-12 — 🎨 design-sweep-admin-members-fidelity (AdminMembers visual fidelity, PR #TBD)
+## 2026-05-12 — 🎨 design-sweep-admin-members-fidelity (AdminMembers visual fidelity, PR #208)
 
 ### 범위
 
