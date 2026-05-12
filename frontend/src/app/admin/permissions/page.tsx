@@ -43,7 +43,7 @@ import { AdminGrantPermissionTrigger } from '@/components/admin/AdminGrantPermis
 export default function AdminPermissionsPage() {
   return (
     <AdminGuard>
-      <div className="flex-1 overflow-auto p-6 space-y-6">
+      <div className="admin-grid">
         <header className="flex items-start justify-between gap-3">
           <div>
             <h1 className="text-lg font-semibold">권한 매트릭스</h1>

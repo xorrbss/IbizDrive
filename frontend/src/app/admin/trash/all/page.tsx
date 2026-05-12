@@ -134,7 +134,7 @@ export default function AdminTrashAllPage() {
   const allSelected = items.length > 0 && items.every((it) => selected.has(rowKey(it)))
 
   return (
-    <div className="flex-1 overflow-auto p-6 space-y-4">
+    <div className="admin-grid">
       <header>
         <h1 className="text-lg font-semibold">전역 휴지통</h1>
         <p className="text-[12px] text-fg-2 mt-1">
