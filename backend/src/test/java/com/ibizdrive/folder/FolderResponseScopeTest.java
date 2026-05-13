@@ -56,7 +56,7 @@ class FolderResponseScopeTest {
         UUID scopeId = UUID.randomUUID();
         folder.assignScope(ScopeType.TEAM, scopeId);
 
-        FolderItemDto item = FolderItemDto.fromFolder(folder, null);
+        FolderItemDto item = FolderItemDto.fromFolder(folder, null, null);
 
         assertThat(item.scope()).isNotNull();
         assertThat(item.scope().type()).isEqualTo("team");
@@ -69,7 +69,7 @@ class FolderResponseScopeTest {
         UUID scopeId = UUID.randomUUID();
         folder.assignScope(ScopeType.DEPARTMENT, scopeId);
 
-        FolderItemDto item = FolderItemDto.fromFolder(folder, null);
+        FolderItemDto item = FolderItemDto.fromFolder(folder, null, null);
 
         assertThat(item.scope()).isNotNull();
         assertThat(item.scope().type()).isEqualTo("department");

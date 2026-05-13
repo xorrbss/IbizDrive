@@ -160,8 +160,30 @@ public class FolderQueryService {
                 sortedFiles.stream().map(FileItem::getId).toList()
             ));
 
+        // P2d — batch items-count per subfolder. subFolders가 비어있으면 자식 count 자체 불필요.
+        // 자식 폴더가 빈 폴더라도 itemsCount=0을 명시 반환 — FE typeof === 'number' 검사에서 0 노출 허용.
+        // FolderRepository + FileRepository 각 1쿼리 후 sum.
+        Map<UUID, Integer> folderItemsCount;
+        if (sortedFolders.isEmpty()) {
+            folderItemsCount = Map.of();
+        } else {
+            List<UUID> folderIds = sortedFolders.stream().map(Folder::getId).toList();
+            folderItemsCount = new HashMap<>(folderIds.size() * 2);
+            // 자식 폴더 + 자식 파일 count 모두 같은 Map에 누적 (parent_id 별 합산).
+            for (Object[] row : folderRepository.countByParentIdInGroupedActive(folderIds)) {
+                folderItemsCount.merge((UUID) row[0], ((Number) row[1]).intValue(), Integer::sum);
+            }
+            for (Object[] row : fileRepository.countByFolderIdInGroupedActive(folderIds)) {
+                folderItemsCount.merge((UUID) row[0], ((Number) row[1]).intValue(), Integer::sum);
+            }
+        }
+
         List<FolderItemDto> items = new ArrayList<>(sortedFolders.size() + sortedFiles.size());
-        for (Folder f : sortedFolders) items.add(FolderItemDto.fromFolder(f, folderShareCount.get(f.getId())));
+        for (Folder f : sortedFolders) {
+            // 빈 폴더는 Map miss → 0 으로 명시 (FE typeof === 'number' 검사에서 "0개" 표시).
+            int count = folderItemsCount.getOrDefault(f.getId(), 0);
+            items.add(FolderItemDto.fromFolder(f, folderShareCount.get(f.getId()), count));
+        }
         for (FileItem fi : sortedFiles) items.add(FolderItemDto.fromFile(fi, fileShareCount.get(fi.getId())));
 
         return new FolderItemsResponse(items);

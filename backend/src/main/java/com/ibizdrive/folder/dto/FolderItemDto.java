@@ -24,6 +24,10 @@ import java.util.UUID;
  * 0이면 {@code null} → 키 omit. FE FileRow는 임계값 {@code > 1}에서만 배지 노출 (1건 단발 공유는
  * 시각적 노이즈로 의도적 hide). {@link com.ibizdrive.permission.PermissionRepository#countActiveByResources}
  * 의 계약과 동기.
+ *
+ * <p>{@link #itemsCount} (P2d) — 폴더 한정. 활성 자식(폴더+파일) 총 수. 파일 type 에서는 항상 {@code null}.
+ * 폴더가 비어있어도 0을 그대로 반환(키 omit 아님) — FE FileRow는 {@code typeof === 'number'} 검사로
+ * 폴더의 0개 표시도 허용한다. soft-deleted 자식은 제외.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record FolderItemDto(
@@ -36,9 +40,10 @@ public record FolderItemDto(
     String updatedBy,
     UUID parentId,
     ScopeRef scope,
-    Integer shareCount
+    Integer shareCount,
+    Integer itemsCount
 ) {
-    public static FolderItemDto fromFolder(Folder f, Integer shareCount) {
+    public static FolderItemDto fromFolder(Folder f, Integer shareCount, Integer itemsCount) {
         return new FolderItemDto(
             f.getId(),
             "folder",
@@ -49,11 +54,13 @@ public record FolderItemDto(
             f.getOwnerId() != null ? f.getOwnerId().toString() : null,
             f.getParentId(),
             ScopeRef.of(f.getScopeType(), f.getScopeId()),
-            shareCount
+            shareCount,
+            itemsCount
         );
     }
 
     public static FolderItemDto fromFile(FileItem file, Integer shareCount) {
+        // file에는 itemsCount 의미 없음 — 항상 null.
         return new FolderItemDto(
             file.getId(),
             "file",
@@ -64,7 +71,8 @@ public record FolderItemDto(
             file.getOwnerId() != null ? file.getOwnerId().toString() : null,
             file.getFolderId(),
             ScopeRef.of(file.getScopeType(), file.getScopeId()),
-            shareCount
+            shareCount,
+            null
         );
     }
 }

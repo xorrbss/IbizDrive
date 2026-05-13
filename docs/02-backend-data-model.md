@@ -1350,18 +1350,22 @@ GET /api/folders/:id/items
   Request:  Query params — sort=NAME|UPDATED_AT|SIZE (default NAME), dir=ASC|DESC (default ASC)
   Response: 200 { items: FolderItemDto[] }
             FolderItemDto = { id, type: 'folder'|'file', name, size?, mimeType?, updatedAt,
-                              updatedBy, parentId, scope, shareCount? }
+                              updatedBy, parentId, scope, shareCount?, itemsCount? }
             shareCount? : Integer — 이 리소스 자체에 부여된 active grant 수 (direct only,
                           상속 미포함). 0 또는 grant 없음 시 키 omit (@JsonInclude NON_NULL).
                           UNIQUE INDEX (resource, subject) 보장으로 COUNT(*) ≡ DISTINCT subject.
                           만료(expires_at <= NOW)는 제외 — findEffective와 동일 정책.
-                          FE FileRow는 threshold `> 1`에서만 배지 노출 (P2c, PR file-badge-share-count).
+                          FE FileRow는 threshold `> 1`에서만 배지 노출 (P2c, PR #210).
+            itemsCount? : Integer — 폴더 한정. 활성 자식(폴더+파일) 총 수. 파일 항목은 항상 키 omit.
+                          빈 폴더는 0을 명시 반환(키 포함) — FE typeof === 'number' 검사에서 "0개"
+                          노출 허용 (P2d, PR file-badge-items-count). soft-deleted 자식 제외.
   Order:    folders 그룹 → files 그룹 (각 그룹 내 sort/dir 적용).
             sort=SIZE 시 folder 그룹은 size 무의미 — name asc fallback.
   SoftDel:  parent 폴더 soft-deleted면 404. 자식 중 deleted_at IS NOT NULL은 제외.
   Errors:   404 NOT_FOUND
   Note:     Wave 2 T6 — frontend explorer mock 제거 + listing real wire용 endpoint.
-            shareCount는 items 단위 batch GROUP BY로 N+1 회피 — folder/file 각각 1쿼리.
+            shareCount/itemsCount 모두 batch GROUP BY로 N+1 회피.
+            shareCount: folder/file 각 1쿼리. itemsCount: subfolder/subfile 각 1쿼리.
 ```
 
 ### 7.6 파일 (Files)
