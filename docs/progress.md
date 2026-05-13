@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-14 — ⭐ file-favorites-p2a frontend wiring (Option D zip-faithful, PR #TBD)
+## 2026-05-14 — ⭐ file-favorites-p2a frontend wiring (Option D zip-faithful, PR #241)
 
 ### 범위
 
