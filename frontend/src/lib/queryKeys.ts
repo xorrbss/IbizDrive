@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query'
 import type { SortKey } from '@/types/file'
 import type { AuditLogFilters } from '@/types/audit'
 import type { AdminTrashFilters } from '@/types/trash'
+import type { AdminApprovalFilters } from '@/types/admin-approval'
 
 /**
  * TanStack Query 캐시 키 팩토리. (docs/01 §6.1)
@@ -204,6 +205,23 @@ export const qk = {
 
   // ── 관리자 대시보드 (admin-dashboard 트랙) ──
   adminDashboard: () => [...qk.all, 'admin', 'dashboard'] as const,
+
+  // ── dual-approval framework (Phase 4 admin UI, ADR #47, docs/02 §2.11) ──
+  /**
+   * `/admin/approvals` keyspace. mutation 후 prefix 매칭으로 list/detail 동시 무효화.
+   * actionType별 부수 무효화(role_change → adminUsers, retention_change → adminTrashPolicy,
+   * trash_purge → adminTrash)는 mutation hook 내부에서 추가로 호출.
+   */
+  adminApprovals: () => [...qk.all, 'admin', 'approvals'] as const,
+  /**
+   * paginated admin approvals list — filters/page/size까지 포함 정확한 단일 키.
+   * filters 객체 자체를 키 일부로 사용 — adminPermissionsList 동형.
+   */
+  adminApprovalsList: (filters: AdminApprovalFilters) =>
+    [...qk.adminApprovals(), 'list', filters] as const,
+  /** 단건 상세 — approve/reject/cancel 후 detail + list 모두 prefix 무효화. */
+  adminApproval: (id: string) =>
+    [...qk.adminApprovals(), 'detail', id] as const,
 
   // ── 인증 (auth-pages, ADR #41) ──
   auth: () => [...qk.all, 'auth'] as const,
@@ -449,6 +467,43 @@ export const invalidations = {
       qc.invalidateQueries({ queryKey: qk.teams.members(teamId) }),
       qc.invalidateQueries({ queryKey: qk.workspaces.me() }),
     ]).then(() => undefined)
+  },
+
+  /**
+   * dual-approval framework Phase 4 — approve/reject/cancel 후 무효화 (ADR #47).
+   *
+   * <p>공통: {@code adminApprovals()} prefix 전체(list/detail 변종 일괄) +
+   * 단일 detail id 명시 무효화. {@code actionType}이 명시되면 approve 분기 시
+   * 적용된 mutation의 부수 키도 같이 무효화:
+   * <ul>
+   *   <li>role_change → {@code adminUsers()} (role 변경 반영)</li>
+   *   <li>retention_change → {@code adminTrashPolicy()} (정책 값 변경 반영)</li>
+   *   <li>trash_purge → {@code adminTrash()} (휴지통 row 사라짐)</li>
+   * </ul>
+   *
+   * <p>reject/cancel은 action을 실행하지 않으므로 actionType 부수 무효화는 불필요 —
+   * 호출자가 actionType=undefined로 전달.
+   */
+  afterAdminApprovalDecided(
+    qc: QueryClient,
+    opts: { approvalId: string; actionType?: string },
+  ): Promise<void> {
+    const tasks: Promise<unknown>[] = [
+      qc.invalidateQueries({ queryKey: qk.adminApprovals() }),
+      qc.invalidateQueries({ queryKey: qk.adminApproval(opts.approvalId) }),
+    ]
+    switch (opts.actionType) {
+      case 'role_change':
+        tasks.push(qc.invalidateQueries({ queryKey: qk.adminUsers() }))
+        break
+      case 'retention_change':
+        tasks.push(qc.invalidateQueries({ queryKey: qk.adminTrashPolicy() }))
+        break
+      case 'trash_purge':
+        tasks.push(qc.invalidateQueries({ queryKey: qk.adminTrash() }))
+        break
+    }
+    return Promise.all(tasks).then(() => undefined)
   },
 
   /**

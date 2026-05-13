@@ -2217,3 +2217,142 @@ export async function getAdminStorageOverview(): Promise<AdminStorageOverviewRes
   return (await res.json()) as AdminStorageOverviewResponse
 }
 
+// ───────────────────────────────────────────────────────────────────────────
+// dual-approval framework Phase 4 admin UI — `/api/admin/approvals` (ADR #47,
+// docs/02 §2.11). 신설 함수를 파일 끝에 추가해 다른 admin 트랙과의 머지 충돌
+// 면적을 최소화한다 (admin-storage / admin-global-trash 트랙 동형).
+// ───────────────────────────────────────────────────────────────────────────
+
+export type {
+  AdminApprovalDto,
+  AdminApprovalPage,
+  AdminApprovalFilters,
+  AdminApprovalDecisionRequest,
+  AdminApprovalActionType,
+  PendingApprovalStatus,
+} from '@/types/admin-approval'
+
+/**
+ * `GET /api/admin/approvals` — pending 목록 (status='REQUESTED' 한정).
+ *
+ * <p>{@code actionType} 비제공 시 backend가 전체 합산. 빈 문자열도 backend가 null로 취급
+ * 하지만 frontend에서 미리 query string에서 제외해 캐시 키와 wire를 정합화한다.
+ *
+ * <p>401/403/400 envelope을 {@link buildApiError}로 throw — adminListPermissions 동형.
+ */
+export async function listAdminApprovals(
+  filters: import('@/types/admin-approval').AdminApprovalFilters = {},
+): Promise<import('@/types/admin-approval').AdminApprovalPage> {
+  const params = new URLSearchParams()
+  params.set('page', String(filters.page ?? 0))
+  params.set('size', String(filters.size ?? 50))
+  if (filters.actionType) params.set('actionType', filters.actionType)
+  const res = await fetch(`/api/admin/approvals?${params.toString()}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `listAdminApprovals failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-approval').AdminApprovalPage
+}
+
+/**
+ * `GET /api/admin/approvals/:id` — 단건 상세. 404 `APPROVAL_NOT_FOUND` envelope.
+ */
+export async function getAdminApproval(
+  id: string,
+): Promise<import('@/types/admin-approval').AdminApprovalDto> {
+  const res = await fetch(`/api/admin/approvals/${encodeURIComponent(id)}`, {
+    method: 'GET',
+    credentials: 'include',
+    headers: { Accept: 'application/json' },
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `getAdminApproval failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-approval').AdminApprovalDto
+}
+
+/**
+ * `POST /api/admin/approvals/:id/approve` — secondary 승인 → action 실행 + status=APPROVED.
+ *
+ * <p>body는 optional ({@code decisionReason?} ≤1000자). CSRF 헤더 필수. 4xx envelope
+ * 매핑 (docs/02 §8):
+ * <ul>
+ *   <li>403 APPROVAL_SELF — requester 본인이 자기 요청 승인 시도</li>
+ *   <li>404 APPROVAL_NOT_FOUND — id 미존재 또는 cancel 경로에서 다른 사용자 시도 위장</li>
+ *   <li>409 APPROVAL_ALREADY_DECIDED — terminal status 재처리 시도</li>
+ *   <li>500 APPROVAL_HANDLER_MISSING — actionType 미등록 (운영 알람용)</li>
+ * </ul>
+ */
+export async function approveAdminApproval(
+  id: string,
+  body?: import('@/types/admin-approval').AdminApprovalDecisionRequest,
+): Promise<import('@/types/admin-approval').AdminApprovalDto> {
+  const csrf = await ensureCsrfToken()
+  const res = await fetch(`/api/admin/approvals/${encodeURIComponent(id)}/approve`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-CSRF-TOKEN': csrf,
+    },
+    body: JSON.stringify(body ?? {}),
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `approveAdminApproval failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-approval').AdminApprovalDto
+}
+
+/**
+ * `POST /api/admin/approvals/:id/reject` — secondary 거부 → status=REJECTED + decision_reason.
+ *
+ * <p>body는 wire 상 optional이지만 운영 정책상 reject는 사유 필수 — UI 측에서
+ * {@code decisionReason} 비어 있으면 제출 버튼 disabled. 4xx envelope은 approve와 동일.
+ */
+export async function rejectAdminApproval(
+  id: string,
+  body: import('@/types/admin-approval').AdminApprovalDecisionRequest,
+): Promise<import('@/types/admin-approval').AdminApprovalDto> {
+  const csrf = await ensureCsrfToken()
+  const res = await fetch(`/api/admin/approvals/${encodeURIComponent(id)}/reject`, {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/json',
+      'X-CSRF-TOKEN': csrf,
+    },
+    body: JSON.stringify(body),
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `rejectAdminApproval failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-approval').AdminApprovalDto
+}
+
+/**
+ * `DELETE /api/admin/approvals/:id` — requested_by 본인 cancel → status=CANCELLED.
+ *
+ * <p>다른 사용자가 호출하면 backend가 404로 위장 (info leak 차단). UI는 사전에
+ * requestedBy === currentUserId 가드로 버튼 노출 제어 — 보안의 진실은 backend.
+ */
+export async function cancelAdminApproval(
+  id: string,
+): Promise<import('@/types/admin-approval').AdminApprovalDto> {
+  const csrf = await ensureCsrfToken()
+  const res = await fetch(`/api/admin/approvals/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    credentials: 'include',
+    headers: { Accept: 'application/json', 'X-CSRF-TOKEN': csrf },
+  })
+  if (!res.ok) {
+    throw await buildApiError(res, `cancelAdminApproval failed: ${res.status}`)
+  }
+  return (await res.json()) as import('@/types/admin-approval').AdminApprovalDto
+}
+
