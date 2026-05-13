@@ -62,3 +62,23 @@ export function fileIconKind(item: FileItem): FileTypeIconKind {
 
   return 'doc'
 }
+
+/**
+ * kind → 한국어 라벨 (RightPanel detail "종류" row). 디자인 panels.jsx L211~215 1:1.
+ */
+const KIND_LABEL: Record<FileTypeIconKind, string> = {
+  folder: '폴더',
+  doc: '문서',
+  pdf: 'PDF 문서',
+  sheet: '스프레드시트',
+  slides: '프레젠테이션',
+  image: '이미지',
+  video: '비디오',
+  figma: 'Figma 파일',
+  code: '코드',
+  archive: '압축파일',
+}
+
+export function kindLabel(kind: FileTypeIconKind): string {
+  return KIND_LABEL[kind] ?? kind
+}
