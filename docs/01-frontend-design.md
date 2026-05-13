@@ -1766,6 +1766,38 @@ export function Providers({ children }: { children: React.ReactNode }) {
 
 ---
 
+## 20. User Home Dashboard (root `/`)
+
+> ADR #48 (2026-05-14) — root `/` redirect → personal dashboard. design-spec `2026-05-14-user-home-dashboard-design.md`.
+
+### 20.1 진입점
+
+- `frontend/src/app/(explorer)/page.tsx` — workspace redirect 로직 제거. `<HomeDashboard />` 마운트.
+- (explorer) layout 의 AuthGuard + 사이드바 + TopBar reuse — dashboard 진입자는 사이드바에서 workspace 선택.
+
+### 20.2 위젯 inventory
+
+| # | 컴포넌트 | hook | 데이터 source |
+|---|---|---|---|
+| ① | `<WelcomeHeader>` | `useMe`, `useWorkspaces` | 사용자명 + 기본 workspace 메타 |
+| ② | `<StarredCard>` | `useMyFavorites` (PR #243) | `FavoriteItem[]` slice(0, 8) |
+| ③ | `<QuotaCard>` | `useStorageQuota` | `{ usedBytes, totalBytes }` |
+| ④ | `<SharedWithMeCard>` | `useMySharedWithMe(5)` | `MySharedWithMeItem[]` |
+
+- 시각: admin overview 의 `SectionCard` 패턴을 dashboard 전용 `<DashboardCard>` 로 재구현 (admin.css 결합 회피).
+- 레이아웃: `flex max-w-[1400px] flex-col gap-4` + 1열/2열 grid (StarredCard 50% · QuotaCard 50%, SharedWithMeCard 풀폭).
+
+### 20.3 QueryKey 정합
+
+- `qk.myFavorites()` (PR #243 정의) reuse — 별 토글 mutation 후 `invalidations.afterStarToggle` 가 무효화.
+- `qk.mySharedWithMe()` 신규 — permission grant/revoke mutation hook 에서 후속 invalidate (follow-up).
+
+### 20.4 Empty/Error/Loading
+
+각 카드는 `<DashboardCard>` body 안에 inline state 메시지. spec §6 매트릭스 참고. recent files 는 `FILE_VIEWED` audit (ADR #9) blocker 로 v1.x deferral.
+
+---
+
 ## 다음에 만들 수 있는 것
 
 - **FileTable virtualization + 키보드 내비 전체 구현** (TanStack Virtual + aria + 키맵)

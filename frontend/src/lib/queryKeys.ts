@@ -97,6 +97,14 @@ export const qk = {
    */
   myFavorites: () => [...qk.all, 'me', 'favorites'] as const,
 
+  /**
+   * v1.x — 사용자 본인이 USER subject 로 직접 받은 active grant 목록 (`GET /api/me/shared-with-me`).
+   * User Home Dashboard SharedWithMeCard 가 구독. permission grant/revoke mutation 후 invalidate.
+   *
+   * 단일 키 — server resolve. 정렬은 server granted_at DESC 고정.
+   */
+  mySharedWithMe: () => [...qk.all, 'me', 'shared-with-me'] as const,
+
   // ── 사용자 검색 (F6, docs/02 §7.14, ADR #35) ──
   users: () => [...qk.all, 'users'] as const,
   /**

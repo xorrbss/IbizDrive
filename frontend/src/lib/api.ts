@@ -1249,6 +1249,28 @@ export const api = {
   },
 
   /**
+   * v1.x User Home Dashboard SharedWithMeCard — 사용자 본인이 USER subject 로 직접 받은 active grant 목록.
+   *
+   * <p>backend {@code GET /api/me/shared-with-me} 1:1. read-only, CSRF 불필요.
+   * department/role/everyone indirect grant 는 응답에서 제외 (backend 가드).
+   *
+   * <p>에러: 401 UNAUTHORIZED (미인증) — buildApiError로 status 매핑. 200 OK 정상.
+   */
+  async fetchMySharedWithMe(
+    limit = 20,
+  ): Promise<import('@/types/dashboard').MySharedWithMeListResponse> {
+    const res = await fetch(`/api/me/shared-with-me?limit=${limit}`, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `fetchMySharedWithMe failed: ${res.status}`)
+    }
+    return (await res.json()) as import('@/types/dashboard').MySharedWithMeListResponse
+  },
+
+  /**
    * P2a — 즐겨찾기 토글 (docs/02 §7.5.1). file/folder × star/unstar 4 endpoint를
    * 단일 helper로 통합: `starred=true` → POST(star), `starred=false` → DELETE(unstar).
    *

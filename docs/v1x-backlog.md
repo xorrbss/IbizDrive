@@ -4,7 +4,7 @@
 >
 > **단일 진실의 출처**: 항목 자체는 `BETA-RELEASE.md` §7 + `docs/progress.md` 각 트랙 closure entry. 본 문서는 그 항목들의 **우선순위/시점**만 다룬다. 새 항목 추가 시 양쪽 동시 갱신.
 >
-> **Last Updated**: 2026-05-14 (file-favorites-p2a-frontend PR #241 — P2a frontend row closure)
+> **Last Updated**: 2026-05-14 (User Home Dashboard — root `/` redirect → personal dashboard 4 위젯 + `/api/me/shared-with-me` endpoint)
 
 ---
 
@@ -56,6 +56,7 @@
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |
 | 확장자 whitelist + MIME magic | M | spec 부재 | BETA §7 / docs/03 §5.3 | Content-Disposition 1차 방어 외 추가 layer. allow-list 정의 필요 |
 | MFA / refresh rotation | M | ADR #18 결정 보류 | BETA §7 / ADR #18 | `USER_MFA_ENABLED` emit deferred. TOTP vs FIDO2 결정 |
+| ~~User Home Dashboard (root `/`)~~ | — | — | ✓ 2026-05-14 user-home-dashboard (PR #TBD) | **closure** — root `/` redirect → personal dashboard. 4 위젯(WelcomeHeader/StarredCard/QuotaCard/SharedWithMeCard) + 신규 endpoint `GET /api/me/shared-with-me` + `useMySharedWithMe` hook + `DashboardCard` 컴포넌트. ADR #48 신규. favorites-list 트랙(PR #243) 산출물 reuse. recent files 는 ADR #9 (`FILE_VIEWED`) blocker 로 v1.1 deferral |
 
 ---
 
