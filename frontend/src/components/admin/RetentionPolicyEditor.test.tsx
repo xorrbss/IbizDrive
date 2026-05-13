@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { RetentionPolicyEditor } from './RetentionPolicyEditor'
 import * as api from '@/lib/api'
+import { ApprovalRequiredError } from '@/lib/errors'
 import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 
 vi.mock('@/lib/api', async () => {
@@ -137,5 +138,31 @@ describe('RetentionPolicyEditor (Phase C)', () => {
 
     await waitFor(() => expect(toastSpy('error')).toHaveBeenCalledWith('보존 정책 변경 권한이 없습니다'))
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+  })
+
+  it('202 APPROVAL_REQUIRED → dialog 닫힘 + draft 유지 + toast.info (dual-approval Tier 0)', async () => {
+    const apprErr = new ApprovalRequiredError(
+      'aaaa-bbbb-cccc-dddd',
+      '2026-05-15T00:00:00Z',
+    )
+    ;(api.updateAdminTrashPolicy as ReturnType<typeof vi.fn>).mockRejectedValue(apprErr)
+    renderEditor(30)
+    fireEvent.change(screen.getByLabelText('새 보존 일수'), { target: { value: '14' } })
+    fireEvent.click(screen.getByRole('button', { name: '정책 변경' }))
+    fireEvent.click(screen.getByRole('button', { name: '변경' }))
+
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull())
+    // draft(14) 유지 — 사용자가 승인 페이지 확인 후 재시도 가능
+    const input = screen.getByLabelText('새 보존 일수') as HTMLInputElement
+    expect(input.value).toBe('14')
+    // hook의 onError가 toast.info 호출
+    await waitFor(() => {
+      const calls = toastSpy('info').mock.calls
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls[0][0]).toMatch(/휴지통 보존 정책 변경/)
+    })
+    // 에러 inline 메시지는 노출되지 않음 (form 그대로)
+    expect(screen.queryByText(/입력값이 올바르지 않습니다/)).toBeNull()
+    expect(screen.queryByText(/보존 정책 변경에 실패했습니다/)).toBeNull()
   })
 })

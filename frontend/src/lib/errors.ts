@@ -150,3 +150,69 @@ export function messageForError(err: unknown, fallback: string): string {
   }
   return fallback
 }
+
+/**
+ * dual-approval framework (ADR #47, docs/02 §2.11) — backend가 Tier 0 mutation에 대해
+ * gate=ON일 때 200 OK 대신 **202 ACCEPTED + APPROVAL_REQUIRED envelope**을 반환한다:
+ *
+ * <pre>{@code
+ * {
+ *   "error": {
+ *     "code": "APPROVAL_REQUIRED",
+ *     "message": "이 작업은 2인 승인이 필요합니다",
+ *     "details": { "approvalId": "<uuid>", "expiresAt": "<ISO>" }
+ *   }
+ * }
+ * }</pre>
+ *
+ * <p>본 클래스는 일반 ApiError(4xx/5xx)와 분리된 분기 타입 — mutation hook `onError`에서
+ * {@code err instanceof ApprovalRequiredError}로 분기, {@link showApprovalRequiredToast}로
+ * "승인 요청 등록됨" 토스트 + `/admin/approvals/:id` 링크를 노출한다.
+ *
+ * <p>gate=OFF(기본)에서는 backend가 200 OK + entity로 응답 — 본 분기 미도달 (기존 흐름 유지).
+ */
+export class ApprovalRequiredError extends Error {
+  readonly approvalId: string
+  readonly expiresAt: string
+
+  constructor(approvalId: string, expiresAt: string, message?: string) {
+    super(message ?? '승인 요청이 등록되었습니다')
+    this.name = 'ApprovalRequiredError'
+    this.approvalId = approvalId
+    this.expiresAt = expiresAt
+  }
+}
+
+/**
+ * 202 응답 envelope을 안전 파싱해 {@link ApprovalRequiredError}를 생성하거나, envelope이
+ * 부재/오염되면 null 반환. 호출자는 null이면 200 정상 흐름으로 진행, 아니면 throw.
+ *
+ * <p>본 helper는 dual-approval Tier 0 3 mutation wrapper (adminUpdateUser, adminBulkTrash,
+ * updateAdminTrashPolicy)에서만 사용 — 다른 endpoint는 202 비-사용. 호출자가 status 가드 후
+ * 본 helper로 envelope만 파싱.
+ *
+ * <p>envelope 파싱 실패 시 null — 호출자는 fallback으로 일반 buildApiError 흐름을 타거나
+ * 200 정상 흐름으로 진행. {@code details.approvalId}/{@code details.expiresAt} 둘 다 string이어야
+ * 한다. 하나라도 누락이면 envelope 오염으로 간주, null.
+ */
+export async function parseApprovalRequired(
+  res: Response,
+): Promise<ApprovalRequiredError | null> {
+  try {
+    const body = (await res.clone().json()) as {
+      error?: {
+        code?: string
+        message?: string
+        details?: { approvalId?: unknown; expiresAt?: unknown }
+      }
+    }
+    if (body?.error?.code !== APPROVAL_REQUIRED) return null
+    const details = body.error.details
+    const approvalId = typeof details?.approvalId === 'string' ? details.approvalId : null
+    const expiresAt = typeof details?.expiresAt === 'string' ? details.expiresAt : null
+    if (!approvalId || !expiresAt) return null
+    return new ApprovalRequiredError(approvalId, expiresAt, body.error.message)
+  } catch {
+    return null
+  }
+}

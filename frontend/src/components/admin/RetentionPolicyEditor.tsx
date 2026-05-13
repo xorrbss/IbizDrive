@@ -2,6 +2,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { useUpdateAdminTrashPolicy } from '@/hooks/useUpdateAdminTrashPolicy'
+import { ApprovalRequiredError } from '@/lib/errors'
 
 /**
  * 휴지통 보존 일수 mutation editor — trash-retention-mutation Phase C (docs/04 §8.3).
@@ -50,6 +51,12 @@ export function RetentionPolicyEditor({ currentDays }: RetentionPolicyEditorProp
         setShowConfirm(false)
       },
       onError: (err) => {
+        // dual-approval Tier 0 — gate=ON 시 202. hook의 onError가 토스트 노출. 본 컴포넌트는
+        // dialog만 닫고 form 값(draft)을 유지 — 사용자가 승인 페이지 확인 후 재시도 가능.
+        if (err instanceof ApprovalRequiredError) {
+          setShowConfirm(false)
+          return
+        }
         const code = (err as Error & { code?: string }).code
         if (code === 'VALIDATION_ERROR') {
           setSubmitError('입력값이 올바르지 않습니다 (7~90일)')
