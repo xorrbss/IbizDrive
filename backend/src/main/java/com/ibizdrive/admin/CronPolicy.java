@@ -7,9 +7,9 @@ import java.util.UUID;
 /**
  * Cron 운영 정책 — admin-cron-policy-toggle 트랙 (Wave 2 closure 후속).
  *
- * <p>4 row만 존재하는 정적 테이블 (V11 마이그레이션 시드). PK는 cron 식별자
+ * <p>5 row 정적 테이블 (V11 시드 4 + V21 ADR #47 Phase 3d 추가 1). PK는 cron 식별자
  * ({@code purge.expired} / {@code share.expire} / {@code permission.expire} /
- * {@code storage.orphan.cleanup}) — application.yml의 식별자와 동일.
+ * {@code storage.orphan.cleanup} / {@code admin.approval.expire}) — application.yml의 식별자와 동일.
  *
  * <p>{@code enabled}는 매 cron tick 진입 시 lookup된다 (in-tick guard). 변경은
  * {@link AdminSystemService#toggleCron}만 거치며 audit_log {@code admin.cron.toggled}로 추적.
