@@ -23,7 +23,8 @@ public enum AuditTargetType {
     AUDIT("audit"),
     DEPARTMENT("department"),
     TEAM("team"),
-    TRASH_POLICY("trash_policy");
+    TRASH_POLICY("trash_policy"),
+    ADMIN_APPROVAL("admin_approval");
 
     private static final Map<String, AuditTargetType> BY_WIRE =
         Stream.of(values()).collect(java.util.stream.Collectors.toMap(AuditTargetType::wire, t -> t));

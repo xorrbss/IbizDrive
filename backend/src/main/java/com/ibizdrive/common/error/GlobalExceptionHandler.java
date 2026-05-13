@@ -1,5 +1,9 @@
 package com.ibizdrive.common.error;
 
+import com.ibizdrive.approval.AlreadyDecidedException;
+import com.ibizdrive.approval.PendingApprovalNotFoundException;
+import com.ibizdrive.approval.SelfApprovalException;
+import com.ibizdrive.approval.UnknownApprovalActionException;
 import com.ibizdrive.department.DepartmentConflictException;
 import com.ibizdrive.file.FileNameConflictException;
 import com.ibizdrive.file.FileRestoreConflictException;
@@ -101,6 +105,34 @@ public class GlobalExceptionHandler {
         details.put("requestedDelta", ex.getRequestedDelta());
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
             .body(ApiError.of("QUOTA_EXCEEDED", "저장 용량 한도를 초과했습니다", details));
+    }
+
+    // dual-approval framework Phase 2 (ADR #47 / docs/02 §8). 4 exception → envelope code 1:1.
+    @ExceptionHandler(PendingApprovalNotFoundException.class)
+    public ResponseEntity<ApiError> handleApprovalNotFound(PendingApprovalNotFoundException ex) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+            .body(ApiError.of("APPROVAL_NOT_FOUND", "승인 요청을 찾을 수 없습니다", null));
+    }
+
+    @ExceptionHandler(AlreadyDecidedException.class)
+    public ResponseEntity<ApiError> handleAlreadyDecided(AlreadyDecidedException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("currentStatus", ex.getCurrentStatus());
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+            .body(ApiError.of("APPROVAL_ALREADY_DECIDED", "이미 결정된 요청입니다", details));
+    }
+
+    @ExceptionHandler(SelfApprovalException.class)
+    public ResponseEntity<ApiError> handleSelfApproval(SelfApprovalException ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+            .body(ApiError.of("APPROVAL_SELF", "본인 요청은 승인할 수 없습니다", null));
+    }
+
+    @ExceptionHandler(UnknownApprovalActionException.class)
+    public ResponseEntity<ApiError> handleUnknownApprovalAction(UnknownApprovalActionException ex) {
+        // 운영 코드 부재 — 사용자 입력 오류로 위장하지 않고 500으로 명시.
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ApiError.of("APPROVAL_HANDLER_MISSING", "승인 처리기 미배포 — 운영팀에 문의하세요", null));
     }
 
     /**

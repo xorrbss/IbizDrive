@@ -75,6 +75,10 @@ public enum AuditEventType {
     ADMIN_DEPARTMENT_DEACTIVATED("admin.department.deactivated"),
     ADMIN_CRON_TOGGLED("admin.cron.toggled"),
     ADMIN_RETENTION_CHANGED("admin.retention.changed"),
+    ADMIN_APPROVAL_REQUESTED("admin.approval.requested"),
+    ADMIN_APPROVAL_GRANTED("admin.approval.granted"),
+    ADMIN_APPROVAL_REJECTED("admin.approval.rejected"),
+    ADMIN_APPROVAL_EXPIRED("admin.approval.expired"),
 
     // 시스템 (3)
     SYSTEM_BACKUP_COMPLETED("system.backup.completed"),
