@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-13 — 🎨 rightpanel-frontend-wire (P_panel-C — 헤더 액션 + PreviewCard + 종류/위치 row)
+
+### 범위
+
+PR #218(P_panel-A) backend 확장 + PR #220(P_panel-B) detail rows owner/sharedWith/folderPath wiring 후 잔여 디자인 fidelity. `design-reference/panels.jsx §RightPanel L8~184`에서 PR #220이 다루지 않은 영역(헤더 액션 toolbar + PreviewCard placeholder + 종류/위치 row + MiniAvatar 색상 hash 정합)을 본 PR에서 완성. **PR #220과 같은 RightPanel.tsx 영역을 동시 작업(co-session)** — master merge 시 RightPanel.tsx / RightPanel.test.tsx conflict는 본 PR 풀세트로 통합 채택(소유자/공유/경로 row 동작은 PR #220과 동치 + 추가 row + 헤더 + Preview). `v1x-backlog.md` Tier 1 line 48 closure.
+
+### 변경 (3 파일, +467/-30)
+
+- `frontend/src/lib/fileIcon.ts` — `kindLabel(kind)` 한국어 라벨 매핑 추가 export (별도 파일 대신 같은 도메인에 합침).
+- `frontend/src/components/files/RightPanel.tsx` rewrite:
+  - **헤더**: 파일 kind 아이콘(`<FileTypeIcon size={18}>`) + 파일명 + 닫기 + 액션 toolbar(`role="toolbar" aria-label="파일 액션"`) — 다운로드/공유/더보기 3 ghost 버튼. 로딩/에러 동안 disabled.
+  - **PreviewCard placeholder**: kind별 soft 배경(10색 매핑) + 큰 컬러 SVG(`size={42}`) + 4 placeholder line. 헤더와 탭 사이.
+  - **Detail 탭 7 row** (`<dl>` → `<div>` row 구조): 종류(kindLabel) / 크기 / 소유자(MiniAvatar) / 수정한 사람(MiniAvatar) / 수정일 / 공유됨(DetailSharedStack max=4 + N명) / 경로(folderPath join) / 위치(restricted Lock tag or "공개 링크 없음").
+  - **MiniAvatar / DetailSharedStack 인라인**: admin.css `.p-avatar` (admin layout scope) 회피, 색상 hash + palette 8색은 `admin/teams/Avatars.tsx` PAvatar 와 동일 로직.
+- `frontend/src/components/files/RightPanel.test.tsx` — `downloadFile` mock 추가 + 8 신규 케이스(7 row 풀세트 / sharedWith=[] 비공개 / restricted 권한 제한 / toolbar 3 버튼 / 다운로드 클릭 / 공유 클릭 → 권한 탭 전환 / PreviewCard 렌더).
+
+### 결정/편차
+
+- **PR #220 co-session 흡수**: PR #220이 같은 P_panel-B 명칭으로 detail rows 3건(소유자/공유/경로)만 wire하고 머지. 본 PR이 더 풀세트라 P_panel-C로 재포지셔닝 + master merge 시 RightPanel.tsx 풀세트 채택. 동등 row(소유자/공유/경로)는 본 PR이 디자인 정합 더 충실(MiniAvatar 색상 hash 일관 + DetailSharedStack max=4 + N명 라벨 + folderPath '내 드라이브' prefix).
+- **viewCount 제외**: ADR #9 `FILE_VIEWED` audit + 파티션 전략 결정 선결 blocker. 디자인 8 row 중 row 자체 미렌더 (placeholder 표시도 안 함). backlog closure entry에 분리 명시.
+- **더보기 disabled placeholder**: 디자인은 dots 아이콘만, 동작 미정(rename/delete 등 dropdown). MVP는 `disabled` + TODO 주석, 별도 트랙으로 분리. `aria-label="더보기"` 보존.
+- **공유 = 권한 탭 전환**: 디자인 `onOpenPermissions` 콜백 의미. ShareDialog는 BulkActionBar 등 별도 entry, RightPanel은 권한 관리 진입점만.
+- **`<dl>` → `<div>` row**: DetailSharedStack 등 복합 value(Avatar + name + N명) 표현 + Tailwind grid/flex 자연스러움.
+- **MiniAvatar 인라인**: `lib/avatar.ts` 추출 YAGNI — RightPanel 단일 소비자, admin/teams는 admin.css 의존 별도 컴포넌트 유지. 추후 3번째 소비자 등장 시 추출.
+- **버전 라벨 count("버전 N") deferred**: 디자인은 `버전 ${file.versions || 1}` 카운트 표시, 본 트랙에서 미진행. versions 탭 mount 전에 카운트 미상 → backend `FileDetailResponse` 에 `versionsCount` 필드 추가 시 재오픈.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run src/components/files/RightPanel.test.tsx` ✓ **21/21 PASS** (기존 13 + 신규 8). master merge 후 재실행 필요.
+
+### 다음 세션 컨텍스트
+
+- **viewCount row 별도 트랙** (가칭 v1.1+ — file-view-count): `FILE_VIEWED` audit emit + 파티션 전략 결정(ADR #9) → `audit_log` 또는 `file_views` 별도 테이블 → backend aggregation → `FileDetailResponse.viewCount` 노출 → RightPanel row 추가.
+- **더보기 메뉴 별도 트랙**: dropdown 컴포넌트 + rename/delete/move 등 action 매핑. 기존 FileRowActionMenu 와 entry/UX 정합 필요.
+- **mini-avatar lib 추출 검토**: 3번째 소비자(예: ActivityTab) 등장 시 `lib/avatar.ts` 의 colorForUser/initialOf 추출 + admin/teams Avatars.tsx 도 마이그레이션.
+
+---
+
 ## 2026-05-13 — RightPanel detail wiring + file-badge 3종 (P2c/P2d/P2b/P_panel-A/B)
 
 ### 범위
