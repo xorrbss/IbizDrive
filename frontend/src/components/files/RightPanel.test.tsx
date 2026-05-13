@@ -19,6 +19,7 @@ const listFileVersionsMock = vi.fn()
 const getEffectivePermissionsMock = vi.fn()
 const listFileActivityMock = vi.fn()
 const listResourcePermissionsMock = vi.fn()
+const downloadFileMock = vi.fn()
 vi.mock('@/lib/api', () => ({
   api: {
     getFileDetail: (...args: unknown[]) => getFileDetailMock(...args),
@@ -28,6 +29,7 @@ vi.mock('@/lib/api', () => ({
     listFileActivity: (...args: unknown[]) => listFileActivityMock(...args),
     listResourcePermissions: (...args: unknown[]) =>
       listResourcePermissionsMock(...args),
+    downloadFile: (...args: unknown[]) => downloadFileMock(...args),
   },
 }))
 
@@ -57,6 +59,7 @@ describe('RightPanel', () => {
     })
     listResourcePermissionsMock.mockReset()
     listResourcePermissionsMock.mockResolvedValue([])
+    downloadFileMock.mockReset()
     mockQuery = ''
   })
 
@@ -375,6 +378,171 @@ describe('RightPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByRole('alert')).toBeTruthy()
+    })
+  })
+
+  it('P_panel-B — detail 탭 7 row 풀세트 (종류/소유자/공유됨/경로/위치)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: '제안서.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 2400000,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: '김영수',
+      parentId: 'fol_proj',
+      owner: { id: 'u_owner', displayName: '박지훈', email: 'p@x.io' },
+      sharedWith: [
+        { subjectType: 'user', subjectId: 'u_a', subjectName: '이수민', preset: 'read' },
+        { subjectType: 'everyone', subjectId: null, subjectName: '전체', preset: 'read' },
+      ],
+      folderPath: [
+        { id: 'fol_team', name: '영업팀', slug: '영업팀' },
+        { id: 'fol_proj', name: '계약서', slug: '계약서' },
+      ],
+    })
+
+    wrap(<RightPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText('PDF 문서')).toBeTruthy()
+    })
+    expect(screen.getByText('박지훈')).toBeTruthy()
+    expect(screen.getByText('2명')).toBeTruthy()
+    expect(
+      screen.getByText('내 드라이브 / 영업팀 / 계약서'),
+    ).toBeTruthy()
+    expect(screen.getByText('공개 링크 없음')).toBeTruthy()
+  })
+
+  it('P_panel-B — sharedWith=[] 시 공유됨 row "비공개"', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      owner: null,
+      sharedWith: [],
+      folderPath: [],
+    })
+
+    wrap(<RightPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText('비공개')).toBeTruthy()
+    })
+  })
+
+  it('P_panel-B — restricted=true 시 위치 row "권한 제한"', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      restricted: true,
+    })
+
+    wrap(<RightPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByText('권한 제한')).toBeTruthy()
+    })
+  })
+
+  it('P_panel-B — 헤더 액션 toolbar (다운로드 / 공유 / 더보기)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    const toolbar = await screen.findByRole('toolbar', { name: '파일 액션' })
+    expect(toolbar).toBeTruthy()
+    expect(screen.getByRole('button', { name: '다운로드' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '공유' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: '더보기' })).toBeTruthy()
+  })
+
+  it('P_panel-B — 다운로드 버튼 클릭 시 api.downloadFile 호출', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    const btn = await screen.findByRole('button', { name: '다운로드' })
+    await waitFor(() => expect(btn.hasAttribute('disabled')).toBe(false))
+    fireEvent.click(btn)
+    expect(downloadFileMock).toHaveBeenCalledWith('file_abc')
+  })
+
+  it('P_panel-B — 공유 버튼 클릭 시 권한 탭 활성화', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    const shareBtn = await screen.findByRole('button', { name: '공유' })
+    await waitFor(() => expect(shareBtn.hasAttribute('disabled')).toBe(false))
+    fireEvent.click(shareBtn)
+    expect(
+      screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected'),
+    ).toBe('true')
+  })
+
+  it('P_panel-B — PreviewCard 는 data 도착 후 렌더', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rp-preview-card')).toBeTruthy()
     })
   })
 })
