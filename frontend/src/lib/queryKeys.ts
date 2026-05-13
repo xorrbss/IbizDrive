@@ -416,6 +416,27 @@ export const invalidations = {
   },
 
   /**
+   * P2a — 즐겨찾기 토글 후 무효화. 낙관적 업데이트 후 서버 확정값으로 동기화.
+   * - 부모 폴더의 items 목록 (`starred` 배지) — 정렬 변종 prefix 매칭
+   * - file detail (RightPanel 등에서 starred 노출 시 일관성 유지)
+   * - folder(id) — 자기 자신이 폴더인 경우 detail 응답의 `starred`도 동기화 (FolderDetailResponse)
+   */
+  afterStarToggle(
+    qc: QueryClient,
+    opts: { parentId: string; id: string; isFolder: boolean },
+  ): Promise<void> {
+    const { parentId, id, isFolder } = opts
+    const tasks: Promise<void>[] = [
+      qc.invalidateQueries({ queryKey: qk.filesListPrefix(parentId) }),
+      qc.invalidateQueries({ queryKey: qk.fileDetail(id) }),
+    ]
+    if (isFolder) {
+      tasks.push(qc.invalidateQueries({ queryKey: qk.folder(id) }))
+    }
+    return Promise.all(tasks).then(() => undefined)
+  },
+
+  /**
    * 관리자 사용자 PATCH 후 무효화 (admin-user-mgmt).
    * - adminUsers() prefix 단일 — 모든 page/size 변종 일괄 갱신.
    * - 단일 사용자 상세 keyspace는 본 트랙 미도입 (목록만 사용).

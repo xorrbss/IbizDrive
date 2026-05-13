@@ -1,5 +1,6 @@
 package com.ibizdrive.folder;
 
+import com.ibizdrive.favorite.FavoriteRepository;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.dto.BreadcrumbCrumbDto;
 import com.ibizdrive.folder.dto.FolderDetailResponse;
@@ -38,6 +39,7 @@ class FolderQueryServiceTest {
     @Mock private FolderRepository folderRepository;
     @Mock private FileRepository fileRepository;
     @Mock private PermissionRepository permissionRepository;
+    @Mock private FavoriteRepository favoriteRepository;
     @InjectMocks private FolderQueryService service;
 
     private static Folder folder(UUID id, UUID parentId, String name, String slug) {
@@ -120,6 +122,8 @@ class FolderQueryServiceTest {
         assertThat(only.id()).isEqualTo(id);
         assertThat(only.name()).isEqualTo("공용");
         assertThat(only.slug()).isEqualTo("공용");
+        // P2a — 미인증(테스트 컨텍스트) 시 starred=null.
+        assertThat(res.starred()).isNull();
     }
 
     @Test

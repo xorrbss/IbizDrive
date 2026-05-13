@@ -5,6 +5,61 @@
 
 ---
 
+## 2026-05-14 — ⭐ file-favorites-p2a frontend wiring (Option D zip-faithful, PR #241)
+
+### 범위
+
+PR #237(backend) 후속. design-sweep-phase-2 4 배지(star/lock/share/items) 풀세트 frontend wiring + 즐겨찾기 토글 UX.
+
+발견(sleeping bug): backend P2b/c/d/a(#210/#213/#215/#237) 모두 MERGED지만 `getFilesInFolder` mapper가 4 필드 전부 drop → 실 화면 배지 표시 0. 본 세션이 mapper 갱신으로 4 배지 동시 활성화 + P2a 토글 풀세트.
+
+### 변경 (16 파일, 신규 4)
+
+backend (signature 보존, 추가 1 필드)
+- `folder/dto/FolderDetailResponse.java` — `Boolean starred` 필드 추가 + `@JsonInclude(NON_NULL)`. 단일 construction site만 변경.
+- `folder/FolderQueryService.java` — `loadDetail`에서 `resolveCurrentUserId()` + `favoriteRepository.existsByIdUserIdAndIdResourceTypeAndIdResourceId(...)` 호출 → starred 주입. 미인증 시 null (FolderItemDto 동일 정책).
+- `test/folder/FolderQueryServiceTest.java` — `@Mock FavoriteRepository` 추가 + loadDetail root crumb 케이스에 `starred=null` 단언.
+
+frontend api/types
+- `lib/api.ts` `getFolder` — 응답에 `starred?: boolean | null` 수용 + `FolderDetail.starred = body.starred === true`.
+- `lib/api.ts` `getFilesInFolder` — 응답 type 4 필드(`starred/restricted/shareCount/itemsCount`) 확장 + mapper에서 `?? undefined`로 좁혀 FileItem에 전달. **본 mapper 갱신이 design-sweep-phase-2 4 배지 동시 활성화**.
+- `lib/api.ts` `api.toggleStar(type, id, starred)` (신규) — file/folder × POST/DELETE 4 endpoint 단일 helper. CSRF 헤더 동봉. 204 정상, 4xx envelope `buildApiError`로 status/code 매핑.
+- `types/folder.ts` `FolderDetail.starred?: boolean` 추가.
+- `lib/queryKeys.ts` `invalidations.afterStarToggle` (신규) — `filesListPrefix(parentId)` + `fileDetail(id)` (+ folder인 경우 `folder(id)`) 동시 무효화.
+
+frontend hooks/components
+- `hooks/useToggleStar.ts` + `.test.tsx` (신규) — optimistic mutation. onMutate에서 부모 폴더 items 목록(모든 sort/dir 변종 prefix)의 starred 토글 + folder detail cache.starred 갱신. onError rollback, onSettled invalidate. 12 케이스 (file/folder × star/unstar + folder detail 동시 갱신 + rollback + invalidate 키).
+- `lib/api.toggleStar.test.ts` (신규, 7건) — 4 endpoint 매핑 + CSRF 헤더 + 404/403 envelope + id URL-encode.
+- `hooks/useCurrentFolder.ts` — return에 `starred: data?.starred ?? false` 추가.
+- `components/folders/BreadcrumbWithStar.tsx` (신규) — `useCurrentFolder` + `useToggleStar` 결합 wrapper. Breadcrumb props(`isStarred`/`onToggleStar`) 주입. folder 미로드 시 plain Breadcrumb fallback.
+- `app/(explorer)/d|t|shared/[[...parts]]/ClientFilesPage.tsx` — `Breadcrumb` → `BreadcrumbWithStar` 교체 (3 라우트).
+- `components/files/FileRowActionMenu.tsx` — `Star` 아이콘 + "즐겨찾기 추가/해제" 메뉴 항목 추가. `useToggleStar` 호출 + onError toast.
+
+### 결정/편차
+
+- **Option D 채택** (zip-faithful) — B(FileRow inline 토글)는 zip 디자인 변경. D는 zip 그대로 + Breadcrumb props(작성자 의도 미사용)와 FileRowActionMenu 경로로 토글. FileRow `badge-star`는 read-only 유지.
+- **mapper 4 필드 동시 갱신** — P2a wiring만으로는 starred도 표시 0. 같은 mapper 한 줄에 4 필드가 묶이므로 atomic 변경이 더 작음.
+- **FolderDetailResponse signature 확장** — 3-arg constructor. 단일 construction site만 사용 → 호환성 부담 0.
+- **BreadcrumbWithStar wrapper 신설** vs 3 ClientFilesPage 각각 inline — 동일 wiring 3중복 회피 + Breadcrumb은 zip 충실 유지(props 인터페이스 변경 없음).
+- **shared workspace도 동일 wiring** — backend 권한에서 거절 시 onError toast로 fallback. shared 분기 코드 분리 불필요.
+- **권한 게이트는 backend 위임** — `can.STAR` 도입하지 않음. backend `hasPermission(#id, type, 'READ')` 만으로 충분 (READ 없는 항목은 목록에 안 보임).
+- **starred 표현 normalize** — list cache는 `undefined`/`true` (api mapper의 `?? undefined`와 일관), folder detail은 `false`/`true`. FileRow `{item.starred && ...}` falsy 처리로 동일 렌더.
+
+### 검증
+
+- frontend: `pnpm vitest run` BUILD SUCCESSFUL — 1479/1479 pass (신규 12 + 회귀 0).
+- frontend: `pnpm tsc --noEmit` clean.
+- backend: `./gradlew test --tests "*FolderQueryServiceTest" --tests "*FolderQueryServiceItemsTest" --tests "*FolderControllerTest" --tests "*FavoriteServiceTest" --tests "*FavoriteAuditListenerTest"` BUILD SUCCESSFUL.
+- Testcontainers integration slice는 로컬 Windows에서 SKIPPED — CI 의존.
+
+### 다음 세션 컨텍스트
+
+- **sidebar 즐겨찾기 section + count**: backend `GET /api/me/favorites` listing endpoint 신규 필요. v1x-backlog 등록 필요.
+- **Grid view star** (`grid-star`): grid view 자체가 별도 트랙. 본 PR 영역 외.
+- **공유 starred 의미** — shared workspace에서 root 폴더 starring 동작은 backend 권한 정책에 의존. 사용자 피드백 보고 정책 명문화 검토.
+
+---
+
 ## 2026-05-14 — dual-approval Phase 4 FE follow-up (202 APPROVAL_REQUIRED 처리)
 
 ### 범위

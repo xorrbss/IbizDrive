@@ -57,6 +57,7 @@ export const api = {
     const body = (await res.json()) as {
       folder: { id: string; name: string }
       breadcrumb: { id: string; name: string; slug: string }[]
+      starred?: boolean | null
     }
     // 누적 slug — backend는 단일 segment만 보내므로 prefix scan으로 조립.
     const slugPath = body.breadcrumb.map((c) => c.slug)
@@ -76,6 +77,8 @@ export const api = {
       slugPath,
       breadcrumb,
       parentId: parentBcrumb ? parentBcrumb.id : 'root',
+      // backend가 NON_NULL omit → 키 부재 시 false. 인증/즐겨찾기 모두 falsy 처리.
+      starred: body.starred === true,
     }
   },
 
@@ -243,6 +246,11 @@ export const api = {
         updatedAt: string
         updatedBy?: string | null
         parentId?: string | null
+        // design-sweep-phase-2 4 배지 (P2a/b/c/d). backend `@JsonInclude(NON_NULL)`로 키 자체 omit 가능.
+        starred?: boolean | null
+        restricted?: boolean | null
+        shareCount?: number | null
+        itemsCount?: number | null
       }>
     }
     return body.items.map((it) => ({
@@ -254,6 +262,11 @@ export const api = {
       updatedAt: it.updatedAt,
       updatedBy: it.updatedBy ?? '',
       parentId: it.parentId ?? folderId,
+      // 4 배지는 omit 시 undefined (FileRow가 데이터 부재 시 비표시). null도 동일하게 undefined로 좁힘.
+      starred: it.starred ?? undefined,
+      restricted: it.restricted ?? undefined,
+      shareCount: it.shareCount ?? undefined,
+      itemsCount: it.itemsCount ?? undefined,
     }))
   },
 
@@ -1211,6 +1224,32 @@ export const api = {
     })
     if (!res.ok) {
       throw await buildApiError(res, `revokeShare failed: ${res.status}`)
+    }
+  },
+
+  /**
+   * P2a — 즐겨찾기 토글 (docs/02 §7.5.1). file/folder × star/unstar 4 endpoint를
+   * 단일 helper로 통합: `starred=true` → POST(star), `starred=false` → DELETE(unstar).
+   *
+   * <p>backend는 멱등 — 이미 starred 상태에 다시 POST해도 204, 이미 unstarred에 다시 DELETE해도 204.
+   * audit emit은 상태 전이 시에만(no-op은 미발행). 권한 가드는 backend `hasPermission(#id, type, 'READ')`.
+   *
+   * <p>에러: 401 미인증 / 403 PERMISSION_DENIED / 404 NOT_FOUND. envelope 동일.
+   */
+  async toggleStar(
+    resourceType: 'file' | 'folder',
+    id: string,
+    starred: boolean,
+  ): Promise<void> {
+    const csrf = await ensureCsrfToken()
+    const segment = resourceType === 'folder' ? 'folders' : 'files'
+    const res = await fetch(`/api/${segment}/${encodeURIComponent(id)}/star`, {
+      method: starred ? 'POST' : 'DELETE',
+      credentials: 'include',
+      headers: { 'X-CSRF-TOKEN': csrf },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `toggleStar failed: ${res.status}`)
     }
   },
 

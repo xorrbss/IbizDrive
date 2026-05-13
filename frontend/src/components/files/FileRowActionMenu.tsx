@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { Download, FolderInput, Pencil, Share2, Trash2, MoreHorizontal } from 'lucide-react'
+import { Download, FolderInput, Pencil, Share2, Star, Trash2, MoreHorizontal } from 'lucide-react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { api } from '@/lib/api'
@@ -8,6 +8,7 @@ import { messageForError } from '@/lib/errors'
 import { invalidations } from '@/lib/queryKeys'
 import { usePermission } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
+import { useToggleStar } from '@/hooks/useToggleStar'
 import { useMoveUiStore } from '@/stores/moveUi'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { useShareUiStore } from '@/stores/shareUi'
@@ -41,6 +42,7 @@ export function FileRowActionMenu({ item, folderId, isPending }: Props) {
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
   const openRename = useRenameUiStore((s) => s.open)
   const openShare = useShareUiStore((s) => s.open)
+  const toggleStar = useToggleStar()
   const deleteMut = useDeleteBulk({
     onSuccess: (vars) => {
       toast.success(`${vars.items.length}개 항목을 휴지통으로 이동했습니다`, {
@@ -107,6 +109,23 @@ export function FileRowActionMenu({ item, folderId, isPending }: Props) {
       items: [{ id: item.id, type: item.type }],
       folderIdAtStart: folderId,
     })
+    close()
+  }
+  const handleToggleStar = () => {
+    // 권한: READ 보유 시 토글 가능 — backend `hasPermission(#id, type, 'READ')` 정책.
+    // BulkActionBar 권한 매트릭스에 STAR 액션이 없으므로 단순 토글만, 권한 게이트는 backend 위임.
+    toggleStar.mutate(
+      {
+        resourceType: item.type,
+        id: item.id,
+        parentId: folderId,
+        currentStarred: !!item.starred,
+      },
+      {
+        onError: (err) =>
+          toast.error(messageForError(err, '즐겨찾기 변경에 실패했습니다.')),
+      },
+    )
     close()
   }
 
@@ -186,6 +205,20 @@ export function FileRowActionMenu({ item, folderId, isPending }: Props) {
               공유
             </button>
           )}
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleToggleStar}
+            disabled={toggleStar.isPending}
+            className={itemClass}
+          >
+            <Star
+              size={14}
+              aria-hidden
+              className={item.starred ? 'text-warn fill-warn' : ''}
+            />
+            {item.starred ? '즐겨찾기 해제' : '즐겨찾기 추가'}
+          </button>
           {can.DELETE && (
             <>
               <div className="my-1 border-t border-border" aria-hidden />

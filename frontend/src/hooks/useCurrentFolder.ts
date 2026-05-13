@@ -25,6 +25,8 @@ export function useCurrentFolder() {
     folderId,
     folder: data,
     breadcrumb: data?.breadcrumb ?? [],
+    // P2a — 현재 사용자의 현재 폴더 즐겨찾기 여부. backend 미주입 시 undefined → false 처리.
+    starred: data?.starred ?? false,
     isLoading,
     error,
   }
