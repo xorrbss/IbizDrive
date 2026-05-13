@@ -1393,6 +1393,22 @@ GET /api/folders/:id/items
 > 파일 업로드 = 단일-POST multipart (`POST /api/files`, ADR #36 / A15 closure). tus 프로토콜은 §7.7로 보존되나 ADR #13 supersede에 따라 v1.x 재이월 — MVP 미구현. 메타데이터/버전 mutation은 위 표 내 다른 행 참조.
 
 ```text
+GET /api/files/:id
+  Request:  —
+  Response: 200 FileDetailResponse
+            FileDetailResponse = { file: FileDto, owner?, sharedWith?, folderPath? }
+            file        : FileDto — 기존 동일 (id/folderId/name/ownerId/sizeBytes/mimeType/...)
+            owner?      : UserBriefDto { id, displayName, email } — file.ownerId 의 user lookup.
+                          soft-deleted/missing 시 키 omit (FE placeholder)
+            sharedWith? : SubjectGrantBriefDto[] — 본 파일 자체에 부여된 active grant. created_at ASC.
+                          { subjectType: 'user'|'department'|'everyone', subjectId?, subjectName?, preset }
+                          everyone subjectName = "전체". user/dept soft-delete 시 subjectName 키 omit.
+                          PERMISSION_ADMIN 게이트가 있는 /permissions list와 달리 일반 READ 권한자에게
+                          노출되므로 grantedBy/expiresAt/createdAt 등 privacy 필드는 제외 (P_panel-A).
+            folderPath? : BreadcrumbCrumbDto[] — file.folderId 부터 root 까지 부모 체인 (root 먼저).
+                          { id, name, slug }. soft-deleted 폴더 도달 시 chain break (부분 경로 반환).
+  Note:     viewCount 는 ADR #9 (FILE_VIEWED audit emit) blocker — 본 wire 미포함, 후속 트랙.
+
 PATCH /api/files/:id
   Request:  { name: string }
   Response: 200 { file: FileDto }

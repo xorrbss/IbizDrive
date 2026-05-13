@@ -1,6 +1,7 @@
 package com.ibizdrive.file;
 
 import com.ibizdrive.common.dto.RestoreRequest;
+import com.ibizdrive.file.dto.FileDetailResponse;
 import com.ibizdrive.file.dto.FileDto;
 import com.ibizdrive.file.dto.MoveFileRequest;
 import com.ibizdrive.file.dto.RenameFileRequest;
@@ -77,15 +78,19 @@ public class FileController {
     // ──────────────────────────────────────────────────────────────────
 
     /**
-     * 파일 상세 조회 — frontend RightPanel wiring (Phase B P2). 활성 파일만 반환.
-     * 부재/soft-deleted 시 {@link FileNotFoundException} → 404.
+     * 파일 상세 조회 — frontend RightPanel wiring (Phase B P2 + P_panel-A).
+     * 활성 파일만 반환. 부재/soft-deleted 시 {@link FileNotFoundException} → 404.
+     *
+     * <p>응답 envelope({@link FileDetailResponse}): 기존 {@code file} 키 보존 + RightPanel detail에
+     * 필요한 {@code owner} / {@code sharedWith} / {@code folderPath} 동봉. FE 기존 호출부
+     * ({@code body.file.*})는 회귀 없음.
      */
     @GetMapping("/{id}")
     @PreAuthorize("hasPermission(#id, 'file', 'READ')")
-    public ResponseEntity<Map<String, FileDto>> get(
+    public ResponseEntity<FileDetailResponse> get(
         @PathVariable("id") UUID id
     ) {
-        return ResponseEntity.ok(Map.of("file", fileQueryService.loadDetail(id)));
+        return ResponseEntity.ok(fileQueryService.loadDetail(id));
     }
 
     // ──────────────────────────────────────────────────────────────────

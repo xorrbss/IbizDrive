@@ -28,6 +28,35 @@ export type FileItem = {
   restricted?: boolean
   shareCount?: number
   itemsCount?: number | null
+  /**
+   * P_panel-A — RightPanel detail 응답 동봉 필드. {@code getFileDetail}만 채움 (list/mutation 응답은
+   * 모두 undefined). FE는 RightPanel에서만 의미 있게 사용. docs/02 §7.6.
+   */
+  owner?: UserBrief | null
+  sharedWith?: SubjectGrantBrief[]
+  folderPath?: BreadcrumbCrumb[]
+}
+
+/** RightPanel owner 표시용 brief. 백엔드 `UserBriefDto`와 1:1. */
+export type UserBrief = {
+  id: string
+  displayName: string
+  email: string
+}
+
+/** RightPanel sharedWith 스택용 grant brief. 백엔드 `SubjectGrantBriefDto`와 1:1. */
+export type SubjectGrantBrief = {
+  subjectType: 'user' | 'department' | 'everyone' | string
+  subjectId?: string | null
+  subjectName?: string | null  // everyone → "전체", soft-delete subject → null
+  preset: string  // 'read' | 'upload' | 'edit' | 'admin'
+}
+
+/** RightPanel folderPath 표시용 breadcrumb 원소. 백엔드 `BreadcrumbCrumbDto`와 1:1. */
+export type BreadcrumbCrumb = {
+  id: string
+  name: string
+  slug: string
 }
 
 export type SortKey = 'name' | 'updatedAt' | 'size'
