@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-13 — file-badge 트랙 (FileRow 배지 4종 중 3종 backend wiring, PR #210/#213/#215)
+
+### 범위
+
+PR #199 design-sweep-phase-2-explorer에서 FileRow에 mount된 4 배지(star/lock/share/items) UI는 모두 placeholder — `FileItem` 타입의 optional 필드가 호출부 미전달로 항상 undefined. 본 단일 세션에서 backend wiring 3 PR shipping (P2a starred는 schema 신규로 분리).
+
+### 변경 (3 PR)
+
+| PR | 트랙 | 핵심 |
+|---|---|---|
+| #210 | **P2c shareCount** | `PermissionRepository.countActiveByResources(type, ids)` native GROUP BY + `FolderItemDto.shareCount Integer` + `FolderQueryService.loadItems` 배치 주입. UNIQUE INDEX (V5 line 147) 보장으로 COUNT(*) ≡ DISTINCT subject. FE threshold `> 1` 유지 |
+| #213 | **P2d itemsCount** | `FolderRepository.countByParentIdInGroupedActive` + `FileRepository.countByFolderIdInGroupedActive` JPQL GROUP BY + 폴더당 두 결과 `Map.merge`. 빈 폴더 0 명시 반환 (`@JsonInclude NON_NULL` exception — FE `typeof === 'number'`에서 "0개" 표시) |
+| #215 | **P2b restricted** | `FolderItemDto.restricted Boolean` 추가 — `shareCount Map`에서 derive(`shareCount != null && shareCount > 0 ? TRUE : null`). **추가 query 0**. FE 두 단계 시각 신호: lock(restricted) + count(shareCount > 1) |
+
+### 검증
+
+- backend: `./gradlew test "com.ibizdrive.folder.*" "com.ibizdrive.file.*"` 각 PR BUILD SUCCESSFUL (Testcontainers SKIP local Windows / CI Linux RUN green)
+- frontend: `pnpm typecheck` / `pnpm lint` / `pnpm test FileRow` 누적 **16건 PASS** (P2c 6 + P2d 4 + P2b 6)
+- CI: 3 PR 모두 frontend (vitest) + backend (junit) green
+- docs/02 §7.5 `/api/folders/:id/items` wire spec 누적 갱신
+
+### 결정/편차
+
+- **direct grants only (P2c)** — 상속 grant 포함 시 모든 항목에 배지 폭증. recursive CTE 회피 + UX 직관성 우선
+- **빈 폴더 0 명시 (P2d)** — shareCount의 NON_NULL omit과 **다른 정책**. FE 동작(`typeof === 'number'`) 보존 위해
+- **restricted derive (P2b)** — shareCount Map 재활용으로 추가 N+1 0건. 의미 분리 필요해지면 컬럼 분할
+- **AskUserQuestion 거부 학습 (2026-05-13)** — "P2b semantic A/B/C" 묻자 사용자가 "진행해" 반환. 메모리 `feedback_decision_style` 재확인: spec 모호 시에도 추천안 + 진행, 절대 A/B/C 질문 금지
+
+### 디버깅 노트
+
+1. **Mockito stub LIFO 함정** — `service()` 헬퍼 안의 `lenient(any, any)`가 specific stub을 덮어씀. `@BeforeEach`로 분리해 해결
+2. **`List.of(Object[])` varargs flatten** — `List<Object>`로 해석되어 ClassCastException. `List.<Object[]>of(...)` 명시적 type parameter 필요
+3. **Co-session main-path bleed (early session)** — 다른 세션의 admin-dashboard-kpi-delta WIP가 main worktree에 누적되어 PR #202 머지 commit에 우발 흡수. `feedback_co_session_collab` 메모리 시나리오 발현
+
+### 다음 세션 컨텍스트
+
+- **P2a starred** (배지 4종 잔여) — v1x-backlog Tier 1에 등록. `favorites` 테이블 + mutation API + audit event 필요. M 사이즈 (P2c/d/b 처럼 small PR 불가)
+- **잔여 Tier 1 트랙**: 2인 승인 framework (L, spec ready), audit_level emit (M, ADR #9 blocker), 확장자 whitelist (M, spec 부재), MFA (M, ADR #18 blocker)
+
+---
+
 ## 2026-05-12 — keyboard-shortcut-actions (Tier 0 단축키 ↔ action 매핑 점진 통합, PR #209)
 
 ### 범위
