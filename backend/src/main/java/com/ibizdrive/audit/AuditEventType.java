@@ -84,10 +84,11 @@ public enum AuditEventType {
     ADMIN_APPROVAL_REJECTED("admin.approval.rejected"),
     ADMIN_APPROVAL_EXPIRED("admin.approval.expired"),
 
-    // 시스템 (3)
+    // 시스템 (4)
     SYSTEM_BACKUP_COMPLETED("system.backup.completed"),
     SYSTEM_PURGE_EXECUTED("system.purge.executed"),
     STORAGE_ORPHAN_CLEANED("storage.orphan.cleaned"),
+    FAVORITES_ORPHANS_CLEANED("system.favorites.orphans_cleaned"),
 
     // 팀 (7)
     TEAM_CREATED("team.created"),

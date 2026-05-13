@@ -1,6 +1,7 @@
 package com.ibizdrive.favorite;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -55,4 +56,26 @@ public interface FavoriteRepository extends JpaRepository<Favorite, FavoriteId> 
      * 별도 batch lookup). 본 query는 favorites 행만 반환.
      */
     List<Favorite> findByIdUserIdOrderByCreatedAtDesc(UUID userId);
+
+    /**
+     * v1.x favorites orphan cleanup — file/folder가 hard-purge되어 더 이상 존재하지 않는 resource_id를
+     * 참조하는 favorites 행을 일괄 삭제. soft-deleted(휴지통) resource는 보존(복원 시 favorite 재노출).
+     *
+     * <p>file/folder 분기는 {@code resource_type}으로 조건부 {@code NOT EXISTS} — PK index seek로 빠름.
+     * v1.x는 batch limit 없음 (favorites 테이블 규모 작다는 가정. 늘어나면 CTE+LIMIT 도입).
+     *
+     * <p>{@code @Modifying(clearAutomatically=true)} — 호출 후 1st-level cache 클리어 (혹시 동일
+     * 트랜잭션 내 후속 favorites 조회가 stale 보지 않도록).
+     *
+     * @return 삭제된 row 수 (audit summary 메트릭)
+     */
+    @Modifying(clearAutomatically = true)
+    @Query(value = """
+        DELETE FROM favorites f
+        WHERE (f.resource_type = 'file'
+                AND NOT EXISTS (SELECT 1 FROM files WHERE id = f.resource_id))
+           OR (f.resource_type = 'folder'
+                AND NOT EXISTS (SELECT 1 FROM folders WHERE id = f.resource_id))
+        """, nativeQuery = true)
+    int deleteOrphans();
 }
