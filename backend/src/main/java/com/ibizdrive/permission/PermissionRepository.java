@@ -256,6 +256,30 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
      * @param qLike        nullable LIKE 패턴 (호출자가 lower + escape + wrap).
      * @param pageable     page/size + (호출자가 정렬을 override 하지 않는 한) 본 SQL 의 ORDER BY 가 사용됨.
      */
+    /**
+     * User Home Dashboard — 본인이 직접 USER subject 로 받은 active grant 목록 (created_at DESC).
+     *
+     * <p>인증 사용자 본인의 직접 권한만 노출 — department/role/everyone indirect grant 는 v1.1 (집계 기준
+     * 정의 필요). {@code expires_at <= NOW()} 만료 row 는 제외 (대시보드 진입 사용성, evaluator 정책 동형).
+     *
+     * <p>정렬: {@code created_at DESC, id DESC} — 가장 최근 받은 공유가 최상단 + tie-break stable.
+     *
+     * <p>리소스 이름/granter 이름/folderPath 는 service 단에서 N+1 회피 batch 처리 (admin matrix 패턴 답습).
+     */
+    @Query(value = """
+        SELECT p.id, p.resource_type, p.resource_id, p.subject_type, p.subject_id,
+               p.preset, p.granted_by, p.expires_at, p.created_at
+        FROM permissions p
+        WHERE p.subject_type = 'user'
+          AND p.subject_id = CAST(:userId AS uuid)
+          AND (p.expires_at IS NULL OR p.expires_at > NOW())
+        ORDER BY p.created_at DESC, p.id DESC
+        """, nativeQuery = true)
+    List<PermissionRow> findGrantsToUserPaged(
+        @Param("userId") UUID userId,
+        Pageable pageable
+    );
+
     @Query(
         value = """
             SELECT p.id, p.resource_type, p.resource_id, p.subject_type, p.subject_id,
