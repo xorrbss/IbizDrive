@@ -1228,6 +1228,27 @@ export const api = {
   },
 
   /**
+   * v1.x — 현재 사용자의 즐겨찾기 목록 (file/folder 통합, 최신순).
+   *
+   * <p>backend {@code GET /api/me/favorites} 1:1. read-only, CSRF 불필요.
+   * 응답 envelope `{ items: FavoriteItem[] }`. soft-deleted resource는 backend에서 자연 제외.
+   * 페이지네이션 없음 (v1).
+   *
+   * <p>에러: 401 UNAUTHORIZED (미인증) — buildApiError로 status 매핑. 200 OK 정상.
+   */
+  async listMyFavorites(): Promise<import('@/types/favorite').FavoritesListResponse> {
+    const res = await fetch('/api/me/favorites', {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    })
+    if (!res.ok) {
+      throw await buildApiError(res, `listMyFavorites failed: ${res.status}`)
+    }
+    return (await res.json()) as import('@/types/favorite').FavoritesListResponse
+  },
+
+  /**
    * P2a — 즐겨찾기 토글 (docs/02 §7.5.1). file/folder × star/unstar 4 endpoint를
    * 단일 helper로 통합: `starred=true` → POST(star), `starred=false` → DELETE(unstar).
    *

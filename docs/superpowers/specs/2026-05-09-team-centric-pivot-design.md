@@ -340,6 +340,11 @@ share_grant_max(scope=A, target=B) =
    - 사이드바 단일 "🗑 휴지통" 링크
    - 클릭 시 별도 페이지: workspace 선택 탭 (`부서 휴지통 | ProjectAlpha 휴지통 | ...`)
    - URL: `/trash/d/:dept` 또는 `/trash/t/:team` (§5.1 정합)
+7-2. **pinned shortcuts row** (v1.x 추가, zip 디자인 line 31 대응):
+   - 3-section 위에 cross-workspace per-user pinned 진입점 1행씩 배치.
+   - 현재: ⭐ **즐겨찾기** (`/favorites`) — 사용자가 star 표시한 file/folder 통합 목록. count badge = 활성 favorites 수.
+   - 휴지통 패턴 답습 — entry는 사이드바, 콘텐츠는 별도 페이지. workspace-scoped 아님.
+   - 향후 "최근" 등 같은 row 패턴으로 확장 가능.
 8. **빈 상태**:
    - 부서 미배정: "부서 미배정 — 관리자에게 문의"
    - 팀 0개: "[+ 새 팀 만들기]" CTA만

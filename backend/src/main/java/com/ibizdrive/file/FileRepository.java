@@ -38,6 +38,14 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     List<FileItem> findByFolderIdAndDeletedAtIsNull(UUID folderId);
 
     /**
+     * v1.x {@code GET /api/me/favorites} reverse-lookup — 즐겨찾기 id 집합 중 활성 파일만 batch fetch.
+     * soft-deleted 항목은 자연 제외 (favorites 행은 별도 cleanup 없이 화면에서만 hidden).
+     *
+     * <p>{@code ids.isEmpty()}는 호출부 책임 (Spring Data가 IN()을 invalid SQL로 변환).
+     */
+    List<FileItem> findAllByIdInAndDeletedAtIsNull(java.util.Collection<UUID> ids);
+
+    /**
      * P2d — {@code GET /api/folders/{id}/items} 응답의 {@code itemsCount} 배지 wiring.
      *
      * <p>주어진 폴더 id 집합에 대해 활성 자식 파일 수를 부모별 group count.
