@@ -5,11 +5,11 @@
 
 ---
 
-## 2026-05-13 — 🎨 rightpanel-frontend-wire (P_panel-B — RightPanel 디자인 fidelity 완성)
+## 2026-05-13 — 🎨 rightpanel-frontend-wire (P_panel-C — 헤더 액션 + PreviewCard + 종류/위치 row)
 
 ### 범위
 
-PR #218(P_panel-A)에서 backend `FileDetailResponse.owner/sharedWith/folderPath` 노출 직후 잔여 frontend wire. `design-reference/panels.jsx §RightPanel L8~184` 1:1 정합으로 RightPanel.tsx 풀세트 rewrite. `v1x-backlog.md` Tier 1 line 48 closure.
+PR #218(P_panel-A) backend 확장 + PR #220(P_panel-B) detail rows owner/sharedWith/folderPath wiring 후 잔여 디자인 fidelity. `design-reference/panels.jsx §RightPanel L8~184`에서 PR #220이 다루지 않은 영역(헤더 액션 toolbar + PreviewCard placeholder + 종류/위치 row + MiniAvatar 색상 hash 정합)을 본 PR에서 완성. **PR #220과 같은 RightPanel.tsx 영역을 동시 작업(co-session)** — master merge 시 RightPanel.tsx / RightPanel.test.tsx conflict는 본 PR 풀세트로 통합 채택(소유자/공유/경로 row 동작은 PR #220과 동치 + 추가 row + 헤더 + Preview). `v1x-backlog.md` Tier 1 line 48 closure.
 
 ### 변경 (3 파일, +467/-30)
 
@@ -23,6 +23,7 @@ PR #218(P_panel-A)에서 backend `FileDetailResponse.owner/sharedWith/folderPath
 
 ### 결정/편차
 
+- **PR #220 co-session 흡수**: PR #220이 같은 P_panel-B 명칭으로 detail rows 3건(소유자/공유/경로)만 wire하고 머지. 본 PR이 더 풀세트라 P_panel-C로 재포지셔닝 + master merge 시 RightPanel.tsx 풀세트 채택. 동등 row(소유자/공유/경로)는 본 PR이 디자인 정합 더 충실(MiniAvatar 색상 hash 일관 + DetailSharedStack max=4 + N명 라벨 + folderPath '내 드라이브' prefix).
 - **viewCount 제외**: ADR #9 `FILE_VIEWED` audit + 파티션 전략 결정 선결 blocker. 디자인 8 row 중 row 자체 미렌더 (placeholder 표시도 안 함). backlog closure entry에 분리 명시.
 - **더보기 disabled placeholder**: 디자인은 dots 아이콘만, 동작 미정(rename/delete 등 dropdown). MVP는 `disabled` + TODO 주석, 별도 트랙으로 분리. `aria-label="더보기"` 보존.
 - **공유 = 권한 탭 전환**: 디자인 `onOpenPermissions` 콜백 의미. ShareDialog는 BulkActionBar 등 별도 entry, RightPanel은 권한 관리 진입점만.
@@ -34,13 +35,73 @@ PR #218(P_panel-A)에서 backend `FileDetailResponse.owner/sharedWith/folderPath
 
 - `pnpm typecheck` ✓ exit 0
 - `pnpm lint` ✓ exit 0
-- `pnpm test --run src/components/files/RightPanel.test.tsx` ✓ **21/21 PASS** (기존 13 + 신규 8)
+- `pnpm test --run src/components/files/RightPanel.test.tsx` ✓ **21/21 PASS** (기존 13 + 신규 8). master merge 후 재실행 필요.
 
 ### 다음 세션 컨텍스트
 
 - **viewCount row 별도 트랙** (가칭 v1.1+ — file-view-count): `FILE_VIEWED` audit emit + 파티션 전략 결정(ADR #9) → `audit_log` 또는 `file_views` 별도 테이블 → backend aggregation → `FileDetailResponse.viewCount` 노출 → RightPanel row 추가.
 - **더보기 메뉴 별도 트랙**: dropdown 컴포넌트 + rename/delete/move 등 action 매핑. 기존 FileRowActionMenu 와 entry/UX 정합 필요.
 - **mini-avatar lib 추출 검토**: 3번째 소비자(예: ActivityTab) 등장 시 `lib/avatar.ts` 의 colorForUser/initialOf 추출 + admin/teams Avatars.tsx 도 마이그레이션.
+
+---
+
+## 2026-05-13 — dual-approval Phase 1 (data layer — V20 + entity + repository)
+
+### 범위
+
+2인 승인 framework (ADR #47 / docs/02 §2.11 / docs/04 §16) **Phase 1 closure** — data layer만. spec(`dev/completed/v1x-confirm-2admin-design/`)이 reserve였던 V_ 마이그레이션을 V20으로 실 적용 + entity + repository + integration test 12건. service / controller / audit / hook / admin UI는 별도 Phase로 분리.
+
+### 변경 (6 file, +375 추가)
+
+backend (4 file 신규 + 1 docs)
+- `V20__pending_admin_approvals.sql`: spec 2.11 정합 — table + 4 partial indexes + 3 CHECK 제약 (status enum / decided_at-status invariant / secondary-status invariant) + COMMENT 4건.
+- `approval/PendingApprovalStatus.java` (신규): 5-value enum (REQUESTED/APPROVED/REJECTED/CANCELLED/EXPIRED) + `isTerminal()`.
+- `approval/PendingAdminApproval.java` (신규): @Entity. JSONB payload는 Hibernate 6 `@JdbcTypeCode(SqlTypes.JSON)` String 매핑 (caller가 ObjectMapper).
+- `approval/PendingAdminApprovalRepository.java` (신규): `lockById` (PESSIMISTIC_WRITE) + `findPendingByActionType(actionType?, Pageable)` + `findPendingByRequester(requesterId)` + `findExpiredPending(now, Pageable)`. 모든 finder는 V20 partial index 정합.
+
+test (1 file 신규)
+- `PendingAdminApprovalRepositoryTest.java` (12건, Testcontainers slice):
+  - CHECK 제약 5건 (status enum / REQUESTED+decided_at NULL / terminal+decided_at NOT NULL / CANCELLED+secondary NULL / APPROVED+secondary NOT NULL)
+  - entity 1건 (JSONB payload roundtrip — 한글 reason 포함)
+  - finders 4건 (pending action_type 필터 / requester 본인 / expired 후보 / lock fetch)
+
+docs (3 file)
+- `docs/02 §2.11`: "v1.x reserved" → "Phase 1 도입, V20" 상태 갱신.
+- `docs/v1x-backlog.md` Tier 1: "2인 승인 framework 실 구현" → "Phase 2+ (service/controller/audit/hook/admin UI/cron)"으로 잔여 분해.
+- `BETA-RELEASE.md`: 변경 없음 (audit emit 신규 0건, 코드 게이트는 그대로 PASS).
+
+### 결정/편차
+
+- **Phase 분할**: spec ADR #47이 단일 트랙으로 정의됐으나 L effort → Phase 1 data layer를 single PR로 출시. Phase 2+ 는 별도 PR (service/controller/audit/hook/UI/cron). 점진 활성화 (per-action config 게이트 default=false 정합).
+- **JSONB raw String 매핑** (vs DTO + Jackson): Phase 1은 schema 검증이 충분. action_type별 payload DTO + (de)serializer는 Phase 2 service 도입 시 합류 — KISS + premature abstraction 회피.
+- **DB CHECK 3종으로 invariant 강제** (CLAUDE.md §3 원칙 6): status enum + decided_at-status + secondary-status. application 레벨 보증만으로는 race로 위반 가능.
+- **partial index 4종 매칭 finder query**: `idx_pending_approvals_requested` (action_type+status) / `_by_requester` (requested_by+requested_at) / `_expires` (expires_at WHERE status='REQUESTED') / `_decided` (decided_at WHERE terminal). 모든 finder가 본 index와 정합된 WHERE 조건.
+- **lockById는 status 무관**: terminal row의 재결정 시도도 트랜잭션 안에서 status 검사로 분기 (`APPROVAL_ALREADY_DECIDED` 409, Phase 2 service 책임).
+- **Phase 1 audit emit 0**: data layer만으로 의미 없는 audit 발행 회피. Phase 3에서 4종 emit (`ADMIN_APPROVAL_REQUESTED`/`GRANTED`/`REJECTED`/`EXPIRED`).
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `PendingAdminApprovalRepositoryTest` 12건은 Testcontainers slice → 로컬 Docker Desktop Windows에서 SKIPPED → **CI Linux 결과 의존** (memory: Local Docker-skip CI gap).
+- Flyway baselineOnMigrate=false라 V20이 빈 schema에는 V1~V19와 함께 적용, 기존 schema에는 신규 1건만 적용.
+
+### 다음 세션 컨텍스트 — Phase 2 (service + controller)
+
+- `PendingAdminApprovalService`: `submit(actionType, payload, requestedBy)` + `approve(id, secondary, reason)` + `reject(id, secondary, reason)` + `cancel(id, requestedBy)` + `expire(id)` 5 메서드. transition은 `lockById` + status 검사 + UPDATE.
+- `AdminApprovalController`: `GET /api/admin/approvals?status&actionType` (page) / `GET /:id` / `POST /:id/approve` / `POST /:id/reject` / `DELETE /:id`.
+- 에러 코드 4종 docs/02 §8 + frontend errors.ts mirror.
+- `Permission.APPROVE_ADMIN_ACTION` enum 추가 (docs/03 §3.1) — secondary 결정자 가드.
+- `audit/AuditEventType` 4종 신규 + listener + ADR #47 매트릭스 (actor / target_type='admin_approval' / metadata).
+- 트랜잭션 정합: approve는 단일 트랜잭션 내 (a) approval row UPDATE + (b) payload deserialize + (c) action 실행 (role 변경 등) + (d) audit emit. 실패 시 rollback → status=REQUESTED 복귀.
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/02 §2.11` "v1.x reserved" → "Phase 1 도입, V20" ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
 
 ---
 

@@ -19,8 +19,9 @@ import { ActivityTab } from './ActivityTab'
  * - Parallel route 대신 query param 사용 (§19 원칙 2)
  * - M15: 4-tab 도입 (세부정보/버전/활동/권한)
  * - M-RP.1/3/4: 버전/권한/활동 탭 wiring 활성
- * - P_panel-B (rightpanel-frontend-wire): 헤더 파일 아이콘 + 액션 3개 (다운로드/공유/더보기) +
+ * - P_panel-C (rightpanel-frontend-wire): 헤더 파일 아이콘 + 액션 3개 (다운로드/공유/더보기) +
  *   PreviewCard placeholder + detail 탭 7 row 풀세트 (viewCount는 ADR #9 blocker로 분리).
+ *   PR #220(P_panel-B)이 같은 영역 detail rows 3건만 wire한 후 본 PR이 풀세트로 통합.
  *   디자인 진실의 출처: `design-reference/panels.jsx` L8~184.
  *
  * 설계: docs/01 §11 (로딩/에러/빈 상태), §17.5 (useOpenFile), §18 row 15 (M15)
