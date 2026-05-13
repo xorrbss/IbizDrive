@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-14 — favorites-cron-cleanup (orphan favorites row 일일 정리, PR #TBD)
+## 2026-05-14 — favorites-cron-cleanup (orphan favorites row 일일 정리, PR #245)
 
 ### 범위
 
@@ -46,7 +46,7 @@ tests
 
 ---
 
-## 2026-05-14 — ⭐ favorites-listing (Sidebar pinned row + /favorites 페이지, PR #TBD)
+## 2026-05-14 — ⭐ favorites-listing (Sidebar pinned row + /favorites 페이지, PR #243)
 
 ### 범위
 
