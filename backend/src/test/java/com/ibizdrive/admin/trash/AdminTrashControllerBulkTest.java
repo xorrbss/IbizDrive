@@ -55,6 +55,7 @@ class AdminTrashControllerBulkTest {
     @Autowired ObjectMapper json;
 
     @MockBean AdminTrashService service;
+    @MockBean com.ibizdrive.approval.PendingApprovalService approvalService; // Phase 3c dual-approval 그래프 충족 — gate=false 기본이라 실제 호출 0
 
     @MockBean LoginAttemptTracker tracker;
     @MockBean UserRepository userRepository;
