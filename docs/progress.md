@@ -5,6 +5,61 @@
 
 ---
 
+## 2026-05-13 — dual-approval Phase 2b (controller + DTOs + service findById)
+
+### 범위
+
+2인 승인 framework (ADR #47) **Phase 2b closure** — Phase 2 (#223) state machine service 위에서 5 HTTP endpoint + 2 DTO + service read 메서드. Phase 3 (handler) / Phase 4 (admin UI) / Phase 5 (cron)은 별도 PR.
+
+### 변경 (5 file, +183 추가)
+
+backend (4 신규, 1 수정)
+- `admin/approval/AdminApprovalController.java` (신규) — `@RequestMapping("/api/admin/approvals")` 5 endpoint:
+  - `GET /` — pending 목록 (actionType filter + page/size, max 200/page)
+  - `GET /:id` — 단건 상세
+  - `POST /:id/approve` — secondary 승인 + decisionReason optional
+  - `POST /:id/reject` — secondary 거부 + decisionReason optional
+  - `DELETE /:id` — requested_by 본인 취소
+  모두 `@PreAuthorize("hasRole('ADMIN')")`. `@AuthenticationPrincipal IbizDriveUserDetails`로 actor 추출. Phase 2 service exception은 GlobalExceptionHandler가 envelope으로 매핑.
+- `admin/approval/AdminApprovalDto.java` (신규, record) — `PendingAdminApproval` 1:1 mirror response. payloadJson raw String 노출 (admin UI Phase 4가 client-side parse).
+- `admin/approval/AdminApprovalDecisionRequest.java` (신규, record) — approve/reject 공유 body. `decisionReason` `@Size(max=1000)` optional.
+- `approval/PendingApprovalService.java` — `getById(UUID)` 읽기 메서드 추가 (lock 없음, GET /:id 진입점).
+
+docs (1 갱신)
+- `docs/v1x-backlog.md` Tier 1: "Phase 2b+" → "Phase 3+ (handler/cron/admin UI)" 잔여 분해.
+
+### 결정/편차
+
+- **ROLE_ADMIN 단일 가드** (vs `@PreAuthorize("hasAuthority('APPROVE_ADMIN_ACTION')")`): Phase 2b는 ROLE_ADMIN 보유자 전원에게 secondary 결정 권한 부여. `APPROVE_ADMIN_ACTION` permission enum은 향후 ROLE_ADMIN 중 일부에게만 grant하는 세밀 제어용 reserve (Phase 3+).
+- **DELETE도 @PreAuthorize("hasRole('ADMIN')")**: cancel은 본인 요청만 가능하지만 ADMIN role 보유자만 dual-approval 흐름을 시작하므로 ROLE 가드 일관. 서비스가 ownership 검사 + 404 위장.
+- **page size max 200**: 다른 admin endpoint (`AdminAuditController`, `AdminUsersController`) 정책 답습. 운영 비대화 회피.
+- **decisionReason optional + max 1000**: ADR #47 정책상 approve는 optional, reject는 강제이나 단일 DTO 공유로 단순화. reject 강제는 운영 가이드라인으로 (controller-level @NotBlank 분리는 Phase 4 UI 시점에 form validation으로 충분).
+- **GET /:id는 lock 없는 readonly**: 표시 전용. transition 진입은 별도 lockById 경로 (POST approve/reject/DELETE).
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- Phase 2 service Mockito test 17건은 본 PR 변경 미영향 (controller는 thin wrapper).
+- MockMvc controller test는 Phase 3 한 묶음으로 합류 권장 — Phase 2b는 신규 endpoint surface area만, behavior 검증은 service 책임.
+
+### 다음 세션 컨텍스트 — Phase 3 (handler)
+
+- `RetentionChangeApprovalHandler` / `RoleChangeApprovalHandler` / `TrashPurgeApprovalHandler` 각각 신규.
+- 각 handler: payload DTO + ObjectMapper deserialize + 기존 service 호출 (예: retention은 `TrashPolicyService.updateRetentionDays(..., actorId)`).
+- 기존 controller (`AdminTrashPolicyController.update` 등)에 per-action 게이트 (`app.dual-approval.retention-change.enabled`) 분기 — true 시 framework `submit`, false 시 즉시 실행 (default false 유지로 회귀 0).
+- MockMvc controller test 추가 — Phase 3 PR에 합류.
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/v1x-backlog.md` Tier 1 ✓ (Phase 3+ 잔여 분해)
+- docs/02 §8 / docs/03 §3.1/§4.1: 변경 0 (spec 이미 정합 — endpoint contract 명세 보유)
+
+---
+
 ## 2026-05-13 — dual-approval Phase 2 (state machine service + audit + exceptions + Permission)
 
 ### 범위
