@@ -1,5 +1,6 @@
 package com.ibizdrive.admin;
 
+import com.ibizdrive.approval.PendingAdminApprovalExpirationProperties;
 import com.ibizdrive.audit.WebRequestContextHolder;
 import com.ibizdrive.permission.PermissionExpirationProperties;
 import com.ibizdrive.purge.HardPurgeProperties;
@@ -46,6 +47,7 @@ public class AdminSystemController {
     private final ShareExpirationProperties shareExpiration;
     private final PermissionExpirationProperties permissionExpiration;
     private final StorageOrphanCleanupProperties storageOrphanCleanup;
+    private final PendingAdminApprovalExpirationProperties adminApprovalExpiration;
     private final AdminSystemService adminSystemService;
     private final CronPolicyRepository cronPolicyRepository;
 
@@ -54,6 +56,7 @@ public class AdminSystemController {
         ShareExpirationProperties shareExpiration,
         PermissionExpirationProperties permissionExpiration,
         StorageOrphanCleanupProperties storageOrphanCleanup,
+        PendingAdminApprovalExpirationProperties adminApprovalExpiration,
         AdminSystemService adminSystemService,
         CronPolicyRepository cronPolicyRepository
     ) {
@@ -61,6 +64,7 @@ public class AdminSystemController {
         this.shareExpiration = shareExpiration;
         this.permissionExpiration = permissionExpiration;
         this.storageOrphanCleanup = storageOrphanCleanup;
+        this.adminApprovalExpiration = adminApprovalExpiration;
         this.adminSystemService = adminSystemService;
         this.cronPolicyRepository = cronPolicyRepository;
     }
@@ -95,6 +99,12 @@ public class AdminSystemController {
                 "storage.orphan.cleanup", "스토리지 고아 정리",
                 cronPolicyRepository.isEnabled("storage.orphan.cleanup"), storageOrphanCleanup.cron(), storageOrphanCleanup.zone(),
                 /* batchSize */ null, storageOrphanCleanup.maxPerRun(), storageOrphanCleanup.graceHours()
+            ),
+            new CronJobStatusResponse(
+                "admin.approval.expire", "2인 승인 만료 처리",
+                cronPolicyRepository.isEnabled("admin.approval.expire"),
+                adminApprovalExpiration.cron(), adminApprovalExpiration.zone(),
+                adminApprovalExpiration.batchSize(), /* maxPerRun */ null, /* graceHours */ null
             )
         );
         return Map.of("jobs", jobs);

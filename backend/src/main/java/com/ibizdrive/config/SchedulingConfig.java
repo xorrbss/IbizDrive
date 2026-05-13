@@ -1,5 +1,6 @@
 package com.ibizdrive.config;
 
+import com.ibizdrive.approval.PendingAdminApprovalExpirationProperties;
 import com.ibizdrive.permission.PermissionExpirationProperties;
 import com.ibizdrive.purge.HardPurgeProperties;
 import com.ibizdrive.share.ShareExpirationProperties;
@@ -12,10 +13,11 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Spring scheduling + 스케줄 잡들의 properties record 등록 지점 (A7.3, SHARE_EXPIRED cron,
  * permissions-expired-cron).
  *
- * <p>{@code @EnableScheduling}은 무조건 활성 — 4 cron job({@link com.ibizdrive.purge.HardPurgeJob},
+ * <p>{@code @EnableScheduling}은 무조건 활성 — 5 cron job({@link com.ibizdrive.purge.HardPurgeJob},
  * {@link com.ibizdrive.share.ShareExpirationJob},
  * {@link com.ibizdrive.permission.PermissionExpirationJob},
- * {@link com.ibizdrive.storage.StorageOrphanCleanupJob}) 빈은 항상 등록되며 매 tick마다 진입한다.
+ * {@link com.ibizdrive.storage.StorageOrphanCleanupJob},
+ * {@link com.ibizdrive.approval.PendingAdminApprovalExpirationJob}) 빈은 항상 등록되며 매 tick마다 진입한다.
  *
  * <p>잡-개별 enabled 게이트는 {@link com.ibizdrive.admin.CronPolicyRepository#isEnabled} (DB
  * 단일 row lookup, V11 admin-cron-policy-toggle 트랙)로 위임 — 각 잡의 {@code run()} 첫 줄에서
@@ -32,7 +34,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     HardPurgeProperties.class,
     ShareExpirationProperties.class,
     PermissionExpirationProperties.class,
-    StorageOrphanCleanupProperties.class
+    StorageOrphanCleanupProperties.class,
+    PendingAdminApprovalExpirationProperties.class
 })
 public class SchedulingConfig {
 }

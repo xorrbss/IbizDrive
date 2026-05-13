@@ -15,7 +15,7 @@ import java.time.Instant;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * V11 시드(4 row) + isEnabled query + update 동작 검증.
+ * V11 시드(4 row) + V21 추가(admin.approval.expire) + isEnabled query + update 동작 검증.
  *
  * <p>본 프로젝트의 다른 repository slice 테스트({@link com.ibizdrive.department.DepartmentRepositoryTest},
  * {@link com.ibizdrive.purge.HardPurgeRepositoryTest})와 동일한 패턴
@@ -43,12 +43,14 @@ class CronPolicyRepositoryTest {
     private CronPolicyRepository repository;
 
     @Test
-    void v11SeedsFourRowsAllDisabled() {
-        assertThat(repository.count()).isEqualTo(4);
+    void v11AndV21SeedsFiveRowsAllDisabled() {
+        // V11: 4 row + V21 (ADR #47 Phase 3d): admin.approval.expire 추가 → 총 5.
+        assertThat(repository.count()).isEqualTo(5);
         assertThat(repository.isEnabled("purge.expired")).isFalse();
         assertThat(repository.isEnabled("share.expire")).isFalse();
         assertThat(repository.isEnabled("permission.expire")).isFalse();
         assertThat(repository.isEnabled("storage.orphan.cleanup")).isFalse();
+        assertThat(repository.isEnabled("admin.approval.expire")).isFalse();
     }
 
     @Test
