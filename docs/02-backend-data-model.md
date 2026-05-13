@@ -401,6 +401,7 @@ CREATE INDEX idx_folders_legal_hold ON folders(legal_hold) WHERE legal_hold = TR
 
 ### 2.11 pending_admin_approvals (Phase 1 도입, V20 — ADR #47)
 
+
 > **Status**: Phase 1 (data layer) **완료** 2026-05-13 본 트랙 — V20 migration + `PendingAdminApproval` entity + repository + integration test 12건. service/controller/audit emit/hook/admin UI/expiration cron은 Phase 2+ (docs/00 §5 ADR #47, docs/03 §6.4 일반 명세, docs/04 §16 운영 명세).
 
 **메타 테이블 — Generic dual-approval framework** (Tier 0 = role 변경 / trash purge / retention 변경):
@@ -519,7 +520,32 @@ CREATE TABLE trash_policy (
 - **`updated_by ON DELETE SET NULL`** — 운영자 계정 hard-delete 시 정책 row는 보존 (자체 audit_log가 actor 보존).
 - **이력은 audit_log** — `RETENTION_POLICY_CHANGED` event(`docs/03 §4.1`)가 `before/after` 보존. 별도 `trash_policy_history` 미도입 (YAGNI).
 
-### 2.13 ER 요약
+### 2.13 favorites (V22 — file-favorites-p2a)
+
+```sql
+-- P2a — FileRow/FileCard 즐겨찾기 별 아이콘 wiring.
+-- user 단위 favorites: file/folder resource를 즐겨찾기로 표시.
+-- 복합 PK (user_id, resource_type, resource_id)로 멱등 보장 + 중복 INSERT 차단.
+CREATE TABLE favorites (
+    user_id       UUID        NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    resource_type VARCHAR(10) NOT NULL CHECK (resource_type IN ('file', 'folder')),
+    resource_id   UUID        NOT NULL,
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (user_id, resource_type, resource_id)
+);
+
+CREATE INDEX idx_favorites_by_user_created ON favorites(user_id, created_at DESC);
+CREATE INDEX idx_favorites_by_resource     ON favorites(resource_type, resource_id);
+```
+
+- **복합 PK + DB CHECK** — 같은 (user, resource) 중복 INSERT 자연 차단. resource_type 도메인을 `'file'`/`'folder'`로 강제 (Permission 패턴 답습).
+- **user_id ON DELETE CASCADE** — 사용자 hard-delete 시 즐겨찾기 자동 회수.
+- **resource hard-delete cascade 부재** — file/folder hard purge(A7) 시 favorites row는 잔존. orphan 정리는 `storage.orphan.cleanup` cron이 아닌 별도 트랙(필요 시). FE는 `findStarredResourceIds` join 결과만 노출하므로 orphan row는 자연스럽게 미노출 (사용자 가시 영향 zero).
+- **created_at만 보존** — `/favorites` 화면 시간순 desc 정렬 용도. mutation/audit timestamps는 audit_log가 담당.
+- **`idx_favorites_by_resource`** — `findStarredResourceIds(userId, resourceType, resourceIds[])` batch lookup 가속 (FolderItemDto.starred wiring).
+- **이력은 audit_log** — `FILE_STARRED` / `FILE_UNSTARRED` / `FOLDER_STARRED` / `FOLDER_UNSTARRED` event (`docs/03 §4.1`). before/after 미보존 (binary 토글이라 event type 자체가 의미 보유).
+
+### 2.14 ER 요약
 
 ```text
 users ──┬── departments
@@ -1350,7 +1376,7 @@ GET /api/folders/:id/items
   Request:  Query params — sort=NAME|UPDATED_AT|SIZE (default NAME), dir=ASC|DESC (default ASC)
   Response: 200 { items: FolderItemDto[] }
             FolderItemDto = { id, type: 'folder'|'file', name, size?, mimeType?, updatedAt,
-                              updatedBy, parentId, scope, shareCount?, itemsCount?, restricted? }
+                              updatedBy, parentId, scope, shareCount?, itemsCount?, restricted?, starred? }
             shareCount? : Integer — 이 리소스 자체에 부여된 active grant 수 (direct only,
                           상속 미포함). 0 또는 grant 없음 시 키 omit (@JsonInclude NON_NULL).
                           UNIQUE INDEX (resource, subject) 보장으로 COUNT(*) ≡ DISTINCT subject.
@@ -1363,6 +1389,10 @@ GET /api/folders/:id/items
                           (키 포함), 없으면 키 omit. FE FileRow는 lock 아이콘을 단순 노출하며
                           shareCount(2+ 인원수 배지)와 함께 두 단계 시각 신호 — "공유됨"(lock) +
                           "여러 명과 공유됨"(lock + count) (P2b, PR file-badge-restricted).
+            starred?    : Boolean — 현재 인증된 사용자가 이 resource를 즐겨찾기로 등록한 경우 true
+                          (키 포함). 미등록 시 키 omit. user 단위 query라 batch에 userId 인자 필요
+                          (FavoriteRepository.findStarredResourceIds, P2a). FE FileRow는 별 아이콘
+                          fill 토글로 노출 — toggle은 POST/DELETE /api/files/{id}/star (또는 folder).
   Order:    folders 그룹 → files 그룹 (각 그룹 내 sort/dir 적용).
             sort=SIZE 시 folder 그룹은 size 무의미 — name asc fallback.
   SoftDel:  parent 폴더 soft-deleted면 404. 자식 중 deleted_at IS NOT NULL은 제외.
@@ -1371,7 +1401,38 @@ GET /api/folders/:id/items
             shareCount/itemsCount 모두 batch GROUP BY로 N+1 회피.
             shareCount: folder/file 각 1쿼리. itemsCount: subfolder/subfile 각 1쿼리.
             restricted는 shareCount 결과에서 derive — 추가 쿼리 없음.
+            starred: favorites 1쿼리 (resourceType 'folder' + 'file' 각 1, user 1건).
 ```
+
+#### 7.5.1 즐겨찾기 토글 (favorites, P2a)
+
+| Method | Path | Guard | TX | Norm | SoftDel | Errors |
+|---|---|---|---|---|---|---|
+| POST   | `/api/files/{id}/star`   | `hasPermission(#id, 'file', 'READ')`   | REQUIRED (멱등 INSERT + AFTER_COMMIT audit) | — | — | 401, 403, 404 |
+| DELETE | `/api/files/{id}/star`   | `hasPermission(#id, 'file', 'READ')`   | REQUIRED (멱등 DELETE + AFTER_COMMIT audit) | — | — | 401, 403, 404 |
+| POST   | `/api/folders/{id}/star` | `hasPermission(#id, 'folder', 'READ')` | REQUIRED (멱등 INSERT + AFTER_COMMIT audit) | — | — | 401, 403, 404 |
+| DELETE | `/api/folders/{id}/star` | `hasPermission(#id, 'folder', 'READ')` | REQUIRED (멱등 DELETE + AFTER_COMMIT audit) | — | — | 401, 403, 404 |
+
+```text
+POST/DELETE /api/{files|folders}/{id}/star            (file-favorites-p2a, 2026-05-13)
+  Headers:  X-CSRF-Token: <token>             (POST/DELETE 모두 필수)
+            Cookie: SESSION=<id>              (READ 권한 필요)
+  Request:  (no body)
+  Response: 204 No Content
+            (멱등 — 이미 starred 상태에서 POST 또는 unstarred 상태에서 DELETE 호출 시에도 204)
+  Side-effects:
+            - favorites 1 row INSERT (POST, 멱등) 또는 DELETE (DELETE, 멱등)
+            - AFTER_COMMIT 이벤트: FavoriteStarredEvent → FavoriteAuditListener (REQUIRES_NEW)
+              audit_log 1건: FILE_STARRED/UNSTARRED 또는 FOLDER_STARRED/UNSTARRED
+              actor=세션 사용자, target=resource id. before/after/metadata 모두 null
+              (binary 토글이라 event type 자체가 의미 보유).
+  Errors:
+    401 UNAUTHORIZED      (미인증)
+    403                   (READ 권한 부재 — @PreAuthorize 차단, 본문 없음)
+    404 NOT_FOUND         (resource not found — service layer 통과 후 hasPermission 평가에서 falsy)
+```
+
+**관련 audit 이벤트** (docs/03 §4.1): `file.starred`, `file.unstarred`, `folder.starred`, `folder.unstarred`.
 
 ### 7.6 파일 (Files)
 

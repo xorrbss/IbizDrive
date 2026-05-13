@@ -701,6 +701,8 @@ type AuditEventType =
   | 'file.deleted'
   | 'file.restored'
   | 'file.purged'
+  | 'file.starred'         // P2a 활성화 (`file-favorites-p2a`, 2026-05-13) — 즐겨찾기 추가
+  | 'file.unstarred'       // P2a 활성화 (`file-favorites-p2a`, 2026-05-13) — 즐겨찾기 제거
   // 버전
   | 'version.created'
   | 'version.restored'
@@ -713,6 +715,8 @@ type AuditEventType =
   | 'folder.restored'
   | 'folder.purged'        // A8 manual purge (DELETE /api/trash/folder/:id, ADR #32)
   | 'folder.audit_level_changed'
+  | 'folder.starred'         // P2a 활성화 (`file-favorites-p2a`, 2026-05-13) — 즐겨찾기 추가
+  | 'folder.unstarred'       // P2a 활성화 (`file-favorites-p2a`, 2026-05-13) — 즐겨찾기 제거
   // 권한 / 공유
   | 'permission.granted'
   | 'permission.revoked'

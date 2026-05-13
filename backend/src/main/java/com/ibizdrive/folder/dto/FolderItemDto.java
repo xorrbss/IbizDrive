@@ -33,6 +33,10 @@ import java.util.UUID;
  * shareCount > 0 인 경우와 정확히 동일 (둘 다 같은 query 결과를 base로 한다). FE FileRow는
  * lock 아이콘 1개를 단순 노출하며 shareCount(>1 시 인원수 배지)와 함께 표시되어
  * "공유된 자료" vs "여러 명과 공유된 자료" 두 단계 신호로 시각화. false/null 시 키 omit.
+ *
+ * <p>{@link #starred} (P2a) — 현재 인증된 사용자가 이 resource를 즐겨찾기로 등록한 경우 {@code true}.
+ * 즐겨찾기 미등록 시 {@code null} → 키 omit. {@link com.ibizdrive.favorite.FavoriteRepository#findStarredResourceIds}
+ * 결과를 base로 한다 — user 단위 query라 batch에 user_id 인자 필요.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record FolderItemDto(
@@ -47,9 +51,10 @@ public record FolderItemDto(
     ScopeRef scope,
     Integer shareCount,
     Integer itemsCount,
-    Boolean restricted
+    Boolean restricted,
+    Boolean starred
 ) {
-    public static FolderItemDto fromFolder(Folder f, Integer shareCount, Integer itemsCount) {
+    public static FolderItemDto fromFolder(Folder f, Integer shareCount, Integer itemsCount, Boolean starred) {
         return new FolderItemDto(
             f.getId(),
             "folder",
@@ -62,11 +67,12 @@ public record FolderItemDto(
             ScopeRef.of(f.getScopeType(), f.getScopeId()),
             shareCount,
             itemsCount,
-            shareCount != null && shareCount > 0 ? Boolean.TRUE : null
+            shareCount != null && shareCount > 0 ? Boolean.TRUE : null,
+            Boolean.TRUE.equals(starred) ? Boolean.TRUE : null
         );
     }
 
-    public static FolderItemDto fromFile(FileItem file, Integer shareCount) {
+    public static FolderItemDto fromFile(FileItem file, Integer shareCount, Boolean starred) {
         // file에는 itemsCount 의미 없음 — 항상 null.
         return new FolderItemDto(
             file.getId(),
@@ -80,7 +86,8 @@ public record FolderItemDto(
             ScopeRef.of(file.getScopeType(), file.getScopeId()),
             shareCount,
             null,
-            shareCount != null && shareCount > 0 ? Boolean.TRUE : null
+            shareCount != null && shareCount > 0 ? Boolean.TRUE : null,
+            Boolean.TRUE.equals(starred) ? Boolean.TRUE : null
         );
     }
 }

@@ -5,6 +5,62 @@
 
 ---
 
+## 2026-05-13 — ⭐ file-favorites-p2a (favorites backend + audit 4종, PR #TBD)
+
+### 범위
+
+file-badge 트랙 (P2c shareCount / P2d itemsCount / P2b restricted) 잔여 항목 P2a starred wiring backend 풀세트. FileRow 별 아이콘은 design-sweep-phase-2 (#199)에서 FE mount 완료, backend wiring만 미실시 상태였음.
+
+### 변경 (19 파일, +767/-19)
+
+backend
+- `V22__favorites.sql` (신규) — composite PK 테이블 + `idx_favorites_by_user_created` + `idx_favorites_by_resource`. CHECK으로 resource_type 'file'/'folder' 강제. user_id ON DELETE CASCADE.
+- `favorite/Favorite.java` + `FavoriteId.java` (신규) — Embedded composite PK entity. `Favorite.of(userId, resourceType, resourceId)` factory.
+- `favorite/FavoriteRepository.java` (신규) — `existsByIdUserIdAnd...` 멱등 가드 + `findStarredResourceIds(userId, type, ids[])` batch (file-badge P2c `countActiveByResources` 패턴 답습).
+- `favorite/FavoriteService.java` (신규) — `@Transactional` `star`/`unstar` 멱등 (이미 starred면 no-op, no event). AFTER_COMMIT event publish.
+- `favorite/FavoriteController.java` (신규) — 4 endpoint `POST/DELETE /api/{files|folders}/{id}/star`. `hasPermission(#id, 'file'|'folder', 'READ')` 가드. 204 No Content.
+- `favorite/FavoriteStarredEvent.java` (신규) — record(actorId, resourceType, resourceId, starred).
+- `audit/FavoriteAuditListener.java` (신규) — `@TransactionalEventListener(AFTER_COMMIT)`. file/folder × starred/unstarred → 4 audit enum 매핑. invalid resourceType은 swallow. record 실패는 ERROR + swallow (ADR #24).
+- `audit/AuditEventType.java` — 4 enum 추가: `FILE_STARRED`/`FILE_UNSTARRED`/`FOLDER_STARRED`/`FOLDER_UNSTARRED`. 총 58 → 62 enum.
+- `folder/FolderQueryService.java` — `FavoriteRepository` 주입 + `loadItems`에서 current user 인증 후 batch starred fetch (folder/file 각 1 query). `SecurityContextHolder`로 current user 추출, 미인증 시 starred=null.
+- `folder/dto/FolderItemDto.java` — `Boolean starred` 필드 추가 + `fromFolder/fromFile`에 `starred` 인자. false/null이면 JsonInclude로 omit.
+
+tests
+- `favorite/FavoriteServiceTest.java` (신규, 4건) — Mockito: star 새로 등록 / 이미 등록 멱등 / unstar 삭제 / unstar 멱등.
+- `audit/FavoriteAuditListenerTest.java` (신규, 6건) — file/folder × starred/unstarred 4 매핑 + invalid resourceType swallow + record 실패 swallow.
+- 기존 5 테스트 시그니처 갱신: `FileResponseScopeTest` / `FolderResponseScopeTest` / `FolderControllerTest` / `FolderQueryServiceItemsTest` — `fromFile`/`fromFolder` 4-arg, `FolderQueryService` 생성자 `favoriteRepository` 추가, FolderControllerTest constructor 13-arg.
+
+docs
+- `docs/02 §2.13 favorites` 신규 schema + 인덱스/CHECK/이력 정책 명세.
+- `docs/02 §7.5` FolderItemDto 응답에 `starred?` 필드 추가.
+- `docs/02 §7.5.1 즐겨찾기 토글` 신규 — 4 endpoint wire spec + 멱등 + audit emit.
+- `docs/03 §4.1` audit enum 4종 추가 (file.starred/unstarred + folder.starred/unstarred).
+- `docs/v1x-backlog.md` Tier 1: P2a backend closure mark + frontend wiring(S) 신규 entry.
+
+### 결정/편차
+
+- **scope = backend impl only** — frontend wiring(useToggleStar hook + FileRow onClick + optimistic update)은 별도 small PR 분리. backend 완비 후 다른 세션 pick-up 가능.
+- **Embedded composite PK** (vs single UUID id) — DB PK가 멱등 가드 직접 보장 (PK 충돌 시 INSERT 실패). file-badge P2c `Permission` 패턴 답습.
+- **resource_type은 String** ("file"/"folder", V22 CHECK 강제) — Permission 패턴 답습. enum 도메인 도입은 file-badge 트랙도 안 함.
+- **결합 endpoint 없음** — `/api/me/favorites` POST `{type, id}` 합본 endpoint 대신 4 separate. controller `@PreAuthorize`가 resource-type specific permission expr를 받아야 해서 단일 endpoint는 SpEL 분기 추가 부담.
+- **before/after/metadata null** — favorites는 binary 토글이라 event type 자체가 의미 보유. AuditService.record에 null 허용.
+- **frontend types/audit.ts 미동기** — 다른 backend enum도 selective mirror 상태(team.member.added 등 누락) + frontend AdminAudit UI에서 starred filter 미사용 → KISS, 향후 필요 시 추가.
+- **FolderQueryService SecurityContextHolder 사용** — controller layer에서 user 주입은 query service signature 변경 부담 큼. ThreadLocal 접근으로 invasive 변경 회피.
+
+### 검증
+
+- `./gradlew compileJava` BUILD SUCCESSFUL.
+- `./gradlew compileTestJava` BUILD SUCCESSFUL.
+- targeted `./gradlew test --tests "*FavoriteServiceTest" --tests "*FavoriteAuditListenerTest" --tests "*FolderQueryServiceItemsTest" --tests "*FolderResponseScopeTest" --tests "*FileResponseScopeTest" --tests "*FolderControllerTest"` BUILD SUCCESSFUL.
+- Testcontainers integration slice는 로컬 Docker Desktop Windows에서 SKIPPED (memory `feedback_local_skip_ci_gap`) — CI 의존.
+
+### 다음 세션 컨텍스트
+
+- **frontend P2a wiring** (S): `useToggleStar(resourceType, id)` hook + FileRow 별 아이콘 onClick + optimistic update. `FolderItemDto.starred` consume 이미 type 정의되어 있음(`FileItem.starred`).
+- 다른 세션 활성 트랙: 2인 승인 framework Phase 4 email listener / Quota Phase 6 후속(이미 #214로 closure인지 재확인 필요) / RightPanel fidelity 옵션 A — 본 세션 모두 회피.
+
+---
+
 ## 2026-05-13 — 📢 v1-beta-release-ceremony (사내 공지 + 인프라 핸드오프 메모 초안, PR #234)
 
 ### 범위
