@@ -122,7 +122,14 @@ public class FolderQueryService {
         }
         Collections.reverse(chain);
 
-        return new FolderDetailResponse(FolderDto.from(self), chain);
+        // P2a — 현재 사용자의 즐겨찾기 여부. 미인증 시 null (FolderItemDto.starred 동일 정책).
+        UUID currentUserId = resolveCurrentUserId();
+        Boolean starred = currentUserId != null
+            && favoriteRepository.existsByIdUserIdAndIdResourceTypeAndIdResourceId(
+                currentUserId, "folder", id
+            ) ? Boolean.TRUE : null;
+
+        return new FolderDetailResponse(FolderDto.from(self), chain, starred);
     }
 
     /**

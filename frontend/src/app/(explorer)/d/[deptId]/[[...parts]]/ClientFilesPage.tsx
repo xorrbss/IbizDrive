@@ -5,7 +5,7 @@ import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useCloseFileOnFolderChange } from '@/hooks/useCloseFileOnFolderChange'
 import { useWorkspaces } from '@/hooks/useWorkspaces'
 import { buildWorkspacePath } from '@/lib/workspacePath'
-import { Breadcrumb } from '@/components/folders/Breadcrumb'
+import { BreadcrumbWithStar } from '@/components/folders/BreadcrumbWithStar'
 import { FileTable } from '@/components/files/FileTable'
 import { BulkActionBar } from '@/components/files/BulkActionBar'
 import { RightPanel } from '@/components/files/RightPanel'
@@ -76,7 +76,7 @@ export function ClientFilesPage({ deptId, parts }: { deptId: string; parts: stri
   return (
     <div className="flex flex-1 min-h-0 min-w-0">
       <div className="flex-1 min-w-0 flex flex-col bg-bg">
-        <Breadcrumb />
+        <BreadcrumbWithStar />
         <FolderToolbar />
         <BulkActionBar />
         <FileTable folderId={folderId} />
