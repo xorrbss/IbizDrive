@@ -61,6 +61,55 @@ docs
 
 ---
 
+## 2026-05-14 — dual-approval Phase 4 email listener (REQUESTED/APPROVED/REJECTED/EXPIRED 알림)
+
+### 범위
+
+2인 승인 framework (ADR #47, docs/04 §16.4.4) Phase 4 잔여 중 **backend email listener** closure. `AdminApprovalDecidedEvent`(Phase 2)를 `@TransactionalEventListener(AFTER_COMMIT)`으로 수신해 4 transition 매트릭스대로 한국어 이메일을 발송. CANCELLED는 audit listener와 동형으로 emit 없음. default `enabled=false`라 회귀 0.
+
+### 변경 (5 file, +470 추가, co-session plan/tasks 인수)
+
+backend
+- `UserRepository.findActiveAdmins()` (신규 @Query): `deleted_at IS NULL AND is_active = TRUE AND role = ADMIN`, 정렬 `id ASC` (deterministic).
+- `AdminApprovalEmailProperties` (record): `enabled` / `baseUrl` / `from`. yaml-only 토글 — DB 토글은 후속 트랙 옵션.
+- `AdminApprovalEmailListener` (@Component, `@TransactionalEventListener(AFTER_COMMIT)`): disabled-skip → CANCELLED no-op → REQUESTED 다인 발송 (requested_by 제외) → APPROVED/REJECTED/EXPIRED 단인 발송 (requested_by). per-recipient try/catch로 격리. 한국어 subject/body 템플릿 + deep-link `{baseUrl}/admin/approvals/{id}`.
+- `SchedulingConfig`: 6번째 `@EnableConfigurationProperties` 등록.
+- `application.yml`: `app.admin-approval.email.{enabled:false, base-url:'http://localhost:3000', from:'noreply@ibizdrive.local'}` 추가.
+
+tests
+- `AdminApprovalEmailListenerTest` (Mockito, 14 케이스): disabled-skip / REQUESTED 다인+self-제외+subject/body+다인 순서 보존+per-recipient 격리+1-admin edge / APPROVED+REJECTED+EXPIRED subject prefix+body / lookup miss / null primary / soft-delete 가드 / CANCELLED no-op.
+- `UserRepositoryTest`: `findActiveAdmins_returnsOnlyActiveAdmins` + `findActiveAdmins_returnsEmpty_whenNoAdmins` Testcontainers slice (co-session 작성).
+
+docs
+- `v1x-backlog.md` Tier 1: "Phase 4 (admin UI + email)" → "Phase 4 (FE follow-ups)" — backend Phase 4 closure.
+
+### 결정/편차
+
+- **action_type 한국어 라벨 인라인 매핑**: enum 도입은 N+1 enum 회피 (KISS). 3 wire 라벨 → "사용자 역할 변경/휴지통 보존 정책 변경/휴지통 영구 삭제". 미지원 actionType은 wire 그대로 fallback.
+- **소프트삭제 requester 가드**: `findById` + `getDeletedAt() != null` 검사. 알림이 죽은 계정으로 발송되지 않도록 명시적 차단.
+- **per-recipient try/catch**: `EmailService`는 `@Async` fire-and-forget이지만 sync 검증(빈 주소 등)에서 throw 가능 → 한 수신자 실패가 다음 발송을 막지 않게 격리.
+- **deep-link base URL은 listener properties**: ADR #45의 `app.app-url`과 의미 분리 — admin approval 전용 base URL을 별도 설정해 향후 admin subdomain 분리 자유도 확보.
+- **CANCELLED no-op**: audit listener와 동형 (ADR #47 KISS). requested_by 본인 액션이라 사용자 본인에게 메일 발송 불필요.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `./gradlew test --tests AdminApprovalEmailListenerTest` 14 grin.
+- `UserRepositoryTest.findActiveAdmins*` Testcontainers — 로컬 Docker-skip, CI 그린 후 final 검증 (memory `feedback_local_skip_ci_gap`).
+- 회귀 가드: `AdminApprovalAuditListener` (같은 이벤트 구독자) 무영향.
+
+### 다음 세션 컨텍스트 — Phase 4 FE follow-ups
+
+- AdminSideNav pending 배지 (`/admin/approvals` 카운트 노출)
+- 202 응답 처리 (admin/users, admin/trash, admin/trash/policy 페이지에서 APPROVAL_REQUIRED envelope 처리)
+- 위 둘 통합 후 v1x-backlog Phase 4 row 최종 closure
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-13 — 📢 v1-beta-release-ceremony (사내 공지 + 인프라 핸드오프 메모 초안, PR #234)
 
 ### 범위

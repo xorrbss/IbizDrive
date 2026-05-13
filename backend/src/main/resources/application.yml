@@ -106,6 +106,13 @@ app:
       batch-size: 200
       cron: "0 */5 * * * *" # 매 5분 (share/permission과 정합)
       zone: Asia/Seoul
+    # ADR #47 Phase 4 — 4 transition별 이메일 알림 (REQUESTED → secondary 후보 / APPROVED·
+    # REJECTED·EXPIRED → requested_by). enabled 기본 false — 운영 진입 시 yml 수정 + 재기동.
+    # CANCELLED는 audit listener와 동형으로 emit 없음.
+    email:
+      enabled: false
+      base-url: http://localhost:3000
+      from: noreply@ibizdrive.local
   # GET /api/admin/audit/export 응답 hard cap.
   # 메모리·DoS 방어. 진정한 SQL → JSON streaming(메모리 cap 제거)은 v1.x.
   # 운영자가 환경별 부하에 맞춰 yml 수정 + 재기동.
