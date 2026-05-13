@@ -5,6 +5,40 @@
 
 ---
 
+## 2026-05-13 — 📢 v1-beta-release-ceremony (사내 공지 + 인프라 핸드오프 메모 초안, PR #234)
+
+### 범위
+
+v1.0.0-beta 출시 직전 ceremony 보조. backlog 잔여 Tier 0/1 trace 후 진입 가능한 영역(RightPanel fidelity / Quota Phase 6 / 2인 승인 framework / Storage TB stale closure)이 모두 다른 세션 진행 중 또는 redundant임을 확인 → 출시 ceremony 문서 2건 신규 작성.
+
+### 변경 (3 파일, +275/-0)
+
+- `docs/release/v1.0.0-beta-announcement.md` (신규, 110 라인) — 사내 베타 사용자 그룹 대상 공지 초안. 베타 범위 / 핵심 기능 6 카테고리(탐색·파일·공유/권한·검색·관리자 콘솔·디자인) / v1.x deferred 9건 매트릭스 / 첫 로그인·사용 가이드 / 피드백 채널 placeholder / D+1·D+7·D+14 모니터링. 운영팀이 출시 일자/사용자 그룹/Slack 채널만 치환하면 그대로 발송 가능.
+- `docs/release/v1.0.0-beta-infra-handoff.md` (신규, 164 라인) — 인프라팀 핸드오프. §0 출시 전 1회 확인(태그 push 명령 포함) / §1 §2 인프라 게이트(전송·쿠키·시크릿·DB·스토리지) / §2 §3 cron 4종 dry-run / §3 §8 모니터링(log shipper·audit_log SELECT 권한) / §4 출시 절차 D-1·D-day·D+14 / §5 롤백 절차 / §6 참조 문서 cross-link. BETA-RELEASE.md §2/§8 운영자 체크리스트의 셋업 가이드 + 절차 보강.
+- `docs/progress.md` — 본 entry
+
+### 결정/편차
+
+- **scope = 출시 직전 ceremony 보조만** — backlog 잔여 Tier 0/1 작업은 다른 세션과 충돌 (memory `feedback_no_redundant_tests`) 또는 redundant (Storage TB stale은 이미 #134로 closure).
+- **출시 일자 / 사용자 그룹 / Slack 채널 등은 placeholder** — 운영팀 입력 영역. 본 초안은 구조 + 본문 + cross-link만 제공.
+- **v1.0.0-beta 태그는 본 PR로 push하지 않음** — §0의 명령만 명시, 실 push는 운영팀 직접 (자율 모드 §2 게이트).
+- **롤백 절차 §5** — Flyway down migration 미제공 사실 명시 (hot-patch 우선). 사용자가 직접 작성/확정해야 할 incident response 절차는 v1.x 트랙으로 분리.
+- **Phase 5 dual-approval / RightPanel / Quota Phase 6 등 본 세션 떠난 시점부터 머지된 트랙은 BETA-RELEASE.md `Source`에 미반영** — 별도 트랙(`docs/beta-release-md-sync` 또는 multi-track-archive 후속)이 그 역할. 본 PR은 release/ 디렉토리 2건만.
+
+### 검증
+
+- 코드 0 — typecheck/lint/test 무관
+- `docs/release/` 신규 디렉토리 (기존 부재)
+- BETA-RELEASE.md / docs/local-dev.md / docs/00 §5 ADR / docs/03 / docs/04 cross-link 확인 (실 존재 path)
+- v1.0.0-beta 태그 push 명령 syntax 검증 (`git tag -a v1.0.0-beta <sha> -m ...`)
+
+### 다음 세션 컨텍스트
+
+- **출시 ceremony 후속**: 운영팀이 announcement.md placeholder 치환 + 인프라팀이 infra-handoff.md 체크리스트 sign-off 후 `v1.0.0-beta` 태그 push
+- **다른 세션 활성 트랙**: 2인 승인 framework Phase 3 완료 후 admin UI(Phase 4) / Quota Phase 6 / RightPanel fidelity 양 단계 / file-badge / dev-docs archive 등 진행 중
+
+---
+
 ## 2026-05-13 — dual-approval Phase 3d (expiration cron + admin UI 노출)
 
 ### 범위
