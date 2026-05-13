@@ -651,6 +651,86 @@ class PermissionRepositoryTest {
             assertThat(r.getSubjectType()).isEqualTo("department"));
     }
 
+    // ---------- findGrantsToUserPaged (User Home Dashboard SharedWithMeCard) ----------
+
+    @Test
+    void findGrantsToUserPaged_본인_USER_grantee_active_only_created_at_DESC() {
+        UUID me = insertUser("me@test", "me");
+        UUID other = insertUser("other@test", "other");
+        UUID granter = insertUser("granter@test", "granter");
+        UUID f1 = insertFolder(null, "f1", granter);
+        UUID f2 = insertFolder(null, "f2", granter);
+        UUID f3 = insertFolder(null, "f3", granter);
+
+        // me 에 USER grant 2건 (f1 먼저, f2 나중) + other 에 USER grant 1건 + everyone grant 1건
+        insertPermission("folder", f1, "user", me, "read", granter);
+        // 분리 가능한 created_at 보장을 위해 약간 시간 차 — JDBC 단일 sql 호출은 동일 트랜잭션이지만
+        // postgres NOW() resolution(microsec) 으로 INSERT 순서가 ORDER BY 안정에 영향.
+        // 본 native query 의 ORDER BY 는 created_at DESC, id DESC tie-break — 순서 보장 OK.
+        insertPermission("folder", f2, "user", me, "edit", granter);
+        insertPermission("folder", f3, "user", other, "read", granter);
+        insertPermissionEveryone("folder", f3, "read", granter);
+
+        List<PermissionRow> rows = permissionRepository.findGrantsToUserPaged(me, PageRequest.of(0, 50));
+
+        assertThat(rows).hasSize(2);
+        assertThat(rows).allSatisfy(r -> {
+            assertThat(r.getSubjectType()).isEqualTo("user");
+            assertThat(r.getSubjectId()).isEqualTo(me);
+        });
+        // created_at DESC — 나중 INSERT (f2) 가 최상단
+        assertThat(rows.get(0).getResourceId()).isEqualTo(f2);
+        assertThat(rows.get(1).getResourceId()).isEqualTo(f1);
+    }
+
+    @Test
+    void findGrantsToUserPaged_만료_grant_미반환() {
+        UUID me = insertUser("expmeck@test", "exp");
+        UUID granter = insertUser("exp-granter@test", "expg");
+        UUID folderActive = insertFolder(null, "active", granter);
+        UUID folderExpired = insertFolder(null, "expired", granter);
+
+        insertPermission("folder", folderActive, "user", me, "read", granter);
+        insertPermissionWithExpiry("folder", folderExpired, "user", me, "read", granter,
+            Instant.now().minus(1, ChronoUnit.HOURS));
+
+        List<PermissionRow> rows = permissionRepository.findGrantsToUserPaged(me, PageRequest.of(0, 50));
+
+        assertThat(rows).hasSize(1);
+        assertThat(rows.get(0).getResourceId()).isEqualTo(folderActive);
+    }
+
+    @Test
+    void findGrantsToUserPaged_department_indirect_grant_미반환() {
+        UUID dept = UUID.randomUUID();
+        jdbc.update("INSERT INTO departments(id, name) VALUES (?, ?)", dept, "팀A");
+        UUID me = insertUserInDepartment("memberdept@test", "mem", dept);
+        UUID granter = insertUser("dept-granter@test", "dg");
+        UUID folder = insertFolder(null, "dept-folder", granter);
+
+        // department subject 로 grant — me 의 dept 와 일치하지만 본 쿼리는 user subject 만 반환해야 함
+        insertPermissionDept("folder", folder, dept, "read", granter);
+
+        List<PermissionRow> rows = permissionRepository.findGrantsToUserPaged(me, PageRequest.of(0, 50));
+
+        assertThat(rows).isEmpty();
+    }
+
+    @Test
+    void findGrantsToUserPaged_pageable_limit_적용() {
+        UUID me = insertUser("limit@test", "lim");
+        UUID granter = insertUser("limit-granter@test", "limg");
+
+        // 5건 grant insert
+        for (int i = 0; i < 5; i++) {
+            UUID f = insertFolder(null, "lim" + i, granter);
+            insertPermission("folder", f, "user", me, "read", granter);
+        }
+
+        List<PermissionRow> rows = permissionRepository.findGrantsToUserPaged(me, PageRequest.of(0, 3));
+        assertThat(rows).hasSize(3);
+    }
+
     // ====================== helpers ======================
 
     private UUID insertUser(String email, String displayName) {

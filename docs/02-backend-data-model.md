@@ -2654,6 +2654,35 @@ POST /api/admin/teams/{id}/restore
 **근거**: design handoff 2026-05-10 `admin-teams.jsx`. dev-doc
 `dev/active/design-refresh-admin-2026-05-10/`.
 
+### 7.17 사용자 본인 (Me, User Home Dashboard)
+
+ADR #48 — root `/` User Home Dashboard 진입점. design-spec `2026-05-14-user-home-dashboard-design.md`.
+
+| Method | Path | Guard | TX | Errors |
+|---|---|---|---|---|
+| GET | `/api/me/shared-with-me` | `isAuthenticated()` | ro | 401 UNAUTHORIZED |
+
+```text
+GET /api/me/shared-with-me?limit=N    (N default=20, max=50)
+  Response: 200 MySharedWithMeListResponse {
+    items: [
+      MySharedWithMeItem {
+        permissionId, resourceType: "file"|"folder", resourceId,
+        name, preset: "read"|"upload"|"edit"|"admin",
+        grantedAt, grantedBy: { id, name }
+      }
+    ],
+    nextCursor: null    // v1.x cursor 페이지네이션은 follow-up
+  }
+  Notes:
+    - 본인이 USER subject 로 직접 받은 active grant 만 반환.
+      department/role/everyone indirect grant 는 응답 제외 (v1.1 backlog).
+    - soft-deleted resource 는 응답에서 제외 (service 단 batch resolve 후 null name filter).
+    - 정렬: created_at DESC, id DESC (tie-break stable).
+```
+
+**관련 endpoint**: `GET /api/me/favorites` (PR #243, favorites-list 트랙) 는 dashboard StarredCard 가 reuse. 본 spec contract 정의 안 함.
+
 ---
 
 ## 8. 에러 코드 표준
