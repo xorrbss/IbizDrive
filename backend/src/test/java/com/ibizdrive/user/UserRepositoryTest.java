@@ -345,6 +345,53 @@ class UserRepositoryTest {
         assertThat(firstPage.getTotalElements()).isEqualTo(5);
     }
 
+    // ── dual-approval Phase 4 email listener: findActiveAdmins ──────────
+
+    @Test
+    void findActiveAdmins_returnsOnlyActiveAdmins() {
+        UUID adminAId = UUID.fromString("aaaaaaa1-aaa1-aaa1-aaa1-aaaaaaaaaaa1");
+        UUID adminBId = UUID.fromString("bbbbbbb1-bbb1-bbb1-bbb1-bbbbbbbbbbb1");
+        UUID inactiveAdminId = UUID.fromString("ccccccc1-ccc1-ccc1-ccc1-ccccccccccc1");
+        UUID deletedAdminId = UUID.fromString("ddddddd1-ddd1-ddd1-ddd1-ddddddddddd1");
+        UUID memberId = UUID.fromString("eeeeeee1-eee1-eee1-eee1-eeeeeeeeeeee");
+        UUID auditorId = UUID.fromString("fffffff1-fff1-fff1-fff1-fffffffffff1");
+        userRepository.save(userWithRole(adminAId, "adminA@example.com", "Admin A", Role.ADMIN, true));
+        userRepository.save(userWithRole(adminBId, "adminB@example.com", "Admin B", Role.ADMIN, true));
+        userRepository.save(userWithRole(inactiveAdminId, "adminI@example.com", "Admin Inactive", Role.ADMIN, false));
+        userRepository.save(userWithRole(deletedAdminId, "adminD@example.com", "Admin Deleted", Role.ADMIN, true));
+        userRepository.save(userWithRole(memberId, "member@example.com", "Member", Role.MEMBER, true));
+        userRepository.save(userWithRole(auditorId, "auditor@example.com", "Auditor", Role.AUDITOR, true));
+        userRepository.flush();
+        markSoftDeleted(deletedAdminId);
+
+        List<User> result = userRepository.findActiveAdmins();
+
+        assertThat(result).extracting(User::getId).containsExactly(adminAId, adminBId);
+    }
+
+    @Test
+    void findActiveAdmins_returnsEmpty_whenNoAdmins() {
+        userRepository.save(userWithRole(UUID.randomUUID(), "m@example.com", "M", Role.MEMBER, true));
+        userRepository.save(userWithRole(UUID.randomUUID(), "a@example.com", "A", Role.AUDITOR, true));
+
+        List<User> result = userRepository.findActiveAdmins();
+
+        assertThat(result).isEmpty();
+    }
+
+    private static User userWithRole(UUID id, String email, String displayName, Role role, boolean isActive) {
+        return new User(
+            id,
+            email,
+            displayName,
+            "{bcrypt}$2a$12$dummyhashfortestonlydummyhashfortestonlydummyhashfortest",
+            role,
+            isActive,
+            false,
+            OffsetDateTime.now()
+        );
+    }
+
     private static User activeUser(UUID id, String email, String displayName, boolean isActive) {
         return new User(
             id,
