@@ -5,6 +5,70 @@
 
 ---
 
+## 2026-05-13 — dual-approval Phase 2 (state machine service + audit + exceptions + Permission)
+
+### 범위
+
+2인 승인 framework (ADR #47) **Phase 2 closure** — Phase 1 (#219) data layer 위에서 5 transition state machine + audit emit 4종 + 4 exception + Permission enum 확장. Phase 2b (controller) / Phase 3 (action handler) / Phase 4 (admin UI) / Phase 5 (cron)은 별도 PR.
+
+### 변경 (12 file, +600 추가)
+
+backend (9 신규/수정)
+- `permission/Permission.java` — `APPROVE_ADMIN_ACTION` enum 추가 (ROLE ADMIN-only, secondary 결정자 가드).
+- `audit/AuditEventType.java` — 4 enum 신규 (`ADMIN_APPROVAL_REQUESTED/GRANTED/REJECTED/EXPIRED`).
+- `audit/AuditTargetType.java` — `ADMIN_APPROVAL("admin_approval")` 추가.
+- `approval/PendingApprovalNotFoundException.java` — 404 APPROVAL_NOT_FOUND.
+- `approval/AlreadyDecidedException.java` — 409 APPROVAL_ALREADY_DECIDED (currentStatus 노출).
+- `approval/SelfApprovalException.java` — 403 APPROVAL_SELF.
+- `approval/UnknownApprovalActionException.java` — 500 APPROVAL_HANDLER_MISSING (운영 코드 부재 명시).
+- `approval/AdminApprovalActionHandler.java` (interface) — `actionType()` + `execute(payloadJson, actorId)`. 구체 handler는 Phase 3.
+- `approval/AdminApprovalDecidedEvent.java` (record) — 4 audit emit transition을 단일 도메인 이벤트로 표현 (status discriminator).
+- `approval/PendingApprovalService.java` — `submit` / `approve` / `reject` / `cancel` / `expire` 5 transition. `lockById` (PESSIMISTIC_WRITE) + status 검사 + self-approval 차단 (모든 action: secondary ≠ requester / role_change 추가: secondary ≠ payload.userId substring) + handler dispatch + AFTER_COMMIT 이벤트 발행.
+- `audit/AdminApprovalAuditListener.java` (AFTER_COMMIT) — `AdminApprovalDecidedEvent` → audit_log 변환. status별 enum 매핑. CANCELLED는 silent skip (ADR #47 KISS).
+- `common/error/GlobalExceptionHandler.java` — 4 exception → envelope 매핑 (404/409/403/500).
+
+tests (1 신규)
+- `approval/PendingApprovalServiceTest.java` (Mockito 단위 17건) — submit 3 + approve 6 + reject 2 + cancel 2 + expire 2 + edge case 2. handler dispatch / self-approval (requester + role_change payload) / rollback on handler throw / unknown action_type 500 / CANCELLED audit silent.
+
+docs (2 갱신)
+- `docs/v1x-backlog.md` Tier 1: "Phase 2+" → "Phase 2b+ (controller/handler/cron/admin UI)" 잔여 분해 갱신.
+- (docs/02 §8 + docs/03 §3.1/§4.1은 spec 이미 정합 — 변경 0)
+
+### 결정/편차
+
+- **Phase 2 = service layer only**: controller는 Phase 2b로 분리 — 본 PR은 service Mockito로 완결, controller endpoint test + DTO는 다음 PR. Phase 분할 단위 명확화.
+- **single domain event record** (vs 4 분리): `AdminApprovalDecidedEvent`에 status 필드로 discriminator. KISS — 4 transition을 listener가 단일 메서드에서 분기. 기존 `RetentionPolicyChangedEvent`는 1:1 매핑이라 차이 — approval은 4 → 1 통합이 자연.
+- **role_change self-approval substring 검사**: payload deserialize 없이 raw JSON substring으로 검사. 정확도는 handler가 secondary deserialize 시 다시 확인. defensive layer (premature ObjectMapper 의존성 회피).
+- **CANCELLED audit silent**: ADR #47 KISS — N+1 enum 회피, requested_by 본인 액션이라 의미 낮음.
+- **handler 미배포 → 500 APPROVAL_HANDLER_MISSING**: 운영 코드 부재가 사용자 입력 오류(409)로 위장되지 않도록 명시. frontend는 일반 에러 토스트.
+- **action 실행 실패 시 rollback**: outer @Transactional이 status set 직전에 handler 호출 → throw → rollback → status=REQUESTED 복귀. spec ADR #47 정합.
+- **cancel 다른 사용자 시도 = 404 위장**: 자기 row 아닌 row의 존재 자체 미노출 (info leak 차단).
+- **expire AlreadyDecidedException**: cron이 race로 결정된 row 잡으면 throw. 호출자(cron service Phase 5)가 catch + silent skip.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `./gradlew test --tests "*PendingApprovalServiceTest"` BUILD SUCCESSFUL (17/17 PASS).
+- Testcontainers slice는 본 트랙 신규 없음 (Phase 1 repository test는 master에 이미 머지됨, CI에서 회귀 검증).
+
+### 다음 세션 컨텍스트 — Phase 2b (controller) → Phase 3 (handler)
+
+- **Phase 2b**: `AdminApprovalController` — `GET /api/admin/approvals?status&actionType` (page) / `GET /:id` / `POST /:id/approve` / `POST /:id/reject` / `DELETE /:id`. `@PreAuthorize("hasRole('ADMIN')")` (APPROVE_ADMIN_ACTION enum은 Phase 3+ 세밀 제어용 reserve). DTO + `IbizDriveUserDetails` principal 추출. service-level integration test (MockMvc).
+- **Phase 3**: 구체 `AdminApprovalActionHandler` 구현 — `RetentionChangeApprovalHandler` / `RoleChangeApprovalHandler` / `TrashPurgeApprovalHandler`. 각 payload DTO + ObjectMapper deserialize + 기존 service 호출 (`TrashPolicyService.update` 등). 기존 controller (`AdminTrashPolicyController.update` 등)에 per-action 게이트 (`app.dual-approval.retention-change.enabled`) 분기 — 게이트 ON 시 framework 우회 대신 submit.
+- **Phase 4**: `/admin/approvals` 페이지 — pending 목록 + 결정 dialog + 본인 요청 cancel.
+- **Phase 5**: expiration cron (`AdminApprovalExpirationJob`) + email listener (secondary 알림, EmailService 재사용).
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/v1x-backlog.md` Tier 1 ✓ (Phase 2b+ 잔여 분해)
+- `docs/02 §8` / `docs/03 §3.1/§4.1` 변경 0 (spec 이미 정합)
+
+---
+
 ## 2026-05-13 — dual-approval Phase 1 (data layer — V20 + entity + repository)
 
 ### 범위

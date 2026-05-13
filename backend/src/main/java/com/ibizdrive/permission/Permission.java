@@ -17,6 +17,10 @@ import java.util.stream.Stream;
  *
  * <p>{@code PURGE}는 시스템 ROLE {@code ADMIN}만 보유하며, preset에는 포함되지 않는다
  * (docs/03 line 334 — 노드 단위 권한 위임이 영구 삭제로 번지지 않도록 이중 안전장치).
+ *
+ * <p>{@code APPROVE_ADMIN_ACTION}은 dual-approval framework (ADR #47, docs/02 §2.11)의
+ * secondary 결정자 가드 — ROLE ADMIN만 grant. 일반 grant matrix와 별개로 admin-only
+ * 시스템 권한. Phase 2 도입 (본 트랙).
  */
 public enum Permission {
 
@@ -28,7 +32,8 @@ public enum Permission {
     DELETE,
     SHARE,
     PERMISSION_ADMIN,
-    PURGE;
+    PURGE,
+    APPROVE_ADMIN_ACTION;
 
     private static final Map<String, Permission> BY_WIRE =
         Stream.of(values()).collect(java.util.stream.Collectors.toMap(Permission::wire, p -> p));
