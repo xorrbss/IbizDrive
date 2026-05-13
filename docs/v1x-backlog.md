@@ -4,7 +4,7 @@
 >
 > **단일 진실의 출처**: 항목 자체는 `BETA-RELEASE.md` §7 + `docs/progress.md` 각 트랙 closure entry. 본 문서는 그 항목들의 **우선순위/시점**만 다룬다. 새 항목 추가 시 양쪽 동시 갱신.
 >
-> **Last Updated**: 2026-05-12 (admin-grid-rebuild — 잔여 6 admin 페이지 wrapper 통일)
+> **Last Updated**: 2026-05-12 (design-sweep-file-type-icons — 파일 타입 컬러 아이콘 10종)
 
 ---
 
@@ -43,6 +43,8 @@
 | ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |
 | ~~Admin Retention/Audit 스타일 보강 (디자인 zip P3)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — LegalHoldList(mock) + SeverityTabs/AuditStream + DashboardKpiCard delta/tone/progress |
 | ~~잔여 admin 페이지 admin-grid 재구성 (디자인 zip follow-up)~~ | — | — | ✓ 2026-05-12 admin-grid-rebuild (PR #207) | **closure (옵션 B — wrapper 통일)** — 6 페이지(members/departments/permissions/teams/system/trash) wrapper utility(`flex-1 overflow-auto p-6 space-y-*`/`p-8 max-w-[960px]`) → `admin-grid` 통일. `admin-body`가 overflow+padding 처리, `admin-grid`는 flex-col gap 16px max-width 1400px 표준 layout. 위젯 추가 rebuild는 별도 트랙(필요 시) |
+| ~~AdminMembers 디자인 fidelity (admin.jsx §AdminMembers L280~411)~~ | — | — | ✓ 2026-05-12 design-sweep-admin-members-fidelity (PR #208) | **closure (옵션 B+ 점진적)** — `members/page.tsx` ListSection에 KPI 4장(전체/관리자/외부게스트 placeholder/MFA placeholder) + SectionCard wrapping + Filter Bar(search + role select + status select frontend filter) + `MemberRoleChip`/`MemberStatusChip` 신설 + 행 시각 보강. backend 변경 0, 회귀 가드 29건 PASS. 부서/MFA 컬럼은 backend 미지원(ADR #18 blocker)으로 placeholder 유지 |
+| ~~파일 타입 아이콘 fidelity (icons.jsx §ICONS L4~73)~~ | — | — | ✓ 2026-05-12 design-sweep-file-type-icons (PR #211) | **closure** — `FileTypeIcon` 신규(10 kind 컬러 SVG 1:1 inline, doc/pdf/sheet/slides/image/video/figma/code/archive + folder) + `fileIconFor`(lucide 5종 단색) → `fileIconKind` mime→kind 매핑 rewrite. FileRow/FileCard 호출자 swap. backend 변경 0, 132 tests PASS |
 | ~~Audit severity backend 컬럼~~ | — | — | ✓ 2026-05-12 audit-severity-backend | **closure** — V19 `audit_log.severity` + `AuditSeverityMapper` 단일 진실 + emitter/query/export wire + frontend `severityOf` 폐기 |
 | ~~DashboardKpiCard delta 데이터 wiring~~ | — | — | ✓ 2026-05-12 PR #202 (우발 흡수) + 본 closure (PR #205) | **closure** — backend `AdminDashboardSummaryResponse.*Delta` (8 필드) + `AdminDashboardService.computeDelta` + repo `count*AsOf` (5 repo) + frontend types/admin + DashboardSummary 8 wiring + 테스트. 30d stock + audit prev 24h 윈도우. P4 트랙으로 시작했으나 co-session edit absorption으로 PR #202 머지에 포함 — 별도 PR 부재 |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |

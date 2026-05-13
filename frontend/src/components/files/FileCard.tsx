@@ -1,5 +1,6 @@
 'use client'
-import { fileIconFor } from '@/lib/fileIcon'
+import { fileIconKind } from '@/lib/fileIcon'
+import { FileTypeIcon } from '@/components/icons/FileTypeIcon'
 import type { FileItem } from '@/types/file'
 
 type Props = {
@@ -28,7 +29,9 @@ export function FileCard({
   onClick,
   onDoubleClick,
 }: Props) {
-  const { Icon, className: iconColor } = fileIconFor(item)
+  const iconKind = fileIconKind(item)
+  // folder 는 accent 상속 (FileRow와 동기). 그 외 kind 는 자체 brand color.
+  const iconColor = iconKind === 'folder' ? 'text-accent' : ''
 
   // zip styles.css `.grid-card` 사양:
   //   - hover: border-strong + shadow-sm (L712~714, background 변화 없음)
@@ -61,7 +64,7 @@ export function FileCard({
       }}
       className={`select-none rounded-md border border-border bg-surface-1 ${stateClass} flex flex-col items-center justify-center p-3 text-center transition-[border-color,box-shadow] duration-[120ms]`}
     >
-      <Icon size={36} className={iconColor} aria-hidden />
+      <FileTypeIcon kind={iconKind} size={36} className={iconColor} />
       <div
         className="mt-2 text-[12.5px] text-fg font-medium line-clamp-2 break-all w-full"
         title={item.name}

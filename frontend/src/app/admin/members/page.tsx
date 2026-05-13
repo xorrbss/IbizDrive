@@ -1,11 +1,15 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useAdminInviteUser } from '@/hooks/useAdminInviteUser'
 import { useAdminUsers } from '@/hooks/useAdminUsers'
 import { useAdminUpdateUser } from '@/hooks/useAdminUpdateUser'
 import { useDebounce } from '@/hooks/useDebounce'
 import { AdminGuard } from '@/components/auth/AdminGuard'
 import { AdminUserQuotaCell } from '@/components/admin/AdminUserQuotaCell'
+import { DashboardKpiCard } from '@/components/admin/DashboardKpiCard'
+import { SectionCard } from '@/components/admin/SectionCard'
+import { MemberRoleChip } from '@/components/admin/MemberRoleChip'
+import { MemberStatusChip } from '@/components/admin/MemberStatusChip'
 import type { AdminUserSummary } from '@/lib/api'
 
 type Role = 'MEMBER' | 'AUDITOR' | 'ADMIN'
@@ -163,9 +167,18 @@ function inviteErrorMessage(e: unknown): string {
 const PAGE_SIZE = 50
 const SEARCH_DEBOUNCE_MS = 300
 
+/**
+ * Frontend in-memory filter — backend search(q) 는 email/displayName 매칭만 처리.
+ * role/status filter 는 현재 page 결과 위에서 좁힌다 (디자인 fidelity).
+ */
+type RoleFilter = 'all' | 'ADMIN' | 'AUDITOR' | 'MEMBER'
+type StatusFilter = 'all' | 'active' | 'inactive'
+
 function ListSection() {
   const [page, setPage] = useState(0)
   const [searchInput, setSearchInput] = useState('')
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all')
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all')
   const debouncedQuery = useDebounce(searchInput, SEARCH_DEBOUNCE_MS)
   // 검색어 변경 시 첫 페이지로 — 안 그러면 결과가 적은 상태에서 page=N에 머물러 빈 목록 노출.
   useEffect(() => {
@@ -173,6 +186,23 @@ function ListSection() {
   }, [debouncedQuery])
 
   const query = useAdminUsers(page, PAGE_SIZE, debouncedQuery)
+
+  const filtered = useMemo(() => {
+    const rows = query.data?.content ?? []
+    return rows.filter((u) => {
+      if (roleFilter !== 'all' && u.role !== roleFilter) return false
+      if (statusFilter === 'active' && !u.isActive) return false
+      if (statusFilter === 'inactive' && u.isActive) return false
+      return true
+    })
+  }, [query.data, roleFilter, statusFilter])
+
+  // 디자인 admin.jsx §AdminMembers KPI 4장 — 전체/관리자/외부게스트/MFA 미설정.
+  // 백엔드 미지원 컬럼은 placeholder ('—'). totalElements 는 q 적용된 전체 count.
+  const adminCount = useMemo(
+    () => (query.data?.content ?? []).filter((u) => u.role === 'ADMIN').length,
+    [query.data],
+  )
 
   return (
     <section aria-labelledby="users-list-title">
@@ -185,65 +215,122 @@ function ListSection() {
         </p>
       </header>
 
-      <div className="mb-3">
-        <label className="flex flex-col gap-1 text-sm max-w-sm">
-          <span className="sr-only">사용자 검색</span>
-          <input
-            type="search"
-            placeholder="이메일/표시 이름으로 검색"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            aria-label="사용자 검색"
-            className="px-3 py-2 rounded border border-border bg-bg"
-          />
-        </label>
+      <div className="kpi-row mb-4" aria-label="멤버 KPI 요약">
+        <DashboardKpiCard
+          label="전체 멤버"
+          value={query.data?.totalElements ?? '—'}
+          sub="활성 + 비활성 + 대기"
+        />
+        <DashboardKpiCard
+          label="관리자"
+          value={adminCount}
+          sub="현재 페이지 기준"
+        />
+        <DashboardKpiCard
+          label="외부 게스트"
+          value="—"
+          sub="외부 도메인 (v1.x 미지원)"
+          tone="warn"
+        />
+        <DashboardKpiCard
+          label="MFA 미설정"
+          value="—"
+          sub="ADR #18 결정 보류"
+          tone="danger"
+        />
       </div>
 
-      {query.isLoading && (
-        <p className="text-sm text-fg-2">불러오는 중…</p>
-      )}
-      {query.isError && (
-        <p role="alert" className="text-sm text-red-600">
-          목록을 불러오지 못했습니다.
-        </p>
-      )}
-
-      {query.data && (
-        <>
-          <div className="overflow-x-auto rounded-md border border-border">
-            <table className="w-full text-sm">
-              <thead className="bg-surface-1 text-fg-2">
-                <tr>
-                  <th className="text-left px-3 py-2">이메일</th>
-                  <th className="text-left px-3 py-2">표시 이름</th>
-                  <th className="text-left px-3 py-2">역할</th>
-                  <th className="text-left px-3 py-2">상태</th>
-                  <th className="text-left px-3 py-2">용량</th>
-                  <th className="text-left px-3 py-2">동작</th>
-                </tr>
-              </thead>
-              <tbody>
-                {query.data.content.map((u) => (
-                  <UserRow key={u.id} user={u} />
-                ))}
-                {query.data.content.length === 0 && (
-                  <tr>
-                    <td colSpan={6} className="px-3 py-6 text-center text-fg-2">
-                      사용자가 없습니다.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+      <SectionCard
+        title="멤버 목록"
+        subtitle={
+          query.data
+            ? `${filtered.length}명 / ${query.data.totalElements}명`
+            : undefined
+        }
+      >
+        <div className="filter-bar">
+          <div className="filter-search">
+            <input
+              type="search"
+              placeholder="이메일/표시 이름으로 검색"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              aria-label="사용자 검색"
+            />
           </div>
+          <div className="filter-select">
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value as RoleFilter)}
+              aria-label="역할 필터"
+            >
+              <option value="all">전체 역할</option>
+              <option value="ADMIN">Admin</option>
+              <option value="AUDITOR">Auditor</option>
+              <option value="MEMBER">Member</option>
+            </select>
+          </div>
+          <div className="filter-select">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
+              aria-label="상태 필터"
+            >
+              <option value="all">전체 상태</option>
+              <option value="active">활성</option>
+              <option value="inactive">비활성</option>
+            </select>
+          </div>
+        </div>
 
-          <Pagination
-            page={query.data.number}
-            totalPages={Math.max(1, query.data.totalPages)}
-            onChange={setPage}
-          />
-        </>
-      )}
+        {query.isLoading && (
+          <p className="text-sm text-fg-2">불러오는 중…</p>
+        )}
+        {query.isError && (
+          <p role="alert" className="text-sm text-red-600">
+            목록을 불러오지 못했습니다.
+          </p>
+        )}
+
+        {query.data && (
+          <>
+            <div className="overflow-x-auto rounded-md border border-border mt-3">
+              <table className="w-full text-sm">
+                <thead className="bg-surface-1 text-fg-2">
+                  <tr>
+                    <th className="text-left px-3 py-2">이메일</th>
+                    <th className="text-left px-3 py-2">표시 이름</th>
+                    <th className="text-left px-3 py-2">역할</th>
+                    <th className="text-left px-3 py-2">상태</th>
+                    <th className="text-left px-3 py-2">용량</th>
+                    <th className="text-left px-3 py-2">동작</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((u) => (
+                    <UserRow key={u.id} user={u} />
+                  ))}
+                  {filtered.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="px-3 py-6 text-center text-fg-2">
+                        {query.data.content.length === 0
+                          ? '사용자가 없습니다.'
+                          : '필터 조건에 맞는 사용자가 없습니다.'}
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <Pagination
+              page={query.data.number}
+              totalPages={Math.max(1, query.data.totalPages)}
+              onChange={setPage}
+            />
+          </>
+        )}
+      </SectionCard>
     </section>
   )
 }
@@ -359,24 +446,23 @@ function UserRow({ user }: { user: AdminUserSummary }) {
         )}
       </td>
       <td className="px-3 py-2">
-        <select
-          aria-label={`${user.email} 역할`}
-          value={user.role}
-          disabled={update.isPending}
-          onChange={(e) => onChangeRole(e.target.value as Role)}
-          className="px-2 py-1 rounded border border-border bg-bg text-sm"
-        >
-          <option value="MEMBER">MEMBER</option>
-          <option value="AUDITOR">AUDITOR</option>
-          <option value="ADMIN">ADMIN</option>
-        </select>
+        <span className="inline-flex items-center gap-2">
+          <MemberRoleChip role={user.role} />
+          <select
+            aria-label={`${user.email} 역할`}
+            value={user.role}
+            disabled={update.isPending}
+            onChange={(e) => onChangeRole(e.target.value as Role)}
+            className="px-2 py-1 rounded border border-border bg-bg text-sm"
+          >
+            <option value="MEMBER">MEMBER</option>
+            <option value="AUDITOR">AUDITOR</option>
+            <option value="ADMIN">ADMIN</option>
+          </select>
+        </span>
       </td>
       <td className="px-3 py-2">
-        {user.isActive ? (
-          <span className="text-emerald-600">활성</span>
-        ) : (
-          <span className="text-fg-2">비활성</span>
-        )}
+        <MemberStatusChip status={user.isActive ? 'active' : 'inactive'} />
       </td>
       <td className="px-3 py-2">
         <AdminUserQuotaCell

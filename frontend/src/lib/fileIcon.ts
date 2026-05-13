@@ -1,33 +1,64 @@
-import {
-  Folder,
-  File as FileIcon,
-  FileText,
-  FileImage,
-  FileSpreadsheet,
-  type LucideIcon,
-} from 'lucide-react'
 import type { FileItem } from '@/types/file'
+import type { FileTypeIconKind } from '@/components/icons/FileTypeIcon'
 
 /**
- * mime 기반 Lucide 아이콘 + 색상 클래스 결정 (M14, M16에서 공유).
+ * mime → 디자인 zip icons.jsx 의 kind 매핑. FileRow / FileCard 양쪽 공통 helper.
  *
- * folder는 accent로 강조, 그 외는 fg-muted.
- * FileRow (list)와 FileCard (grid) 양쪽에서 동일 매핑을 사용하기 위해 분리.
+ * <p>backend 가 mimeType 을 노출하지 않는 경우(폴더, 또는 mime unknown) folder/doc
+ * 으로 fallback. 매핑 순서는 비교적 명확한 시그니처부터 (image/video → archive →
+ * 문서류 → code → 기본 doc).
  */
-export function fileIconFor(item: FileItem): { Icon: LucideIcon; className: string } {
-  if (item.type === 'folder') return { Icon: Folder, className: 'text-accent' }
-  if (item.mimeType?.startsWith('image/'))
-    return { Icon: FileImage, className: 'text-fg-muted' }
+export function fileIconKind(item: FileItem): FileTypeIconKind {
+  if (item.type === 'folder') return 'folder'
+  const mime = (item.mimeType || '').toLowerCase()
+  const name = item.name.toLowerCase()
+
+  if (mime.startsWith('image/')) return 'image'
+  if (mime.startsWith('video/')) return 'video'
+
   if (
-    item.mimeType?.includes('spreadsheet') ||
-    item.mimeType?.includes('excel')
-  )
-    return { Icon: FileSpreadsheet, className: 'text-fg-muted' }
+    mime === 'application/zip' ||
+    mime === 'application/x-zip-compressed' ||
+    mime === 'application/x-tar' ||
+    mime === 'application/x-rar-compressed' ||
+    mime === 'application/x-7z-compressed' ||
+    mime === 'application/gzip' ||
+    /\.(zip|tar|gz|tgz|rar|7z|bz2)$/i.test(name)
+  ) {
+    return 'archive'
+  }
+
+  if (mime === 'application/pdf' || /\.pdf$/i.test(name)) return 'pdf'
+
   if (
-    item.mimeType?.includes('pdf') ||
-    item.mimeType?.includes('word') ||
-    item.mimeType?.includes('document')
-  )
-    return { Icon: FileText, className: 'text-fg-muted' }
-  return { Icon: FileIcon, className: 'text-fg-muted' }
+    mime.includes('spreadsheet') ||
+    mime.includes('excel') ||
+    /\.(xls|xlsx|csv|ods)$/i.test(name)
+  ) {
+    return 'sheet'
+  }
+
+  if (
+    mime.includes('presentation') ||
+    mime.includes('powerpoint') ||
+    /\.(ppt|pptx|odp|key)$/i.test(name)
+  ) {
+    return 'slides'
+  }
+
+  if (mime === 'application/vnd.figma' || /\.fig$/i.test(name)) return 'figma'
+
+  if (
+    mime.startsWith('text/') ||
+    mime === 'application/json' ||
+    mime === 'application/javascript' ||
+    mime === 'application/xml' ||
+    /\.(js|jsx|ts|tsx|json|html|css|scss|sass|less|xml|yaml|yml|md|sh|py|rb|java|go|rs|c|h|cpp|cs|php|swift|kt|sql|toml)$/i.test(
+      name,
+    )
+  ) {
+    return 'code'
+  }
+
+  return 'doc'
 }

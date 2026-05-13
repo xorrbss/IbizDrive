@@ -37,6 +37,78 @@
 
 ---
 
+## 2026-05-12 — 🎨 design-sweep-file-type-icons (10 kind 컬러 SVG, PR #211)
+
+### 범위
+
+design-sweep-admin-members-fidelity (PR #208) 종료 후 잔여 디자인 미반영 영역 중 **icons.jsx §ICONS (L4~73)** 풀세트 fidelity. 이전 `fileIconFor`가 lucide-react 단색 5종(`Folder`/`FileIcon`/`FileText`/`FileImage`/`FileSpreadsheet`)이었으나 디자인 zip 정의는 brand color 컬러 SVG 10종 → 1:1 매핑.
+
+### 변경 (5 파일, +257/-23)
+
+- `frontend/src/components/icons/FileTypeIcon.tsx` (신규) — 10 kind inline SVG, props `kind` + `size` + `className` + `folderColor`. doc(#4A89DC)/pdf(#E0564B)/sheet(#3EA971)/slides(#E89B3C)/image(#B06BCC)/video(#C95A7B)/figma(#8B5CF6)/code(#5A7C9E)/archive(#8A8270) + folder(currentColor 상속 — accent 표시 호환).
+- `frontend/src/lib/fileIcon.ts` rewrite — `fileIconFor`(`{Icon, className}` 반환) → `fileIconKind(item)` mime + 파일명 확장자 → kind 매핑. image/video/archive(zip/rar/7z 등)/pdf/sheet(spreadsheet)/slides(presentation)/figma/code(text+코드 확장자 20+) 분기 + 기본 'doc'.
+- `frontend/src/components/files/FileRow.tsx` — `fileIconFor` → `fileIconKind` + `<FileTypeIcon>` swap. folder는 `text-accent` className 유지(currentColor 상속).
+- `frontend/src/components/files/FileCard.tsx` — 동일 패턴 swap.
+
+### 결정/편차
+
+- **단일 SVG 컴포넌트 vs kind별 export**: switch 단일 컴포넌트 채택. tree-shaking 손실 미미(10 kind = ~250 라인 SVG inline). 새 kind 추가 시 case 한 줄만.
+- **folder kind는 currentColor 상속**: 디자인 zip §ICONS folder가 `color || currentColor` 패턴이고, 기존 코드에서 `text-accent` className으로 accent 강조. 호환성 위해 currentColor 상속 유지.
+- **그 외 kind는 brand color hardcoded**: 디자인 zip이 fix color (theme 미연동). dark theme에서도 동일. 추후 theme-aware 색상 필요 시 admin.css 변수 도입.
+- **mime + 파일명 확장자 dual 매핑**: backend `files.mime_type`이 항상 정확하지는 않음(application/octet-stream fallback 가능). 파일명 확장자 fallback으로 보강. archive/code/figma 등.
+- **lucide-react 의존성 보존**: FileRow의 Star/Lock/Share 등 다른 아이콘은 lucide-react 그대로. file type만 컬러 SVG.
+
+### 검증
+
+- `pnpm typecheck` ✓
+- `pnpm lint` ✓
+- `pnpm test --run src/components/files src/lib/fileIcon` ✓ **132/132 PASS** (회귀 0)
+
+### 다음 세션 컨텍스트
+
+- **잔여 디자인 미반영**: panels.jsx 703 라인 RightPanel fidelity (액션 버튼 3개 + preview 영역 + detail row 풀세트 — backend response 확장 동반).
+- **UIIcon**: design-zip의 `UIIcon` (icons.jsx L81~119) 33종 stroke 아이콘은 frontend가 이미 lucide-react로 대체 — fidelity 손실 미미.
+
+---
+
+## 2026-05-12 — 🎨 design-sweep-admin-members-fidelity (AdminMembers visual fidelity, PR #208)
+
+### 범위
+
+design-sweep-phase-3/admin-grid-rebuild 종료 후 admin.jsx §AdminMembers (L280~411) 영역의 시각 fidelity 보강. backend 변경 0, 옵션 B+ 점진적: backend 변경 없이 시각 일관성 회복.
+
+### 변경 (4 파일, +247/-72)
+
+- `frontend/src/components/admin/MemberRoleChip.tsx` (신규) — admin.jsx §RoleChip 1:1. backend Role enum (ADMIN/AUDITOR/MEMBER) 매핑: ADMIN→role-admin, AUDITOR/MEMBER→role-member.
+- `frontend/src/components/admin/MemberStatusChip.tsx` (신규) — admin.jsx §StatusChip 1:1. boolean isActive → active/inactive 매핑. pending은 모델 부재로 미사용.
+- `frontend/src/app/admin/members/page.tsx` ListSection rewrite:
+  - **KPI 4장** (`DashboardKpiCard`): 전체 멤버(real, `totalElements`) / 관리자(frontend filter count) / 외부 게스트(placeholder, v1.x 미지원, tone=warn) / MFA 미설정(placeholder, ADR #18 blocker, tone=danger)
+  - **SectionCard wrapping**: title="멤버 목록", subtitle=`N명 / N명` (필터링 결과 / 전체)
+  - **Filter Bar**: search input(보존, aria-label="사용자 검색") + role select(aria-label="역할 필터") + status select(aria-label="상태 필터"). role/status는 frontend filter (현재 페이지 결과 위에서 좁힘)
+  - **UserRow 시각 보강**: 역할 셀에 `<MemberRoleChip>` + 기존 select 병치, 상태 셀 텍스트 → `<MemberStatusChip>`
+- `frontend/src/app/admin/members/page.test.tsx` — 신규 3 describe (KPI 4장 + Filter Bar + role/status 필터 동작), 기존 26 회귀 가드 보존.
+
+### 결정/편차
+
+- **옵션 B+ 점진적**: table 구조 보존 (디자인 admin-table grid 전체 채택은 옵션 A로 분리). 회귀 가드 보호 + visual fidelity 80% 회복 트레이드오프.
+- **부서 컬럼 미추가**: `AdminUserSummary`에 department 부재 (backend response 확장 + factory 필요). 옵션 A 트랙.
+- **MFA 컬럼 미추가**: ADR #18 blocker (TOTP vs FIDO2 결정 보류). placeholder KPI로만 노출.
+- **role/status filter는 frontend**: backend search(q) 는 email/displayName만 매칭. 컬럼 필터는 현재 page 결과 위에서 좁힘 (전체 페이징 검색은 미지원).
+- **AUDITOR role chip**: 디자인 zip 부재 → `.role-member` 톤(중성) 매핑. 추후 별도 색상 필요 시 admin.css 확장.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run src/app/admin/members src/components/admin` ✓ **29 + 72 = 101 tests PASS** (회귀 0, 신규 3)
+
+### 다음 세션 컨텍스트
+
+- **잔여 디자인 미반영**: panels.jsx 703 라인(RightPanel fidelity 재검토) / icons.jsx 157 라인(누락 아이콘 보강). 본 세션과 별도 트랙.
+- **옵션 A AdminMembers 풀세트**: 부서 컬럼(backend `AdminUserSummary` 확장 필요) + admin-table grid layout 채택(테스트 다수 갱신) — backend 변경 동반 트랙으로 분리.
+
+---
+
 ## 2026-05-12 — quota-phase5 (upload enforcement + 413 QUOTA_EXCEEDED)
 
 ### 범위

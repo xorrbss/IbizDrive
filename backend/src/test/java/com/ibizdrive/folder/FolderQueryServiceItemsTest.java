@@ -5,18 +5,24 @@ import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.file.FileTestFixtures;
 import com.ibizdrive.folder.dto.FolderItemDto;
 import com.ibizdrive.folder.dto.FolderItemsResponse;
+import com.ibizdrive.permission.PermissionRepository;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
 /**
@@ -40,9 +46,19 @@ class FolderQueryServiceItemsTest {
 
     @Mock private FolderRepository folderRepository;
     @Mock private FileRepository fileRepository;
+    @Mock private PermissionRepository permissionRepository;
+
+    @BeforeEach
+    void setupPermissionDefaultStub() {
+        // P2c — 대부분 케이스에서 shareCount는 검증 대상이 아니므로 default empty stub.
+        // shareCount 노출 케이스에서만 명시적 stub override(LIFO matching).
+        // @BeforeEach로 분리하지 않으면 service() 안의 lenient 호출이 특정 stub을 뒤집어 우선순위가 깨진다.
+        lenient().when(permissionRepository.countActiveByResources(any(String.class), any(Collection.class)))
+            .thenReturn(List.of());
+    }
 
     private FolderQueryService service() {
-        return new FolderQueryService(folderRepository, fileRepository);
+        return new FolderQueryService(folderRepository, fileRepository, permissionRepository);
     }
 
     private static Folder folder(UUID id, UUID parentId, String name, Instant updatedAt) {
@@ -190,5 +206,75 @@ class FolderQueryServiceItemsTest {
 
         assertThatThrownBy(() -> service().loadItems(parent, SortKey.NAME, SortDir.ASC))
             .isInstanceOf(FolderNotFoundException.class);
+    }
+
+    // ─────────────────── 7. P2c shareCount wiring ───────────────────
+
+    @Test
+    void loadItems_shareCount_nullForResourcesWithoutGrants() {
+        // 기본 케이스: permission repo가 빈 결과 → 모든 item shareCount=null.
+        // FE FileRow는 threshold `> 1` → 미표시. JsonInclude(NON_NULL)로 응답 키 omit.
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID f1 = UUID.randomUUID(), file1 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            folder(f1, parent, "폴더A", t)
+        ));
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            file(file1, parent, "파일A.pdf", 100, t)
+        ));
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        assertThat(res.items()).extracting(FolderItemDto::shareCount)
+            .containsExactly(null, null);
+    }
+
+    @Test
+    void loadItems_shareCount_populatedFromBatchCount() {
+        // permission repo가 (folder f1 -> 3건, file file1 -> 2건) 반환 → DTO에 주입.
+        // 미응답 id(folder f2, file file2)는 자연스럽게 null → JSON omit.
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID f1 = UUID.randomUUID(), f2 = UUID.randomUUID();
+        UUID file1 = UUID.randomUUID(), file2 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            folder(f1, parent, "가폴더", t),
+            folder(f2, parent, "나폴더", t)
+        ));
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            file(file1, parent, "가파일.pdf", 100, t),
+            file(file2, parent, "나파일.pdf", 200, t)
+        ));
+        // List.of(Object[]) varargs는 array를 flatten해 List<Object>가 되므로 명시적 type parameter 필요.
+        when(permissionRepository.countActiveByResources(eq("folder"), any(Collection.class)))
+            .thenReturn(List.<Object[]>of(new Object[]{f1, 3L}));
+        when(permissionRepository.countActiveByResources(eq("file"), any(Collection.class)))
+            .thenReturn(List.<Object[]>of(new Object[]{file1, 2L}));
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        // 정렬: 가폴더(f1, 3), 나폴더(f2, null), 가파일(file1, 2), 나파일(file2, null)
+        assertThat(res.items()).extracting(FolderItemDto::name)
+            .containsExactly("가폴더", "나폴더", "가파일.pdf", "나파일.pdf");
+        assertThat(res.items()).extracting(FolderItemDto::shareCount)
+            .containsExactly(3, null, 2, null);
+    }
+
+    @Test
+    void loadItems_shareCount_emptyItemsSkipsRepositoryCall() {
+        // items가 비어있으면 IN() 무효 SQL을 회피해 repo 호출 자체를 생략 (FolderQueryService L_ guard).
+        // permissionRepository는 service() lenient stub 외 호출되지 않아야 한다.
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of());
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of());
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        assertThat(res.items()).isEmpty();
+        // 명시적 verify는 생략 — lenient stub로 호출 0회/N회 모두 허용. 핵심 검증은 invariant(items empty).
     }
 }

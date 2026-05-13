@@ -6,7 +6,8 @@ import { useDragPayload } from '@/hooks/useDragPayload'
 import { useFolderDroppable } from '@/components/dnd/useFolderDroppable'
 import { DRAGGABLE_ROW_PREFIX } from '@/components/dnd/types'
 import { useSelectionStore } from '@/stores/selection'
-import { fileIconFor } from '@/lib/fileIcon'
+import { fileIconKind } from '@/lib/fileIcon'
+import { FileTypeIcon } from '@/components/icons/FileTypeIcon'
 import { FileRowActionMenu } from './FileRowActionMenu'
 import type { FileItem } from '@/types/file'
 
@@ -109,7 +110,10 @@ export function FileRow({
         ? 'row-selected bg-accent-soft hover:bg-[color-mix(in_oklch,var(--accent)_22%,transparent)] cursor-default'
         : 'hover:bg-surface-2 cursor-default'
 
-  const { Icon, className: iconClassName } = fileIconFor(item)
+  const iconKind = fileIconKind(item)
+  // folder 는 accent 컬러를 따라간다 (currentColor 상속) — 디자인 zip §FileIcon folder 사양.
+  // 그 외 kind 는 자체 brand color SVG 라 className 미적용.
+  const iconClassName = iconKind === 'folder' ? 'text-accent' : ''
 
   return (
     <div
@@ -169,7 +173,7 @@ export function FileRow({
           zip components.jsx FileRow td-name 구조 답습. 데이터 미존재(undefined) 시 비표시.
           백엔드 wiring은 v1.x (FileItem.starred/restricted/shareCount/itemsCount 참조). */}
       <span className="flex items-center gap-2 min-w-0" role="gridcell">
-        <Icon size={16} className={`flex-shrink-0 ${iconClassName}`} aria-hidden />
+        <FileTypeIcon kind={iconKind} size={16} className={`flex-shrink-0 ${iconClassName}`} />
         <span className="truncate font-medium text-fg">{item.name}</span>
         {item.starred && (
           <Star
