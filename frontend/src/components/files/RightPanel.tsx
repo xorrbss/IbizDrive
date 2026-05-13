@@ -159,7 +159,105 @@ function PanelBody({ file }: { file: FileItem }) {
 
       <dt className="text-fg-muted">수정자</dt>
       <dd className="text-fg">{file.updatedBy}</dd>
+
+      {/* P_panel-B: backend FileDetailResponse(P_panel-A)가 채워 보낸 owner/sharedWith/folderPath
+          를 detail 탭에서 시각화. 모두 optional이므로 부재 시 row 자체 미렌더. */}
+      {file.owner && (
+        <>
+          <dt className="text-fg-muted">소유자</dt>
+          <dd className="text-fg flex items-center gap-1.5 min-w-0">
+            <AvatarBadge name={file.owner.displayName} />
+            <span className="truncate">{file.owner.displayName}</span>
+            <span className="text-fg-muted text-[11px] truncate">{file.owner.email}</span>
+          </dd>
+        </>
+      )}
+
+      {file.sharedWith && file.sharedWith.length > 0 && (
+        <>
+          <dt className="text-fg-muted">공유</dt>
+          <dd className="text-fg" aria-label="공유 대상">
+            <SharedWithStack subjects={file.sharedWith} />
+          </dd>
+        </>
+      )}
+
+      {file.folderPath && file.folderPath.length > 0 && (
+        <>
+          <dt className="text-fg-muted">경로</dt>
+          <dd className="text-fg break-all" aria-label="폴더 경로">
+            <FolderPathInline path={file.folderPath} />
+          </dd>
+        </>
+      )}
     </dl>
+  )
+}
+
+/**
+ * 사용자 이름의 첫 글자를 원형 배지로 표시. 익명/빈 이름 fallback "?". RightPanel detail의 owner row와
+ * sharedWith stack에서 재사용 (소형 UX 요소이므로 모듈 분리 없이 inline).
+ */
+function AvatarBadge({ name, size = 18 }: { name: string | null | undefined; size?: number }) {
+  const initial = name && name.length > 0 ? name.trim().charAt(0).toUpperCase() : '?'
+  return (
+    <span
+      aria-hidden
+      style={{ width: size, height: size, fontSize: Math.max(9, size * 0.55) }}
+      className="inline-flex shrink-0 items-center justify-center rounded-full bg-surface-3 text-fg-muted border border-border tabular-nums leading-none"
+    >
+      {initial}
+    </span>
+  )
+}
+
+/**
+ * 공유 대상 스택 — 상위 maxVisible명 아바타 + "+N" overflow. everyone subject 는 backend 가
+ * subjectName="전체"로 세팅하므로 AvatarBadge의 initial 폴백("?")이 아닌 "전"이 표시된다.
+ */
+function SharedWithStack({
+  subjects,
+  maxVisible = 5,
+}: {
+  subjects: NonNullable<FileItem['sharedWith']>
+  maxVisible?: number
+}) {
+  const visible = subjects.slice(0, maxVisible)
+  const overflow = subjects.length - visible.length
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="inline-flex -space-x-1.5">
+        {visible.map((s, i) => (
+          <span
+            key={`${s.subjectType}-${s.subjectId ?? 'everyone'}-${i}`}
+            title={`${s.subjectName ?? '(이름 없음)'} · ${s.preset}`}
+            className="inline-flex"
+          >
+            <AvatarBadge name={s.subjectName} />
+          </span>
+        ))}
+      </span>
+      {overflow > 0 && (
+        <span className="text-fg-muted text-[11px] tabular-nums">+{overflow}</span>
+      )}
+    </span>
+  )
+}
+
+/**
+ * 폴더 경로 — root → 직접 부모 순서 (backend folderPath와 동일 순). " / " 구분.
+ * v1.x는 plain text (클릭 navigation은 후속 — workspace 라우팅 컨텍스트 필요).
+ */
+function FolderPathInline({ path }: { path: NonNullable<FileItem['folderPath']> }) {
+  return (
+    <span className="text-fg-muted">
+      {path.map((p, i) => (
+        <span key={p.id}>
+          {i > 0 && <span className="text-border mx-1">/</span>}
+          <span className="text-fg">{p.name}</span>
+        </span>
+      ))}
+    </span>
   )
 }
 

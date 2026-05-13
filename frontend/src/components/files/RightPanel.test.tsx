@@ -377,4 +377,147 @@ describe('RightPanel', () => {
       expect(screen.getByRole('alert')).toBeTruthy()
     })
   })
+
+  // ─────────────────── P_panel-B: detail rows from FileDetailResponse ──────────
+
+  it('P_panel-B — owner 정보가 있으면 소유자 row 표시', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      owner: { id: 'u1', displayName: '홍길동', email: 'h@test' },
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(screen.getByText('소유자')).toBeTruthy()
+      expect(screen.getByText('홍길동')).toBeTruthy()
+      expect(screen.getByText('h@test')).toBeTruthy()
+    })
+  })
+
+  it('P_panel-B — owner 없으면 소유자 row 미렌더', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      // owner 필드 자체 없음 (soft-delete fallback)
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(screen.getAllByText('x.pdf').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByText('소유자')).toBeNull()
+  })
+
+  it('P_panel-B — sharedWith stack에 5명 이하 표시 + everyone "전체" 라벨', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      sharedWith: [
+        { subjectType: 'user', subjectId: 'u1', subjectName: '김영업', preset: 'read' },
+        { subjectType: 'user', subjectId: 'u2', subjectName: '이마케팅', preset: 'edit' },
+        { subjectType: 'everyone', subjectId: null, subjectName: '전체', preset: 'read' },
+      ],
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(screen.getByLabelText('공유 대상')).toBeTruthy()
+    })
+    // title attribute에서 subjectName + preset 확인
+    const stack = screen.getByLabelText('공유 대상')
+    expect(stack.querySelector('[title="김영업 · read"]')).toBeTruthy()
+    expect(stack.querySelector('[title="전체 · read"]')).toBeTruthy()
+  })
+
+  it('P_panel-B — sharedWith 6명 이상이면 "+N" overflow 표시', async () => {
+    mockQuery = 'file=file_abc'
+    const many = Array.from({ length: 8 }).map((_, i) => ({
+      subjectType: 'user' as const,
+      subjectId: `u${i}`,
+      subjectName: `사용자${i}`,
+      preset: 'read',
+    }))
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      sharedWith: many,
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      // 8명 중 5명 visible → +3 overflow
+      expect(screen.getByText('+3')).toBeTruthy()
+    })
+  })
+
+  it('P_panel-B — sharedWith 빈 배열이면 공유 row 미렌더', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      sharedWith: [],
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(screen.getAllByText('x.pdf').length).toBeGreaterThan(0)
+    })
+    expect(screen.queryByLabelText('공유 대상')).toBeNull()
+  })
+
+  it('P_panel-B — folderPath가 있으면 경로 row 표시 (root → leaf 순)', async () => {
+    mockQuery = 'file=file_abc'
+    getFileDetailMock.mockResolvedValue({
+      id: 'file_abc',
+      name: 'x.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+      folderPath: [
+        { id: 'r1', name: '회사', slug: '회사' },
+        { id: 'm1', name: '영업팀', slug: '영업팀' },
+        { id: 'l1', name: '계약서', slug: '계약서' },
+      ],
+    })
+    wrap(<RightPanel />)
+    await waitFor(() => {
+      expect(screen.getByLabelText('폴더 경로')).toBeTruthy()
+    })
+    const pathEl = screen.getByLabelText('폴더 경로')
+    expect(pathEl.textContent).toContain('회사')
+    expect(pathEl.textContent).toContain('영업팀')
+    expect(pathEl.textContent).toContain('계약서')
+  })
 })
