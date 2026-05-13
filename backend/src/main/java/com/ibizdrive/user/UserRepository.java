@@ -127,6 +127,31 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     Optional<User> lockActiveById(@Param("id") UUID id);
 
     /**
+     * dual-approval Phase 4 email listener — 활성 ADMIN role 사용자 전체 조회 (docs/04 §16.4.4).
+     *
+     * <p>{@code AdminApprovalDecidedEvent} status=REQUESTED 시 listener가 호출해 requested_by를
+     * 제외한 모든 활성 ADMIN에게 secondary 알림 메일을 발송한다. {@code deleted_at IS NULL AND
+     * is_active = TRUE AND role = ADMIN} 필터로 잠긴/삭제된 ADMIN을 제외 — 알림이 죽은 계정으로
+     * 흘러가 무용해지지 않도록 한다.
+     *
+     * <p>정렬은 {@code id ASC} — deterministic, listener 테스트 가드. 이메일 발송 순서 자체는
+     * 운영 의미 없음 (비동기 fire-and-forget).
+     *
+     * <p><b>인덱스 부재 인정</b>: {@code role} 컬럼 인덱스는 부재. MVP user count {@literal <} 1k +
+     * ADMIN 수 단일 자리수 가정으로 row scan 허용 ({@link #searchActive} 동형 노트). 스케일 시 별도
+     * 마이그레이션 ({@code CREATE INDEX users_role_active ON users(role) WHERE deleted_at IS NULL
+     * AND is_active = TRUE}).
+     */
+    @Query("""
+        SELECT u FROM User u
+        WHERE u.deletedAt IS NULL
+          AND u.isActive = TRUE
+          AND u.role = com.ibizdrive.user.Role.ADMIN
+        ORDER BY u.id ASC
+        """)
+    List<User> findActiveAdmins();
+
+    /**
      * admin-dashboard delta — {@code asOf} 시점에 살아있던 사용자 수 (soft-delete 제외 기준).
      *
      * <p>{@code created_at <= asOf AND (deleted_at IS NULL OR deleted_at > asOf)}. 현재

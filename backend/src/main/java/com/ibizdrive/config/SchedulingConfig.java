@@ -1,5 +1,6 @@
 package com.ibizdrive.config;
 
+import com.ibizdrive.approval.AdminApprovalEmailProperties;
 import com.ibizdrive.approval.PendingAdminApprovalExpirationProperties;
 import com.ibizdrive.permission.PermissionExpirationProperties;
 import com.ibizdrive.purge.HardPurgeProperties;
@@ -35,7 +36,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
     ShareExpirationProperties.class,
     PermissionExpirationProperties.class,
     StorageOrphanCleanupProperties.class,
-    PendingAdminApprovalExpirationProperties.class
+    PendingAdminApprovalExpirationProperties.class,
+    AdminApprovalEmailProperties.class
 })
 public class SchedulingConfig {
 }
