@@ -56,7 +56,7 @@
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |
 | 확장자 whitelist + MIME magic | M | spec 부재 | BETA §7 / docs/03 §5.3 | Content-Disposition 1차 방어 외 추가 layer. allow-list 정의 필요 |
 | MFA / refresh rotation | M | ADR #18 결정 보류 | BETA §7 / ADR #18 | `USER_MFA_ENABLED` emit deferred. TOTP vs FIDO2 결정 |
-| ~~User Home Dashboard (root `/`)~~ | — | — | ✓ 2026-05-14 user-home-dashboard (PR #TBD) | **closure** — root `/` redirect → personal dashboard. 4 위젯(WelcomeHeader/StarredCard/QuotaCard/SharedWithMeCard) + 신규 endpoint `GET /api/me/shared-with-me` + `useMySharedWithMe` hook + `DashboardCard` 컴포넌트. ADR #48 신규. favorites-list 트랙(PR #243) 산출물 reuse. recent files 는 ADR #9 (`FILE_VIEWED`) blocker 로 v1.1 deferral |
+| ~~User Home Dashboard (root `/`)~~ | — | — | ✓ 2026-05-14 user-home-dashboard (PR #246) | **closure** — root `/` redirect → personal dashboard. 4 위젯(WelcomeHeader/StarredCard/QuotaCard/SharedWithMeCard) + 신규 endpoint `GET /api/me/shared-with-me` + `useMySharedWithMe` hook + `DashboardCard` 컴포넌트. ADR #48 신규. favorites-list 트랙(PR #243) 산출물 reuse. recent files 는 ADR #9 (`FILE_VIEWED`) blocker 로 v1.1 deferral |
 
 ---
 

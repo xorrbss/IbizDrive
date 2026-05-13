@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-05-14 — User Home Dashboard (root `/` redirect → personal dashboard, PR #246)
+
+> **Note**: 본 entry는 PR #246 머지 후 closure followup으로 추가 (PR 본체에서 progress.md 누락). 트랙 실행은 다른 세션. 본 문서화는 git log + spec + PR diff 기준 객관 사실만 기록.
+
+### 범위
+
+`/` route를 redirect에서 **personal dashboard로 전환**. 4 위젯(WelcomeHeader / StarredCard / QuotaCard / SharedWithMeCard) + backend 신규 endpoint `GET /api/me/shared-with-me`. favorites-list 트랙(PR #243) `useMyFavorites` 산출물 reuse. spec `docs/superpowers/specs/2026-05-14-user-home-dashboard-design.md`, plan `docs/superpowers/plans/2026-05-14-user-home-dashboard.md`.
+
+### 변경 (30 파일, +1167 / -54, 신규 24)
+
+backend
+- `me/MeController.java` (신규) — `GET /api/me/shared-with-me` 단일 endpoint. `isAuthenticated()` 가드
+- `me/MeSharedQueryService.java` (신규) — PermissionRepository.findGrantsToUserPaged → resource(file/folder) batch active lookup → join → DTO 매핑
+- `me/dto/MySharedWithMeItem.java` + `MySharedWithMeListResponse.java` (신규) — 응답 envelope + 단일 item(resourceType/resourceId/name/parentId/scope/grantedAt)
+- `permission/PermissionRepository.findGrantsToUserPaged` (신규) — user subject + active + created_at DESC 정렬. JPA slice test 신규(`PermissionRepositoryTest`)
+
+frontend
+- `app/page.tsx` 삭제 + `app/(explorer)/page.tsx` 신규 — root에서 redirect 로직 제거 + `<HomeDashboard />` 마운트 (explorer layout 적용)
+- `components/home/HomeDashboard.tsx` (신규) — `admin-grid` 패턴 reuse layout shell
+- `components/home/DashboardCard.tsx` (신규) — SectionCard 형태 wrapper(title + body)
+- `components/home/WelcomeHeader.tsx` — `useMe` + `useWorkspaces` 결합, quick action 2 (업로드/새 폴더)
+- `components/home/StarredCard.tsx` — `useMyFavorites` (PR #243) reuse, 최대 8개 표시
+- `components/home/QuotaCard.tsx` — `useStorageQuota` reuse
+- `components/home/SharedWithMeCard.tsx` — `useMySharedWithMe` 신규 hook (최대 5개)
+- `hooks/useMySharedWithMe.ts` + 테스트(신규)
+- `types/dashboard.ts` (신규) — `MySharedWithMeItem`, `MySharedWithMeListResponse`
+- `lib/api.fetchMySharedWithMe` + 테스트(신규)
+- `lib/queryKeys.ts` — `qk.mySharedWithMe()` 추가
+
+tests
+- backend: `MeControllerTest` (MockMvc, 4 케이스) + `PermissionRepositoryTest` (Testcontainers slice)
+- frontend: 5 component tests + 2 hook/api tests
+
+docs
+- `00-overview.md` — ADR #48 (root `/` → dashboard) 추가
+- `01-frontend-design.md` — §X (Home Dashboard) 신규 +32 line
+- `02-backend-data-model.md` — §7 (`/api/me/shared-with-me`) 신규 +29 line
+- `v1x-backlog.md` — User Home Dashboard 행 closure (PR #TBD → 본 followup에서 #246 정정)
+
+### 결정/편차 (spec + v1x-backlog 추출)
+
+- **ADR #48 신규** — root `/` redirect → dashboard. CLAUDE.md §3 원칙 1 정합성: 본 변경은 root `/` 의미를 redirect → dashboard로 바꾸는 것 (workspace 내부 folder/file URL 영향 0)
+- **recent files 위젯 부재** — ADR #9 (`FILE_VIEWED` audit) blocker로 v1.1 deferral. 4 위젯 inventory에서 제외
+- **0 workspace fallback** — dashboard zero-state 카드 1종으로 흡수 ("아직 소속된 workspace 가 없습니다. 관리자에게 부서 배정을 요청하거나, 팀을 만드세요")
+- **favorites-list 트랙 dependency 충족** — PR #243 (useMyFavorites/api.listMyFavorites)이 본 트랙 Task 0 의존성 gate. 본 트랙은 그 산출물 reuse하고 자체 endpoint 정의하지 않음
+- **레이아웃 패턴 reuse** — admin overview (PR #200) `admin-grid` flex-col gap 16px max-width 1400px + `admin-row admin-row-1-1` (50:50) 답습
+
+### 검증
+
+- 동시 세션 8-task plan 자율 수행 (subagent-driven-development) — PR #246 머지 시 CI 풀그린
+
+### 다음 세션 컨텍스트
+
+- recent files 위젯(ADR #9 unblock 시점에 도입 검토)
+- design zip mock 부재 영역 — admin overview 패턴 의존도 검토(visual fidelity drift 가능성)
+
+---
+
 ## 2026-05-14 — favorites-cron-cleanup (orphan favorites row 일일 정리, PR #245)
 
 ### 범위
