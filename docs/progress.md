@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-13 — ⭐ file-favorites-p2a (favorites backend + audit 4종, PR #TBD)
+## 2026-05-13 — ⭐ file-favorites-p2a (favorites backend + audit 4종, PR #237)
 
 ### 범위
 
