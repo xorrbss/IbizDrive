@@ -37,7 +37,7 @@
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
 | ~~Quota mutation Phase 5~~ | — | — | ✓ 2026-05-12 본 트랙 / progress.md | **closure** — `UserQuotaEnforcer` + `FileUploadService.upload` 진입 가드 + storage_used 증분 + 413 QUOTA_EXCEEDED + GlobalExceptionHandler 매핑 |
-| Quota Phase 6 — storage_used 감소 | M | 없음 (Phase 5 완료 본 트랙) | progress.md 2026-05-12 | 휴지통 영구 삭제(`purge.expired` cron) + admin trash hard delete 시 `storage_used -= size` 트랜잭션. 새 enum 0. monotonic 한계 해소 |
+| ~~Quota Phase 6 — storage_used 감소~~ | — | — | ✓ 2026-05-13 본 트랙 / progress.md | **closure** — `User.releaseStorage` + `UserQuotaEnforcer.release` + `TrashPurgeService` 단건/folder cascade + `HardPurgeService` 배치 cron 모두 wire. 감소 합산은 file_versions sizeBytes 합계 per owner. monotonic 한계 해소 |
 | ~~Admin Sharing 페이지 (디자인 zip P1)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — frontend visual fidelity 완료, backend endpoint는 별도 v1.x 트랙 |
 | ~~Admin Overview 위젯 보강 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — UploadChart / FlagRow / DeptRow / audit-mini 추가 |
 | ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |

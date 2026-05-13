@@ -1,5 +1,7 @@
 package com.ibizdrive.user;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 import java.util.UUID;
@@ -28,6 +30,8 @@ import java.util.UUID;
  */
 @Component
 public class UserQuotaEnforcer {
+
+    private static final Logger log = LoggerFactory.getLogger(UserQuotaEnforcer.class);
 
     private final UserRepository userRepository;
 
@@ -61,6 +65,43 @@ public class UserQuotaEnforcer {
         if (delta > 0) {
             user.consumeStorage(delta);
             userRepository.save(user);
+        }
+    }
+
+    /**
+     * quota mutation Phase 6 — hard delete 시점 `storage_used` 감소 (atomic, outer @Transactional 안에서 호출).
+     *
+     * <p>consumeOrThrow와 비대칭:
+     * <ul>
+     *   <li>soft-deleted/미존재 user는 throw 대신 <b>no-op + warn 로그</b>.
+     *       hard delete는 사용자 라이프사이클과 무관하게(예: 떠난 직원 파일 정리) 수행되어야 한다.</li>
+     *   <li>{@code storage_used - delta < 0}는 {@link User#releaseStorage}에서 0으로 clamp.
+     *       Phase 5 도입 이전에 업로드된 파일의 release 시 발생. clamp 발생 시 warn 로그.</li>
+     * </ul>
+     *
+     * @param userId 파일 소유자 id (active 또는 soft-deleted 모두 허용)
+     * @param delta  release 크기(bytes), 0 이상
+     * @throws IllegalArgumentException {@code userId == null} 또는 {@code delta < 0}
+     */
+    public void release(UUID userId, long delta) {
+        if (userId == null) throw new IllegalArgumentException("userId is required");
+        if (delta < 0) throw new IllegalArgumentException("delta must be >= 0, got: " + delta);
+
+        if (delta == 0) return;
+
+        User user = userRepository.lockActiveById(userId).orElse(null);
+        if (user == null) {
+            log.warn("storage release skipped — user not active (soft-deleted or missing): userId={} delta={}",
+                userId, delta);
+            return;
+        }
+
+        boolean clamped = user.releaseStorage(delta);
+        userRepository.save(user);
+
+        if (clamped) {
+            log.warn("storage release clamped to 0 — released more than tracked: userId={} requested_delta={}",
+                userId, delta);
         }
     }
 }

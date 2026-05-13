@@ -342,4 +342,22 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
         WHERE deleted_at IS NOT NULL
         """, nativeQuery = true)
     long sumTrashedSizeBytes();
+
+    /**
+     * quota mutation Phase 6 — 주어진 file id 집합에 대해 owner_id별 file_versions size_bytes 합계.
+     * 결과는 {@code Object[]{ UUID ownerId, Long totalBytes }} 리스트. file당 모든 version의 size 합산
+     * (current_version_id 무관) — 업로드 시 Phase 5가 각 version 추가마다 storage_used += sizeBytes를 했으므로
+     * release도 동일 단위로 합산해야 정합.
+     *
+     * <p>파일이 versions 없이 존재하는 케이스(데이터 이상)는 결과에서 누락 — 0으로 간주.
+     * 빈 fileIds 입력 시 빈 리스트.
+     */
+    @Query("""
+        SELECT f.ownerId, COALESCE(SUM(v.sizeBytes), 0)
+        FROM FileItem f, FileVersion v
+        WHERE v.fileId = f.id
+          AND f.id IN :fileIds
+        GROUP BY f.ownerId
+        """)
+    List<Object[]> sumVersionBytesPerOwnerByFileIds(@Param("fileIds") Collection<UUID> fileIds);
 }
