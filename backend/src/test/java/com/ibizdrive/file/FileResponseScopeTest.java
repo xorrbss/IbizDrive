@@ -56,7 +56,7 @@ class FileResponseScopeTest {
         UUID scopeId = UUID.randomUUID();
         file.assignScope(ScopeType.TEAM, scopeId);
 
-        FolderItemDto item = FolderItemDto.fromFile(file);
+        FolderItemDto item = FolderItemDto.fromFile(file, null);
 
         assertThat(item.scope()).isNotNull();
         assertThat(item.scope().type()).isEqualTo("team");
@@ -69,7 +69,7 @@ class FileResponseScopeTest {
         UUID scopeId = UUID.randomUUID();
         file.assignScope(ScopeType.DEPARTMENT, scopeId);
 
-        FolderItemDto item = FolderItemDto.fromFile(file);
+        FolderItemDto item = FolderItemDto.fromFile(file, null);
 
         assertThat(item.scope()).isNotNull();
         assertThat(item.scope().type()).isEqualTo("department");

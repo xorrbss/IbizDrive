@@ -128,6 +128,36 @@ public interface PermissionRepository extends JpaRepository<PermissionRow, UUID>
     );
 
     /**
+     * P2c — {@code GET /api/folders/{id}/items} 응답의 {@code shareCount} 배지 wiring.
+     *
+     * <p>주어진 resource id 집합에 대해 active grant 수를 resource별로 group count. 상속 미적용 —
+     * direct grant만 (FolderItemDto.shareCount 계약: "이 리소스 자체에 부여된 explicit 공유 수").
+     *
+     * <p>중복 grant는 {@code idx_permissions_unique} (V5 line 147)로 DB 차원 차단되므로
+     * COUNT(*) ≡ COUNT(DISTINCT subject). 만료 행({@code expires_at <= NOW()})은 제외 —
+     * {@link #findEffective} 와 동일 정책 (cron 정리 전 일시 잔존만 차이).
+     *
+     * <p>{@code resourceIds.isEmpty()}는 호출부 책임 (Spring Data가 IN()을 invalid SQL로 변환). 결과
+     * 행은 count가 1 이상인 resource만 포함 — 0건 항목은 호출자가 Map miss → null로 처리.
+     *
+     * @param resourceType {@code "folder"} 또는 {@code "file"}.
+     * @param resourceIds 비어있지 않은 id 집합.
+     * @return {@code Object[]{UUID resourceId, Long count}} 형식의 row list — 0건 항목은 미포함.
+     */
+    @Query(value = """
+        SELECT p.resource_id, COUNT(*)
+        FROM permissions p
+        WHERE p.resource_type = :resourceType
+          AND p.resource_id IN (:resourceIds)
+          AND (p.expires_at IS NULL OR p.expires_at > NOW())
+        GROUP BY p.resource_id
+        """, nativeQuery = true)
+    List<Object[]> countActiveByResources(
+        @Param("resourceType") String resourceType,
+        @Param("resourceIds") java.util.Collection<UUID> resourceIds
+    );
+
+    /**
      * Plan D — subtree 내 모든 명시 grant 일괄 hard-delete (트랜잭션 안에서 호출).
      *
      * <p>{@code resourceIds}가 비어있으면 0 반환.
