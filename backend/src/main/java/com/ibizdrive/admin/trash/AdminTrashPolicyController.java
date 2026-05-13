@@ -1,8 +1,16 @@
 package com.ibizdrive.admin.trash;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibizdrive.approval.ApprovalRequiredException;
+import com.ibizdrive.approval.PendingAdminApproval;
+import com.ibizdrive.approval.PendingApprovalService;
+import com.ibizdrive.approval.handlers.RetentionChangePayload;
+import com.ibizdrive.approval.handlers.RetentionChangeApprovalHandler;
 import com.ibizdrive.trash.TrashPolicyService;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -31,10 +39,27 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/admin/trash/policy")
 public class AdminTrashPolicyController {
 
-    private final TrashPolicyService policyService;
+    /**
+     * dual-approval 게이트 TTL — config로 노출하지 않는다 (framework 공통 기본값). approval row의
+     * {@code expires_at = NOW() + ttlDays}. ADR #47 default 7일 정합.
+     */
+    private static final int APPROVAL_TTL_DAYS = 7;
 
-    public AdminTrashPolicyController(TrashPolicyService policyService) {
+    private final TrashPolicyService policyService;
+    private final PendingApprovalService approvalService;
+    private final ObjectMapper objectMapper;
+    private final boolean dualApprovalEnabled;
+
+    public AdminTrashPolicyController(
+        TrashPolicyService policyService,
+        PendingApprovalService approvalService,
+        ObjectMapper objectMapper,
+        @Value("${app.dual-approval.retention-change.enabled:false}") boolean dualApprovalEnabled
+    ) {
         this.policyService = policyService;
+        this.approvalService = approvalService;
+        this.objectMapper = objectMapper;
+        this.dualApprovalEnabled = dualApprovalEnabled;
     }
 
     @GetMapping
@@ -44,14 +69,19 @@ public class AdminTrashPolicyController {
     }
 
     /**
-     * 보존 일수 변경 (단일-approver MVP).
+     * 보존 일수 변경. 게이트 분기 — ADR #47 Phase 3.
      *
-     * <p>요청 검증: Bean Validation으로 {@code days} 7..90 + {@code @NotNull}. 추가로 service가
-     * 동일 범위 재검증 + actor null 가드 — 위반 시 {@link IllegalArgumentException} →
-     * {@code GlobalExceptionHandler}가 400 VALIDATION_ERROR로 매핑.
+     * <p>게이트 {@code app.dual-approval.retention-change.enabled=false} (default):
+     * 단일-approver MVP — service가 즉시 적용 + audit 발행. 200 응답.
      *
-     * <p>응답: {@code 200 { retentionDays: <적용값> }}. 동일값 입력은 service가 no-op 처리(audit
-     * 미발생)이며 응답은 동일.
+     * <p>게이트 {@code =true} (운영 환경에서 활성화 시):
+     * {@link PendingApprovalService#submit}으로 framework에 등록 +
+     * {@link ApprovalRequiredException} throw → {@code GlobalExceptionHandler}가 **202 ACCEPTED** +
+     * envelope {@code APPROVAL_REQUIRED} (`{approvalId, expiresAt}`) 매핑. secondary admin이
+     * {@code /api/admin/approvals/:id/approve} 호출하면
+     * {@link RetentionChangeApprovalHandler}가 동일 service 메서드로 위임 — audit 동일 enum.
+     *
+     * <p>요청 검증: Bean Validation으로 {@code days} 7..90 + {@code @NotNull}. service 단도 동일 가드.
      */
     @PutMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -59,7 +89,26 @@ public class AdminTrashPolicyController {
         @RequestBody @Valid AdminTrashPolicyUpdateRequest body,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
+        if (dualApprovalEnabled) {
+            int currentDays = policyService.getRetentionDays();
+            String payloadJson = serializePayload(currentDays, body.days(), /*reason*/ null);
+            PendingAdminApproval pending = approvalService.submit(
+                RetentionChangeApprovalHandler.ACTION_TYPE,
+                payloadJson,
+                principal.getUser().getId(),
+                APPROVAL_TTL_DAYS);
+            throw new ApprovalRequiredException(pending.getId(), pending.getExpiresAt());
+        }
+
         int applied = policyService.updateRetentionDays(body.days(), principal.getUser().getId());
         return ResponseEntity.ok(new AdminTrashPolicyDto(applied));
+    }
+
+    private String serializePayload(int fromDays, int toDays, String reason) {
+        try {
+            return objectMapper.writeValueAsString(new RetentionChangePayload(fromDays, toDays, reason));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("retention_change payload serialize failed", e);
+        }
     }
 }

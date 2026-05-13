@@ -1,6 +1,7 @@
 package com.ibizdrive.common.error;
 
 import com.ibizdrive.approval.AlreadyDecidedException;
+import com.ibizdrive.approval.ApprovalRequiredException;
 import com.ibizdrive.approval.PendingApprovalNotFoundException;
 import com.ibizdrive.approval.SelfApprovalException;
 import com.ibizdrive.approval.UnknownApprovalActionException;
@@ -133,6 +134,22 @@ public class GlobalExceptionHandler {
         // 운영 코드 부재 — 사용자 입력 오류로 위장하지 않고 500으로 명시.
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
             .body(ApiError.of("APPROVAL_HANDLER_MISSING", "승인 처리기 미배포 — 운영팀에 문의하세요", null));
+    }
+
+    /**
+     * dual-approval 게이트 활성 controller가 framework submit 후 1단계 응답 — Phase 3 (ADR #47).
+     *
+     * <p>HTTP **202 ACCEPTED** + envelope code {@code APPROVAL_REQUIRED} + details
+     * {@code {approvalId, expiresAt}}. frontend는 "승인 요청을 등록했습니다, secondary 결정 대기"
+     * 토스트 + `/admin/approvals` redirect (Phase 4 UI).
+     */
+    @ExceptionHandler(ApprovalRequiredException.class)
+    public ResponseEntity<ApiError> handleApprovalRequired(ApprovalRequiredException ex) {
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("approvalId", ex.getApprovalId());
+        details.put("expiresAt", ex.getExpiresAt());
+        return ResponseEntity.status(HttpStatus.ACCEPTED)
+            .body(ApiError.of("APPROVAL_REQUIRED", "승인 요청을 등록했습니다 — secondary admin 결정을 대기 중입니다", details));
     }
 
     /**

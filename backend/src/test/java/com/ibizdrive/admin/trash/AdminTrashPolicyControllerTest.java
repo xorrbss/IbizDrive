@@ -78,6 +78,10 @@ class AdminTrashPolicyControllerTest {
         @Bean TrashPolicyService trashPolicyService() {
             return org.mockito.Mockito.mock(TrashPolicyService.class);
         }
+        /** stub PendingApprovalService — Phase 3 dual-approval 게이트 기본 OFF라 실제 호출 0건. */
+        @Bean com.ibizdrive.approval.PendingApprovalService approvalService() {
+            return org.mockito.Mockito.mock(com.ibizdrive.approval.PendingApprovalService.class);
+        }
     }
 
     private static final UUID ADMIN_ID = UUID.fromString("11111111-1111-1111-1111-111111111111");
