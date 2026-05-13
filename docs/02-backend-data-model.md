@@ -399,9 +399,9 @@ CREATE INDEX idx_folders_legal_hold ON folders(legal_hold) WHERE legal_hold = TR
 - `LEGAL_HOLD_VIOLATION` 에러 코드 추가 (docs/02 §8)
 - `AuditEventType` placeholder 2종(`ADMIN_LEGAL_HOLD_PLACED`/`RELEASED`)을 emission 활성화 + 신규 2종(`ADMIN_LEGAL_HOLD_EXPIRED`, `ADMIN_LEGAL_HOLD_VIOLATION_BLOCKED`) 추가
 
-### 2.11 pending_admin_approvals (v1.x reserved — ADR #47)
+### 2.11 pending_admin_approvals (Phase 1 도입, V20 — ADR #47)
 
-> **Status: v1.x deferred** (docs/00 §5 ADR #47, docs/03 §6.4 일반 명세, docs/04 §16 운영 명세). 실제 V_ 마이그레이션 미작성. 본 절은 설계 reserve — v1.x 진입 시 그대로 적용.
+> **Status**: Phase 1 (data layer) **완료** 2026-05-13 본 트랙 — V20 migration + `PendingAdminApproval` entity + repository + integration test 12건. service/controller/audit emit/hook/admin UI/expiration cron은 Phase 2+ (docs/00 §5 ADR #47, docs/03 §6.4 일반 명세, docs/04 §16 운영 명세).
 
 **메타 테이블 — Generic dual-approval framework** (Tier 0 = role 변경 / trash purge / retention 변경):
 

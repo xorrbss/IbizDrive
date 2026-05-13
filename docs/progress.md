@@ -5,6 +5,66 @@
 
 ---
 
+## 2026-05-13 — dual-approval Phase 1 (data layer — V20 + entity + repository)
+
+### 범위
+
+2인 승인 framework (ADR #47 / docs/02 §2.11 / docs/04 §16) **Phase 1 closure** — data layer만. spec(`dev/completed/v1x-confirm-2admin-design/`)이 reserve였던 V_ 마이그레이션을 V20으로 실 적용 + entity + repository + integration test 12건. service / controller / audit / hook / admin UI는 별도 Phase로 분리.
+
+### 변경 (6 file, +375 추가)
+
+backend (4 file 신규 + 1 docs)
+- `V20__pending_admin_approvals.sql`: spec 2.11 정합 — table + 4 partial indexes + 3 CHECK 제약 (status enum / decided_at-status invariant / secondary-status invariant) + COMMENT 4건.
+- `approval/PendingApprovalStatus.java` (신규): 5-value enum (REQUESTED/APPROVED/REJECTED/CANCELLED/EXPIRED) + `isTerminal()`.
+- `approval/PendingAdminApproval.java` (신규): @Entity. JSONB payload는 Hibernate 6 `@JdbcTypeCode(SqlTypes.JSON)` String 매핑 (caller가 ObjectMapper).
+- `approval/PendingAdminApprovalRepository.java` (신규): `lockById` (PESSIMISTIC_WRITE) + `findPendingByActionType(actionType?, Pageable)` + `findPendingByRequester(requesterId)` + `findExpiredPending(now, Pageable)`. 모든 finder는 V20 partial index 정합.
+
+test (1 file 신규)
+- `PendingAdminApprovalRepositoryTest.java` (12건, Testcontainers slice):
+  - CHECK 제약 5건 (status enum / REQUESTED+decided_at NULL / terminal+decided_at NOT NULL / CANCELLED+secondary NULL / APPROVED+secondary NOT NULL)
+  - entity 1건 (JSONB payload roundtrip — 한글 reason 포함)
+  - finders 4건 (pending action_type 필터 / requester 본인 / expired 후보 / lock fetch)
+
+docs (3 file)
+- `docs/02 §2.11`: "v1.x reserved" → "Phase 1 도입, V20" 상태 갱신.
+- `docs/v1x-backlog.md` Tier 1: "2인 승인 framework 실 구현" → "Phase 2+ (service/controller/audit/hook/admin UI/cron)"으로 잔여 분해.
+- `BETA-RELEASE.md`: 변경 없음 (audit emit 신규 0건, 코드 게이트는 그대로 PASS).
+
+### 결정/편차
+
+- **Phase 분할**: spec ADR #47이 단일 트랙으로 정의됐으나 L effort → Phase 1 data layer를 single PR로 출시. Phase 2+ 는 별도 PR (service/controller/audit/hook/UI/cron). 점진 활성화 (per-action config 게이트 default=false 정합).
+- **JSONB raw String 매핑** (vs DTO + Jackson): Phase 1은 schema 검증이 충분. action_type별 payload DTO + (de)serializer는 Phase 2 service 도입 시 합류 — KISS + premature abstraction 회피.
+- **DB CHECK 3종으로 invariant 강제** (CLAUDE.md §3 원칙 6): status enum + decided_at-status + secondary-status. application 레벨 보증만으로는 race로 위반 가능.
+- **partial index 4종 매칭 finder query**: `idx_pending_approvals_requested` (action_type+status) / `_by_requester` (requested_by+requested_at) / `_expires` (expires_at WHERE status='REQUESTED') / `_decided` (decided_at WHERE terminal). 모든 finder가 본 index와 정합된 WHERE 조건.
+- **lockById는 status 무관**: terminal row의 재결정 시도도 트랜잭션 안에서 status 검사로 분기 (`APPROVAL_ALREADY_DECIDED` 409, Phase 2 service 책임).
+- **Phase 1 audit emit 0**: data layer만으로 의미 없는 audit 발행 회피. Phase 3에서 4종 emit (`ADMIN_APPROVAL_REQUESTED`/`GRANTED`/`REJECTED`/`EXPIRED`).
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `PendingAdminApprovalRepositoryTest` 12건은 Testcontainers slice → 로컬 Docker Desktop Windows에서 SKIPPED → **CI Linux 결과 의존** (memory: Local Docker-skip CI gap).
+- Flyway baselineOnMigrate=false라 V20이 빈 schema에는 V1~V19와 함께 적용, 기존 schema에는 신규 1건만 적용.
+
+### 다음 세션 컨텍스트 — Phase 2 (service + controller)
+
+- `PendingAdminApprovalService`: `submit(actionType, payload, requestedBy)` + `approve(id, secondary, reason)` + `reject(id, secondary, reason)` + `cancel(id, requestedBy)` + `expire(id)` 5 메서드. transition은 `lockById` + status 검사 + UPDATE.
+- `AdminApprovalController`: `GET /api/admin/approvals?status&actionType` (page) / `GET /:id` / `POST /:id/approve` / `POST /:id/reject` / `DELETE /:id`.
+- 에러 코드 4종 docs/02 §8 + frontend errors.ts mirror.
+- `Permission.APPROVE_ADMIN_ACTION` enum 추가 (docs/03 §3.1) — secondary 결정자 가드.
+- `audit/AuditEventType` 4종 신규 + listener + ADR #47 매트릭스 (actor / target_type='admin_approval' / metadata).
+- 트랜잭션 정합: approve는 단일 트랜잭션 내 (a) approval row UPDATE + (b) payload deserialize + (c) action 실행 (role 변경 등) + (d) audit emit. 실패 시 rollback → status=REQUESTED 복귀.
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/02 §2.11` "v1.x reserved" → "Phase 1 도입, V20" ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
+
+---
+
 ## 2026-05-13 — format-bytes-tb backlog stale 정정 (closure mark only)
 
 ### 범위
