@@ -5,6 +5,42 @@
 
 ---
 
+## 2026-05-14 — dual-approval Phase 4 FE follow-up (AdminTabBar pending count 배지)
+
+### 범위
+
+dual-approval framework Phase 4 admin UI (ADR #47, docs/02 §2.11) 후속. PR #235 (`/admin/approvals` 페이지 + AdminTabBar 승인 탭 합류)에 이어 **`승인` 탭 pending count 배지**만 추가. sharing 탭 `ADMIN_FLAGGED` mock 배지와 동형 패턴(`admin-tab-badge`, `aria-label="검토 대기 N건"`). backend 변경 0건 — 기존 `GET /api/admin/approvals?size=1`의 `totalElements`만 활용.
+
+### 변경 (4 file, +192/-12)
+
+frontend
+- `hooks/useAdminPendingApprovalsCount.ts` (신규): `useMe` 가드 + `useQuery({ size:1, page:0 })` → `totalElements` 노출. 비-ADMIN은 `enabled:false`로 호출 skip → 자연스럽게 count=0(배지 미렌더). staleTime 60_000 (KISS, polling 회피). 새 approval/decision 후 mutation hook의 `invalidations.afterAdminApprovalDecided`가 `qk.adminApprovals()` prefix 무효화 시 본 키도 함께 갱신.
+- `components/admin/AdminTabBar.tsx`: `badgeForTab` helper 추출 (sharing/approvals 두 keyspace 통일). approvals 배지는 `data-testid="admin-tab-badge-approvals"`, aria-label 동형.
+- `hooks/useAdminPendingApprovalsCount.test.tsx` (신규, 6 tests): ADMIN 정상 / AUDITOR·MEMBER 호출 skip / useMe loading skip / 0건 분기 / 403 isError 가드.
+- `components/admin/AdminTabBar.test.tsx`: hook mock 추가 + 회귀 4건 추가 (count=3 텍스트/aria-label / count=0 미렌더 / AUDITOR 탭 자체 미노출 / sharing+approvals 동시 노출). 기존 11건 회귀 그린.
+
+### 결정/편차
+
+- **count source = `totalElements`**: backend GET /admin/approvals 자체가 status='REQUESTED' 한정. content 1행만 받으면 wire/parse 비용 최소(`size=1`).
+- **ROLE 가드를 hook 내부로**: AdminTabBar 호출부에서 분기하면 hook이 컴포넌트 mount 시점에 항상 호출되어 useQuery enabled 분기가 단순화. AUDITOR가 `/admin/approvals` 직접 진입해도 hook은 disabled → 403 noise 0.
+- **사용자 정의 staleTime 60_000**: design 핸드오프에 별도 spec 없음. share/permission cron 5분 정합과 차이는 cron은 background, hook은 admin 진입 시점 즉시 — 1분이 UX적 sweet spot. 빠른 polling이 필요해지면 staleTime 0 + refetchInterval 도입 (현재는 mutation invalidation으로 충분).
+- **테스트 mock 격리**: 기존 `useAdminApprovals.test.tsx`(detail/list hook) 회귀에는 영향 없음. AdminTabBar.test.tsx 두 describe(beforeEach)에 `useAdminPendingApprovalsCountMock.mockReset()` + 기본 0건 mock으로 격리.
+
+### 검증
+
+- `pnpm typecheck` — PASS
+- `pnpm lint` — PASS
+- `pnpm vitest run src/hooks/useAdminPendingApprovalsCount.test.tsx src/components/admin/AdminTabBar.test.tsx src/hooks/useAdminApprovals.test.tsx` — 25/25 PASS (6 + 15 + 4)
+- 전체 frontend suite — 191 files / 1447 tests PASS (회귀 0)
+
+### 다음 세션 컨텍스트
+
+- **잔여 Phase 4**: backend email listener (secondary 알림, `EmailService` 재사용 ADR #45) — 별도 트랙(`feat/dual-approval-phase4-email`). 본 PR은 FE only.
+- **AdminSideNav 배지**: 현재 메인 admin UI는 `AdminTabBar` 가로 탭. SideNav 별도 컴포넌트 미존재 — 본 트랙으로 Tier 1 backlog "AdminSideNav pending 배지" 항목은 표기 closure(잔여는 backend 202 응답 처리만).
+- **mutation 후 자동 갱신 검증**: 본 PR은 read-only count만 노출. approve/reject/cancel mutation hook이 작성될 때 `invalidations.afterAdminApprovalDecided`가 `qk.adminApprovals()` prefix를 invalidate 하므로 size=1 키도 함께 갱신됨 — 별도 헬퍼 불필요.
+
+---
+
 ## 2026-05-13 — ⭐ file-favorites-p2a (favorites backend + audit 4종, PR #237)
 
 ### 범위
