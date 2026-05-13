@@ -240,6 +240,18 @@ public class PendingApprovalService {
         return repository.findPendingByActionType(actionType, pageable);
     }
 
+    /**
+     * 단건 조회 — controller GET /:id 진입점. lock 없이 read-only.
+     *
+     * @throws PendingApprovalNotFoundException id 미존재
+     */
+    @Transactional(readOnly = true)
+    public PendingAdminApproval getById(UUID approvalId) {
+        if (approvalId == null) throw new IllegalArgumentException("approvalId is required");
+        return repository.findById(approvalId)
+            .orElseThrow(() -> new PendingApprovalNotFoundException("approval not found: " + approvalId));
+    }
+
     @Transactional(readOnly = true)
     public List<PendingAdminApproval> listMyPending(UUID requesterId) {
         if (requesterId == null) throw new IllegalArgumentException("requesterId is required");
