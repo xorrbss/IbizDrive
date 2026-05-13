@@ -256,9 +256,11 @@ class IbizDrivePermissionEvaluatorTest {
     void resolveAll_member_withNode_adminPreset_returnsEightExceptPurge() {
         when(permissionService.effectivePermissions(Role.MEMBER))
             .thenReturn(EnumSet.noneOf(Permission.class));
-        // admin preset 시뮬레이션 — PURGE를 제외한 8개 grant.
+        // admin preset 시뮬레이션 — PURGE + APPROVE_ADMIN_ACTION 제외한 8개 grant.
+        // APPROVE_ADMIN_ACTION (ADR #47 Phase 2)은 system-level 권한이라 resource grant 대상이 아님.
         for (Permission p : Permission.values()) {
             if (p == Permission.PURGE) continue;
+            if (p == Permission.APPROVE_ADMIN_ACTION) continue;
             when(resolver.isGranted(eq(USER_ID), eq("folder"), eq(FOLDER_ID), eq(p))).thenReturn(true);
         }
 
@@ -269,6 +271,7 @@ class IbizDrivePermissionEvaluatorTest {
             Permission.READ, Permission.UPLOAD, Permission.EDIT, Permission.MOVE,
             Permission.DOWNLOAD, Permission.DELETE, Permission.SHARE, Permission.PERMISSION_ADMIN);
         assertThat(set).doesNotContain(Permission.PURGE);
+        assertThat(set).doesNotContain(Permission.APPROVE_ADMIN_ACTION);
         verify(resolver, never()).isGranted(any(), any(), any(), eq(Permission.PURGE));
     }
 

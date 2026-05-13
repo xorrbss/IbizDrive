@@ -10,16 +10,17 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * {@link Permission} enum 단위 테스트 (docs/03 §3.1).
  *
- * <p>9 값을 정확히 가지며, JSON wire format은 enum 이름과 동일한 UPPER_SNAKE_CASE.
- * SpEL 표현식 {@code hasPermission(#id, 'folder', 'READ')}이 동일한 문자열을 사용하므로
- * wire() == name() 동치를 유지한다.
+ * <p>9 resource-level 값 (READ/UPLOAD/EDIT/MOVE/DOWNLOAD/DELETE/SHARE/PERMISSION_ADMIN/PURGE) +
+ * 1 system-level 값 (APPROVE_ADMIN_ACTION, ADR #47 dual-approval Phase 2 추가). JSON wire format은
+ * enum 이름과 동일한 UPPER_SNAKE_CASE — SpEL 표현식 {@code hasPermission(#id, 'folder', 'READ')}이
+ * 동일한 문자열을 사용하므로 wire() == name() 동치를 유지한다.
  */
 class PermissionEnumTest {
 
     @Test
-    void enum_has_exactly_nine_values() {
+    void enum_has_exactly_ten_values() {
         Set<Permission> all = Set.of(Permission.values());
-        assertEquals(9, all.size());
+        assertEquals(10, all.size());
         assertTrue(all.containsAll(Set.of(
             Permission.READ,
             Permission.UPLOAD,
@@ -29,7 +30,8 @@ class PermissionEnumTest {
             Permission.DELETE,
             Permission.SHARE,
             Permission.PERMISSION_ADMIN,
-            Permission.PURGE
+            Permission.PURGE,
+            Permission.APPROVE_ADMIN_ACTION
         )));
     }
 
