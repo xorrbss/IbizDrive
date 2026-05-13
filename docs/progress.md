@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-05-13 — dual-approval Phase 3b (role_change handler + AdminUserController 게이트)
+
+### 범위
+
+2인 승인 framework (ADR #47) **Phase 3b closure** — Phase 3a (#228) retention 패턴 답습하여 두 번째 구체 action handler (role_change) + `AdminUserController.patch` 게이트 hook. default false라 회귀 0.
+
+### 변경 (6 file, +160 추가)
+
+backend
+- `RoleChangePayload` (record): `{userId, fromRole, toRole, reason}`. userId 직렬화는 Phase 2 service의 self-approval substring 가드와 정합.
+- `RoleChangeApprovalHandler` (@Component): ObjectMapper deserialize 후 `AdminUserService.changeRole(userId, toRole, secondary)` 위임 — single-approver와 동일 service → 동일 `admin.role.changed` audit emit (secondary가 actor).
+- `AdminUserService.get(UUID)`: read-only, controller가 framework submit 전 currentRole 캡처 용도.
+- `AdminUserController.patch` 게이트: `@Value("${app.dual-approval.role-change.enabled:false}")`. true 시 role-only body 강제 + submit + throw `ApprovalRequiredException`. mixed body(role + isActive/displayName)는 `AdminBadPatchException` 400.
+
+tests
+- `RoleChangeApprovalHandlerTest` (Mockito 5건): actionType / deserialize+위임 / service throw rollback / corrupt payload / ADMIN→MEMBER 전이.
+- `AdminUserControllerTest`: `@MockBean PendingApprovalService` 추가 (gate=false 기본).
+
+docs
+- `docs/v1x-backlog.md` Tier 1: "Phase 3b+" → "Phase 3c+ (purge handler + admin UI + cron)" 잔여 분해.
+
+### 결정/편차
+
+- **gate ON + role-only 강제**: mixed body 거부 (400). 단일/dual response envelope 분기 명확화.
+- **AdminUserService.get(UUID) 분리**: framework submit 시점 currentRole 캡처가 별도 read 메서드로 가장 단순.
+- **AdminUserService.changeRole 재사용**: single/dual 모두 동일 audit emit (secondary가 actor).
+- **Self-approval substring 가드 정합**: payload userId 직렬화가 Phase 2 service 가드와 자연 정합.
+- **service-level 2차 self-protection**: handler 실행 시 `SelfProtectionException` 가능 → outer rollback로 status=REQUESTED 복귀.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- targeted test BUILD SUCCESSFUL (handler 5 + controller 회귀 30+).
+
+### 다음 세션 컨텍스트 — Phase 3c (trash_purge)
+
+- `TrashPurgeApprovalHandler` — payload `{type, ids[], reason}`. `TrashController.purgeFile/purgeFolder` 또는 `AdminTrashController.bulk(action=purge)` 진입에 게이트 hook + `app.dual-approval.trash-purge.enabled`.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-13 — dual-approval Phase 3a (retention_change handler + AdminTrashPolicyController 게이트)
 
 ### 범위
