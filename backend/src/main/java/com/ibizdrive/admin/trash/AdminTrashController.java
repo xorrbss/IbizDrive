@@ -1,7 +1,15 @@
 package com.ibizdrive.admin.trash;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibizdrive.approval.ApprovalRequiredException;
+import com.ibizdrive.approval.PendingAdminApproval;
+import com.ibizdrive.approval.PendingApprovalService;
+import com.ibizdrive.approval.handlers.TrashPurgeApprovalHandler;
+import com.ibizdrive.approval.handlers.TrashPurgePayload;
 import com.ibizdrive.trash.TrashItemType;
 import com.ibizdrive.user.IbizDriveUserDetails;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -16,6 +24,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeParseException;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -37,15 +46,34 @@ import java.util.UUID;
  * <p>운영자(한국 사내) 의도와 wall-clock 일치 — 운영자가 {@code 2026-05-08} 입력 시 KST 5/8
  * 0~24시에 deleted된 row가 검색된다. PR #83 follow-up: 기존 UTC 변환은 9시간 시프트되어
  * KST 9시 ~ 익일 9시를 검색하던 버그 수정.
+ *
+ * <p>ADR #47 Phase 3c — bulk action='purge' dual-approval 게이트:
+ * {@code app.dual-approval.trash-purge.enabled=true}이면 controller가 framework {@code submit}
+ * 후 {@link ApprovalRequiredException} throw → 202 ACCEPTED + envelope {@code APPROVAL_REQUIRED}.
+ * action='restore'는 게이트 무관(복원은 비파괴). default OFF.
  */
 @RestController
 @RequestMapping("/api/admin/trash")
 public class AdminTrashController {
 
-    private final AdminTrashService service;
+    /** dual-approval framework default TTL (ADR #47 default 정합). */
+    private static final int APPROVAL_TTL_DAYS = 7;
 
-    public AdminTrashController(AdminTrashService service) {
+    private final AdminTrashService service;
+    private final PendingApprovalService approvalService;
+    private final ObjectMapper objectMapper;
+    private final boolean dualApprovalPurgeEnabled;
+
+    public AdminTrashController(
+        AdminTrashService service,
+        PendingApprovalService approvalService,
+        ObjectMapper objectMapper,
+        @Value("${app.dual-approval.trash-purge.enabled:false}") boolean dualApprovalPurgeEnabled
+    ) {
         this.service = service;
+        this.approvalService = approvalService;
+        this.objectMapper = objectMapper;
+        this.dualApprovalPurgeEnabled = dualApprovalPurgeEnabled;
     }
 
     @GetMapping
@@ -70,11 +98,16 @@ public class AdminTrashController {
     }
 
     /**
-     * Bulk restore/purge — Wave 2 T9 follow-up (spec §3).
+     * Bulk restore/purge — Wave 2 T9 follow-up (spec §3), ADR #47 Phase 3c 게이트.
      *
      * <p>응답 status는 부분 실패에도 항상 200. cap/action 검증 실패만 400 (글로벌 핸들러).
      * 단건 endpoint(`POST /api/files|folders/{id}/restore`, `DELETE /api/trash/{type}/{id}`)는
      * 무변경 — 본 endpoint는 그 service layer를 fan-out 호출만 한다.
+     *
+     * <p>게이트 분기: {@code app.dual-approval.trash-purge.enabled=true} + action='purge' →
+     * {@link PendingApprovalService#submit} 후 {@link ApprovalRequiredException} → 202.
+     * action='restore' 또는 invalid action은 게이트 무관 (복원은 비파괴, invalid는 service IAE).
+     * items 1..200 cap은 framework submit 전 한 번 더 검사 — 빈 approval row 생성 차단.
      */
     @PostMapping("/bulk")
     @PreAuthorize("hasRole('ADMIN')")
@@ -83,12 +116,36 @@ public class AdminTrashController {
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
         UUID actorId = principal.getUser().getId();
+        if (dualApprovalPurgeEnabled && req != null && "purge".equals(req.action())) {
+            if (req.items() == null || req.items().isEmpty()
+                || req.items().size() > AdminTrashService.BULK_MAX_ITEMS) {
+                throw new IllegalArgumentException("items must be 1..200");
+            }
+            String payloadJson = serializePayload(req.items(), /*reason*/ null);
+            PendingAdminApproval pending = approvalService.submit(
+                TrashPurgeApprovalHandler.ACTION_TYPE,
+                payloadJson,
+                actorId,
+                APPROVAL_TTL_DAYS);
+            throw new ApprovalRequiredException(pending.getId(), pending.getExpiresAt());
+        }
         AdminTrashBulkResponseDto result = service.bulk(
             req == null ? null : req.action(),
             req == null ? null : req.items(),
             actorId
         );
         return ResponseEntity.ok(result);
+    }
+
+    private String serializePayload(List<AdminTrashBulkRequestDto.Item> items, String reason) {
+        try {
+            List<TrashPurgePayload.Item> mapped = items.stream()
+                .map(i -> new TrashPurgePayload.Item(i.type(), i.id()))
+                .toList();
+            return objectMapper.writeValueAsString(new TrashPurgePayload(mapped, reason));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("trash_purge payload serialize failed", e);
+        }
     }
 
     /** 사내 단일 지역 운영 — 다중 리전 진입 시 application.yml 주입으로 일원화(YAGNI). */
