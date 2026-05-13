@@ -1,5 +1,6 @@
 package com.ibizdrive.folder;
 
+import com.ibizdrive.favorite.FavoriteRepository;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.file.FileTestFixtures;
@@ -47,6 +48,7 @@ class FolderQueryServiceItemsTest {
     @Mock private FolderRepository folderRepository;
     @Mock private FileRepository fileRepository;
     @Mock private PermissionRepository permissionRepository;
+    @Mock private FavoriteRepository favoriteRepository;
 
     @BeforeEach
     void setupPermissionDefaultStub() {
@@ -63,7 +65,7 @@ class FolderQueryServiceItemsTest {
     }
 
     private FolderQueryService service() {
-        return new FolderQueryService(folderRepository, fileRepository, permissionRepository);
+        return new FolderQueryService(folderRepository, fileRepository, permissionRepository, favoriteRepository);
     }
 
     private static Folder folder(UUID id, UUID parentId, String name, Instant updatedAt) {

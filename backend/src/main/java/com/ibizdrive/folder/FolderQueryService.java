@@ -1,5 +1,6 @@
 package com.ibizdrive.folder;
 
+import com.ibizdrive.favorite.FavoriteRepository;
 import com.ibizdrive.file.FileItem;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.folder.dto.BreadcrumbCrumbDto;
@@ -10,6 +11,9 @@ import com.ibizdrive.folder.dto.FolderItemsResponse;
 import com.ibizdrive.folder.dto.FolderNodeDto;
 import com.ibizdrive.folder.dto.ScopeRef;
 import com.ibizdrive.permission.PermissionRepository;
+import com.ibizdrive.user.IbizDriveUserDetails;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,8 +22,10 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -37,15 +43,18 @@ public class FolderQueryService {
     private final FolderRepository folderRepository;
     private final FileRepository fileRepository;
     private final PermissionRepository permissionRepository;
+    private final FavoriteRepository favoriteRepository;
 
     public FolderQueryService(
         FolderRepository folderRepository,
         FileRepository fileRepository,
-        PermissionRepository permissionRepository
+        PermissionRepository permissionRepository,
+        FavoriteRepository favoriteRepository
     ) {
         this.folderRepository = folderRepository;
         this.fileRepository = fileRepository;
         this.permissionRepository = permissionRepository;
+        this.favoriteRepository = favoriteRepository;
     }
 
     /**
@@ -178,15 +187,53 @@ public class FolderQueryService {
             }
         }
 
+        // P2a — batch starred per resource per current user. user 인증 부재 시 모든 starred=null.
+        // file-badge P2c countActiveByResources 패턴 답습 — empty 가드 + Map miss → null.
+        UUID currentUserId = resolveCurrentUserId();
+        Set<UUID> starredFolderIds = currentUserId == null || sortedFolders.isEmpty()
+            ? Set.of()
+            : new HashSet<>(favoriteRepository.findStarredResourceIds(
+                currentUserId, "folder",
+                sortedFolders.stream().map(Folder::getId).toList()
+            ));
+        Set<UUID> starredFileIds = currentUserId == null || sortedFiles.isEmpty()
+            ? Set.of()
+            : new HashSet<>(favoriteRepository.findStarredResourceIds(
+                currentUserId, "file",
+                sortedFiles.stream().map(FileItem::getId).toList()
+            ));
+
         List<FolderItemDto> items = new ArrayList<>(sortedFolders.size() + sortedFiles.size());
         for (Folder f : sortedFolders) {
             // 빈 폴더는 Map miss → 0 으로 명시 (FE typeof === 'number' 검사에서 "0개" 표시).
             int count = folderItemsCount.getOrDefault(f.getId(), 0);
-            items.add(FolderItemDto.fromFolder(f, folderShareCount.get(f.getId()), count));
+            items.add(FolderItemDto.fromFolder(
+                f, folderShareCount.get(f.getId()), count,
+                starredFolderIds.contains(f.getId()) ? Boolean.TRUE : null
+            ));
         }
-        for (FileItem fi : sortedFiles) items.add(FolderItemDto.fromFile(fi, fileShareCount.get(fi.getId())));
+        for (FileItem fi : sortedFiles) {
+            items.add(FolderItemDto.fromFile(
+                fi, fileShareCount.get(fi.getId()),
+                starredFileIds.contains(fi.getId()) ? Boolean.TRUE : null
+            ));
+        }
 
         return new FolderItemsResponse(items);
+    }
+
+    /**
+     * P2a — 현재 인증된 사용자 id. 미인증 시 null (controller-level isAuthenticated 가드 통과
+     * 가정이지만 service test 등 일부 경로에서 null 가능 — defensive).
+     */
+    private static UUID resolveCurrentUserId() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getPrincipal() == null) return null;
+        Object principal = auth.getPrincipal();
+        if (principal instanceof IbizDriveUserDetails details) {
+            return details.getUser().getId();
+        }
+        return null;
     }
 
     /**
