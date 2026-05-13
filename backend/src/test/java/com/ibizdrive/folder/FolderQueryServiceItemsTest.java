@@ -55,6 +55,11 @@ class FolderQueryServiceItemsTest {
         // @BeforeEach로 분리하지 않으면 service() 안의 lenient 호출이 특정 stub을 뒤집어 우선순위가 깨진다.
         lenient().when(permissionRepository.countActiveByResources(any(String.class), any(Collection.class)))
             .thenReturn(List.of());
+        // P2d — items-count 도 동형. 대부분 케이스에서 sub-children 없음 가정.
+        lenient().when(folderRepository.countByParentIdInGroupedActive(any(Collection.class)))
+            .thenReturn(List.of());
+        lenient().when(fileRepository.countByFolderIdInGroupedActive(any(Collection.class)))
+            .thenReturn(List.of());
     }
 
     private FolderQueryService service() {
@@ -276,5 +281,79 @@ class FolderQueryServiceItemsTest {
 
         assertThat(res.items()).isEmpty();
         // 명시적 verify는 생략 — lenient stub로 호출 0회/N회 모두 허용. 핵심 검증은 invariant(items empty).
+    }
+
+    // ─────────────────── 8. P2d itemsCount wiring ───────────────────
+
+    @Test
+    void loadItems_itemsCount_emptySubFolder_returnsZero() {
+        // 자식 폴더가 자식을 갖지 않을 때 itemsCount=0 (null이 아닌 0) — FE typeof === 'number' 검사에서
+        // 0 노출 허용. file 항목은 itemsCount=null.
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID f1 = UUID.randomUUID(), file1 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            folder(f1, parent, "빈폴더", t)
+        ));
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            file(file1, parent, "단독.pdf", 100, t)
+        ));
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        assertThat(res.items()).extracting(FolderItemDto::itemsCount)
+            .containsExactly(0, null);
+    }
+
+    @Test
+    void loadItems_itemsCount_sumsFoldersAndFilesPerSubFolder() {
+        // 자식 폴더 f1: 자식 폴더 2개 + 자식 파일 3개 → itemsCount=5
+        // 자식 폴더 f2: 자식 파일 1개 → itemsCount=1
+        // 자식 폴더 f3: 자식 없음 → itemsCount=0
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID f1 = UUID.randomUUID(), f2 = UUID.randomUUID(), f3 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            folder(f1, parent, "가폴더", t),
+            folder(f2, parent, "나폴더", t),
+            folder(f3, parent, "다폴더", t)
+        ));
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of());
+        when(folderRepository.countByParentIdInGroupedActive(any(Collection.class)))
+            .thenReturn(List.<Object[]>of(new Object[]{f1, 2L}));
+        when(fileRepository.countByFolderIdInGroupedActive(any(Collection.class)))
+            .thenReturn(List.<Object[]>of(
+                new Object[]{f1, 3L},
+                new Object[]{f2, 1L}
+            ));
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        // 가폴더(f1)=2+3=5, 나폴더(f2)=1, 다폴더(f3)=0
+        assertThat(res.items()).extracting(FolderItemDto::name)
+            .containsExactly("가폴더", "나폴더", "다폴더");
+        assertThat(res.items()).extracting(FolderItemDto::itemsCount)
+            .containsExactly(5, 1, 0);
+    }
+
+    @Test
+    void loadItems_itemsCount_filesNeverGetItemsCount() {
+        // file type 항목은 itemsCount=null로 유지(FolderItemDto.fromFile 계약).
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID file1 = UUID.randomUUID(), file2 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of());
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            file(file1, parent, "a.pdf", 100, t),
+            file(file2, parent, "b.pdf", 200, t)
+        ));
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        assertThat(res.items()).extracting(FolderItemDto::itemsCount)
+            .containsExactly(null, null);
     }
 }

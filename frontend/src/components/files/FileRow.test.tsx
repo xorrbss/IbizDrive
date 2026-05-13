@@ -112,3 +112,41 @@ describe('FileRow — shareCount badge (P2c)', () => {
     expect(screen.getByLabelText('3명 공유')).toBeTruthy()
   })
 })
+
+describe('FileRow — itemsCount badge (P2d)', () => {
+  const FOLDER_BASE: FileItem = {
+    id: 'd1',
+    name: '영업팀',
+    type: 'folder',
+    mimeType: null,
+    size: null,
+    updatedAt: '2026-04-25T00:00:00Z',
+    updatedBy: 'me',
+    parentId: 'root',
+  }
+
+  it('folder + itemsCount undefined → 배지 미렌더', () => {
+    wrap(row({ ...FOLDER_BASE }))
+    expect(screen.queryByLabelText(/^항목 /)).toBeNull()
+  })
+
+  it('folder + itemsCount=0 → "0개" 배지 노출 (typeof === number 검사 허용)', () => {
+    wrap(row({ ...FOLDER_BASE, itemsCount: 0 }))
+    const badge = screen.getByLabelText('항목 0개')
+    expect(badge).toBeTruthy()
+    expect(badge.textContent).toContain('0개')
+  })
+
+  it('folder + itemsCount=5 → "5개" 배지 노출', () => {
+    wrap(row({ ...FOLDER_BASE, itemsCount: 5 }))
+    const badge = screen.getByLabelText('항목 5개')
+    expect(badge).toBeTruthy()
+    expect(badge.textContent).toContain('5개')
+  })
+
+  it('file + itemsCount 무관하게 미렌더 (폴더 한정 가드)', () => {
+    // 파일에 itemsCount가 들어오더라도 FileRow는 type==='folder'만 표시한다.
+    wrap(row({ ...BASE_FILE, itemsCount: 9 }))
+    expect(screen.queryByLabelText(/^항목 /)).toBeNull()
+  })
+})
