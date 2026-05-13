@@ -99,6 +99,12 @@ app:
       max-per-run: 10000
       grace-hours: 24
       batch-size: 200
+  # v1.x — favorites orphan cleanup (file/folder hard-purge 후 남는 favorites row 정리).
+  # cron_policy 'favorites.cleanup' 토글 (default false). 활성화는 /admin/system 토글.
+  favorites:
+    cleanup:
+      cron: "0 0 2 * * *"   # 매일 새벽 2시 (hard purge 자정 + storage orphan 1시 다음)
+      zone: Asia/Seoul
   # ADR #47 Phase 3d — pending_admin_approvals.expires_at <= NOW() AND status='REQUESTED' row
   # 자동 만료. status=EXPIRED + audit admin.approval.expired (actor=NULL system).
   admin-approval:

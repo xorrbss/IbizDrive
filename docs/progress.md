@@ -5,6 +5,47 @@
 
 ---
 
+## 2026-05-14 — favorites-cron-cleanup (orphan favorites row 일일 정리, PR #TBD)
+
+### 범위
+
+PR #237/#241/#243 후속. file/folder가 hard-purge된 후 남는 orphan favorites 행을 일일 cron으로 정리. v1.x DB hygiene 트랙. 기존 cron 4종(purge.expired / share.expire / permission.expire / storage.orphan.cleanup) + admin.approval.expire 패턴 답습.
+
+### 변경 (8 파일, +200 / -2, 신규 5)
+
+backend
+- `db/migration/V23__favorites_cleanup_cron_policy.sql` (신규) — `cron_policy` 테이블에 `favorites.cleanup` key default false seed
+- `audit/AuditEventType.java` — `FAVORITES_ORPHANS_CLEANED("system.favorites.orphans_cleaned")` enum 추가 (62 → 63)
+- `favorite/FavoriteRepository.deleteOrphans` (신규) — native query `DELETE FROM favorites WHERE (resource_type='file' AND NOT EXISTS files) OR (resource_type='folder' AND NOT EXISTS folders)`. PK index seek. `@Modifying(clearAutomatically=true)` → int 반환
+- `favorite/FavoritesCleanupProperties.java` (신규) — `app.favorites.cleanup.{cron,zone}` record. default cron 매일 새벽 2시, zone Asia/Seoul. enabled 토글은 `cron_policy` DB 단일 source
+- `favorite/FavoritesCleanupService.java` (신규) — `@Transactional runDailyCleanup`. count=0이면 audit 미발행 (idle 노이즈 회피). count>0이면 `FAVORITES_ORPHANS_CLEANED` summary audit (`{deletedRows, durationMs}`)
+- `favorite/FavoritesCleanupJob.java` (신규) — `@Scheduled(cron, zone)` + `CronPolicyRepository.isEnabled("favorites.cleanup")` 게이트. catch-all log + next-tick 재시도
+- `config/SchedulingConfig.java` — `FavoritesCleanupProperties.class` 등록 (6 → 7)
+- `resources/application.yml` — `app.favorites.cleanup.{cron, zone}` 블록 추가
+
+tests
+- `favorite/FavoritesCleanupServiceTest.java` (신규, 2 케이스) — orphan 0건 시 audit 미발행 / orphan 7건 시 count 반환 + audit summary 발행(eventType/targetType/actorId null/afterState JSON 포함)
+
+### 결정/편차
+
+- **enabled 토글은 cron_policy DB 단일 source** — yml `enabled` 필드 두지 않음. 운영 진입은 `/admin/system` UI 토글로 재기동 없이 즉시 반영 (HardPurgeJob 패턴 답습)
+- **batch limit 미정의** — v1.x favorites 테이블 규모 작음 가정. 커지면 V_next에 `max-per-run` 추가
+- **soft-deleted resource는 보존** — favorite도 함께 살아있음 (휴지통 복원 시 즉시 재노출). orphan = hard-purge 후 row 자체 부재 케이스만
+- **count=0일 때 audit 미발행** — idle 일자 노이즈 회피. HardPurgeService와 동형 정책 아니지만 favorites는 평소 변화 적음 (KISS)
+- **summary audit only** — per-row 미발행. STORAGE_ORPHAN_CLEANED 패턴 답습
+
+### 검증
+
+- `./gradlew test --tests "*FavoritesCleanupServiceTest" --tests "*FavoriteServiceTest" --tests "*FavoriteAuditListenerTest" --tests "*FolderQueryServiceTest"` BUILD SUCCESSFUL
+- 통합 테스트(Flyway V23 + JPA 실제 쿼리)는 CI 의존 (memory `feedback_local_skip_ci_gap`)
+
+### 다음 세션 컨텍스트
+
+- `/admin/system` UI에 `favorites.cleanup` cron toggle row 자동 노출 (기존 CronJobStatusResponse가 cron_policy 테이블 전체 listing) — 별도 wiring 불요
+- favorites 규모 1000+ 도달 시 batch limit 도입 검토
+
+---
+
 ## 2026-05-14 — ⭐ favorites-listing (Sidebar pinned row + /favorites 페이지, PR #TBD)
 
 ### 범위
