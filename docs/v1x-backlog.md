@@ -26,7 +26,7 @@
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
 | 회귀에서 발견된 critical bug fix | TBD | 없음 | golden path 회귀 결과 | 회귀 통과 직후 inventory. 현재 미정 |
-| Storage 용량 TB 단위 표시 (1024 GB+) | S | 없음 | progress.md 2026-05-09 (T17 storage overview) | `formatBytes` 1개 함수 확장 + test. PB 미도입 (KISS) |
+| ~~Storage 용량 TB 단위 표시 (1024 GB+)~~ | — | — | ✓ 2026-05-09 format-bytes-tb-nan-guard (PR #134) — backlog stale | **closure (stale entry 정정)** — `formatBytes.ts`에 이미 TB 분기 + NaN/Infinity 폴백 구현됨 (`bytes / 1024^4 → '%.1f TB'`). 회귀 가드 5건(1.0/1.5/2.0 TB + 1024 GB - 1 byte 경계 + NaN/Infinity 3종) PASS. PB 미도입(KISS). 본 entry는 backlog drift였음 |
 | ~~단축키 ↔ action 매핑 통합~~ | — | — | ✓ 2026-05-12 keyboard-shortcut-actions (PR #209) | **closure (점진 — 사용자 결정)** — `lib/keyboardShortcuts.ts` `ACTION_IDS`/`ActionId` + `KeyboardShortcut.action?: ActionId` optional + 3 wired 항목(`/`,`⌘K · Ctrl+K`,`?`) 마킹. `hooks/useGlobalShortcuts.ts` `ACTION_HANDLERS` Record dispatch 분리 (chord matching 그대로, CustomEvent listener 호환). 정합 가드 5건. 컨텍스트 의존 단축키(F2/Delete/↑↓/Ctrl+A 등)는 미통합 — 향후 ActionId 추가 + 컴포넌트 dispatcher 통합으로 진화 |
 | ~~docs drift 정정 — schema §2 (V17 trash_policy) + API §7.12 endpoint spec 3건~~ | — | — | ✓ 2026-05-12 tier0-drift-sweep (PR #202) | **closure** — (a) §2.12 `trash_policy` 표 entry **이미 존재** (drift check 자체가 stale, line 495). (b) §7.12 `/api/admin/download-logs` `/api/admin/permission-logs` `/api/admin/storage-usage` 3건은 backend/frontend 0건 = never-implemented. **AdminAudit 통합으로 대체** → deprecation marker 채택 (본 PR). (c) audit enum 정합 OK |
 
