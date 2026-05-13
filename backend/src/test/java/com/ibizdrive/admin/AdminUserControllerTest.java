@@ -88,6 +88,9 @@ class AdminUserControllerTest {
     @MockBean
     private PermissionEvaluator permissionEvaluator; // MethodSecurityConfig 그래프 충족
 
+    @MockBean
+    private com.ibizdrive.approval.PendingApprovalService approvalService; // Phase 3b dual-approval 그래프 충족 — gate=false 기본이라 실제 호출 0
+
     private IbizDriveUserDetails adminPrincipal;
     private IbizDriveUserDetails memberPrincipal;
 

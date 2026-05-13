@@ -1,8 +1,16 @@
 package com.ibizdrive.admin;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.ibizdrive.approval.ApprovalRequiredException;
+import com.ibizdrive.approval.PendingAdminApproval;
+import com.ibizdrive.approval.PendingApprovalService;
+import com.ibizdrive.approval.handlers.RoleChangeApprovalHandler;
+import com.ibizdrive.approval.handlers.RoleChangePayload;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import com.ibizdrive.user.User;
 import jakarta.validation.Valid;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -42,10 +50,24 @@ import java.util.UUID;
 @RequestMapping("/api/admin/users")
 public class AdminUserController {
 
-    private final AdminUserService adminUserService;
+    /** dual-approval framework default TTL (ADR #47). */
+    private static final int APPROVAL_TTL_DAYS = 7;
 
-    public AdminUserController(AdminUserService adminUserService) {
+    private final AdminUserService adminUserService;
+    private final PendingApprovalService approvalService;
+    private final ObjectMapper objectMapper;
+    private final boolean dualApprovalRoleChangeEnabled;
+
+    public AdminUserController(
+        AdminUserService adminUserService,
+        PendingApprovalService approvalService,
+        ObjectMapper objectMapper,
+        @Value("${app.dual-approval.role-change.enabled:false}") boolean dualApprovalRoleChangeEnabled
+    ) {
         this.adminUserService = adminUserService;
+        this.approvalService = approvalService;
+        this.objectMapper = objectMapper;
+        this.dualApprovalRoleChangeEnabled = dualApprovalRoleChangeEnabled;
     }
 
     @PostMapping
@@ -122,6 +144,23 @@ public class AdminUserController {
         UUID actorId = principal.getUser().getId();
         User updated = null;
         if (req.role() != null) {
+            if (dualApprovalRoleChangeEnabled) {
+                // ADR #47 Phase 3b — 게이트 활성 시 role 변경은 단독 mutation이어야 한다.
+                // isActive/displayName 동반은 mixed-response 모호성을 만들어 거부 (400).
+                if (req.isActive() != null || req.displayName() != null) {
+                    throw new AdminBadPatchException(
+                        "when dual-approval for role_change is enabled, role must be the only field "
+                      + "in the request body");
+                }
+                User current = adminUserService.get(id);
+                String payloadJson = serializeRolePayload(id, current.getRole(), req.role(), /*reason*/ null);
+                PendingAdminApproval pending = approvalService.submit(
+                    RoleChangeApprovalHandler.ACTION_TYPE,
+                    payloadJson,
+                    actorId,
+                    APPROVAL_TTL_DAYS);
+                throw new ApprovalRequiredException(pending.getId(), pending.getExpiresAt());
+            }
             updated = adminUserService.changeRole(id, req.role(), actorId);
         }
         if (Boolean.TRUE.equals(req.isActive())) {
@@ -134,5 +173,16 @@ public class AdminUserController {
         }
         // 위 분기 중 하나는 반드시 진입 — isEmpty 가드로 보장됨.
         return AdminUserSummaryResponse.from(updated);
+    }
+
+    private String serializeRolePayload(UUID userId,
+                                        com.ibizdrive.user.Role fromRole,
+                                        com.ibizdrive.user.Role toRole,
+                                        String reason) {
+        try {
+            return objectMapper.writeValueAsString(new RoleChangePayload(userId, fromRole, toRole, reason));
+        } catch (JsonProcessingException e) {
+            throw new IllegalStateException("role_change payload serialize failed", e);
+        }
     }
 }

@@ -139,6 +139,18 @@ public class AdminUserService {
     }
 
     /**
+     * 단건 조회 — dual-approval Phase 3b controller가 framework submit 전 currentRole 캡처 용도.
+     *
+     * @throws AdminUserNotFoundException target 미존재 → 404
+     */
+    @Transactional(readOnly = true)
+    public User get(UUID targetUserId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+        return userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+    }
+
+    /**
      * admin-user-mgmt — 사용자 ROLE 변경. self-demote(ADMIN→non-ADMIN) 차단.
      *
      * <p>{@code com.ibizdrive.permission.PermissionService#changeRole}와 분리 — 후자는 controller
