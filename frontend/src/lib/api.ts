@@ -306,6 +306,7 @@ export const api = {
     if (!res.ok) {
       throw await buildApiError(res, `getFileDetail fetch failed: ${res.status}`)
     }
+    // P_panel-A: 응답 envelope 확장 — file + owner + sharedWith + folderPath. 기존 `file` 키 보존.
     const body = (await res.json()) as {
       file: {
         id: string
@@ -318,6 +319,14 @@ export const api = {
         createdAt: string
         updatedAt: string
       }
+      owner?: { id: string; displayName: string; email: string } | null
+      sharedWith?: Array<{
+        subjectType: string
+        subjectId?: string | null
+        subjectName?: string | null
+        preset: string
+      }>
+      folderPath?: Array<{ id: string; name: string; slug: string }>
     }
     const f = body.file
     return {
@@ -329,6 +338,9 @@ export const api = {
       updatedAt: f.updatedAt,
       updatedBy: f.ownerId,
       parentId: f.folderId,
+      owner: body.owner ?? null,
+      sharedWith: body.sharedWith ?? [],
+      folderPath: body.folderPath ?? [],
     }
   },
 

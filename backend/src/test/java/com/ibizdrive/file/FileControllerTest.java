@@ -1,6 +1,7 @@
 package com.ibizdrive.file;
 
 import com.ibizdrive.common.dto.RestoreRequest;
+import com.ibizdrive.file.dto.FileDetailResponse;
 import com.ibizdrive.file.dto.FileDto;
 import com.ibizdrive.file.dto.MoveFileRequest;
 import com.ibizdrive.file.dto.RenameFileRequest;
@@ -186,18 +187,19 @@ class FileControllerTest {
             .isInstanceOf(FileRestoreConflictException.class);
     }
 
-    // ── get (Phase B P2) ──────────────────────────────────────────────
+    // ── get (Phase B P2 + P_panel-A) ──────────────────────────────────────
 
     @Test
     void get_returnsOk_andDelegatesToQueryService() {
-        FileDto dto = FileDto.from(newFile(FILE_ID, FOLDER_ID, "보고서.pdf"));
-        when(queryService.loadDetail(FILE_ID)).thenReturn(dto);
+        FileDto fileDto = FileDto.from(newFile(FILE_ID, FOLDER_ID, "보고서.pdf"));
+        FileDetailResponse envelope = new FileDetailResponse(fileDto, null, java.util.List.of(), java.util.List.of());
+        when(queryService.loadDetail(FILE_ID)).thenReturn(envelope);
 
-        ResponseEntity<Map<String, FileDto>> res = controller.get(FILE_ID);
+        ResponseEntity<FileDetailResponse> res = controller.get(FILE_ID);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         assertThat(res.getBody()).isNotNull();
-        assertThat(res.getBody().get("file")).isEqualTo(dto);
+        assertThat(res.getBody().file()).isEqualTo(fileDto);
         verify(queryService).loadDetail(FILE_ID);
     }
 
