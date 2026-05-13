@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-05-13 — dual-approval Phase 3a (retention_change handler + AdminTrashPolicyController 게이트)
+
+### 범위
+
+2인 승인 framework (ADR #47) **Phase 3a closure** — Phase 2b (#226) controller 위에서 첫 번째 구체 action handler + 기존 mutation endpoint 게이트 hook. retention_change action 한정 (role_change/trash_purge는 Phase 3b/3c). default false라 회귀 0.
+
+### 변경 (7 file, +200 추가)
+
+backend
+- `RetentionChangePayload` record + `RetentionChangeApprovalHandler` @Component: ObjectMapper deserialize 후 기존 `TrashPolicyService.updateRetentionDays` 위임 → single-approver와 동일 audit emit 보존.
+- `ApprovalRequiredException` + `GlobalExceptionHandler` 202 매핑: 게이트 활성 controller가 throw → 202 ACCEPTED + envelope `APPROVAL_REQUIRED` + details `{approvalId, expiresAt}`.
+- `AdminTrashPolicyController.update`: `@Value("${app.dual-approval.retention-change.enabled:false}")` 게이트 분기 — true 시 submit + throw, false 시 즉시 적용 경로. TTL 7일.
+
+tests
+- `RetentionChangeApprovalHandlerTest` (Mockito 5건): actionType / 정상 deserialize+위임 / service throw rollback / corrupt payload / missing fields.
+- `AdminTrashPolicyControllerTest`: TestConfig에 `PendingApprovalService` mock 추가 (gate=false 기본이라 호출 0).
+
+docs
+- `docs/v1x-backlog.md` Tier 1: "Phase 3+" → "Phase 3b+ (role/purge handler + admin UI + cron)" 잔여 분해.
+
+### 결정/편차
+
+- **@Value default false**: 기존 single-approver 경로 그대로. 운영 시 `application-prod.yml`에서 명시 활성.
+- **ApprovalRequiredException 패턴**: controller signature 보존 + GlobalExceptionHandler 202 매핑.
+- **TrashPolicyService.updateRetentionDays 재사용**: single/dual 모두 동일 audit + invariant.
+- **MockMvc gate=true 경로 미포함**: Phase 3b/3c에서 핸들러 추가하며 한 묶음으로 검증 권장.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- targeted test BUILD SUCCESSFUL (handler 5 + controller 회귀 18).
+
+### 다음 세션 컨텍스트
+
+- Phase 3b: `RoleChangeApprovalHandler` + `AdminUsersController` 게이트.
+- Phase 3c: `TrashPurgeApprovalHandler` + trash purge endpoint 게이트.
+- Phase 4: admin UI `/admin/approvals`.
+- Phase 5: expiration cron + email listener.
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-13 — dual-approval Phase 2b (controller + DTOs + service findById)
 
 ### 범위
