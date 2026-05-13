@@ -28,6 +28,7 @@ import type {
 import type { AuthSession, LoginParams, SignupParams } from '@/types/auth'
 import type { CronJobsResponse } from '@/types/system'
 import type { AdminStorageOverviewResponse } from '@/types/admin-storage'
+import { parseApprovalRequired } from './errors'
 import type { AdminDashboardSummaryResponse } from '@/types/admin'
 import type { WorkspaceMeResponse } from '@/types/workspace'
 import type { TeamCreateRequest, TeamMember, TeamMemberRole, TeamResponse } from '@/types/team'
@@ -1445,6 +1446,8 @@ export const api = {
       },
       body: JSON.stringify(body),
     })
+    // dual-approval Tier 0: gate=ON 시 backend가 202 + APPROVAL_REQUIRED — ApprovalRequiredError throw.
+    await throwIfApprovalRequired(res)
     if (!res.ok) {
       throw await buildApiError(res, `adminUpdateUser failed: ${res.status}`)
     }
@@ -2039,6 +2042,20 @@ async function buildApiError(res: Response, fallbackMessage: string): Promise<Er
 }
 
 /**
+ * dual-approval framework (ADR #47, docs/02 §2.11) — 202 ACCEPTED + APPROVAL_REQUIRED envelope
+ * 분기 helper. Tier 0 3 mutation wrapper(adminUpdateUser/adminBulkTrash/updateAdminTrashPolicy)
+ * 가 응답 status==202를 본 helper에 위임. envelope이 valid면 {@link ApprovalRequiredError} throw,
+ * envelope 부재/오염이면 200 정상 흐름(호출자가 `res.json()`으로 진행).
+ *
+ * <p>gate=OFF 기본 동작에서는 backend가 200을 반환하므로 본 helper 미도달 — 기존 흐름 유지.
+ */
+async function throwIfApprovalRequired(res: Response): Promise<void> {
+  if (res.status !== 202) return
+  const err = await parseApprovalRequired(res)
+  if (err) throw err
+}
+
+/**
  * CSRF token cookie(`XSRF-TOKEN`) 조회. 없으면 backend `/api/auth/csrf` GET으로 부트스트랩.
  * Spring Security `CookieCsrfTokenRepository.withHttpOnlyFalse()`가 발급하는 쿠키 (HttpOnly=false)이므로
  * `document.cookie`로 읽을 수 있다. login/logout 등 mutation 직전 1회 호출.
@@ -2140,6 +2157,8 @@ export async function adminBulkTrash(
     headers: { 'content-type': 'application/json', 'X-CSRF-TOKEN': csrf },
     body: JSON.stringify({ action, items }),
   })
+  // dual-approval Tier 0(action='purge'): gate=ON 시 backend가 202 + APPROVAL_REQUIRED.
+  await throwIfApprovalRequired(res)
   if (!res.ok) {
     throw await buildApiError(res, `adminBulkTrash failed: ${res.status}`)
   }
@@ -2192,6 +2211,8 @@ export async function updateAdminTrashPolicy(
     },
     body: JSON.stringify({ days }),
   })
+  // dual-approval Tier 0: gate=ON 시 backend가 202 + APPROVAL_REQUIRED.
+  await throwIfApprovalRequired(res)
   if (!res.ok) {
     throw await buildApiError(res, `updateAdminTrashPolicy failed: ${res.status}`)
   }

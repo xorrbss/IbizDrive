@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { adminBulkTrash } from './api'
+import { ApprovalRequiredError } from './errors'
 import type { AdminTrashBulkItem, AdminTrashBulkResponse } from '@/types/trash'
 
 /**
@@ -87,5 +88,24 @@ describe('adminBulkTrash', () => {
   it('403 → ApiError status=403', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 403 }))
     await expect(adminBulkTrash('restore', ITEMS)).rejects.toMatchObject({ status: 403 })
+  })
+
+  it('202 APPROVAL_REQUIRED (purge gate=ON) → ApprovalRequiredError throw', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'APPROVAL_REQUIRED',
+            message: '이 작업은 2인 승인이 필요합니다',
+            details: {
+              approvalId: 'aaaa-bbbb-cccc-dddd',
+              expiresAt: '2026-05-15T00:00:00Z',
+            },
+          },
+        },
+        202,
+      ),
+    )
+    await expect(adminBulkTrash('purge', ITEMS)).rejects.toBeInstanceOf(ApprovalRequiredError)
   })
 })

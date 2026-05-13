@@ -5,6 +5,51 @@
 
 ---
 
+## 2026-05-14 — dual-approval Phase 4 FE follow-up (202 APPROVAL_REQUIRED 처리)
+
+### 범위
+
+dual-approval framework Phase 4 admin UI (ADR #47, docs/02 §2.11) 마지막 FE follow-up — Tier 0 3 mutation(role_change / trash_purge / retention_change)이 gate=ON 시 backend가 반환하는 **202 ACCEPTED + APPROVAL_REQUIRED envelope** 처리 wiring. backend 변경 0건 — frontend 3-layer 답습 (API wrapper / mutation hook / form 컴포넌트).
+
+### 변경 (10 file, 신규 2 + 수정 8)
+
+frontend
+- `lib/errors.ts`: `ApprovalRequiredError extends Error`(approvalId/expiresAt 노출) + `parseApprovalRequired(res)` helper (202 envelope 안전 파싱, 부재/오염 시 null 반환).
+- `lib/approvalToast.ts` (신규): `showApprovalRequiredToast(err, actionLabel)` — sonner `toast.info` + action 버튼 "승인 페이지" 클릭 시 `/admin/approvals/:approvalId` location 이동 + duration 8000ms.
+- `lib/api.ts`: `throwIfApprovalRequired(res)` private helper + Tier 0 3 wrapper(`adminUpdateUser` / `adminBulkTrash` / `updateAdminTrashPolicy`) `res.ok` 분기 직전 호출. 일반 4xx는 기존 `buildApiError` 흐름.
+- `hooks/useAdminUpdateUser.ts` / `useAdminTrash.ts`(bulk) / `useUpdateAdminTrashPolicy.ts`: `onError`에서 `err instanceof ApprovalRequiredError` 분기 + `showApprovalRequiredToast(err, '사용자 역할 변경' | '휴지통 영구 삭제' | '휴지통 보존 정책 변경')` 호출. invalidate 미수행(`onSuccess` 미도달).
+- `components/admin/RetentionPolicyEditor.tsx`: confirm dialog `onError`에서 `ApprovalRequiredError` 분기 → dialog 닫힘 + draft 유지(form 값 보존). 일반 error 분기는 그대로.
+- 테스트: `errors.test.ts` +9, `approvalToast.test.ts` 신규(3), `api.adminUsers.test.ts` +2, `api.adminTrashBulk.test.ts` +1, `api.updateAdminTrashPolicy.test.ts` +1, `useAdminUpdateUser.test.tsx` +1, `useAdminTrash.test.tsx` +1, `useUpdateAdminTrashPolicy.test.tsx` +1, `RetentionPolicyEditor.test.tsx` +1.
+
+docs
+- `docs/01-frontend-design.md` §14.6 신규: "2인 승인 framework — 202 APPROVAL_REQUIRED 응답 처리" 패턴(3 layer 책임 분리 + actionLabel 매핑표 + 회귀 가드 spec). 향후 새 Tier 0 actionType 추가 시 답습 contract.
+- `docs/progress.md` 본 entry.
+- `docs/v1x-backlog.md` Tier 1 row "2인 승인 framework Phase 4 FE follow-ups" → closure (모든 잔여 처리됨).
+
+### 결정/편차
+
+- **`ApprovalRequiredError`를 일반 `ApiError`와 분리**: status 202는 fetch `res.ok=true` → 기존 `buildApiError` 분기 미발동. 또한 sentinel 분기를 `err instanceof ApprovalRequiredError`로 명확히 표현해 hook/컴포넌트가 status/code string 매칭이 아닌 타입 분기로 다루도록 KISS.
+- **toast 종류 `info` (success/error 아님)**: 실제 mutation은 적용되지 않았으므로 success 아니고, 사용자가 실패한 것도 아니므로 error 아님. sonner의 4가지 종류 중 의미 정합 — `info` ("승인 절차 진입 중" 정보 안내).
+- **action 버튼 onClick에서 `window.location.href` 직접 설정**: Next.js `useRouter`는 hook 내부에서만 호출 가능, helper는 어디서든 호출되어야 하므로 location API로 일관. admin 페이지 한정 운영 도구라 SPA 라우팅 끊김 영향 미미.
+- **각 mutation hook에서 자동 toast 노출**: 3 mutation 모두 actionLabel이 mutation 종류와 1:1이라 hook 레벨이 적절한 책임 위치. 컴포넌트는 form 값/dialog 닫힘만 처리 (UX 결정).
+- **RetentionPolicyEditor `onError`만 ApprovalRequiredError 분기 추가**: AdminUsersPage / AdminTrashAllPage는 form/inline 에러 표시가 status/code 기반이라 ApprovalRequiredError는 그쪽으로 흘러가지 않음 — hook의 toast로 충분. RetentionPolicyEditor는 confirm dialog가 별도로 떠 있어 dialog 닫힘 분기 필요.
+- **`buildApiError` 미변경**: 202 분기는 mutation-specific. 다른 endpoint가 202를 사용하지 않으므로 wrapper에 끼우지 않고 helper를 각 호출 지점에서 명시 호출 — wire 의도가 호출부에서 보이도록.
+
+### 검증
+
+- `pnpm typecheck` — PASS
+- `pnpm lint` — PASS
+- `pnpm vitest run` 전체 — 192 files / 1467 tests PASS (회귀 0). 신규/수정 9 file: 73 tests PASS.
+- 신규 21 테스트 케이스(errors + approvalToast + api wire + hook + component): ApprovalRequiredError throw / toast.info 호출 / invalidate 미호출 / form 상태 유지 가드.
+
+### 다음 세션 컨텍스트
+
+- **Phase 4 잔여**: 없음. v1x-backlog Tier 1 row "2인 승인 framework Phase 4 FE follow-ups" closure.
+- **새 Tier 0 actionType 추가 시 답습**: `docs/01 §14.6.3` 표에 actionLabel 추가 + hook의 `showApprovalRequiredToast` 호출 + 회귀 가드 패턴 답습.
+- **컴포넌트 UX 미세 보강 후보**: AdminUsersPage `UserRow`의 onError에서 ApprovalRequiredError 분기 → 인라인 에러 메시지를 띄우지 않고 mutation 자체 reset(`update.reset()`)으로 "변경 진행 중" 상태 해소. 현재는 hook의 toast로 충분하나, 차후 사용자 피드백에 따라 추가 처리 가능.
+
+---
+
 ## 2026-05-14 — dual-approval Phase 4 FE follow-up (AdminTabBar pending count 배지)
 
 ### 범위

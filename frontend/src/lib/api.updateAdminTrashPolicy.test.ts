@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { updateAdminTrashPolicy } from '@/lib/api'
+import { ApprovalRequiredError } from '@/lib/errors'
 
 /**
  * `updateAdminTrashPolicy` wire 계약 — trash-retention-mutation Phase C.
@@ -72,5 +73,32 @@ describe('updateAdminTrashPolicy', () => {
     fetchMock.mockResolvedValueOnce(jsonResponse({ retentionDays: 30 }, 200))
     const got = await updateAdminTrashPolicy(30)
     expect(got.retentionDays).toBe(30)
+  })
+
+  it('202 APPROVAL_REQUIRED (gate=ON) → ApprovalRequiredError throw + approvalId/expiresAt 보존', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'APPROVAL_REQUIRED',
+            message: '이 작업은 2인 승인이 필요합니다',
+            details: {
+              approvalId: 'aaaa-bbbb-cccc-dddd',
+              expiresAt: '2026-05-15T00:00:00Z',
+            },
+          },
+        },
+        202,
+      ),
+    )
+    try {
+      await updateAdminTrashPolicy(14)
+      throw new Error('expected throw')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalRequiredError)
+      const err = e as ApprovalRequiredError
+      expect(err.approvalId).toBe('aaaa-bbbb-cccc-dddd')
+      expect(err.expiresAt).toBe('2026-05-15T00:00:00Z')
+    }
   })
 })

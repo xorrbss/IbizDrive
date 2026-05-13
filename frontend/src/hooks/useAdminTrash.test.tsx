@@ -10,6 +10,8 @@ import {
 } from './useAdminTrash'
 import { api, adminListTrash, adminBulkTrash } from '@/lib/api'
 import { qk } from '@/lib/queryKeys'
+import { ApprovalRequiredError } from '@/lib/errors'
+import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 import type {
   AdminTrashBulkResponse,
   AdminTrashFilters,
@@ -127,6 +129,7 @@ describe('useAdminPurgeTrashItem', () => {
 describe('useAdminBulkTrash', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetSonnerToastMock()
   })
 
   it('성공 → adminBulkTrash(action, items) 호출 + qk.adminTrash() 무효화 + 응답 echo', async () => {
@@ -169,5 +172,31 @@ describe('useAdminBulkTrash', () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true))
     expect(adminBulkTrash).toHaveBeenCalledWith('purge', [{ type: 'file', id: 'f1' }])
+  })
+
+  it('202 APPROVAL_REQUIRED (purge) → ApprovalRequiredError + toast.info + invalidate 미호출', async () => {
+    const apprErr = new ApprovalRequiredError(
+      'aaaa-bbbb',
+      '2026-05-15T00:00:00Z',
+    )
+    ;(adminBulkTrash as ReturnType<typeof vi.fn>).mockRejectedValue(apprErr)
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useAdminBulkTrash(), { wrapper: wrap(qc) })
+
+    act(() => {
+      result.current.mutate({ action: 'purge', items: [{ type: 'file', id: 'f1' }] })
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toBeInstanceOf(ApprovalRequiredError)
+    expect(invalidateSpy).not.toHaveBeenCalled()
+    await waitFor(() => {
+      const calls = toastSpy('info').mock.calls
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls[0][0]).toMatch(/휴지통 영구 삭제/)
+    })
   })
 })

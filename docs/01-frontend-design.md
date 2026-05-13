@@ -1258,6 +1258,59 @@ onSuccess: () => {
 - `GrantPermissionDialog.test.tsx`: subject 라디오 분기 + preset select + expiresAt parse + submit body shape + 409 inline alert.
 - `useGrantPermission.test.tsx`: onSuccess invalidate 3종 + onError envelope pass-through.
 
+### 14.6 2인 승인 framework — 202 APPROVAL_REQUIRED 응답 처리 (ADR #47, docs/02 §2.11)
+
+dual-approval framework Tier 0 mutation(role_change / retention_change / trash_purge)이 gate=ON 상태일 때, backend는 **200 OK + entity 대신 202 ACCEPTED + APPROVAL_REQUIRED envelope**을 반환한다:
+
+```json
+{
+  "error": {
+    "code": "APPROVAL_REQUIRED",
+    "message": "이 작업은 2인 승인이 필요합니다",
+    "details": { "approvalId": "<uuid>", "expiresAt": "<ISO>" }
+  }
+}
+```
+
+#### 14.6.1 처리 패턴 (3 layer)
+
+**Layer 1 — API wrapper** (`lib/api.ts`)
+- 각 Tier 0 mutation wrapper(`adminUpdateUser` / `adminBulkTrash` / `updateAdminTrashPolicy`)는 `await throwIfApprovalRequired(res)`를 `res.ok` 분기 직전에 호출.
+- 202 + envelope 매칭이면 `ApprovalRequiredError`(`lib/errors.ts`) throw. 일반 4xx는 기존 `buildApiError` 흐름.
+
+**Layer 2 — Mutation hook** (`hooks/useAdminUpdateUser.ts` 등)
+- `onError`에서 `err instanceof ApprovalRequiredError` 분기 → `showApprovalRequiredToast(err, actionLabel)`(`lib/approvalToast.ts`) 호출.
+- 일반 에러는 무처리(호출자가 `mutation.error`로 수령). 캐시 무효화 미수행(`onSuccess` 미도달).
+
+**Layer 3 — Component (form / page)**
+- mutation `onError`에서 `ApprovalRequiredError` 분기 시 form 값/선택 상태/dialog 닫힘만 처리 — 사용자가 승인 페이지 확인 후 재시도 가능하도록 입력 유지.
+- 일반 에러는 기존 inline alert / toast 분기 유지.
+
+#### 14.6.2 토스트 UX
+
+`showApprovalRequiredToast(err, actionLabel)`:
+- `toast.info` 종류 (실패도 성공도 아닌 "보류" 상태).
+- 메시지: `"승인 요청이 등록되었습니다 ({actionLabel}). 두 번째 관리자의 승인을 기다립니다."`
+- action 버튼 label="승인 페이지", onClick → `window.location.href = '/admin/approvals/:approvalId'`.
+- duration: 8000ms (일반 5초보다 길게).
+
+#### 14.6.3 actionLabel 매핑
+
+| mutation hook | actionLabel | backend actionType |
+|---|---|---|
+| `useAdminUpdateUser` | `'사용자 역할 변경'` | `role_change` |
+| `useAdminBulkTrash` (action='purge') | `'휴지통 영구 삭제'` | `trash_purge` |
+| `useUpdateAdminTrashPolicy` | `'휴지통 보존 정책 변경'` | `retention_change` |
+
+새 Tier 0 mutation 추가 시 본 표 + hook의 `showApprovalRequiredToast` 호출 + 본 패턴 답습.
+
+#### 14.6.4 회귀 가드
+
+- `errors.test.ts`: `ApprovalRequiredError` 생성자/속성 + `parseApprovalRequired` 6 케이스(valid/다른 code/details 누락 2종/JSON 부재/비-JSON).
+- `approvalToast.test.ts`: `toast.info` 호출 + actionLabel 포함 + action 버튼 onClick navigation + duration=8000.
+- `api.adminUsers.test.ts` / `api.adminTrashBulk.test.ts` / `api.updateAdminTrashPolicy.test.ts`: 202 envelope → `ApprovalRequiredError` throw + approvalId/expiresAt 보존.
+- mutation hook 테스트: 202 응답 시 invalidate 미호출 + toast.info 호출 + form 상태 유지.
+
 ---
 
 ## 15. 실시간 동기화 (SSE)

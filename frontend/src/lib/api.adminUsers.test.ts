@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { api, type AdminUserPage, type AdminUserSummary } from './api'
+import { ApprovalRequiredError } from './errors'
 
 /**
  * admin-user-mgmt — `api.adminListUsers` / `api.adminUpdateUser` wire 계약 검증.
@@ -208,5 +209,53 @@ describe('api.adminUpdateUser', () => {
       status: 400,
       code: 'VALIDATION_ERROR',
     })
+  })
+
+  it('202 APPROVAL_REQUIRED — ApprovalRequiredError throw (dual-approval Tier 0, ADR #47)', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'APPROVAL_REQUIRED',
+            message: '이 작업은 2인 승인이 필요합니다',
+            details: {
+              approvalId: 'aaaa-bbbb-cccc-dddd',
+              expiresAt: '2026-05-15T00:00:00Z',
+            },
+          },
+        },
+        202,
+      ),
+    )
+    await expect(
+      api.adminUpdateUser(SUMMARY_FIXTURE.id, { role: 'ADMIN' }),
+    ).rejects.toBeInstanceOf(ApprovalRequiredError)
+  })
+
+  it('202 APPROVAL_REQUIRED — approvalId + expiresAt 보존', async () => {
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse(
+        {
+          error: {
+            code: 'APPROVAL_REQUIRED',
+            message: '이 작업은 2인 승인이 필요합니다',
+            details: {
+              approvalId: 'aaaa-bbbb-cccc-dddd',
+              expiresAt: '2026-05-15T00:00:00Z',
+            },
+          },
+        },
+        202,
+      ),
+    )
+    try {
+      await api.adminUpdateUser(SUMMARY_FIXTURE.id, { role: 'ADMIN' })
+      throw new Error('expected throw')
+    } catch (e) {
+      expect(e).toBeInstanceOf(ApprovalRequiredError)
+      const err = e as ApprovalRequiredError
+      expect(err.approvalId).toBe('aaaa-bbbb-cccc-dddd')
+      expect(err.expiresAt).toBe('2026-05-15T00:00:00Z')
+    }
   })
 })

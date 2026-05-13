@@ -7,6 +7,8 @@ import {
 } from '@tanstack/react-query'
 import { adminBulkTrash, adminListTrash, api } from '@/lib/api'
 import { invalidations, qk } from '@/lib/queryKeys'
+import { ApprovalRequiredError } from '@/lib/errors'
+import { showApprovalRequiredToast } from '@/lib/approvalToast'
 import type {
   AdminTrashBulkAction,
   AdminTrashBulkItem,
@@ -77,6 +79,10 @@ export function useAdminPurgeTrashItem() {
  *
  * <p>`onSuccess`에서 `qk.adminTrash()` prefix 무효화. 부분 실패도 succeeded 항목은 trash
  * 목록에서 빠지므로 동일하게 invalidate (spec §3.6.4).
+ *
+ * <p>dual-approval Tier 0 (ADR #47, docs/02 §2.11): action='purge'는 gate=ON 시 backend가
+ * 202 + APPROVAL_REQUIRED를 반환 → {@link ApprovalRequiredError} throw. 본 훅의 `onError`가
+ * 자동으로 토스트를 노출하고 invalidate 미수행. 호출자는 선택 상태/목록을 그대로 유지하면 된다.
  */
 export interface UseAdminBulkTrashVars {
   action: AdminTrashBulkAction
@@ -89,5 +95,10 @@ export function useAdminBulkTrash() {
   return useMutation<AdminTrashBulkResponse, Error, UseAdminBulkTrashVars>({
     mutationFn: ({ action, items }) => adminBulkTrash(action, items),
     onSuccess: () => invalidations.afterAdminTrashChanged(qc),
+    onError: (err) => {
+      if (err instanceof ApprovalRequiredError) {
+        showApprovalRequiredToast(err, '휴지통 영구 삭제')
+      }
+    },
   })
 }

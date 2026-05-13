@@ -5,6 +5,8 @@ import type { ReactNode } from 'react'
 import { useUpdateAdminTrashPolicy } from './useUpdateAdminTrashPolicy'
 import * as api from '@/lib/api'
 import { qk } from '@/lib/queryKeys'
+import { ApprovalRequiredError } from '@/lib/errors'
+import { toastSpy, resetSonnerToastMock } from '@/test/mocks/sonner'
 
 vi.mock('@/lib/api', async () => {
   const actual = await vi.importActual<typeof import('@/lib/api')>('@/lib/api')
@@ -25,6 +27,7 @@ function wrap(qc: QueryClient) {
 describe('useUpdateAdminTrashPolicy', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    resetSonnerToastMock()
   })
 
   it('성공 시 qk.adminTrashPolicy() invalidate 호출', async () => {
@@ -49,7 +52,7 @@ describe('useUpdateAdminTrashPolicy', () => {
       code: 'VALIDATION_ERROR',
     })
     ;(api.updateAdminTrashPolicy as ReturnType<typeof vi.fn>).mockRejectedValue(apiError)
-    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
     const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
     const { result } = renderHook(() => useUpdateAdminTrashPolicy(), { wrapper: wrap(qc) })
 
@@ -60,5 +63,29 @@ describe('useUpdateAdminTrashPolicy', () => {
     await waitFor(() => expect(result.current.isError).toBe(true))
     expect(invalidateSpy).not.toHaveBeenCalled()
     expect(result.current.error).toBe(apiError)
+  })
+
+  it('202 APPROVAL_REQUIRED → ApprovalRequiredError + toast.info + invalidate 미호출', async () => {
+    const apprErr = new ApprovalRequiredError(
+      'aaaa-bbbb',
+      '2026-05-15T00:00:00Z',
+    )
+    ;(api.updateAdminTrashPolicy as ReturnType<typeof vi.fn>).mockRejectedValue(apprErr)
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } })
+    const invalidateSpy = vi.spyOn(qc, 'invalidateQueries')
+    const { result } = renderHook(() => useUpdateAdminTrashPolicy(), { wrapper: wrap(qc) })
+
+    act(() => {
+      result.current.mutate(14)
+    })
+
+    await waitFor(() => expect(result.current.isError).toBe(true))
+    expect(result.current.error).toBeInstanceOf(ApprovalRequiredError)
+    expect(invalidateSpy).not.toHaveBeenCalled()
+    await waitFor(() => {
+      const calls = toastSpy('info').mock.calls
+      expect(calls.length).toBeGreaterThan(0)
+      expect(calls[0][0]).toMatch(/휴지통 보존 정책 변경/)
+    })
   })
 })
