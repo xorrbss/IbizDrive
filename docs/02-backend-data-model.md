@@ -1350,7 +1350,7 @@ GET /api/folders/:id/items
   Request:  Query params — sort=NAME|UPDATED_AT|SIZE (default NAME), dir=ASC|DESC (default ASC)
   Response: 200 { items: FolderItemDto[] }
             FolderItemDto = { id, type: 'folder'|'file', name, size?, mimeType?, updatedAt,
-                              updatedBy, parentId, scope, shareCount?, itemsCount? }
+                              updatedBy, parentId, scope, shareCount?, itemsCount?, restricted? }
             shareCount? : Integer — 이 리소스 자체에 부여된 active grant 수 (direct only,
                           상속 미포함). 0 또는 grant 없음 시 키 omit (@JsonInclude NON_NULL).
                           UNIQUE INDEX (resource, subject) 보장으로 COUNT(*) ≡ DISTINCT subject.
@@ -1358,7 +1358,11 @@ GET /api/folders/:id/items
                           FE FileRow는 threshold `> 1`에서만 배지 노출 (P2c, PR #210).
             itemsCount? : Integer — 폴더 한정. 활성 자식(폴더+파일) 총 수. 파일 항목은 항상 키 omit.
                           빈 폴더는 0을 명시 반환(키 포함) — FE typeof === 'number' 검사에서 "0개"
-                          노출 허용 (P2d, PR file-badge-items-count). soft-deleted 자식 제외.
+                          노출 허용 (P2d, PR #213). soft-deleted 자식 제외.
+            restricted? : Boolean — shareCount > 0 와 동치. 1건 이상 explicit grant가 있으면 true
+                          (키 포함), 없으면 키 omit. FE FileRow는 lock 아이콘을 단순 노출하며
+                          shareCount(2+ 인원수 배지)와 함께 두 단계 시각 신호 — "공유됨"(lock) +
+                          "여러 명과 공유됨"(lock + count) (P2b, PR file-badge-restricted).
   Order:    folders 그룹 → files 그룹 (각 그룹 내 sort/dir 적용).
             sort=SIZE 시 folder 그룹은 size 무의미 — name asc fallback.
   SoftDel:  parent 폴더 soft-deleted면 404. 자식 중 deleted_at IS NOT NULL은 제외.
@@ -1366,6 +1370,7 @@ GET /api/folders/:id/items
   Note:     Wave 2 T6 — frontend explorer mock 제거 + listing real wire용 endpoint.
             shareCount/itemsCount 모두 batch GROUP BY로 N+1 회피.
             shareCount: folder/file 각 1쿼리. itemsCount: subfolder/subfile 각 1쿼리.
+            restricted는 shareCount 결과에서 derive — 추가 쿼리 없음.
 ```
 
 ### 7.6 파일 (Files)

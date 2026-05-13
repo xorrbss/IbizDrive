@@ -356,4 +356,57 @@ class FolderQueryServiceItemsTest {
         assertThat(res.items()).extracting(FolderItemDto::itemsCount)
             .containsExactly(null, null);
     }
+
+    // ─────────────────── 9. P2b restricted wiring (shareCount derive) ───────────────────
+
+    @Test
+    void loadItems_restricted_nullWhenNoGrants() {
+        // grant 없으면 restricted=null (키 omit). shareCount=null 와 같은 정책.
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID f1 = UUID.randomUUID(), file1 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            folder(f1, parent, "폴더A", t)
+        ));
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            file(file1, parent, "파일A.pdf", 100, t)
+        ));
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        assertThat(res.items()).extracting(FolderItemDto::restricted)
+            .containsExactly(null, null);
+    }
+
+    @Test
+    void loadItems_restricted_trueWhenAnyGrant_evenSingle() {
+        // grant 1건이면 shareCount=1 (FE 배지 미표시) 이나 restricted=true (lock 아이콘 표시).
+        // 이 비대칭이 두 단계 시각 신호의 핵심 — "공유됨"(lock) vs "여러 명과 공유됨"(lock + count).
+        UUID parent = UUID.randomUUID();
+        mockParentExists(parent);
+        Instant t = Instant.parse("2026-05-01T00:00:00Z");
+        UUID f1 = UUID.randomUUID(), f2 = UUID.randomUUID();
+        UUID file1 = UUID.randomUUID(), file2 = UUID.randomUUID();
+        when(folderRepository.findByParentIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            folder(f1, parent, "가폴더", t),
+            folder(f2, parent, "나폴더", t)
+        ));
+        when(fileRepository.findByFolderIdAndDeletedAtIsNull(parent)).thenReturn(List.of(
+            file(file1, parent, "가파일.pdf", 100, t),
+            file(file2, parent, "나파일.pdf", 200, t)
+        ));
+        when(permissionRepository.countActiveByResources(eq("folder"), any(Collection.class)))
+            .thenReturn(List.<Object[]>of(new Object[]{f1, 1L}));  // 가폴더만 grant 1건
+        when(permissionRepository.countActiveByResources(eq("file"), any(Collection.class)))
+            .thenReturn(List.<Object[]>of(new Object[]{file1, 5L}));  // 가파일은 grant 5건
+
+        FolderItemsResponse res = service().loadItems(parent, SortKey.NAME, SortDir.ASC);
+
+        // 정렬: 가폴더(f1, share=1, restricted=true), 나폴더(null), 가파일(share=5, true), 나파일(null)
+        assertThat(res.items()).extracting(FolderItemDto::shareCount)
+            .containsExactly(1, null, 5, null);
+        assertThat(res.items()).extracting(FolderItemDto::restricted)
+            .containsExactly(Boolean.TRUE, null, Boolean.TRUE, null);
+    }
 }
