@@ -5,6 +5,55 @@
 
 ---
 
+## 2026-05-13 — dual-approval Phase 3c (trash_purge handler + AdminTrashController.bulk 게이트)
+
+### 범위
+
+2인 승인 framework (ADR #47) **Phase 3c closure** — Phase 3a (#228) retention + Phase 3b (#229) role_change 패턴 답습하여 **세 번째이자 마지막 Tier 0 handler** (trash_purge) + `AdminTrashController.bulk` 게이트 hook. **Tier 0 3개 action 모두 closure** (retention_change / role_change / trash_purge). default false라 회귀 0.
+
+### 변경 (5 file, +200 추가)
+
+backend
+- `approval/handlers/TrashPurgePayload.java` (record): `{items: [{type, id}], reason}`. 200개 cap은 controller가 framework submit 전 재검증.
+- `approval/handlers/TrashPurgeApprovalHandler.java` (@Component): ObjectMapper deserialize 후 `AdminTrashService.bulk("purge", items, secondary)` 위임 — single-approver 경로(`POST /api/admin/trash/bulk action='purge'`)와 동일 service라 per-item audit emit({@code file.purged}/{@code folder.purged})도 그대로.
+- `admin/trash/AdminTrashController.bulk` 게이트: `@Value("${app.dual-approval.trash-purge.enabled:false}")`. true 시 `action='purge'`만 framework submit (action='restore'는 비파괴라 게이트 무관). items 1..200 cap을 framework submit 전 재검증 (빈 approval row 생성 차단).
+
+tests
+- `TrashPurgeApprovalHandlerTest` (Mockito 4건): actionType / deserialize+위임 / service throw rollback / corrupt payload / 단일 항목.
+- `AdminTrashControllerBulkTest`: `@MockBean PendingApprovalService` 추가 (gate=false 기본 호출 0건).
+
+docs
+- `docs/v1x-backlog.md` Tier 1: "Phase 3c+" → "Phase 4+ (admin UI + cron)" 잔여 분해. Tier 0 3개 action 모두 ✓.
+
+### 결정/편차
+
+- **action='restore' 게이트 무관**: 복원은 비파괴 mutation이라 dual-approval 불필요 (ADR #47 정합).
+- **AdminTrashService.bulk 재사용**: handler가 동일 service 호출 → per-item audit emit + 부분 실패 모델 보존 (secondary가 actor).
+- **items cap 재검증**: framework submit 전 1..200 검증 — 빈 approval row 생성 차단. service가 다시 검증해 이중 가드.
+- **bulk service의 트랜잭션 모델**: 항목별 단건 service의 자기 tx로 commit (부분 실패 허용). handler가 outer @Transactional 안에서 호출되어도 항목별은 자기 tx로 분리 → framework status=APPROVED 전이와 정합. service action/cap IAE는 rollback → status=REQUESTED 복귀.
+- **co-session 작업물 활용**: 다른 세션이 이미 작성한 본 worktree 코드를 검증 + master 동기화 + PR화. redundant 회피 (memory `feedback_subagent_workflow`/`feedback_no_redundant_tests` 정합).
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL (master 동기화 후 UP-TO-DATE).
+- `./gradlew test --tests "*TrashPurgeApprovalHandlerTest" --tests "*AdminTrashControllerBulkTest"` BUILD SUCCESSFUL.
+
+### 다음 세션 컨텍스트 — Phase 4 (admin UI) / Phase 5 (cron)
+
+- **Phase 4**: `/admin/approvals` 페이지 — pending list (status/actionType filter + paging) + 단건 상세 (action_type별 payload pretty-print) + approve/reject/cancel dialog. frontend hook: `useAdminApprovals` query + `useApproveApproval`/`useRejectApproval`/`useCancelApproval` mutations. 202 APPROVAL_REQUIRED 응답 처리 (요청자 페이지에서 토스트 + redirect).
+- **Phase 5**: `AdminApprovalExpirationJob` cron — `findExpired(cap)` batch loop + `expire(id)` 호출. `application.yml` `app.dual-approval.expiration.enabled=false` default + schedule (`0 0/5 * * * *` 5분 간격 가정). email listener: secondary admin 알림 (EmailService 재사용 ADR #45).
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/v1x-backlog.md` Tier 1 ✓
+- docs/02 §8 / docs/03 §3.1/§4.1: 변경 0 (spec 이미 정합)
+
+---
+
 ## 2026-05-13 — dual-approval Phase 3b (role_change handler + AdminUserController 게이트)
 
 ### 범위
