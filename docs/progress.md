@@ -5,6 +5,58 @@
 
 ---
 
+## 2026-05-14 — ⭐ favorites-listing (Sidebar pinned row + /favorites 페이지, PR #TBD)
+
+### 범위
+
+PR #241 follow-up. team-centric pivot spec §4.5 sidebar 3-section 위에 zip 디자인 line 31 "즐겨찾기 (count)" 1행 + cross-workspace 즐겨찾기 listing 페이지 풀세트. 휴지통 패턴(`/trash/{d|t}/...` entry는 사이드바, 콘텐츠는 별도 페이지) 답습.
+
+### 변경 (15 파일 +590/-15, 신규 7)
+
+backend (favorites listing endpoint)
+- `favorite/FavoriteRepository.findByIdUserIdOrderByCreatedAtDesc(UUID)` — V22 `idx_favorites_by_user_created` 사용. 페이지네이션 없음(v1).
+- `file/FileRepository.findAllByIdInAndDeletedAtIsNull(Collection<UUID>)` (신규) — batch active lookup.
+- `folder/FolderRepository.findAllByIdInAndDeletedAtIsNull(Collection<UUID>)` (신규) — 동일.
+- `favorite/dto/FavoriteItemDto.java` (신규) — `resourceType/resourceId/name/parentId/scope/starredAt`. fromFile/fromFolder factory.
+- `favorite/dto/FavoriteListResponse.java` (신규) — `{ items: [...] }` envelope.
+- `favorite/FavoriteService.listMy(UUID actorId)` — favorites fetch → partition → batch active lookup → join. soft-deleted resource 자연 제외.
+- `favorite/FavoriteController.listMyFavorites` (`@GetMapping("/api/me/favorites") @PreAuthorize("isAuthenticated()")`).
+- `FavoriteServiceTest` — `@Mock FileRepository`/`FolderRepository` 추가 + listMy 3 케이스(빈/혼재 desc/soft-delete 제외).
+
+frontend
+- `types/favorite.ts` (신규) — `FavoriteItem`, `ScopeRef`, `FavoritesListResponse`.
+- `lib/api.listMyFavorites()` — GET /api/me/favorites.
+- `lib/api.listMyFavorites.test.ts` (신규, 3건).
+- `lib/queryKeys.ts` `qk.myFavorites()` (신규) + `invalidations.afterStarToggle`에 추가 → 토글 시 사이드바 count + /favorites 자동 갱신.
+- `hooks/useMyFavorites.ts` (신규) + `.test.tsx` (2건).
+- `components/sidebar/SidebarPinnedRow.tsx` (신규) — 별 아이콘 + 라벨 + count badge. active route 시각 강조.
+- `components/sidebar/SidebarSections.tsx` — 3-section 위에 `<SidebarPinnedRow />` 진입.
+- `app/(explorer)/favorites/page.tsx` (신규) — listing 페이지. file → `?file=` query로 RightPanel 자동 open, folder → 자기 자신으로 navigate (canonical redirect가 slug 보정). scope 누락 시 disabled row.
+
+spec
+- `docs/superpowers/specs/2026-05-09-team-centric-pivot-design.md` §4.5 항목 "7-2 pinned shortcuts row" 추가 (휴지통 패턴 답습 명시 + 향후 확장 여지).
+
+### 결정/편차
+
+- **Option A 채택** — zip line 31 진입을 살리면서 pivot spec §4.5 3-section 구조 보존. file/folder 통합 listing은 `/favorites` 페이지. 휴지통 패턴 답습.
+- **페이지네이션 없음 (v1)** — 한 user 즐겨찾기 ~100 미만 가정. 늘어나면 cursor 도입.
+- **soft-deleted 자연 제외 + 행 보존** — favorites row는 cleanup하지 않음 (사용자가 휴지통 복원 시 재노출 의도). 향후 cron으로 stale 정리 옵션.
+- **scope 미주입 row는 disabled** — FavoriteItemDto.scope는 NON_NULL omit 가능. UI는 disabled + 툴팁으로 표시.
+- **테스트 mock 전략** — FileItem/Folder 생성자가 package-private이라 다른 패키지 테스트는 Mockito mock으로 대체. service 호출 getter만 stub.
+
+### 검증
+
+- frontend: `pnpm vitest run` BUILD SUCCESSFUL — **1484/1484 pass** (신규 5 + 회귀 0).
+- frontend: `pnpm tsc --noEmit` clean.
+- backend: `./gradlew test --tests "*FavoriteServiceTest" --tests "*FavoriteAuditListenerTest" --tests "*FolderQueryServiceTest" --tests "*FolderQueryServiceItemsTest" --tests "*FolderControllerTest" --tests "*FileControllerTest"` BUILD SUCCESSFUL.
+
+### 다음 세션 컨텍스트
+
+- 사이드바 design-sweep-phase 잔여(최근/홈)도 같은 pinned row 패턴으로 확장 가능 — backend 신규 endpoint(최근 = audit_log derived?) 필요 여부 검토.
+- favorites cron cleanup(stale row 정리) — 별도 트랙, blocker 없음.
+
+---
+
 ## 2026-05-14 — ⭐ file-favorites-p2a frontend wiring (Option D zip-faithful, PR #241)
 
 ### 범위

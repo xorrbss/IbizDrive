@@ -36,6 +36,14 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     List<Folder> findByParentIdAndDeletedAtIsNull(UUID parentId);
 
     /**
+     * v1.x {@code GET /api/me/favorites} reverse-lookup — 즐겨찾기 id 집합 중 활성 폴더만 batch fetch.
+     * soft-deleted 항목은 자연 제외.
+     *
+     * <p>{@code ids.isEmpty()}는 호출부 책임.
+     */
+    List<Folder> findAllByIdInAndDeletedAtIsNull(Collection<UUID> ids);
+
+    /**
      * P2d — {@code GET /api/folders/{id}/items} 응답의 {@code itemsCount} 배지 wiring.
      *
      * <p>주어진 부모 폴더 id 집합에 대해 활성 하위 폴더 수를 부모별 group count.

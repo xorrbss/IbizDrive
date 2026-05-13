@@ -43,4 +43,16 @@ public interface FavoriteRepository extends JpaRepository<Favorite, FavoriteId> 
         @Param("resourceType") String resourceType,
         @Param("resourceIds") Collection<UUID> resourceIds
     );
+
+    /**
+     * v1.x {@code GET /api/me/favorites} listing — 사용자별 즐겨찾기 전체 (최신순).
+     *
+     * <p>V22 인덱스 {@code idx_favorites_by_user_created (user_id, created_at DESC)} 사용. v1.x는
+     * 페이지네이션 없음 — 한 사용자 즐겨찾기 총량이 100 미만이라는 사실상 가정. 100+ 발생 시
+     * 페이지네이션 도입 (향후 cursor 또는 limit/offset).
+     *
+     * <p>soft-deleted resource 필터링은 service 레이어에서 (FileRepository/FolderRepository
+     * 별도 batch lookup). 본 query는 favorites 행만 반환.
+     */
+    List<Favorite> findByIdUserIdOrderByCreatedAtDesc(UUID userId);
 }

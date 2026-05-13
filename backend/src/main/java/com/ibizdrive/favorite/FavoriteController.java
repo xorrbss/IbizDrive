@@ -1,10 +1,12 @@
 package com.ibizdrive.favorite;
 
+import com.ibizdrive.favorite.dto.FavoriteListResponse;
 import com.ibizdrive.user.IbizDriveUserDetails;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -78,5 +80,22 @@ public class FavoriteController {
     ) {
         favoriteService.unstar(principal.getUser().getId(), "folder", id);
         return ResponseEntity.noContent().build();
+    }
+
+    /**
+     * v1.x — 현재 사용자의 즐겨찾기 목록 (file/folder 통합, 최신순).
+     *
+     * <p>경로 {@code /api/me/favorites} — workspace-non-scoped per-user resource (auth만 요구).
+     * 가드 = 인증된 사용자 자기 자신만 (path에 user id 미포함, principal 기반).
+     *
+     * <p>응답: {@link FavoriteListResponse#items} — 활성 resource만 포함 (soft-deleted 자연 제외).
+     * 페이지네이션 없음 — v1 단순. 사이드바 count는 frontend가 {@code items.length}로 derive.
+     */
+    @GetMapping("/api/me/favorites")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<FavoriteListResponse> listMyFavorites(
+        @AuthenticationPrincipal IbizDriveUserDetails principal
+    ) {
+        return ResponseEntity.ok(favoriteService.listMy(principal.getUser().getId()));
     }
 }

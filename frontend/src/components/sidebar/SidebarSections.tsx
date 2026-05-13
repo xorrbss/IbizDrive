@@ -3,6 +3,7 @@ import { useWorkspaces } from '@/hooks/useWorkspaces'
 import { useExpandPathOnNavigate } from '@/hooks/useExpandPathOnNavigate'
 import { WorkspaceSection } from './WorkspaceSection'
 import { SharedWithMeSection } from './SharedWithMeSection'
+import { SidebarPinnedRow } from './SidebarPinnedRow'
 import { TeamCreateButton } from './TeamCreateButton'
 
 /**
@@ -19,6 +20,9 @@ export function SidebarSections() {
 
   return (
     <nav aria-label="workspace 트리" className="text-[12.5px] flex flex-col gap-2">
+      {/* spec §4.5 pinned shortcuts row — workspace 3-section 위 고정. 현재는 즐겨찾기 1개. */}
+      <SidebarPinnedRow />
+
       {data?.department && (
         <section aria-label="내 부서">
           <SectionHeader icon="🏢" label="내 부서" />

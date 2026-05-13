@@ -91,6 +91,12 @@ export const qk = {
   // ── 저장 용량 (M15, mock) ──
   storageQuota: () => [...qk.all, 'storage', 'quota'] as const,
 
+  /**
+   * v1.x — 현재 사용자 즐겨찾기 목록 (`GET /api/me/favorites`). 사이드바 pinned row + `/favorites` 페이지.
+   * 단일 키 — 인자 없음 (per-user, server resolve). toggle 후 `invalidations.afterStarToggle`에 추가.
+   */
+  myFavorites: () => [...qk.all, 'me', 'favorites'] as const,
+
   // ── 사용자 검색 (F6, docs/02 §7.14, ADR #35) ──
   users: () => [...qk.all, 'users'] as const,
   /**
@@ -429,6 +435,8 @@ export const invalidations = {
     const tasks: Promise<void>[] = [
       qc.invalidateQueries({ queryKey: qk.filesListPrefix(parentId) }),
       qc.invalidateQueries({ queryKey: qk.fileDetail(id) }),
+      // 즐겨찾기 목록(사이드바 count + /favorites 페이지) 동기화.
+      qc.invalidateQueries({ queryKey: qk.myFavorites() }),
     ]
     if (isFolder) {
       tasks.push(qc.invalidateQueries({ queryKey: qk.folder(id) }))
