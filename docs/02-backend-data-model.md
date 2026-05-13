@@ -2669,7 +2669,9 @@ GET /api/me/shared-with-me?limit=N    (N default=20, max=50)
       MySharedWithMeItem {
         permissionId, resourceType: "file"|"folder", resourceId,
         name, preset: "read"|"upload"|"edit"|"admin",
-        grantedAt, grantedBy: { id, name }
+        grantedAt, grantedBy: { id, name },
+        workspace: { kind: "department"|"team", id },     // follow-up 2026-05-14
+        navigationFolderId                                  // follow-up 2026-05-14 — see Notes
       }
     ],
     nextCursor: null    // v1.x cursor 페이지네이션은 follow-up
@@ -2679,6 +2681,11 @@ GET /api/me/shared-with-me?limit=N    (N default=20, max=50)
       department/role/everyone indirect grant 는 응답 제외 (v1.1 backlog).
     - soft-deleted resource 는 응답에서 제외 (service 단 batch resolve 후 null name filter).
     - 정렬: created_at DESC, id DESC (tie-break stable).
+    - workspace: file/folder 자체의 scope_type/scope_id 매핑 (sharer 가 만든 워크스페이스).
+      shared kind 는 별도 — workspace.kind 는 'department' | 'team' 만.
+    - navigationFolderId: row click 시 frontend 가 buildWorkspacePath(workspace, navigationFolderId)
+      합성. file 이면 file.folder_id (parent), folder 이면 folder.id (자기).
+      file 의 경우 ?file=resourceId query 추가로 RightPanel 자동 오픈.
 ```
 
 **관련 endpoint**: `GET /api/me/favorites` (PR #243, favorites-list 트랙) 는 dashboard StarredCard 가 reuse. 본 spec contract 정의 안 함.
