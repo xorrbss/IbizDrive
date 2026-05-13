@@ -63,6 +63,38 @@ docs
 
 ---
 
+## 2026-05-12 — keyboard-shortcut-actions (Tier 0 단축키 ↔ action 매핑 점진 통합, PR #209)
+
+### 범위
+
+`v1x-backlog.md` Tier 0 line 30 "단축키 ↔ action 매핑 통합" closure. **점진 scope** (사용자 결정 2026-05-12) — 현재 `useGlobalShortcuts`에 wired된 3 chord(`/`, `⌘K · Ctrl+K`, `?`) → 2 action(`focus.search`, `open.shortcuts`)만 통합. 컨텍스트 의존 단축키(F2/Delete/↑↓/Ctrl+A 등)는 별도 트랙으로 분리.
+
+### 변경 (3 파일, +114/-18)
+
+- `frontend/src/lib/keyboardShortcuts.ts` — `ACTION_IDS` const + `ActionId` type + `KeyboardShortcut.action?: ActionId` optional 필드. 3개 wired 항목 마킹.
+- `frontend/src/hooks/useGlobalShortcuts.ts` — `ACTION_HANDLERS: Record<ActionId, () => void>` dispatch 테이블 분리. chord 매칭은 그대로, dispatch는 ActionId → handler 경유. 기존 `FOCUS_SEARCH_EVENT` / `OPEN_SHORTCUTS_EVENT` CustomEvent export 유지 (SearchBar/ShortcutsCheatSheet listener 호환).
+- `frontend/src/lib/keyboardShortcuts.test.ts` — 정합 가드 5건 추가.
+
+### 결정/편차
+
+- **점진 scope**: 컨텍스트 의존 단축키(현재 컴포넌트 단위 처리)는 통합 미적용. `action?` optional 필드 사용으로 미마킹 표현 — Type level guidance 유지하면서 KISS.
+- **CustomEvent listener layer 보존**: 새 `ACTION_HANDLERS` 테이블이 dispatcher 진실의 출처지만 listener layer는 CustomEvent 그대로 — 호환성. SearchBar/ShortcutsCheatSheet 코드 무변경.
+- **정합 가드를 keyboardShortcuts.test.ts에 집중**: ACTION_IDS ↔ KEYBOARD_SHORTCUTS ↔ ACTION_HANDLERS 3축 정합을 단일 위치에서 강제. 새 ActionId 추가 시 한 번만 가드 통과 확인.
+
+### 검증
+
+- `pnpm typecheck` ✓ exit 0
+- `pnpm lint` ✓ exit 0
+- `pnpm test --run keyboardShortcuts useGlobalShortcuts` ✓ 23 PASS (8 keyboardShortcuts + 15 useGlobalShortcuts)
+- 회귀 — TweaksPanel/SearchBar/FileRowActionMenu/RightPanel/ShortcutsCheatSheet/Avatar 9 file / 70 test ✓ PASS
+
+### 다음 세션 컨텍스트
+
+- **컨텍스트 의존 단축키 통합** (별도 트랙, 가칭 v1.x++): F2/Delete/↑↓/Ctrl+A 등을 ActionId enum에 추가 + 각 컴포넌트의 인라인 keydown handler를 ACTION_HANDLERS 등록 패턴으로 전환. 컴포넌트가 mount/unmount 시 자기 컨텍스트 핸들러를 register/unregister.
+- **action telemetry**: ActionId 단위로 사용량 집계 (단축키 vs UI 클릭 비교) — v2.x backlog `단축키 사용량 분석`과 자연 정합.
+
+---
+
 ## 2026-05-12 — 🎨 design-sweep-file-type-icons (10 kind 컬러 SVG, PR #211)
 
 ### 범위

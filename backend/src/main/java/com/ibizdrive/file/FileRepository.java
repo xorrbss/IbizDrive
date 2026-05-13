@@ -38,6 +38,25 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
     List<FileItem> findByFolderIdAndDeletedAtIsNull(UUID folderId);
 
     /**
+     * P2d — {@code GET /api/folders/{id}/items} 응답의 {@code itemsCount} 배지 wiring.
+     *
+     * <p>주어진 폴더 id 집합에 대해 활성 자식 파일 수를 부모별 group count.
+     * soft-deleted 파일({@code deleted_at IS NOT NULL})은 제외.
+     *
+     * <p>{@link com.ibizdrive.folder.FolderRepository#countByParentIdInGroupedActive}와 짝 — service가
+     * 두 결과를 합산하여 폴더당 총 자식 수({@code itemsCount})를 산출.
+     *
+     * <p>{@code folderIds.isEmpty()}는 호출부 책임. 결과는 자식이 1건 이상인 폴더만 포함.
+     *
+     * @param folderIds 비어있지 않은 폴더 id 집합.
+     * @return {@code Object[]{UUID folderId, Long count}} 형식의 row list.
+     */
+    @Query("SELECT f.folderId, COUNT(f) FROM FileItem f "
+         + "WHERE f.folderId IN :folderIds AND f.deletedAt IS NULL "
+         + "GROUP BY f.folderId")
+    List<Object[]> countByFolderIdInGroupedActive(@Param("folderIds") java.util.Collection<UUID> folderIds);
+
+    /**
      * Pessimistic write lock on active file — rename/move/delete 진입 시점 행 잠금
      * (CLAUDE.md §3 원칙 7). soft-deleted 행은 매치되지 않으므로 호출자는 결과 부재를
      * {@link FileNotFoundException}으로 변환한다.

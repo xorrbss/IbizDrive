@@ -24,6 +24,15 @@ import java.util.UUID;
  * 0이면 {@code null} → 키 omit. FE FileRow는 임계값 {@code > 1}에서만 배지 노출 (1건 단발 공유는
  * 시각적 노이즈로 의도적 hide). {@link com.ibizdrive.permission.PermissionRepository#countActiveByResources}
  * 의 계약과 동기.
+ *
+ * <p>{@link #itemsCount} (P2d) — 폴더 한정. 활성 자식(폴더+파일) 총 수. 파일 type 에서는 항상 {@code null}.
+ * 폴더가 비어있어도 0을 그대로 반환(키 omit 아님) — FE FileRow는 {@code typeof === 'number'} 검사로
+ * 폴더의 0개 표시도 허용한다. soft-deleted 자식은 제외.
+ *
+ * <p>{@link #restricted} (P2b) — 이 리소스 자체에 explicit grant가 1건 이상 있으면 {@code true}.
+ * shareCount > 0 인 경우와 정확히 동일 (둘 다 같은 query 결과를 base로 한다). FE FileRow는
+ * lock 아이콘 1개를 단순 노출하며 shareCount(>1 시 인원수 배지)와 함께 표시되어
+ * "공유된 자료" vs "여러 명과 공유된 자료" 두 단계 신호로 시각화. false/null 시 키 omit.
  */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public record FolderItemDto(
@@ -36,9 +45,11 @@ public record FolderItemDto(
     String updatedBy,
     UUID parentId,
     ScopeRef scope,
-    Integer shareCount
+    Integer shareCount,
+    Integer itemsCount,
+    Boolean restricted
 ) {
-    public static FolderItemDto fromFolder(Folder f, Integer shareCount) {
+    public static FolderItemDto fromFolder(Folder f, Integer shareCount, Integer itemsCount) {
         return new FolderItemDto(
             f.getId(),
             "folder",
@@ -49,11 +60,14 @@ public record FolderItemDto(
             f.getOwnerId() != null ? f.getOwnerId().toString() : null,
             f.getParentId(),
             ScopeRef.of(f.getScopeType(), f.getScopeId()),
-            shareCount
+            shareCount,
+            itemsCount,
+            shareCount != null && shareCount > 0 ? Boolean.TRUE : null
         );
     }
 
     public static FolderItemDto fromFile(FileItem file, Integer shareCount) {
+        // file에는 itemsCount 의미 없음 — 항상 null.
         return new FolderItemDto(
             file.getId(),
             "file",
@@ -64,7 +78,9 @@ public record FolderItemDto(
             file.getOwnerId() != null ? file.getOwnerId().toString() : null,
             file.getFolderId(),
             ScopeRef.of(file.getScopeType(), file.getScopeId()),
-            shareCount
+            shareCount,
+            null,
+            shareCount != null && shareCount > 0 ? Boolean.TRUE : null
         );
     }
 }

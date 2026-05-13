@@ -112,3 +112,86 @@ describe('FileRow — shareCount badge (P2c)', () => {
     expect(screen.getByLabelText('3명 공유')).toBeTruthy()
   })
 })
+
+describe('FileRow — itemsCount badge (P2d)', () => {
+  const FOLDER_BASE: FileItem = {
+    id: 'd1',
+    name: '영업팀',
+    type: 'folder',
+    mimeType: null,
+    size: null,
+    updatedAt: '2026-04-25T00:00:00Z',
+    updatedBy: 'me',
+    parentId: 'root',
+  }
+
+  it('folder + itemsCount undefined → 배지 미렌더', () => {
+    wrap(row({ ...FOLDER_BASE }))
+    expect(screen.queryByLabelText(/^항목 /)).toBeNull()
+  })
+
+  it('folder + itemsCount=0 → "0개" 배지 노출 (typeof === number 검사 허용)', () => {
+    wrap(row({ ...FOLDER_BASE, itemsCount: 0 }))
+    const badge = screen.getByLabelText('항목 0개')
+    expect(badge).toBeTruthy()
+    expect(badge.textContent).toContain('0개')
+  })
+
+  it('folder + itemsCount=5 → "5개" 배지 노출', () => {
+    wrap(row({ ...FOLDER_BASE, itemsCount: 5 }))
+    const badge = screen.getByLabelText('항목 5개')
+    expect(badge).toBeTruthy()
+    expect(badge.textContent).toContain('5개')
+  })
+
+  it('file + itemsCount 무관하게 미렌더 (폴더 한정 가드)', () => {
+    // 파일에 itemsCount가 들어오더라도 FileRow는 type==='folder'만 표시한다.
+    wrap(row({ ...BASE_FILE, itemsCount: 9 }))
+    expect(screen.queryByLabelText(/^항목 /)).toBeNull()
+  })
+})
+
+describe('FileRow — restricted badge (P2b)', () => {
+  it('restricted undefined → lock 아이콘 미렌더', () => {
+    wrap(row({ ...BASE_FILE }))
+    expect(screen.queryByLabelText('권한 제한')).toBeNull()
+  })
+
+  it('restricted=false → lock 아이콘 미렌더', () => {
+    wrap(row({ ...BASE_FILE, restricted: false }))
+    expect(screen.queryByLabelText('권한 제한')).toBeNull()
+  })
+
+  it('restricted=true (file) → lock 아이콘 노출', () => {
+    wrap(row({ ...BASE_FILE, restricted: true }))
+    expect(screen.getByLabelText('권한 제한')).toBeTruthy()
+  })
+
+  it('restricted=true (folder) → lock 아이콘 노출', () => {
+    const folder: FileItem = {
+      ...BASE_FILE,
+      id: 'd1',
+      name: '계약서',
+      type: 'folder',
+      mimeType: null,
+      size: null,
+      restricted: true,
+    }
+    wrap(row(folder))
+    expect(screen.getByLabelText('권한 제한')).toBeTruthy()
+  })
+
+  it('restricted=true + shareCount=1 → lock만 노출 (count 배지는 threshold > 1)', () => {
+    // P2b/P2c 두 단계 시각 신호의 1단계: "공유됨"만 표시.
+    wrap(row({ ...BASE_FILE, restricted: true, shareCount: 1 }))
+    expect(screen.getByLabelText('권한 제한')).toBeTruthy()
+    expect(screen.queryByLabelText(/명 공유$/)).toBeNull()
+  })
+
+  it('restricted=true + shareCount=3 → lock + count 함께 노출 (2단계)', () => {
+    // 두 단계 시각 신호의 2단계: "여러 명과 공유됨".
+    wrap(row({ ...BASE_FILE, restricted: true, shareCount: 3 }))
+    expect(screen.getByLabelText('권한 제한')).toBeTruthy()
+    expect(screen.getByLabelText('3명 공유')).toBeTruthy()
+  })
+})

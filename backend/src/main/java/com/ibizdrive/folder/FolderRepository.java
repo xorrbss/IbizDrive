@@ -36,6 +36,26 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
     List<Folder> findByParentIdAndDeletedAtIsNull(UUID parentId);
 
     /**
+     * P2d — {@code GET /api/folders/{id}/items} 응답의 {@code itemsCount} 배지 wiring.
+     *
+     * <p>주어진 부모 폴더 id 집합에 대해 활성 하위 폴더 수를 부모별 group count.
+     * soft-deleted 자식({@code deleted_at IS NOT NULL})은 제외 — 휴지통 폴더는 자식 수에 반영하지 않음.
+     *
+     * <p>{@link com.ibizdrive.file.FileRepository#countByFolderIdInGroupedActive}와 짝 — service가
+     * 두 결과를 합산하여 폴더당 총 자식 수({@code itemsCount})를 산출.
+     *
+     * <p>{@code parentIds.isEmpty()}는 호출부 책임 (Spring Data가 IN()을 invalid SQL로 변환).
+     * 결과는 자식이 1건 이상인 부모만 포함 — 빈 폴더는 호출자가 Map miss → 0으로 처리.
+     *
+     * @param parentIds 비어있지 않은 부모 폴더 id 집합.
+     * @return {@code Object[]{UUID parentId, Long count}} 형식의 row list.
+     */
+    @Query("SELECT f.parentId, COUNT(f) FROM Folder f "
+         + "WHERE f.parentId IN :parentIds AND f.deletedAt IS NULL "
+         + "GROUP BY f.parentId")
+    List<Object[]> countByParentIdInGroupedActive(@Param("parentIds") Collection<UUID> parentIds);
+
+    /**
      * Phase A read API — 활성 폴더 전체 (soft-delete 제외). Tree 조립을 위해 service가 in-memory로
      * 부모-자식 매핑. MVP 규모(수백 단위) 가정. 10k+ 시 lazy 로딩으로 분할 (docs/02 §9.2).
      */
