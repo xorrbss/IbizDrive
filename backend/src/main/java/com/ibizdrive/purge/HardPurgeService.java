@@ -9,6 +9,7 @@ import com.ibizdrive.audit.AuditTargetType;
 import com.ibizdrive.file.FileRepository;
 import com.ibizdrive.file.FileVersionRepository;
 import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.user.UserQuotaEnforcer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -64,17 +65,20 @@ public class HardPurgeService {
     private final FileVersionRepository fileVersionRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final UserQuotaEnforcer userQuotaEnforcer;
 
     public HardPurgeService(FileRepository fileRepository,
                             FolderRepository folderRepository,
                             FileVersionRepository fileVersionRepository,
                             AuditService auditService,
-                            ObjectMapper objectMapper) {
+                            ObjectMapper objectMapper,
+                            UserQuotaEnforcer userQuotaEnforcer) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.fileVersionRepository = fileVersionRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.userQuotaEnforcer = userQuotaEnforcer;
     }
 
     /**
@@ -95,8 +99,10 @@ public class HardPurgeService {
         List<UUID> expiredFiles = fileRepository.findExpiredFileIds(now, maxPerRun);
 
         // 2) version storage_keys 수집 + version cascade delete (file 삭제 선행)
+        // quota mutation Phase 6 — DELETE 직전에 owner별 storage_used 합계 수집 (DELETE 후엔 0 반환).
         List<UUID> orphanKeys = new ArrayList<>();
         boolean orphanTruncated = false;
+        List<Object[]> ownerSums = List.of();
         if (!expiredFiles.isEmpty()) {
             List<UUID> allKeys = fileVersionRepository.findStorageKeysByFileIds(expiredFiles);
             if (allKeys.size() > ORPHAN_STORAGE_KEYS_CAP) {
@@ -105,11 +111,19 @@ public class HardPurgeService {
             } else {
                 orphanKeys.addAll(allKeys);
             }
+            ownerSums = fileRepository.sumVersionBytesPerOwnerByFileIds(expiredFiles);
             fileVersionRepository.deleteByFileIds(expiredFiles);
         }
 
         // 3) files hard delete
         int purgedFiles = expiredFiles.isEmpty() ? 0 : fileRepository.hardDeleteByIds(expiredFiles);
+
+        // 3a) quota mutation Phase 6 — owner별 storage_used 감소 (배치 audit-only 정책 유지, 별도 emit 없음).
+        for (Object[] row : ownerSums) {
+            UUID ownerId = (UUID) row[0];
+            long total = ((Number) row[1]).longValue();
+            userQuotaEnforcer.release(ownerId, total);
+        }
 
         // 4) expired folders — files batch에서 사용한 만큼 한도 차감
         int folderBudget = Math.max(0, maxPerRun - expiredFiles.size());

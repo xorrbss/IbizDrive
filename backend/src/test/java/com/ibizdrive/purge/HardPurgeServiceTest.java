@@ -89,8 +89,10 @@ class HardPurgeServiceTest {
                                                 FolderRepository folderRepo,
                                                 FileVersionRepository versionRepo,
                                                 AuditService audit,
-                                                ObjectMapper mapper) {
-            return new HardPurgeService(fileRepo, folderRepo, versionRepo, audit, mapper);
+                                                ObjectMapper mapper,
+                                                com.ibizdrive.user.UserRepository userRepo) {
+            return new HardPurgeService(fileRepo, folderRepo, versionRepo, audit, mapper,
+                new com.ibizdrive.user.UserQuotaEnforcer(userRepo));
         }
     }
 

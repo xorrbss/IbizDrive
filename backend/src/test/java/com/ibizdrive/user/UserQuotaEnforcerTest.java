@@ -132,4 +132,67 @@ class UserQuotaEnforcerTest {
         assertThatThrownBy(() -> enforcer.consumeOrThrow(userId, 100))
             .isInstanceOf(QuotaExceededException.class);
     }
+
+    // ──────────────────────────────────────────────────────────────────
+    // release — quota mutation Phase 6 (hard delete decrement)
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void release_throwsIllegalArgument_whenUserIdNull() {
+        assertThatThrownBy(() -> enforcer.release(null, 100))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("userId");
+        verify(userRepository, never()).lockActiveById(any());
+    }
+
+    @Test
+    void release_throwsIllegalArgument_whenDeltaNegative() {
+        assertThatThrownBy(() -> enforcer.release(userId, -1))
+            .isInstanceOf(IllegalArgumentException.class)
+            .hasMessageContaining("delta");
+    }
+
+    @Test
+    void release_zeroDelta_noLockNoSave() {
+        enforcer.release(userId, 0);
+
+        verify(userRepository, never()).lockActiveById(any());
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void release_userMissing_isNoOp_doesNotThrow() {
+        when(userRepository.lockActiveById(userId)).thenReturn(Optional.empty());
+
+        // user 없음/soft-deleted — hard delete는 사용자 라이프사이클과 무관하게 진행되어야 하므로
+        // release는 silent skip + warn.
+        enforcer.release(userId, 100);
+
+        verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void release_normalPath_callsReleaseStorageAndSaves() {
+        User user = mock(User.class);
+        when(user.releaseStorage(500L)).thenReturn(false); // not clamped
+        when(userRepository.lockActiveById(userId)).thenReturn(Optional.of(user));
+
+        enforcer.release(userId, 500);
+
+        verify(user).releaseStorage(500L);
+        verify(userRepository).save(user);
+    }
+
+    @Test
+    void release_clampedPath_stillSavesAndLogsWarn() {
+        // releaseStorage가 clamp(true) 반환 — 정상 흐름이지만 운영 로그만 추가.
+        User user = mock(User.class);
+        when(user.releaseStorage(9999L)).thenReturn(true);
+        when(userRepository.lockActiveById(userId)).thenReturn(Optional.of(user));
+
+        enforcer.release(userId, 9999);
+
+        verify(user).releaseStorage(9999L);
+        verify(userRepository).save(user);
+    }
 }

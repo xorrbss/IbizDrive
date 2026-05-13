@@ -5,6 +5,64 @@
 
 ---
 
+## 2026-05-13 — quota-phase6 (hard delete decrement, storage_used monotonic 한계 해소)
+
+### 범위
+
+quota mutation 트랙 **Phase 6 closure** — Phase 5(#204) 위에서 hard delete 시점 `storage_used` 감소 wire. 5-phase 트랙은 monotonic 증가만 처리했지만 본 PR로 휴지통 영구 삭제 + admin trash hard delete + `purge.expired` cron 모두 owner storage_used 감소. 실제 disk 점유량과 수렴.
+
+### 변경 (8 file, +200 line)
+
+backend (5 file)
+- `user/User.java` — `releaseStorage(long delta) -> boolean`. invariant `delta >= 0`. `storage_used - delta < 0`이면 0으로 clamp + 반환 `true`(clamped). V18 named CHECK 위반 회피.
+- `user/UserQuotaEnforcer.java` — `release(userId, delta)` 추가. `consumeOrThrow`와 비대칭: soft-deleted/missing user는 throw 대신 warn 로그 후 no-op (hard delete는 사용자 라이프사이클과 무관). clamp 발생 시 warn 로그.
+- `file/FileRepository.java` — `sumVersionBytesPerOwnerByFileIds(Collection<UUID>)` 신규. owner_id별 file_versions sizeBytes 합계 (GROUP BY). DELETE 직전에 호출해야 row 사라진 뒤 0 반환 회피.
+- `trash/TrashPurgeService.java` — 생성자에 `UserQuotaEnforcer` 주입. `purgeFile` 단건 + `purgeFolder` cascade(후손 file 일괄) 두 site에서 DELETE 직전 sum → DELETE → owner별 release.
+- `purge/HardPurgeService.java` — 동일 패턴 wire. `purge.expired` 배치 cron이 SYSTEM_PURGE_EXECUTED summary audit 발행 (per-row audit 없음)이라 quota release도 owner별 audit emit 없이 silent 진행.
+
+tests (3 file)
+- `test/user/UserQuotaEnforcerTest.java` — release 6건 추가 (userId null / delta 음수 / delta=0 lock-skip / user missing graceful / normal / clamped).
+- `test/trash/TrashPurgeServiceTest.java` — TestConfig만 `UserQuotaEnforcer` mock 추가 (기존 Mockito 테스트 정합).
+- `test/purge/HardPurgeServiceTest.java` — TestConfig만 `UserRepository`+`UserQuotaEnforcer` bean 추가.
+
+docs
+- `docs/04 §6.1`: Phase 5 ref → #204 / Phase 6 closure 마크. plan 6단계로 확장.
+- `docs/v1x-backlog.md`: Phase 6 → closure entry.
+- `BETA-RELEASE.md`: Last Updated + Source line. quota 트랙 "5-phase 전체 closure" → "6-phase 전체 closure".
+
+### 결정/편차
+
+- **음수 clamp + warn** (vs throw): Phase 5 도입 이전 업로드된 파일은 `storage_used`에 미반영. release 합이 used를 초과할 수 있어 0으로 강제 (V18 CHECK 위반 회피) + warn 로그로 운영 추적.
+- **graceful no-op for soft-deleted user**: hard delete는 떠난 직원 파일 정리 등 user 라이프사이클과 분리되어야 함 → throw 대신 silent skip.
+- **DELETE 직전 sum**: row가 사라진 후 query → 0 반환되어 release 누락. 순서 엄격: sum → DELETE versions → DELETE files → release per owner.
+- **per-owner aggregation** (vs per-file release): N file × 1 owner라도 단일 user-row lock + save로 효율화. folder cascade에서 동일 owner 다수 file 합산.
+- **HardPurgeService release audit silent**: per-row audit 없는 배치 정책(`SYSTEM_PURGE_EXECUTED` summary-only) 일관 유지. quota 감소 audit emit 없음 (운영 KPI는 storage_used 자체로 추적).
+- **version FK ON DELETE RESTRICT 정합 유지**: 기존 cascade 순서(versions → files → folders) 그대로. release만 추가.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `./gradlew test --tests "*UserQuotaEnforcerTest" --tests "*TrashPurgeServiceTest"` BUILD SUCCESSFUL (14건 모두 PASS — Phase 5 8건 + Phase 6 6건 신규).
+- `HardPurgeServiceTest`는 Testcontainers slice라 로컬 Docker Desktop Windows에서 SKIPPED → CI Linux 의존.
+
+### 다음 세션 컨텍스트
+
+- quota 트랙 완전 종료. 잔여 quota-관련 follow-up 0.
+- **잔여 backlog (Tier 1)**: 2인 승인 framework, audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit, 확장자 whitelist + MIME magic, MFA / refresh rotation. blocker로 막혀있지 않은 건 2인 승인 framework (spec 정합 완료, L effort).
+- **잔여 worktree 정리**: quota-phase3/4/5/6 모두 머지 후 `git worktree remove` 권장.
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/04 §6.1` Phase 6 closure 마크 ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
+- `BETA-RELEASE.md` (Last Updated + Source) ✓
+
+---
+
 ## 2026-05-13 — file-badge 트랙 (FileRow 배지 4종 중 3종 backend wiring, PR #210/#213/#215)
 
 ### 범위

@@ -308,4 +308,31 @@ public class User implements Serializable {
         }
         this.storageUsed = this.storageUsed + delta;
     }
+
+    /**
+     * quota mutation Phase 6 — hard delete commit 시점에 `storage_used`를 감소.
+     * 호출자({@link com.ibizdrive.user.UserQuotaEnforcer#release})가 동일 트랜잭션 내
+     * lock 획득 후 호출.
+     *
+     * <p>invariant: {@code delta >= 0} (음수 입력은 consume 경로). 결과는 {@code max(0, storageUsed - delta)}로
+     * clamp — Phase 5 도입 이전에 업로드된 파일은 `storage_used`에 미반영이라 release 합이 used를 초과할 수
+     * 있다. 음수 storage_used는 V18 named CHECK 위반이므로 0으로 강제. clamp 발생 여부는 반환값으로 노출 —
+     * 호출자가 운영 로그 기록.
+     *
+     * @param delta 감소량(bytes), 0 이상
+     * @return clamp 발생 시 {@code true} (예상보다 적게 감소했음). 정상 감소 시 {@code false}.
+     * @throws IllegalArgumentException delta가 음수
+     */
+    public boolean releaseStorage(long delta) {
+        if (delta < 0) {
+            throw new IllegalArgumentException("storage release delta must be >= 0, got: " + delta);
+        }
+        long next = this.storageUsed - delta;
+        if (next < 0) {
+            this.storageUsed = 0;
+            return true; // clamped
+        }
+        this.storageUsed = next;
+        return false;
+    }
 }
