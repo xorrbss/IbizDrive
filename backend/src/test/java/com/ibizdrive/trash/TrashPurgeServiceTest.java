@@ -58,8 +58,11 @@ class TrashPurgeServiceTest {
         fileVersionRepository = mock(FileVersionRepository.class);
         auditService = mock(AuditService.class);
         objectMapper = new ObjectMapper();
+        com.ibizdrive.user.UserQuotaEnforcer enforcer =
+            mock(com.ibizdrive.user.UserQuotaEnforcer.class);
         service = new TrashPurgeService(
-            fileRepository, folderRepository, fileVersionRepository, auditService, objectMapper
+            fileRepository, folderRepository, fileVersionRepository, auditService, objectMapper,
+            enforcer
         );
     }
 

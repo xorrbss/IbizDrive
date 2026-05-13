@@ -4,7 +4,7 @@
 >
 > **단일 진실의 출처**: 항목 자체는 `BETA-RELEASE.md` §7 + `docs/progress.md` 각 트랙 closure entry. 본 문서는 그 항목들의 **우선순위/시점**만 다룬다. 새 항목 추가 시 양쪽 동시 갱신.
 >
-> **Last Updated**: 2026-05-12 (design-sweep-file-type-icons — 파일 타입 컬러 아이콘 10종)
+> **Last Updated**: 2026-05-13 (file-badge 트랙 P2c/P2d/P2b closure + P2a 등록)
 
 ---
 
@@ -37,7 +37,7 @@
 | 항목 | effort | blocker | ref | 비고 |
 |---|---|---|---|---|
 | ~~Quota mutation Phase 5~~ | — | — | ✓ 2026-05-12 본 트랙 / progress.md | **closure** — `UserQuotaEnforcer` + `FileUploadService.upload` 진입 가드 + storage_used 증분 + 413 QUOTA_EXCEEDED + GlobalExceptionHandler 매핑 |
-| Quota Phase 6 — storage_used 감소 | M | 없음 (Phase 5 완료 본 트랙) | progress.md 2026-05-12 | 휴지통 영구 삭제(`purge.expired` cron) + admin trash hard delete 시 `storage_used -= size` 트랜잭션. 새 enum 0. monotonic 한계 해소 |
+| ~~Quota Phase 6 — storage_used 감소~~ | — | — | ✓ 2026-05-13 본 트랙 / progress.md | **closure** — `User.releaseStorage` + `UserQuotaEnforcer.release` + `TrashPurgeService` 단건/folder cascade + `HardPurgeService` 배치 cron 모두 wire. 감소 합산은 file_versions sizeBytes 합계 per owner. monotonic 한계 해소 |
 | ~~Admin Sharing 페이지 (디자인 zip P1)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — frontend visual fidelity 완료, backend endpoint는 별도 v1.x 트랙 |
 | ~~Admin Overview 위젯 보강 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — UploadChart / FlagRow / DeptRow / audit-mini 추가 |
 | ~~Admin Storage cleanup-list 위젯 (디자인 zip P2)~~ | — | — | ✓ 2026-05-12 design-sweep-phase-3 (PR #200) | **closure** — CleanupList 위젯 추가 |
@@ -48,6 +48,8 @@
 | RightPanel 디자인 fidelity (panels.jsx §RightPanel L8~) | M | backend 확장 동반 | 2026-05-12 design-sweep-file-type-icons 종료 후 잔여 | 헤더 액션 버튼 3개(다운로드/공유/더보기) + preview 영역(`<PreviewCard>`) + detail 탭 row 추가(소유자 avatar / 수정자 avatar / 공유됨 stack / 경로 / 위치 / 최근 조회). backend: `useFileDetail` response 확장(`owner`/`sharedWith`/`folderPath`/`viewCount`). `FILE_VIEWED` emit은 ADR #9 blocker — viewCount 제외 분리 가능 |
 | ~~Audit severity backend 컬럼~~ | — | — | ✓ 2026-05-12 audit-severity-backend | **closure** — V19 `audit_log.severity` + `AuditSeverityMapper` 단일 진실 + emitter/query/export wire + frontend `severityOf` 폐기 |
 | ~~DashboardKpiCard delta 데이터 wiring~~ | — | — | ✓ 2026-05-12 PR #202 (우발 흡수) + 본 closure (PR #205) | **closure** — backend `AdminDashboardSummaryResponse.*Delta` (8 필드) + `AdminDashboardService.computeDelta` + repo `count*AsOf` (5 repo) + frontend types/admin + DashboardSummary 8 wiring + 테스트. 30d stock + audit prev 24h 윈도우. P4 트랙으로 시작했으나 co-session edit absorption으로 PR #202 머지에 포함 — 별도 PR 부재 |
+| ~~FileRow badge wiring (P2c shareCount / P2d itemsCount / P2b restricted)~~ | — | — | ✓ 2026-05-13 file-badge 트랙 (PR #210/#213/#215) | **closure** — `FolderItemDto`에 `shareCount`/`itemsCount`/`restricted` 3 필드 + `PermissionRepository.countActiveByResources` + `Folder/FileRepository.countByParentIdInGroupedActive`. PR #199 design-sweep-phase-2에서 FE 배지 UI는 mount, 본 트랙이 BE wiring. docs/02 §7.5 wire spec 갱신. 3 PR 모두 single-day shipping. 본 docs PR로 closure |
+| FileRow starred 배지 wiring (P2a) | M | spec 부재 | 2026-05-13 file-badge 트랙 종료 후 잔여 | `FileRow.tsx L174-180` 즐겨찾기 별 아이콘은 FE mount 완료. wiring 미실시 — `favorites` 신규 테이블(user_id, resource_type, resource_id, created_at) + 추가/제거 mutation API + audit event(`FILE_STARRED`/`FILE_UNSTARRED`) + frontend mutation hook 필요. P2c/P2d/P2b는 기존 `permissions` 재활용으로 small PR이었으나 P2a는 schema 신규로 M 사이즈. 우선순위 낮음 (UX nice-to-have) |
 | **2인 승인 framework 실 구현** | L | spec 정합 완료 (#124 + #189) | BETA §7 / ADR #47 | V_ 마이그레이션 + `pending_admin_approvals` table + service + admin UI + hook into retention/role/cron mutation |
 | ~~Admin Grant Phase C/D~~ | — | — | ✓ 2026-05-11 grant-permission-dialog Phase C+D (PR #163) + /admin/permissions 진입점 (PR #193) | **closure** — Phase C subject(`everyone`/`user`/`department`) 라디오 + `UserSearchCombobox`/`DepartmentSearchCombobox` 재사용, Phase D `ResourcePermissionsList` 통합("권한 부여" 버튼 + `aria-haspopup`/`aria-expanded`). `/admin/permissions` `AdminGrantPermissionTrigger`는 별도 진입점. ROLE/TEAM grant 평가는 v2.x (PR #162 spec realign) |
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |

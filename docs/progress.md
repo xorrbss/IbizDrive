@@ -29,6 +29,105 @@
 
 ---
 
+## 2026-05-13 — quota-phase6 (hard delete decrement, storage_used monotonic 한계 해소)
+
+### 범위
+
+quota mutation 트랙 **Phase 6 closure** — Phase 5(#204) 위에서 hard delete 시점 `storage_used` 감소 wire. 5-phase 트랙은 monotonic 증가만 처리했지만 본 PR로 휴지통 영구 삭제 + admin trash hard delete + `purge.expired` cron 모두 owner storage_used 감소. 실제 disk 점유량과 수렴.
+
+### 변경 (8 file, +200 line)
+
+backend (5 file)
+- `user/User.java` — `releaseStorage(long delta) -> boolean`. invariant `delta >= 0`. `storage_used - delta < 0`이면 0으로 clamp + 반환 `true`(clamped). V18 named CHECK 위반 회피.
+- `user/UserQuotaEnforcer.java` — `release(userId, delta)` 추가. `consumeOrThrow`와 비대칭: soft-deleted/missing user는 throw 대신 warn 로그 후 no-op (hard delete는 사용자 라이프사이클과 무관). clamp 발생 시 warn 로그.
+- `file/FileRepository.java` — `sumVersionBytesPerOwnerByFileIds(Collection<UUID>)` 신규. owner_id별 file_versions sizeBytes 합계 (GROUP BY). DELETE 직전에 호출해야 row 사라진 뒤 0 반환 회피.
+- `trash/TrashPurgeService.java` — 생성자에 `UserQuotaEnforcer` 주입. `purgeFile` 단건 + `purgeFolder` cascade(후손 file 일괄) 두 site에서 DELETE 직전 sum → DELETE → owner별 release.
+- `purge/HardPurgeService.java` — 동일 패턴 wire. `purge.expired` 배치 cron이 SYSTEM_PURGE_EXECUTED summary audit 발행 (per-row audit 없음)이라 quota release도 owner별 audit emit 없이 silent 진행.
+
+tests (3 file)
+- `test/user/UserQuotaEnforcerTest.java` — release 6건 추가 (userId null / delta 음수 / delta=0 lock-skip / user missing graceful / normal / clamped).
+- `test/trash/TrashPurgeServiceTest.java` — TestConfig만 `UserQuotaEnforcer` mock 추가 (기존 Mockito 테스트 정합).
+- `test/purge/HardPurgeServiceTest.java` — TestConfig만 `UserRepository`+`UserQuotaEnforcer` bean 추가.
+
+docs
+- `docs/04 §6.1`: Phase 5 ref → #204 / Phase 6 closure 마크. plan 6단계로 확장.
+- `docs/v1x-backlog.md`: Phase 6 → closure entry.
+- `BETA-RELEASE.md`: Last Updated + Source line. quota 트랙 "5-phase 전체 closure" → "6-phase 전체 closure".
+
+### 결정/편차
+
+- **음수 clamp + warn** (vs throw): Phase 5 도입 이전 업로드된 파일은 `storage_used`에 미반영. release 합이 used를 초과할 수 있어 0으로 강제 (V18 CHECK 위반 회피) + warn 로그로 운영 추적.
+- **graceful no-op for soft-deleted user**: hard delete는 떠난 직원 파일 정리 등 user 라이프사이클과 분리되어야 함 → throw 대신 silent skip.
+- **DELETE 직전 sum**: row가 사라진 후 query → 0 반환되어 release 누락. 순서 엄격: sum → DELETE versions → DELETE files → release per owner.
+- **per-owner aggregation** (vs per-file release): N file × 1 owner라도 단일 user-row lock + save로 효율화. folder cascade에서 동일 owner 다수 file 합산.
+- **HardPurgeService release audit silent**: per-row audit 없는 배치 정책(`SYSTEM_PURGE_EXECUTED` summary-only) 일관 유지. quota 감소 audit emit 없음 (운영 KPI는 storage_used 자체로 추적).
+- **version FK ON DELETE RESTRICT 정합 유지**: 기존 cascade 순서(versions → files → folders) 그대로. release만 추가.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- `./gradlew test --tests "*UserQuotaEnforcerTest" --tests "*TrashPurgeServiceTest"` BUILD SUCCESSFUL (14건 모두 PASS — Phase 5 8건 + Phase 6 6건 신규).
+- `HardPurgeServiceTest`는 Testcontainers slice라 로컬 Docker Desktop Windows에서 SKIPPED → CI Linux 의존.
+
+### 다음 세션 컨텍스트
+
+- quota 트랙 완전 종료. 잔여 quota-관련 follow-up 0.
+- **잔여 backlog (Tier 1)**: 2인 승인 framework, audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit, 확장자 whitelist + MIME magic, MFA / refresh rotation. blocker로 막혀있지 않은 건 2인 승인 framework (spec 정합 완료, L effort).
+- **잔여 worktree 정리**: quota-phase3/4/5/6 모두 머지 후 `git worktree remove` 권장.
+
+### 블로커
+
+- 없음.
+
+### 설계 문서 동기화 완료
+
+- `docs/04 §6.1` Phase 6 closure 마크 ✓
+- `docs/v1x-backlog.md` Tier 1 ✓
+- `BETA-RELEASE.md` (Last Updated + Source) ✓
+
+---
+
+## 2026-05-13 — file-badge 트랙 (FileRow 배지 4종 중 3종 backend wiring, PR #210/#213/#215)
+
+### 범위
+
+PR #199 design-sweep-phase-2-explorer에서 FileRow에 mount된 4 배지(star/lock/share/items) UI는 모두 placeholder — `FileItem` 타입의 optional 필드가 호출부 미전달로 항상 undefined. 본 단일 세션에서 backend wiring 3 PR shipping (P2a starred는 schema 신규로 분리).
+
+### 변경 (3 PR)
+
+| PR | 트랙 | 핵심 |
+|---|---|---|
+| #210 | **P2c shareCount** | `PermissionRepository.countActiveByResources(type, ids)` native GROUP BY + `FolderItemDto.shareCount Integer` + `FolderQueryService.loadItems` 배치 주입. UNIQUE INDEX (V5 line 147) 보장으로 COUNT(*) ≡ DISTINCT subject. FE threshold `> 1` 유지 |
+| #213 | **P2d itemsCount** | `FolderRepository.countByParentIdInGroupedActive` + `FileRepository.countByFolderIdInGroupedActive` JPQL GROUP BY + 폴더당 두 결과 `Map.merge`. 빈 폴더 0 명시 반환 (`@JsonInclude NON_NULL` exception — FE `typeof === 'number'`에서 "0개" 표시) |
+| #215 | **P2b restricted** | `FolderItemDto.restricted Boolean` 추가 — `shareCount Map`에서 derive(`shareCount != null && shareCount > 0 ? TRUE : null`). **추가 query 0**. FE 두 단계 시각 신호: lock(restricted) + count(shareCount > 1) |
+
+### 검증
+
+- backend: `./gradlew test "com.ibizdrive.folder.*" "com.ibizdrive.file.*"` 각 PR BUILD SUCCESSFUL (Testcontainers SKIP local Windows / CI Linux RUN green)
+- frontend: `pnpm typecheck` / `pnpm lint` / `pnpm test FileRow` 누적 **16건 PASS** (P2c 6 + P2d 4 + P2b 6)
+- CI: 3 PR 모두 frontend (vitest) + backend (junit) green
+- docs/02 §7.5 `/api/folders/:id/items` wire spec 누적 갱신
+
+### 결정/편차
+
+- **direct grants only (P2c)** — 상속 grant 포함 시 모든 항목에 배지 폭증. recursive CTE 회피 + UX 직관성 우선
+- **빈 폴더 0 명시 (P2d)** — shareCount의 NON_NULL omit과 **다른 정책**. FE 동작(`typeof === 'number'`) 보존 위해
+- **restricted derive (P2b)** — shareCount Map 재활용으로 추가 N+1 0건. 의미 분리 필요해지면 컬럼 분할
+- **AskUserQuestion 거부 학습 (2026-05-13)** — "P2b semantic A/B/C" 묻자 사용자가 "진행해" 반환. 메모리 `feedback_decision_style` 재확인: spec 모호 시에도 추천안 + 진행, 절대 A/B/C 질문 금지
+
+### 디버깅 노트
+
+1. **Mockito stub LIFO 함정** — `service()` 헬퍼 안의 `lenient(any, any)`가 specific stub을 덮어씀. `@BeforeEach`로 분리해 해결
+2. **`List.of(Object[])` varargs flatten** — `List<Object>`로 해석되어 ClassCastException. `List.<Object[]>of(...)` 명시적 type parameter 필요
+3. **Co-session main-path bleed (early session)** — 다른 세션의 admin-dashboard-kpi-delta WIP가 main worktree에 누적되어 PR #202 머지 commit에 우발 흡수. `feedback_co_session_collab` 메모리 시나리오 발현
+
+### 다음 세션 컨텍스트
+
+- **P2a starred** (배지 4종 잔여) — v1x-backlog Tier 1에 등록. `favorites` 테이블 + mutation API + audit event 필요. M 사이즈 (P2c/d/b 처럼 small PR 불가)
+- **잔여 Tier 1 트랙**: 2인 승인 framework (L, spec ready), audit_level emit (M, ADR #9 blocker), 확장자 whitelist (M, spec 부재), MFA (M, ADR #18 blocker)
+
+---
+
 ## 2026-05-12 — keyboard-shortcut-actions (Tier 0 단축키 ↔ action 매핑 점진 통합, PR #209)
 
 ### 범위

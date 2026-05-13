@@ -14,6 +14,7 @@ import com.ibizdrive.file.FileVersionRepository;
 import com.ibizdrive.folder.Folder;
 import com.ibizdrive.folder.FolderNotFoundException;
 import com.ibizdrive.folder.FolderRepository;
+import com.ibizdrive.user.UserQuotaEnforcer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
@@ -64,17 +65,20 @@ public class TrashPurgeService {
     private final FileVersionRepository fileVersionRepository;
     private final AuditService auditService;
     private final ObjectMapper objectMapper;
+    private final UserQuotaEnforcer userQuotaEnforcer;
 
     public TrashPurgeService(FileRepository fileRepository,
                              FolderRepository folderRepository,
                              FileVersionRepository fileVersionRepository,
                              AuditService auditService,
-                             ObjectMapper objectMapper) {
+                             ObjectMapper objectMapper,
+                             UserQuotaEnforcer userQuotaEnforcer) {
         this.fileRepository = fileRepository;
         this.folderRepository = folderRepository;
         this.fileVersionRepository = fileVersionRepository;
         this.auditService = auditService;
         this.objectMapper = objectMapper;
+        this.userQuotaEnforcer = userQuotaEnforcer;
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -105,8 +109,18 @@ public class TrashPurgeService {
             storageKeys.add(storageKeysAll.get(i).toString());
         }
 
+        // quota mutation Phase 6 — hard delete 직전에 owner storage_used 감소.
+        // 단건 파일이므로 owner 1명, version 합계 1건. DELETE보다 먼저 합산해야 row 사라진 뒤 0 반환 회피.
+        List<Object[]> ownerSums = fileRepository.sumVersionBytesPerOwnerByFileIds(List.of(fileId));
+
         fileVersionRepository.deleteByFileIds(List.of(fileId));
         fileRepository.hardDeleteByIds(List.of(fileId));
+
+        for (Object[] row : ownerSums) {
+            UUID ownerId = (UUID) row[0];
+            long total = ((Number) row[1]).longValue();
+            userQuotaEnforcer.release(ownerId, total);
+        }
 
         Map<String, Object> beforeState = new LinkedHashMap<>();
         beforeState.put("name", file.getName());
@@ -182,8 +196,15 @@ public class TrashPurgeService {
                 storageKeys.add(allKeys.get(i).toString());
             }
             storageKeysTruncated = allKeys.size() > ORPHAN_STORAGE_KEYS_CAP;
+            // quota mutation Phase 6 — DELETE 직전에 owner별 storage_used 감소.
+            List<Object[]> ownerSums = fileRepository.sumVersionBytesPerOwnerByFileIds(fileIds);
             fileVersionRepository.deleteByFileIds(fileIds);
             fileRepository.hardDeleteByIds(fileIds);
+            for (Object[] row : ownerSums) {
+                UUID ownerId = (UUID) row[0];
+                long total = ((Number) row[1]).longValue();
+                userQuotaEnforcer.release(ownerId, total);
+            }
         }
 
         // 4) folders leaf-first 위상정렬 후 hard delete
