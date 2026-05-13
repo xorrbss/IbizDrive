@@ -73,10 +73,14 @@ class MeControllerTest {
         UUID resourceId = UUID.randomUUID();
         UUID permissionId = UUID.randomUUID();
         UUID granterId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        UUID parentFolderId = UUID.randomUUID();
         MySharedWithMeItem item = new MySharedWithMeItem(
             permissionId, "file", resourceId, "계약서.pdf", "read",
             Instant.parse("2026-05-14T08:00:00Z"),
-            new MySharedWithMeItem.Granter(granterId, "김매니저")
+            new MySharedWithMeItem.Granter(granterId, "김매니저"),
+            new MySharedWithMeItem.Workspace("department", workspaceId),
+            parentFolderId
         );
         when(meSharedQueryService.list(eq(userId), eq(5)))
             .thenReturn(List.of(item));
@@ -87,7 +91,10 @@ class MeControllerTest {
            .andExpect(jsonPath("$.items.length()").value(1))
            .andExpect(jsonPath("$.items[0].name").value("계약서.pdf"))
            .andExpect(jsonPath("$.items[0].preset").value("read"))
-           .andExpect(jsonPath("$.items[0].grantedBy.name").value("김매니저"));
+           .andExpect(jsonPath("$.items[0].grantedBy.name").value("김매니저"))
+           .andExpect(jsonPath("$.items[0].workspace.kind").value("department"))
+           .andExpect(jsonPath("$.items[0].workspace.id").value(workspaceId.toString()))
+           .andExpect(jsonPath("$.items[0].navigationFolderId").value(parentFolderId.toString()));
     }
 
     @Test
