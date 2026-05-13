@@ -6,6 +6,7 @@ import com.ibizdrive.common.error.AuthExceptionHandler;
 import com.ibizdrive.common.error.GlobalExceptionHandler;
 import com.ibizdrive.config.MethodSecurityConfig;
 import com.ibizdrive.config.SecurityConfig;
+import com.ibizdrive.approval.PendingAdminApprovalExpirationProperties;
 import com.ibizdrive.permission.PermissionExpirationProperties;
 import com.ibizdrive.purge.HardPurgeProperties;
 import com.ibizdrive.share.ShareExpirationProperties;
@@ -44,7 +45,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 /**
  * {@link AdminSystemController} sliced WebMvcTest — Wave 1 — T3.
  *
- * <p>{@code GET /api/admin/system/cron}이 4개 cron 잡 설정을 정해진 순서/페이로드로 노출하는지 검증.
+ * <p>{@code GET /api/admin/system/cron}이 5개 cron 잡 설정을 정해진 순서/페이로드로 노출하는지 검증.
  * read-only — audit emit 0, side effect 0. 권한 매트릭스: ADMIN/AUDITOR=200, MEMBER=403, 익명=401
  * (Wave 1.5 `auditor-cron-readonly`에서 AUDITOR 읽기 허용).
  */
@@ -100,15 +101,16 @@ class AdminSystemControllerTest {
     }
 
     @Test
-    void getCronStatus_admin_returns200WithFourJobsInFixedOrder() throws Exception {
+    void getCronStatus_admin_returns200WithFiveJobsInFixedOrder() throws Exception {
         mvc.perform(get("/api/admin/system/cron").with(user(adminPrincipal)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.jobs.length()").value(4))
-            // 순서 고정: purge → share → permission → storage
+            .andExpect(jsonPath("$.jobs.length()").value(5))
+            // 순서 고정: purge → share → permission → storage → admin.approval
             .andExpect(jsonPath("$.jobs[0].key").value("purge.expired"))
             .andExpect(jsonPath("$.jobs[1].key").value("share.expire"))
             .andExpect(jsonPath("$.jobs[2].key").value("permission.expire"))
-            .andExpect(jsonPath("$.jobs[3].key").value("storage.orphan.cleanup"));
+            .andExpect(jsonPath("$.jobs[3].key").value("storage.orphan.cleanup"))
+            .andExpect(jsonPath("$.jobs[4].key").value("admin.approval.expire"));
     }
 
     @Test
@@ -165,6 +167,21 @@ class AdminSystemControllerTest {
     }
 
     @Test
+    void getCronStatus_admin_adminApprovalExpireJobPayload() throws Exception {
+        // ADR #47 Phase 3d — 5번째 cron job. share/permission과 schedule 정합 (매 5분).
+        mvc.perform(get("/api/admin/system/cron").with(user(adminPrincipal)))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.jobs[4].key").value("admin.approval.expire"))
+            .andExpect(jsonPath("$.jobs[4].label").value("2인 승인 만료 처리"))
+            .andExpect(jsonPath("$.jobs[4].enabled").value(false))
+            .andExpect(jsonPath("$.jobs[4].cron").value("0 */5 * * * *"))
+            .andExpect(jsonPath("$.jobs[4].zone").value("Asia/Seoul"))
+            .andExpect(jsonPath("$.jobs[4].batchSize").value(200))
+            .andExpect(jsonPath("$.jobs[4].maxPerRun").doesNotExist())
+            .andExpect(jsonPath("$.jobs[4].graceHours").doesNotExist());
+    }
+
+    @Test
     void getCronStatus_enabledSourceFromCronPolicyRepository() throws Exception {
         // yml-enabled-cleanup 회귀 보호: viewer enabled가 yml이 아닌 cron_policy DB에서 결정됨을 검증.
         // @BeforeEach에서 share만 true로 stub되어 있는 상태에서, purge를 추가로 true로 바꾸면
@@ -178,7 +195,8 @@ class AdminSystemControllerTest {
             .andExpect(jsonPath("$.jobs[1].key").value("share.expire"))
             .andExpect(jsonPath("$.jobs[1].enabled").value(true))
             .andExpect(jsonPath("$.jobs[2].enabled").value(false))
-            .andExpect(jsonPath("$.jobs[3].enabled").value(false));
+            .andExpect(jsonPath("$.jobs[3].enabled").value(false))
+            .andExpect(jsonPath("$.jobs[4].enabled").value(false));
     }
 
     @Test
@@ -194,16 +212,17 @@ class AdminSystemControllerTest {
     }
 
     @Test
-    void getCronStatus_auditor_returns200WithFourJobs() throws Exception {
+    void getCronStatus_auditor_returns200WithFiveJobs() throws Exception {
         // Wave 1.5(`auditor-cron-readonly`) — AUDITOR read-only 허용 (docs/04 §7.x).
         // 단순 200이 아닌 jobs 페이로드 contract도 ADMIN과 동형임을 확인.
         mvc.perform(get("/api/admin/system/cron").with(user(auditorPrincipal)))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.jobs.length()").value(4))
+            .andExpect(jsonPath("$.jobs.length()").value(5))
             .andExpect(jsonPath("$.jobs[0].key").value("purge.expired"))
             .andExpect(jsonPath("$.jobs[1].key").value("share.expire"))
             .andExpect(jsonPath("$.jobs[2].key").value("permission.expire"))
-            .andExpect(jsonPath("$.jobs[3].key").value("storage.orphan.cleanup"));
+            .andExpect(jsonPath("$.jobs[3].key").value("storage.orphan.cleanup"))
+            .andExpect(jsonPath("$.jobs[4].key").value("admin.approval.expire"));
     }
 
     // ---------------------------------------------------------------
@@ -258,7 +277,7 @@ class AdminSystemControllerTest {
 
     /**
      * sliced WebMvcTest는 {@code @ConfigurationProperties} 빈을 자동 생성하지 않으므로
-     * 본 트랙 테스트가 의존하는 4 properties를 명시 instantiation으로 주입. 값은 schedule/zone/batch
+     * 본 트랙 테스트가 의존하는 5 properties를 명시 instantiation으로 주입. 값은 schedule/zone/batch
      * 기본값과 동형. enabled 토글은 yml-enabled-cleanup 후 record에서 빠졌으며 viewer는 mock된
      * {@link CronPolicyRepository#isEnabled}로 결정된다.
      */
@@ -282,6 +301,11 @@ class AdminSystemControllerTest {
         StorageOrphanCleanupProperties storageOrphanCleanupProperties() {
             return new StorageOrphanCleanupProperties("0 0 1 * * *", "Asia/Seoul",
                 10000, 24, 200);
+        }
+
+        @org.springframework.context.annotation.Bean
+        PendingAdminApprovalExpirationProperties pendingAdminApprovalExpirationProperties() {
+            return new PendingAdminApprovalExpirationProperties(200, "0 */5 * * * *", "Asia/Seoul");
         }
     }
 }

@@ -39,6 +39,56 @@ v1.0.0-beta 출시 직전 ceremony 보조. backlog 잔여 Tier 0/1 trace 후 진
 
 ---
 
+## 2026-05-13 — dual-approval Phase 3d (expiration cron + admin UI 노출)
+
+### 범위
+
+2인 승인 framework (ADR #47, docs/04 §16) **Phase 3d closure** — pending_admin_approvals 자동 만료 cron + /admin/system viewer 노출. share-expired/permission-expired cron 패턴 답습. default false라 V21 시드 후 회귀 0.
+
+### 변경 (10 file, +320 추가)
+
+backend
+- `V21__pending_admin_approval_cron_policy.sql`: cron_policy 테이블에 `admin.approval.expire` row 추가 (default false). V11 4 row → 5 row.
+- `PendingAdminApprovalExpirationProperties` (record): `batchSize`/`cron`/`zone`. enabled는 record에 두지 않음 (yml-enabled-cleanup 정합).
+- `PendingAdminApprovalExpirationJob` (@Component, @Scheduled): `CronPolicyRepository.isEnabled` 가드 → `findExpired(batchSize)` → loop `expire(id)`. `AlreadyDecidedException`은 race-safe silent skip, 그 외 RuntimeException은 ERROR 로그 후 다음 row. scan 실패는 swallow + retry on next tick.
+- `SchedulingConfig`: 5번째 `@EnableConfigurationProperties` 등록.
+- `AdminSystemController.getCronStatus`: 5번째 entry 추가 (`admin.approval.expire`, "2인 승인 만료 처리"). AUDITOR/ADMIN 동등 readonly.
+- `CronPolicy` javadoc: 4 → 5 row 갱신.
+- `application.yml`: `app.admin-approval.expiration.cron='0 */5 * * * *'` (share/permission과 정합), zone=Asia/Seoul, batchSize=200.
+
+tests
+- `PendingAdminApprovalExpirationJobTest` (Mockito 7건): disabled-skip / empty / per-row 호출 / per-row 실패 격리 / AlreadyDecided race-safe / scan 실패 swallow / batchSize 전파.
+- `AdminSystemControllerTest`: jobs 4 → 5 갱신 (3 테스트 + 1 신규 payload 테스트). PropertiesConfig에 `PendingAdminApprovalExpirationProperties` bean 추가.
+- `CronPolicyRepositoryTest`: count 4 → 5 (`v11AndV21SeedsFiveRowsAllDisabled`).
+
+docs
+- `v1x-backlog.md` Tier 1: "Phase 4+ (admin UI + cron)" → "Phase 4 (admin UI)" — cron 잔여 closure.
+
+### 결정/편차
+
+- **새 cron key는 `admin.approval.expire`** — V21 시드 후 enabled 토글은 /admin/system mutation으로 일원화.
+- **yml prefix는 `app.admin-approval.expiration`** — Spring relaxed binding으로 점 표기와도 호환.
+- **`AlreadyDecidedException` 별도 silent skip** — cron tick + secondary admin decision 동시 발생 race-safe 처리.
+- **share-expired-cron 답습** — RuntimeException scan swallow / per-row 실패 격리 / batch-size 한도 통과.
+
+### 검증
+
+- `./gradlew compileJava compileTestJava` BUILD SUCCESSFUL.
+- targeted (cron + admin system + trash controller 4종) BUILD SUCCESSFUL.
+- CronPolicyRepositoryTest는 Testcontainers — 로컬 Docker-skip, CI 그린 후 final 검증 (memory `feedback_local_skip_ci_gap`).
+
+### 다음 세션 컨텍스트 — Phase 4 (admin UI)
+
+- `/admin/approvals` 페이지 + frontend hook + approve/reject/cancel UX
+- email listener (secondary 알림, ADR #45 EmailService 재사용)
+- audit emit 4종 통합 검증 (`admin.approval.requested/granted/rejected/expired`) — Phase 2 + 본 트랙으로 framework 완비
+
+### 블로커
+
+- 없음.
+
+---
+
 ## 2026-05-13 — dual-approval Phase 3c (trash_purge handler + AdminTrashController.bulk 게이트)
 
 ### 범위

@@ -99,6 +99,13 @@ app:
       max-per-run: 10000
       grace-hours: 24
       batch-size: 200
+  # ADR #47 Phase 3d — pending_admin_approvals.expires_at <= NOW() AND status='REQUESTED' row
+  # 자동 만료. status=EXPIRED + audit admin.approval.expired (actor=NULL system).
+  admin-approval:
+    expiration:
+      batch-size: 200
+      cron: "0 */5 * * * *" # 매 5분 (share/permission과 정합)
+      zone: Asia/Seoul
   # GET /api/admin/audit/export 응답 hard cap.
   # 메모리·DoS 방어. 진정한 SQL → JSON streaming(메모리 cap 제거)은 v1.x.
   # 운영자가 환경별 부하에 맞춰 yml 수정 + 재기동.
