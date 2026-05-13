@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-13 — 📢 v1-beta-release-ceremony (사내 공지 + 인프라 핸드오프 메모 초안, PR #TBD)
+## 2026-05-13 — 📢 v1-beta-release-ceremony (사내 공지 + 인프라 핸드오프 메모 초안, PR #234)
 
 ### 범위
 
