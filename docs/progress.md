@@ -45,6 +45,53 @@ PR #218(P_panel-A) backend 확장 + PR #220(P_panel-B) detail rows owner/sharedW
 
 ---
 
+## 2026-05-13 — RightPanel detail wiring + file-badge 3종 (P2c/P2d/P2b/P_panel-A/B)
+
+### 범위
+
+본 세션 단일 흐름 — FileRow 배지 4종 중 3개 backend wiring + RightPanel detail tab의 owner/sharedWith/folderPath 시각화. 모두 PR #199 design-sweep-phase-2가 mount한 FE placeholder를 실제 데이터에 연결하는 패턴.
+
+### 변경 (6 PR shipped)
+
+| PR | 트랙 | 핵심 |
+|---|---|---|
+| #210 | P2c shareCount | `PermissionRepository.countActiveByResources` native GROUP BY + `FolderItemDto.shareCount` + `FolderQueryService.loadItems` batch 주입. UNIQUE INDEX (V5 line 147) 보장으로 COUNT(*) ≡ DISTINCT subject. FE threshold `> 1` 유지 |
+| #213 | P2d itemsCount | `FolderRepository.countByParentIdInGroupedActive` + `FileRepository.countByFolderIdInGroupedActive` JPQL GROUP BY + 폴더당 두 결과 `Map.merge`. 빈 폴더 0 명시 반환 (FE `typeof === 'number'`에서 "0개" 표시) |
+| #215 | P2b restricted | `FolderItemDto.restricted Boolean` — shareCount Map에서 derive(`shareCount > 0`). 추가 query 0. FE 두 단계 시각 신호: lock(restricted) + count(shareCount > 1) |
+| #216 | docs closure | file-badge 트랙 3 PR closure + P2a starred backlog 등록 |
+| #218 | P_panel-A | `FileDetailResponse` 신규 envelope (file + owner + sharedWith + folderPath). `UserBriefDto` / `SubjectGrantBriefDto` 신규. `FileQueryService.loadDetail` — UserRepository + PermissionService.listPermissions 재사용 + folderPath walk |
+| #220 | P_panel-B | RightPanel detail tab — 3 신규 row (소유자/공유/경로) + inline `AvatarBadge`/`SharedWithStack`/`FolderPathInline`. 16 → 20 test (6 신규) |
+
+### 결정/편차
+
+- **direct grants only (P2c)** — 상속 grant 포함 시 모든 항목에 배지 폭증. recursive CTE 회피
+- **빈 폴더 0 명시 (P2d)** — shareCount의 NON_NULL omit과 다른 정책. FE `typeof === 'number'` 검사 보존
+- **restricted derive (P2b)** — shareCount Map 재활용으로 추가 N+1 0건
+- **SubjectGrantBriefDto 신설 (P_panel-A)** — PermissionDto 재사용 시 `grantedBy`/`expiresAt` 등 PERMISSION_ADMIN-only privacy 필드가 READ 권한자에게 누출. brief variant 분리
+- **PreviewCard / 헤더 액션 deferred (P_panel-C)** — 본 세션은 detail rows만. 헤더 액션은 useUpload/share/etc 기존 UI store wiring 작업이라 별도 sub-PR
+- **AskUserQuestion 거부 학습 (2026-05-13)** — spec 모호 시에도 추천안 + 진행, A/B/C 질문 금지 (memory `feedback_decision_style` 재확인)
+
+### 디버깅 노트
+
+1. **Mockito stub LIFO 함정** — `service()` 헬퍼 안의 `lenient(any, any)`가 specific stub을 덮어씀. `@BeforeEach`로 분리
+2. **`List.of(Object[])` varargs flatten** — `List<Object>`로 해석되어 ClassCastException. `List.<Object[]>of(...)` 명시적 type parameter
+3. **Folder() cross-package protected** — file 패키지 테스트에서 직접 생성 불가. `mock(Folder.class)` + lenient stub 우회
+4. **Mockito UnfinishedStubbingException** — `when(folderRepo...).thenReturn(Optional.of(folder(...)))` 패턴에서 내부 stub이 외부 stub finalization 전에 시작. mock 외부 변수로 분리해 해결
+
+### 회귀 영향
+
+- 모든 wire 변경은 optional 필드 추가만 — breaking change 0. FE backward compat 유지(`body.file.*` 보존)
+- 추가 DB 쿼리: P2c/d/b 합 +2건/loadItems, P_panel +N건/detail (user 1 + listPermissions 1~2 + folderPath walk 5~10). 인덱스 hit 1ms 이내
+
+### 다음 세션 컨텍스트
+
+- **PR #221 co-session 동시 진행 신호** — `feat/rightpanel-frontend-wire` "RightPanel 디자인 fidelity 풀세트 (P_panel-B)" 가 open. 본 세션 #220 (detail rows만)이 머지된 상태에서 더 큰 scope("풀세트")로 진행 중. 다음 세션 진입 전 #221 상태 확인 + 충돌 가능성 검토 우선 (memory `feedback_co_session_collab`)
+- **Tier 1 잔여 비차단**: 2인 승인 framework Phase 2+ (#219 Phase 1 머지 후 service/controller/audit), RightPanel sub-PR C (헤더 액션 + PreviewCard, #221 결과에 따라 scope 조정)
+- **P2a starred (M)** — `favorites` 테이블 spec 부재. 진행 시 schema 설계 + audit event(`FILE_STARRED`/`FILE_UNSTARRED`) + mutation API 신규
+- **Blocked**: audit_level emit (ADR #9), 확장자 whitelist (spec 부재), MFA (ADR #18)
+
+---
+
 ## 2026-05-13 — dual-approval Phase 1 (data layer — V20 + entity + repository)
 
 ### 범위
