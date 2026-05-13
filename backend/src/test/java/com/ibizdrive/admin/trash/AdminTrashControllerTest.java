@@ -50,6 +50,7 @@ class AdminTrashControllerTest {
     @Autowired MockMvc mockMvc;
 
     @MockBean AdminTrashService service;
+    @MockBean com.ibizdrive.approval.PendingApprovalService approvalService; // Phase 3c dual-approval 그래프 충족 — list endpoint는 mutation 무관, gate=false 기본이라 실제 호출 0
 
     // SecurityConfig dependency chain — see AdminPermissionControllerTest.
     // SessionValidityFilter는 @Component → @WebMvcTest의 Filter 자동 스캔으로 포함.
