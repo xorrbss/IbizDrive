@@ -5,6 +5,30 @@
 
 ---
 
+## 2026-05-13 — format-bytes-tb backlog stale 정정 (closure mark only)
+
+### 범위
+
+`v1x-backlog.md` Tier 0 line 29 "Storage 용량 TB 단위 표시 (1024 GB+)" 트랙 진입 시도 → **이미 PR #134 (2026-05-09 format-bytes-tb-nan-guard)에서 구현 완료** 발견. backlog drift였음. 코드 변경 0, backlog row strikethrough + closure note만.
+
+### 검증
+
+- `frontend/src/lib/formatBytes.ts` line 16-17: `bytes / 1024^4 → '%.1f TB'` 분기 + `Number.isFinite` NaN/Infinity 가드 존재.
+- `frontend/src/lib/formatBytes.test.ts`: TB 5 케이스 (1.0/1.5/2.0 TB + 1024 GB - 1 byte 경계 + NaN/Infinity 3종) PASS.
+- `git log -- formatBytes.ts`: 343909c → PR #134 머지로 master에 반영됨.
+- `progress.md` line 1962: 동일 트랙 closure entry 이미 존재.
+
+### 변경 (docs only, 2 파일)
+
+- `docs/v1x-backlog.md` line 29 — strikethrough + PR #134 ref + "backlog drift" 명시.
+- `docs/progress.md` — 본 entry.
+
+### 다음 세션 컨텍스트
+
+- backlog stale entry 함정 (memory `feedback_state_check_first.md`) 재확인 — 트랙 진입 전 `git log -- <target file>` + `progress.md` 키워드 search 가드 강화. 본 트랙은 그 가드로 30초 내에 stale 식별.
+
+---
+
 ## 2026-05-12 — keyboard-shortcut-actions (Tier 0 단축키 ↔ action 매핑 점진 통합, PR #209)
 
 ### 범위
