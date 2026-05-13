@@ -1,7 +1,7 @@
 'use client'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Home, Users, Lock, Folder, Share2, Clock, Archive } from 'lucide-react'
+import { Home, Users, Lock, Folder, Share2, Clock, Archive, CheckCircle } from 'lucide-react'
 import { useMe } from '@/hooks/useMe'
 import { ADMIN_TABS, isTabVisible, type AdminTabId } from '@/lib/adminTabs'
 import { ADMIN_FLAGGED } from '@/lib/admin/sharingMock'
@@ -30,6 +30,7 @@ const TAB_ICONS: Record<AdminTabId, React.ComponentType<{ size?: number; 'aria-h
   sharing: Share2,
   audit: Clock,
   retention: Archive,
+  approvals: CheckCircle,
 }
 
 export function AdminTabBar() {

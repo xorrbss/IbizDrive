@@ -22,6 +22,7 @@ export type AdminTabId =
   | 'sharing'
   | 'audit'
   | 'retention'
+  | 'approvals'
 
 export type AdminRoleScope = 'ADMIN' | 'AUDITOR-OK'
 
@@ -92,6 +93,15 @@ export const ADMIN_TABS: ReadonlyArray<AdminTabDef> = [
     isActive: (p) => p.startsWith('/admin/retention') || p.startsWith('/admin/trash'),
     scope: 'ADMIN',
   },
+  {
+    // dual-approval framework Phase 4 (ADR #47, docs/02 §2.11) — 2인 승인 대기 큐.
+    // ADMIN-only — backend는 ROLE_ADMIN 가드 + self-approval 차단을 동시에 enforce.
+    id: 'approvals',
+    label: '승인',
+    href: '/admin/approvals',
+    isActive: (p) => p.startsWith('/admin/approvals'),
+    scope: 'ADMIN',
+  },
 ]
 
 export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
@@ -103,6 +113,7 @@ export const ADMIN_TAB_TITLES: Record<AdminTabId, string> = {
   sharing: '공유 정책',
   audit: '감사 로그',
   retention: '보관 정책',
+  approvals: '2인 승인 대기',
 }
 
 /**

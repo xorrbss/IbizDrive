@@ -43,7 +43,7 @@ describe('AdminTabBar — ADMIN 가시성 (T7-P1 T1.3)', () => {
     useMeMock.mockReturnValue(session(['ADMIN']))
   })
 
-  it('ADMIN은 8탭 모두 노출 (overview/members/teams/permissions/storage/sharing/audit/retention)', () => {
+  it('ADMIN은 9탭 모두 노출 (overview/members/teams/permissions/storage/sharing/audit/retention/approvals)', () => {
     mockPathname.mockReturnValue('/admin')
     wrap(<AdminTabBar />)
     expect(screen.getByRole('link', { name: /개요/ })).toBeTruthy()
@@ -54,6 +54,13 @@ describe('AdminTabBar — ADMIN 가시성 (T7-P1 T1.3)', () => {
     expect(screen.getByRole('link', { name: /공유 정책/ })).toBeTruthy()
     expect(screen.getByRole('link', { name: /감사 로그/ })).toBeTruthy()
     expect(screen.getByRole('link', { name: /보관/ })).toBeTruthy()
+    expect(screen.getByRole('link', { name: /승인/ })).toBeTruthy()
+  })
+
+  it('approvals 활성 — /admin/approvals 접두사 (dual-approval Phase 4)', () => {
+    mockPathname.mockReturnValue('/admin/approvals')
+    wrap(<AdminTabBar />)
+    expect(screen.getByRole('link', { name: /승인/ }).getAttribute('aria-current')).toBe('page')
   })
 
   it('overview 활성 — /admin 정확 일치 시 aria-current="page"', () => {
@@ -101,7 +108,7 @@ describe('AdminTabBar — AUDITOR 가시성 (wave1.5 답습)', () => {
     mockPathname.mockReturnValue('/admin/audit/logs')
   })
 
-  it('AUDITOR는 audit 탭만 노출 (overview/members/teams/permissions/storage/sharing/retention 모두 hide)', () => {
+  it('AUDITOR는 audit 탭만 노출 (overview/members/teams/permissions/storage/sharing/retention/approvals 모두 hide)', () => {
     useMeMock.mockReturnValue(session(['AUDITOR']))
     wrap(<AdminTabBar />)
     expect(screen.getByRole('link', { name: /감사 로그/ })).toBeTruthy()
@@ -112,6 +119,7 @@ describe('AdminTabBar — AUDITOR 가시성 (wave1.5 답습)', () => {
     expect(screen.queryByRole('link', { name: /저장공간/ })).toBeNull()
     expect(screen.queryByRole('link', { name: /공유 정책/ })).toBeNull()
     expect(screen.queryByRole('link', { name: /보관/ })).toBeNull()
+    expect(screen.queryByRole('link', { name: /승인/ })).toBeNull()
   })
 
   it('MEMBER (방어) → 빈 nav', () => {
