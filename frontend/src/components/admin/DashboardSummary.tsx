@@ -1,4 +1,14 @@
 'use client'
+import {
+  Users,
+  UserCheck,
+  Building2,
+  FolderOpen,
+  FileText,
+  Trash2,
+  Activity,
+  HardDrive,
+} from 'lucide-react'
 import { useAdminDashboardSummary } from '@/hooks/useAdminDashboardSummary'
 import { DashboardKpiCard } from './DashboardKpiCard'
 import { formatBytes } from '@/lib/formatBytes'
@@ -9,17 +19,21 @@ import { formatBytes } from '@/lib/formatBytes'
  * <p>{@link useAdminDashboardSummary} 단일 호출 → 8개 카드. 로딩/에러는 한 번만 표시
  * (개별 카드 skeleton은 KISS 위배 — KPI 8개 동시 도착 단일 endpoint).
  *
- * <p>카드 매핑(라벨 → 데이터):
+ * <p>카드 매핑(라벨 → 데이터 → 디자인 §KPICard icon prop):
  * <ul>
- *   <li>등록 사용자 → users.total (sub: "활성 active/total")</li>
- *   <li>활성 사용자 → users.active</li>
- *   <li>부서 → departments.total (sub: "활성 active/total" — Department는 is_active 컬럼 부재로 동일치)</li>
- *   <li>활성 폴더 → folders.active</li>
- *   <li>활성 파일 → files.active</li>
- *   <li>휴지통 파일 → files.trashed</li>
- *   <li>24시간 감사 이벤트 → audit.last24h</li>
- *   <li>스토리지 사용량 → formatBytes(storage.usedBytes) — 모든 file_versions sizeBytes 합</li>
+ *   <li>등록 사용자 → users.total → Users (디자인 "team")</li>
+ *   <li>활성 사용자 → users.active → UserCheck</li>
+ *   <li>부서 → departments.total → Building2</li>
+ *   <li>활성 폴더 → folders.active → FolderOpen</li>
+ *   <li>활성 파일 → files.active → FileText (디자인 "folder")</li>
+ *   <li>휴지통 파일 → files.trashed → Trash2</li>
+ *   <li>24시간 감사 이벤트 → audit.last24h → Activity</li>
+ *   <li>스토리지 사용량 → formatBytes(storage.usedBytes) → HardDrive</li>
  * </ul>
+ *
+ * <p>아이콘 wiring은 디자인 §KPICard L194 `{icon && <UIIcon size={13} />}` 1:1.
+ * 디자인은 4 KPI만 제시하지만 본 페이지는 backend 실데이터 8 카드를 유지 (granular
+ * 운영 지표 노출이 design 4-카드보다 정보량 우위) — 시각 fidelity만 디자인과 정합.
  */
 export function DashboardSummary() {
   const { data, isLoading, isError } = useAdminDashboardSummary()
@@ -44,43 +58,51 @@ export function DashboardSummary() {
         value={data.users.total}
         sub={`활성 ${data.users.active}/${data.users.total}`}
         delta={data.users.totalDelta ?? undefined}
+        icon={Users}
       />
       <DashboardKpiCard
         label="활성 사용자"
         value={data.users.active}
         delta={data.users.activeDelta ?? undefined}
+        icon={UserCheck}
       />
       <DashboardKpiCard
         label="부서"
         value={data.departments.total}
         sub={`활성 ${data.departments.active}/${data.departments.total}`}
         delta={data.departments.totalDelta ?? undefined}
+        icon={Building2}
       />
       <DashboardKpiCard
         label="활성 폴더"
         value={data.folders.active}
         delta={data.folders.activeDelta ?? undefined}
+        icon={FolderOpen}
       />
       <DashboardKpiCard
         label="활성 파일"
         value={data.files.active}
         delta={data.files.activeDelta ?? undefined}
+        icon={FileText}
       />
       <DashboardKpiCard
         label="휴지통 파일"
         value={data.files.trashed}
         delta={data.files.trashedDelta ?? undefined}
+        icon={Trash2}
       />
       <DashboardKpiCard
         label="24시간 감사 이벤트"
         value={data.audit.last24h}
         delta={data.audit.last24hDelta ?? undefined}
+        icon={Activity}
       />
       <DashboardKpiCard
         label="스토리지 사용량"
         value={formatBytes(data.storage.usedBytes)}
         sub="모든 버전 누적 합"
         delta={data.storage.usedBytesDelta ?? undefined}
+        icon={HardDrive}
       />
     </div>
   )

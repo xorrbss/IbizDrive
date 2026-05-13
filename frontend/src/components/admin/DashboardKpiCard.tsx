@@ -1,3 +1,5 @@
+import type { ComponentType, SVGProps } from 'react'
+
 /**
  * Dashboard KPI 단일 카드 — 디자인 핸드오프 2026-05-10 admin.jsx §KPICard
  * (L184~210) 1:1 매핑 (Phase 3e fidelity 보강).
@@ -14,6 +16,10 @@
  *   <li><code>tone</code> — 카드 강조 (warn/danger/primary). admin.css 의
  *     .kpi-card.tone-{tone} 모디파이어.</li>
  *   <li><code>progress</code> — 0~1 범위의 진행률. 0보다 크면 kpi-bar 노출.</li>
+ *   <li><code>icon</code> — kpi-head 우측 SVG 아이콘. 디자인 §KPICard L194
+ *     `{icon && <UIIcon size={13} />}` 1:1. lucide-react 등 SVG 컴포넌트를
+ *     직접 받음. {@code width=13/height=13}로 노출, {@code aria-hidden} —
+ *     라벨이 의미 보유.</li>
  * </ul>
  *
  * <p>이전 tailwind 유틸 (p-4/rounded/border-border) 은 admin.css 의 .kpi-card
@@ -30,6 +36,8 @@ export interface DashboardKpiCardProps {
   tone?: 'warn' | 'danger' | 'primary'
   /** 진행률 (0 ~ 1). >0 이면 kpi-bar 노출. */
   progress?: number
+  /** kpi-head 우측 아이콘 (디자인 §KPICard L194). lucide SVG 컴포넌트 그대로. */
+  icon?: ComponentType<SVGProps<SVGSVGElement>>
 }
 
 export function DashboardKpiCard({
@@ -39,6 +47,7 @@ export function DashboardKpiCard({
   delta,
   tone,
   progress,
+  icon: Icon,
 }: DashboardKpiCardProps) {
   const isUp = delta != null && delta > 0
   const isDown = delta != null && delta < 0
@@ -49,6 +58,7 @@ export function DashboardKpiCard({
     <div className={classes.join(' ')}>
       <div className="kpi-head">
         <span className="kpi-label">{label}</span>
+        {Icon && <Icon width={13} height={13} aria-hidden className="kpi-icon" />}
       </div>
       <div className="kpi-value">{value}</div>
       {(sub || delta != null) && (

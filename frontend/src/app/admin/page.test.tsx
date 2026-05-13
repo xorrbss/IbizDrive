@@ -115,6 +115,14 @@ describe('AdminDashboardPage', () => {
     expect(screen.queryByText(/v1.x에서 추가 예정/)).toBeNull()
   })
 
+  it('페이지 내부 inline h1 "대시보드" 미렌더 (디자인 fidelity — AdminTopHeader가 단일 진실)', () => {
+    wrap(<AdminDashboardPage />)
+    // 본 페이지 컴포넌트 내부에는 h1이 없어야 한다. AdminTopHeader는 layout 책임이라
+    // 페이지 테스트 범위 밖. "현재 시스템 운영 지표." 보조 카피도 함께 제거됐는지 가드.
+    expect(screen.queryByRole('heading', { level: 1 })).toBeNull()
+    expect(screen.queryByText('현재 시스템 운영 지표.')).toBeNull()
+  })
+
   // ------------------------------------------------------------------
   // Phase 3b — design overview 위젯 3종 (UploadChart / FlagRow / DeptRow)
   // ------------------------------------------------------------------

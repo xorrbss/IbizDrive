@@ -38,11 +38,9 @@ export default function AdminDashboardPage() {
   return (
     <AdminGuard>
       <div className="admin-grid">
-        <div>
-          <h1 className="text-[20px] font-semibold text-fg mb-1">대시보드</h1>
-          <p className="text-[13px] text-fg-2">현재 시스템 운영 지표.</p>
-        </div>
-
+        {/* 페이지 헤더는 `AdminTopHeader`(layout chrome)가 노출하는 "관리자 콘솔"이 단일 진실의
+            출처. 디자인 §AdminOverview(admin.jsx L98)는 grid 내부에 inline h1을 두지 않는다.
+            기존의 "대시보드" + 보조 카피는 TopHeader 와 시각 중복이라 제거. */}
         <DashboardSummary />
 
         <OverviewMockCallout />
