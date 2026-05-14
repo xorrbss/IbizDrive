@@ -734,6 +734,8 @@ type AuditEventType =
   | 'user.password.forgot_requested'  // A1.5 P3 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43) — 가입자만 emit (anti-enumeration)
   | 'user.password.reset'             // A1.5 P4 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43)
   | 'user.mfa.enabled'
+  | 'user.locked'                    // admin-user-lock-unlock 활성화 (2026-05-14) — 관리자 수동 또는 자동 lock(login 5회 실패) 공통 wire, metadata={trigger:'admin.manual' | 'system.failed_login_threshold'}로 발동 출처 구분
+  | 'user.unlocked'                  // admin-user-lock-unlock 활성화 (2026-05-14) — 관리자 수동 unlock, metadata={trigger:'admin.manual'}
   // 관리자
   | 'admin.user.created'
   | 'admin.user.updated'

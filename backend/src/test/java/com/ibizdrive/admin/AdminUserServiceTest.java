@@ -485,6 +485,119 @@ class AdminUserServiceTest {
         verify(eventPublisher, never()).publishEvent(any(AdminUserDeactivatedEvent.class));
     }
 
+    // ── admin-user-lock-unlock: lockUser / unlockUser ───────────────────
+
+    @Test
+    void lockUser_happyPath_setsLockedAtAndPublishesEvent() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "lockme@example.com", Role.MEMBER, true);
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        User result = adminUserService.lockUser(targetId, ACTOR_ID);
+
+        assertThat(result.isLocked()).isTrue();
+        assertThat(result.getLockedAt()).isNotNull();
+        ArgumentCaptor<User> saved = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(saved.capture());
+        assertThat(saved.getValue().isLocked()).isTrue();
+
+        ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, atLeastOnce()).publishEvent(event.capture());
+        AdminUserLockedEvent published = event.getAllValues().stream()
+            .filter(e -> e instanceof AdminUserLockedEvent)
+            .map(e -> (AdminUserLockedEvent) e)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("AdminUserLockedEvent not published"));
+        assertThat(published.userId()).isEqualTo(targetId);
+        assertThat(published.actorId()).isEqualTo(ACTOR_ID);
+    }
+
+    @Test
+    void lockUser_self_throwsSelfProtection() {
+        User self = activeUser(ACTOR_ID, "admin@example.com", Role.ADMIN, true);
+        when(userRepository.findById(ACTOR_ID)).thenReturn(Optional.of(self));
+
+        assertThatThrownBy(() -> adminUserService.lockUser(ACTOR_ID, ACTOR_ID))
+            .isInstanceOf(AdminSelfProtectionException.class)
+            .hasMessageContaining("self-lock");
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserLockedEvent.class));
+    }
+
+    @Test
+    void lockUser_alreadyLocked_isNoOp() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "already@example.com", Role.MEMBER, true);
+        target.lock(OffsetDateTime.now().minusHours(1));
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.lockUser(targetId, ACTOR_ID);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserLockedEvent.class));
+    }
+
+    @Test
+    void lockUser_targetNotFound_throwsAdminUserNotFound() {
+        UUID ghost = UUID.randomUUID();
+        when(userRepository.findById(ghost)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminUserService.lockUser(ghost, ACTOR_ID))
+            .isInstanceOf(AdminUserNotFoundException.class);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserLockedEvent.class));
+    }
+
+    @Test
+    void unlockUser_happyPath_clearsLockedAtAndPublishesEvent() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "unlockme@example.com", Role.MEMBER, true);
+        target.lock(OffsetDateTime.now().minusHours(1));
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        User result = adminUserService.unlockUser(targetId, ACTOR_ID);
+
+        assertThat(result.isLocked()).isFalse();
+        assertThat(result.getLockedAt()).isNull();
+        verify(userRepository).save(any(User.class));
+
+        ArgumentCaptor<Object> event = ArgumentCaptor.forClass(Object.class);
+        verify(eventPublisher, atLeastOnce()).publishEvent(event.capture());
+        AdminUserUnlockedEvent published = event.getAllValues().stream()
+            .filter(e -> e instanceof AdminUserUnlockedEvent)
+            .map(e -> (AdminUserUnlockedEvent) e)
+            .findFirst()
+            .orElseThrow(() -> new AssertionError("AdminUserUnlockedEvent not published"));
+        assertThat(published.userId()).isEqualTo(targetId);
+        assertThat(published.actorId()).isEqualTo(ACTOR_ID);
+    }
+
+    @Test
+    void unlockUser_alreadyUnlocked_isNoOp() {
+        UUID targetId = UUID.randomUUID();
+        User target = activeUser(targetId, "neverlocked@example.com", Role.MEMBER, true);
+        when(userRepository.findById(targetId)).thenReturn(Optional.of(target));
+
+        adminUserService.unlockUser(targetId, ACTOR_ID);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserUnlockedEvent.class));
+    }
+
+    @Test
+    void unlockUser_targetNotFound_throwsAdminUserNotFound() {
+        UUID ghost = UUID.randomUUID();
+        when(userRepository.findById(ghost)).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> adminUserService.unlockUser(ghost, ACTOR_ID))
+            .isInstanceOf(AdminUserNotFoundException.class);
+
+        verify(userRepository, never()).save(any());
+        verify(eventPublisher, never()).publishEvent(any(AdminUserUnlockedEvent.class));
+    }
+
     private static User activeUser(UUID id, String email, Role role, boolean isActive) {
         return activeUser(id, email, role, isActive, "Display " + email);
     }

@@ -254,6 +254,63 @@ public class AdminUserService {
     }
 
     /**
+     * admin-user-lock-unlock — 사용자 수동 잠금 (lockedAt = NOW()).
+     *
+     * <p>self-lock 차단 — 본인이 본인을 잠그면 즉시 로그아웃 + 재로그인 불가 → 잠금 회피 절차 없음.
+     * 이미 lock된 user 호출은 NOP + event 미발행 (멱등). 자동 lock(login 5회 실패)과 별개 — 동일 wire를
+     * 공유하나 본 service는 admin manual 진입점만 노출. is_active와 독립 — 비활성 user도 lock 가능.
+     *
+     * @throws AdminUserNotFoundException     target 미존재 → 404
+     * @throws AdminSelfProtectionException   actor==target → 403
+     */
+    @Transactional
+    public User lockUser(UUID targetUserId, UUID actorId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+
+        User user = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+
+        if (targetUserId.equals(actorId)) {
+            throw new AdminSelfProtectionException("self-lock forbidden");
+        }
+        if (user.isLocked()) {
+            return user; // 이미 lock — 멱등.
+        }
+
+        user.lock(OffsetDateTime.now());
+        userRepository.save(user);
+
+        eventPublisher.publishEvent(new AdminUserLockedEvent(targetUserId, actorId));
+        return user;
+    }
+
+    /**
+     * admin-user-lock-unlock — 사용자 수동 잠금 해제 (lockedAt = NULL).
+     *
+     * <p>self-unlock 허용 — 본인이 잠긴 상태에선 로그인 자체가 불가하므로 self-unlock 케이스가
+     * 도달 불가. self-protection 검증 불필요. 이미 unlocked면 NOP + event 미발행 (멱등).
+     *
+     * @throws AdminUserNotFoundException     target 미존재 → 404
+     */
+    @Transactional
+    public User unlockUser(UUID targetUserId, UUID actorId) {
+        if (targetUserId == null) throw new IllegalArgumentException("targetUserId must not be null");
+
+        User user = userRepository.findById(targetUserId)
+            .orElseThrow(() -> new AdminUserNotFoundException(targetUserId.toString()));
+
+        if (!user.isLocked()) {
+            return user; // 이미 unlocked — 멱등.
+        }
+
+        user.unlock();
+        userRepository.save(user);
+
+        eventPublisher.publishEvent(new AdminUserUnlockedEvent(targetUserId, actorId));
+        return user;
+    }
+
+    /**
      * admin-user-search-update — displayName 편집. Wave 1 — T1.
      *
      * <p>호출자가 trim 적용 (controller 단계 또는 본 메서드에서 한 번 더). 같은 값이면 멱등
