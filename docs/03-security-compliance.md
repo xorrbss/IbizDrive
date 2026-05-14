@@ -404,7 +404,7 @@
 ### 3.1 권한 enum (Permission)
 
 > ADR #17: 백엔드 권위. 프론트 `src/types/permission.ts`는 1:1 미러 (UX용 게이트만, 보안 아님 — CLAUDE.md §3 원칙 10).
-> 코드: `backend/src/main/java/com/ibizdrive/permission/Permission.java:21-49` (9 값, wire = `name()` UPPER_SNAKE_CASE).
+> 코드: `backend/src/main/java/com/ibizdrive/permission/Permission.java:21-49` (10 값 = 9 resource-level + APPROVE_ADMIN_ACTION, wire = `name()` UPPER_SNAKE_CASE). MANAGE_LEGAL_HOLD는 v2.x deferred (backend stub 미정의).
 
 | 권한 | 의미 | 체크 지점 (대표 endpoint) |
 |---|---|---|

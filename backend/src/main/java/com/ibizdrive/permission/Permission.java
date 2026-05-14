@@ -9,8 +9,9 @@ import java.util.stream.Stream;
 /**
  * 권한 enum (docs/03 §3.1, ADR #17).
  *
- * <p>9 값. 백엔드가 단일 진실 출처이며 {@code frontend/src/types/permission.ts}의 {@code Permission}
- * 유니언이 1:1 미러로 따라간다 (계약 — CLAUDE.md §4 계약 파일 표).
+ * <p>10 값 (9 resource-level + 1 system-level APPROVE_ADMIN_ACTION). 백엔드가 단일 진실 출처이며
+ * {@code frontend/src/types/permission.ts}의 {@code Permission} 유니언이 1:1 미러로 따라간다
+ * (계약 — CLAUDE.md §4 계약 파일 표).
  *
  * <p>SpEL 표현식 {@code @PreAuthorize("hasPermission(#id, 'folder', 'READ')")}이 같은 문자열을
  * 참조하므로 {@link #wire()}가 {@link #name()}과 동치를 유지한다 (UPPER_SNAKE_CASE).
