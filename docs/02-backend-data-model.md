@@ -59,7 +59,7 @@ CREATE TABLE users (
   last_login_at    TIMESTAMPTZ,                            -- audit + 비활성 계정 식별
   locked_at        TIMESTAMPTZ,                            -- 관리자 수동 잠금 (ADR #20). NULL이면 미잠금
   created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),     -- V24 도입(2026-05-14, users-updated-at). Hibernate @UpdateTimestamp가 entity mutation 시 자동 갱신
   deleted_at       TIMESTAMPTZ,                            -- soft delete
 
   CHECK (role IN ('MEMBER', 'AUDITOR', 'ADMIN'))
@@ -2184,6 +2184,7 @@ GET /api/admin/users?page=0&size=50&q=<keyword>      (admin-user-mgmt + admin-us
                 role: 'MEMBER' | 'AUDITOR' | 'ADMIN',
                 isActive: boolean,
                 createdAt: string (ISO-8601),
+                updatedAt: string (ISO-8601),                  // V24 활성 (users-updated-at, 2026-05-14) — Hibernate @UpdateTimestamp 자동 갱신
                 lastLoginAt: string | null
               }, ...],
               totalElements: number,

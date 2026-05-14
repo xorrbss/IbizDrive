@@ -29,6 +29,7 @@ public record AdminUserSummaryResponse(
     Role role,
     boolean isActive,
     OffsetDateTime createdAt,
+    OffsetDateTime updatedAt,
     OffsetDateTime lastLoginAt,
     long storageQuota,
     long storageUsed
@@ -41,6 +42,7 @@ public record AdminUserSummaryResponse(
             u.getRole(),
             u.isActive(),
             u.getCreatedAt(),
+            u.getUpdatedAt(),
             u.getLastLoginAt(),
             u.getStorageQuota(),
             u.getStorageUsed()
