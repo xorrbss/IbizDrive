@@ -59,6 +59,7 @@ export function useToggleStar() {
       let prevFolderDetail: FolderDetail | undefined
       if (vars.resourceType === 'folder') {
         const folderKey = qk.folder(vars.id)
+        await qc.cancelQueries({ queryKey: folderKey })
         prevFolderDetail = qc.getQueryData<FolderDetail>(folderKey)
         if (prevFolderDetail) {
           qc.setQueryData<FolderDetail>(folderKey, {

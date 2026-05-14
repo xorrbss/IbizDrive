@@ -1,7 +1,9 @@
 'use client'
+import { toast } from 'sonner'
 import { Breadcrumb } from './Breadcrumb'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useToggleStar } from '@/hooks/useToggleStar'
+import { messageForError } from '@/lib/errors'
 
 /**
  * P2a — workspace 진입점(ClientFilesPage)에서 사용. {@link Breadcrumb}에
@@ -29,12 +31,18 @@ export function BreadcrumbWithStar() {
     <Breadcrumb
       isStarred={starred}
       onToggleStar={() =>
-        toggle.mutate({
-          resourceType: 'folder',
-          id: folderId,
-          parentId,
-          currentStarred: starred,
-        })
+        toggle.mutate(
+          {
+            resourceType: 'folder',
+            id: folderId,
+            parentId,
+            currentStarred: starred,
+          },
+          {
+            onError: (err) =>
+              toast.error(messageForError(err, '즐겨찾기 변경에 실패했습니다.')),
+          },
+        )
       }
     />
   )
