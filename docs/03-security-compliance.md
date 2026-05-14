@@ -766,7 +766,7 @@ type AuditEventType =
   | 'system.backup.completed'
   | 'system.purge.executed'
   | 'storage.orphan.cleaned'  // 활성화 (`storage-orphan-cleanup`, 2026-05-02, ADR #38) — actor_id=NULL, target_type=system, metadata={runId,scanned,candidates,deleted,failed,truncated,durationMs}, docs/02 §5.6
-  | 'system.favorites.orphans_cleaned'  // 활성화 (`favorites-cron-cleanup`, PR #245, 2026-05-13) — V23 cron. actor_id=NULL, target_type=system, metadata={runId,scanned,deleted,durationMs}
+  | 'system.favorites.orphans_cleaned'  // 활성화 (`favorites-cron-cleanup`, PR #245, 2026-05-13) — V23 cron. actor_id=NULL, target_type=system, after_state={deletedRows,durationMs} (0건이면 audit 미발행), docs/04 §13 [¶]
   // 감사 로그 자체
   | 'audit.exported'   // docs/04 §7.2 — CSV/JSON 내보내기 자체도 감사 기록
 ```

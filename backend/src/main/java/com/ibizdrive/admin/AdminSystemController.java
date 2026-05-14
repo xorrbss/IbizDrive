@@ -2,6 +2,7 @@ package com.ibizdrive.admin;
 
 import com.ibizdrive.approval.PendingAdminApprovalExpirationProperties;
 import com.ibizdrive.audit.WebRequestContextHolder;
+import com.ibizdrive.favorite.FavoritesCleanupProperties;
 import com.ibizdrive.permission.PermissionExpirationProperties;
 import com.ibizdrive.purge.HardPurgeProperties;
 import com.ibizdrive.share.ShareExpirationProperties;
@@ -25,9 +26,10 @@ import java.util.Map;
 /**
  * Wave 1 — T3 — `/admin/system` 페이지가 호출하는 cron 설정 노출 endpoint.
  *
- * <p>4 cron 잡(`purge.expired`, `share.expire`, `permission.expire`, `storage.orphan.cleanup`)의
- * schedule/zone/batch 등 정의는 application.yml에서 read하고, enabled 토글 상태는
- * {@link CronPolicyRepository}(admin-cron-toggle 트랙, V11 {@code cron_policy} 테이블)에서 read.
+ * <p>6 cron 잡(`purge.expired`, `share.expire`, `permission.expire`, `storage.orphan.cleanup`,
+ * `admin.approval.expire`, `favorites.cleanup`)의 schedule/zone/batch 등 정의는
+ * application.yml에서 read하고, enabled 토글 상태는 {@link CronPolicyRepository}
+ * (admin-cron-toggle 트랙, V11 {@code cron_policy} 테이블)에서 read.
  * 두 source가 합쳐져 viewer에 노출되며, 토글 직후 GET이 즉시 새 enabled를 반영한다.
  *
  * <p>Wave 1.5(`auditor-cron-readonly`)에서 read는 ADMIN+AUDITOR 모두 허용 — 감사자는 운영 cron 상태를
@@ -48,6 +50,7 @@ public class AdminSystemController {
     private final PermissionExpirationProperties permissionExpiration;
     private final StorageOrphanCleanupProperties storageOrphanCleanup;
     private final PendingAdminApprovalExpirationProperties adminApprovalExpiration;
+    private final FavoritesCleanupProperties favoritesCleanup;
     private final AdminSystemService adminSystemService;
     private final CronPolicyRepository cronPolicyRepository;
 
@@ -57,6 +60,7 @@ public class AdminSystemController {
         PermissionExpirationProperties permissionExpiration,
         StorageOrphanCleanupProperties storageOrphanCleanup,
         PendingAdminApprovalExpirationProperties adminApprovalExpiration,
+        FavoritesCleanupProperties favoritesCleanup,
         AdminSystemService adminSystemService,
         CronPolicyRepository cronPolicyRepository
     ) {
@@ -65,12 +69,14 @@ public class AdminSystemController {
         this.permissionExpiration = permissionExpiration;
         this.storageOrphanCleanup = storageOrphanCleanup;
         this.adminApprovalExpiration = adminApprovalExpiration;
+        this.favoritesCleanup = favoritesCleanup;
         this.adminSystemService = adminSystemService;
         this.cronPolicyRepository = cronPolicyRepository;
     }
 
     /**
-     * 4 cron 잡 상태 스냅샷을 고정 순서(purge → share → permission → storage)로 반환.
+     * 6 cron 잡 상태 스냅샷을 고정 순서(purge → share → permission → storage → admin.approval →
+     * favorites.cleanup)로 반환.
      *
      * <p>응답 셰입은 {@code {"jobs": [CronJobStatusResponse, ...]}} — 향후 잡 추가 시
      * 배열 추가만으로 확장 가능. enabled 값은 {@code cron_policy}에서 read하여 토글 직후
@@ -105,6 +111,12 @@ public class AdminSystemController {
                 cronPolicyRepository.isEnabled("admin.approval.expire"),
                 adminApprovalExpiration.cron(), adminApprovalExpiration.zone(),
                 adminApprovalExpiration.batchSize(), /* maxPerRun */ null, /* graceHours */ null
+            ),
+            new CronJobStatusResponse(
+                "favorites.cleanup", "즐겨찾기 orphan 정리",
+                cronPolicyRepository.isEnabled("favorites.cleanup"),
+                favoritesCleanup.cron(), favoritesCleanup.zone(),
+                /* batchSize */ null, /* maxPerRun */ null, /* graceHours */ null
             )
         );
         return Map.of("jobs", jobs);
@@ -116,7 +128,7 @@ public class AdminSystemController {
      * <p>토글 결과는 {@code cron_policy} 테이블에 영구 저장. {@link AdminCronToggledListener}가
      * AFTER_COMMIT에 audit_log {@code admin.cron.toggled} row를 기록한다.
      *
-     * <p>경로 변수 {@code key}는 4종 식별자 중 하나 — 그 외 값은 service에서
+     * <p>경로 변수 {@code key}는 6종 식별자 중 하나 — 그 외 값은 service에서
      * {@link IllegalArgumentException} → 글로벌 핸들러 400 {@code BAD_REQUEST}.
      */
     @PreAuthorize("hasRole('ADMIN')")

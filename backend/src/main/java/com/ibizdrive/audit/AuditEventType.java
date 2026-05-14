@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 /**
  * 감사 이벤트 타입 (docs/03 §4.1, ADR #24).
  *
- * <p>총 62개 값. {@code frontend/src/types/audit.ts}의 {@code AuditEventType} 유니언과 1:1 동기 —
+ * <p>총 69개 값. {@code frontend/src/types/audit.ts}의 {@code AuditEventType} 유니언과 1:1 동기 —
  * 변경 시 docs/03 §4.1 + frontend types/audit.ts 양쪽 갱신 (계약).
  *
  * <p>Java enum 이름은 {@code UPPER_SNAKE_CASE}, JSON wire format은 {@code lower.dot.notation}.
