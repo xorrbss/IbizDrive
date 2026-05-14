@@ -65,6 +65,8 @@ public enum AuditEventType {
     USER_PASSWORD_FORGOT_REQUESTED("user.password.forgot_requested"),
     USER_PASSWORD_RESET("user.password.reset"),
     USER_MFA_ENABLED("user.mfa.enabled"),
+    USER_LOCKED("user.locked"),
+    USER_UNLOCKED("user.unlocked"),
 
     // 관리자 (12)
     ADMIN_USER_CREATED("admin.user.created"),

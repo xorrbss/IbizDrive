@@ -110,6 +110,58 @@ class AdminAuditListenerTest {
         assertThat(ev.afterState()).isEqualTo("{\"displayName\":\"New\"}");
     }
 
+    // ── admin-user-lock-unlock: USER_LOCKED / USER_UNLOCKED emit ─────
+
+    @Test
+    void onUserLocked_recordsAuditEventWithTriggerMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+
+        listener.onUserLocked(new AdminUserLockedEvent(userId, actorId));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+
+        AuditEvent ev = captor.getValue();
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.USER_LOCKED);
+        assertThat(ev.actorId()).isEqualTo(actorId);
+        assertThat(ev.targetType()).isEqualTo(AuditTargetType.USER);
+        assertThat(ev.targetId()).isEqualTo(userId);
+        assertThat(ev.beforeState()).isNull();
+        assertThat(ev.afterState()).isNull();
+        assertThat(ev.metadata()).isEqualTo("{\"trigger\":\"admin.manual\"}");
+    }
+
+    @Test
+    void onUserUnlocked_recordsAuditEventWithTriggerMetadata() {
+        UUID userId = UUID.randomUUID();
+        UUID actorId = UUID.randomUUID();
+
+        listener.onUserUnlocked(new AdminUserUnlockedEvent(userId, actorId));
+
+        ArgumentCaptor<AuditEvent> captor = ArgumentCaptor.forClass(AuditEvent.class);
+        verify(auditService).record(captor.capture());
+
+        AuditEvent ev = captor.getValue();
+        assertThat(ev.eventType()).isEqualTo(AuditEventType.USER_UNLOCKED);
+        assertThat(ev.actorId()).isEqualTo(actorId);
+        assertThat(ev.targetType()).isEqualTo(AuditTargetType.USER);
+        assertThat(ev.targetId()).isEqualTo(userId);
+        assertThat(ev.metadata()).isEqualTo("{\"trigger\":\"admin.manual\"}");
+    }
+
+    @Test
+    void onUserLocked_emissionFailureIsSwallowed() {
+        doThrow(new RuntimeException("DB down")).when(auditService).record(org.mockito.ArgumentMatchers.any());
+
+        assertThatNoException().isThrownBy(() ->
+            listener.onUserLocked(new AdminUserLockedEvent(UUID.randomUUID(), UUID.randomUUID()))
+        );
+        assertThatNoException().isThrownBy(() ->
+            listener.onUserUnlocked(new AdminUserUnlockedEvent(UUID.randomUUID(), UUID.randomUUID()))
+        );
+    }
+
     @Test
     void onAdminUserUpdated_recordsReactivationMetadata() {
         UUID userId = UUID.randomUUID();

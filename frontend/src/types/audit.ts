@@ -50,6 +50,8 @@ export type AuditEventType =
   | 'user.password.forgot_requested'
   | 'user.password.reset'
   | 'user.mfa.enabled'
+  | 'user.locked'
+  | 'user.unlocked'
   // 관리자
   | 'admin.user.created'
   | 'admin.user.updated'

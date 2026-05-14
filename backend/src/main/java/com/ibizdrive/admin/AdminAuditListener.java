@@ -107,6 +107,56 @@ public class AdminAuditListener {
         }
     }
 
+    /** admin-user-lock-unlock listener 공통 metadata — wire는 docs/02 §7.4 line 1309. */
+    private static final String LOCK_TRIGGER_METADATA = "{\"trigger\":\"admin.manual\"}";
+
+    /**
+     * admin-user-lock-unlock — `user.locked` 매핑. AFTER_COMMIT, REQUIRES_NEW.
+     *
+     * <p>자동 lock (login 5회 실패)과 동일 wire 공유 — metadata.trigger로 발동 출처 구분.
+     * 본 핸들러는 admin 수동 진입점이므로 {@code trigger="admin.manual"} 고정.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onUserLocked(AdminUserLockedEvent event) {
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.USER_LOCKED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.USER,
+                event.userId(),
+                null,
+                null,
+                LOCK_TRIGGER_METADATA
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event=USER_LOCKED userId={}", event.userId(), ex);
+        }
+    }
+
+    /**
+     * admin-user-lock-unlock — `user.unlocked` 매핑. AFTER_COMMIT, REQUIRES_NEW.
+     */
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onUserUnlocked(AdminUserUnlockedEvent event) {
+        try {
+            auditService.record(new AuditEvent(
+                AuditEventType.USER_UNLOCKED,
+                event.actorId(),
+                WebRequestContextHolder.currentIp(),
+                WebRequestContextHolder.currentUserAgent(),
+                AuditTargetType.USER,
+                event.userId(),
+                null,
+                null,
+                LOCK_TRIGGER_METADATA
+            ));
+        } catch (RuntimeException ex) {
+            log.error("audit emission failed for event=USER_UNLOCKED userId={}", event.userId(), ex);
+        }
+    }
+
     /**
      * admin-user-mgmt — `admin.role.changed` 매핑.
      *

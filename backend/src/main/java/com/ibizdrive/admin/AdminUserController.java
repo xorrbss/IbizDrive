@@ -16,6 +16,8 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -173,6 +175,45 @@ public class AdminUserController {
         }
         // 위 분기 중 하나는 반드시 진입 — isEmpty 가드로 보장됨.
         return AdminUserSummaryResponse.from(updated);
+    }
+
+    /**
+     * admin-user-lock-unlock — 관리자 수동 사용자 잠금. docs/02 §7.12.
+     *
+     * <p>body 없음 (KISS — v1.x는 reason 미수집). 멱등: 이미 lock된 user는 NOP + 200.
+     * 본인이 본인 잠금 시도는 SELF_PROTECTION 403 — 즉시 로그아웃 + 재로그인 불가 회피.
+     *
+     * <ul>
+     *   <li>200 OK — 잠금 적용 후 최종 사용자 상태 ({@link AdminUserSummaryResponse})</li>
+     *   <li>401 — 미인증</li>
+     *   <li>403 — ROLE_ADMIN 부재 (@PreAuthorize) 또는 SELF_PROTECTION (self-lock)</li>
+     *   <li>404 USER_NOT_FOUND — target 미존재</li>
+     * </ul>
+     */
+    @PostMapping("/{id}/lock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public AdminUserSummaryResponse lock(@PathVariable UUID id,
+                                         @AuthenticationPrincipal IbizDriveUserDetails principal) {
+        User locked = adminUserService.lockUser(id, principal.getUser().getId());
+        return AdminUserSummaryResponse.from(locked);
+    }
+
+    /**
+     * admin-user-lock-unlock — 관리자 수동 사용자 잠금 해제. docs/02 §7.12.
+     *
+     * <p>self-protection 불필요 — 본인 unlock 케이스는 본인이 lock된 상태에선 도달 불가. 멱등.
+     *
+     * <ul>
+     *   <li>204 No Content — 잠금 해제 적용 (응답 body 없음)</li>
+     *   <li>401 / 403 / 404 — lock과 동일</li>
+     * </ul>
+     */
+    @DeleteMapping("/{id}/lock")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> unlock(@PathVariable UUID id,
+                                       @AuthenticationPrincipal IbizDriveUserDetails principal) {
+        adminUserService.unlockUser(id, principal.getUser().getId());
+        return ResponseEntity.noContent().build();
     }
 
     private String serializeRolePayload(UUID userId,

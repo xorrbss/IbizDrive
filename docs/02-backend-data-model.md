@@ -2076,6 +2076,8 @@ PUT /api/admin/trash/policy
 | GET | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape (admin-user-search-update) | `WHERE deleted_at IS NULL` (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/users` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (user 생성 + 임시 PW BCrypt + AFTER_COMMIT audit·email) | email→lowercase trim | — | 400 VALIDATION_ERROR, 401, 403, 409 CONFLICT/DUPLICATE_EMAIL |
 | PATCH | `/api/admin/users/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (role/active/displayName 변경 + AFTER_COMMIT audit) | displayName trim (admin-user-search-update) | — | 400 VALIDATION_ERROR, 401, 403 SELF_PROTECTION, 404 USER_NOT_FOUND |
+| POST | `/api/admin/users/:id/lock` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (lockedAt=NOW + AFTER_COMMIT audit, admin-user-lock-unlock) | — | — | 401, 403 SELF_PROTECTION, 404 USER_NOT_FOUND |
+| DELETE | `/api/admin/users/:id/lock` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (lockedAt=NULL + AFTER_COMMIT audit, admin-user-lock-unlock) | — | — | 401, 403, 404 USER_NOT_FOUND |
 | GET | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | — | q→lowercase + LIKE escape | (활성/비활성 모두 포함) | 401, 403 |
 | POST | `/api/admin/departments` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (생성 + AFTER_COMMIT audit) | name→trim | partial unique `WHERE deleted_at IS NULL` | 400 VALIDATION_ERROR, 401, 403, 409 DEPARTMENT_CONFLICT |
 | PATCH | `/api/admin/departments/:id` | `hasRole('ADMIN')` (`@PreAuthorize`) | REQUIRED (rename/(de)activate + AFTER_COMMIT audit) | name→trim | partial unique 보조 | 400 VALIDATION_ERROR, 401, 403, 404 NOT_FOUND, 409 DEPARTMENT_CONFLICT |
@@ -2242,6 +2244,55 @@ PATCH /api/admin/users/:id                           (admin-user-mgmt + admin-us
 
 **관련 audit 이벤트** (docs/03 §2.10): `admin.role.changed`, `admin.user.deactivated`,
 `admin.user.updated` (admin-user-search-update — reactivate + displayName 편집 공용).
+
+```text
+POST /api/admin/users/:id/lock                       (admin-user-lock-unlock, 2026-05-14)
+  Headers:  X-CSRF-Token: <token>            (필수)
+            Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Path:     id (UUID — 대상 사용자)
+  Request:  (body 없음 — KISS, v1.x는 reason 미수집)
+  Response: 200 AdminUserSummary (잠금 적용 후 스냅샷, lockedAt 비-null)
+  Side-effects:
+            - users.locked_at = NOW() UPDATE
+            - AFTER_COMMIT AdminUserLockedEvent → AdminAuditListener (REQUIRES_NEW)
+              → audit_log `user.locked` (actor_id=관리자, target_type=user, target_id=대상,
+                                        metadata={"trigger":"admin.manual"})
+            - 멱등 no-op: 이미 lockedAt 비-null인 user는 audit 미발행 + 200 OK 그대로
+  Self-protection:
+            - actor==target → 403 SELF_PROTECTION (self-lock 차단 — 본인 즉시 로그인 차단 회피)
+  Note:     자동 lock(login 5회 실패 + 423 ACCOUNT_LOCKED, 별도 트랙)도 동일 wire 공유.
+            metadata.trigger로 발동 출처 구분 — 본 endpoint는 `admin.manual` 고정.
+            세션 invalidate는 본 endpoint가 수행하지 않음 — IbizDriveUserDetails.isAccountNonLocked()가
+            다음 요청에서 차단 (lock 상태 유지로 충분).
+  Errors:
+    401                   (미인증)
+    403                   (ADMIN role 아님 — `@PreAuthorize`, 본문 없음)
+    403 FORBIDDEN/SELF_PROTECTION
+                          (actor==target self-lock)
+    404 NOT_FOUND/USER_NOT_FOUND
+                          (target user 미존재)
+
+DELETE /api/admin/users/:id/lock                     (admin-user-lock-unlock, 2026-05-14)
+  Headers:  X-CSRF-Token: <token>            (필수)
+            Cookie: SESSION=<id>             (ADMIN 인증 필요)
+  Path:     id (UUID — 대상 사용자)
+  Response: 204 No Content (body 없음)
+  Side-effects:
+            - users.locked_at = NULL UPDATE
+            - AFTER_COMMIT AdminUserUnlockedEvent → AdminAuditListener (REQUIRES_NEW)
+              → audit_log `user.unlocked` (actor_id=관리자, target=대상,
+                                          metadata={"trigger":"admin.manual"})
+            - 멱등 no-op: 이미 unlocked(lockedAt=NULL)인 user는 audit 미발행 + 204 그대로
+  Self-protection: 없음 — 본인이 lock 상태에선 로그인 자체가 불가하므로 self-unlock 케이스 도달 불가.
+  Errors:
+    401                   (미인증)
+    403                   (ADMIN role 아님 — `@PreAuthorize`, 본문 없음)
+    404 NOT_FOUND/USER_NOT_FOUND
+                          (target user 미존재)
+```
+
+**관련 audit 이벤트** (docs/03 §4.1): `user.locked`, `user.unlocked` (자동 lock과 wire 공유 +
+metadata.trigger로 admin/system 분기).
 
 ```text
 GET /api/admin/departments?page=0&size=50&q=영업       (admin-department-crud, Wave 2 T4, 2026-05-06)
