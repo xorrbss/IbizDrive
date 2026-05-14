@@ -4,7 +4,7 @@
 >
 > **단일 진실의 출처**: 항목 자체는 `BETA-RELEASE.md` §7 + `docs/progress.md` 각 트랙 closure entry. 본 문서는 그 항목들의 **우선순위/시점**만 다룬다. 새 항목 추가 시 양쪽 동시 갱신.
 >
-> **Last Updated**: 2026-05-14 (User Home Dashboard — root `/` redirect → personal dashboard 4 위젯 + `/api/me/shared-with-me` endpoint)
+> **Last Updated**: 2026-05-14 (User Home Dashboard 트랙 풀세트 closure — 4 위젯 row click + WelcomeHeader 진입 link, PR #246/#248/#252/#253/#254)
 
 ---
 
@@ -56,7 +56,7 @@
 | audit_level + FILE_VIEWED + FOLDER_AUDIT_LEVEL_CHANGED emit | M | ADR #9 결정 보류 | BETA §7 / docs/04 §6 line 269 | 파티션 전략 결정 선결 (audit_log 폭증 대비) |
 | 확장자 whitelist + MIME magic | M | spec 부재 | BETA §7 / docs/03 §5.3 | Content-Disposition 1차 방어 외 추가 layer. allow-list 정의 필요 |
 | MFA / refresh rotation | M | ADR #18 결정 보류 | BETA §7 / ADR #18 | `USER_MFA_ENABLED` emit deferred. TOTP vs FIDO2 결정 |
-| ~~User Home Dashboard (root `/`)~~ | — | — | ✓ 2026-05-14 user-home-dashboard (PR #246) | **closure** — root `/` redirect → personal dashboard. 4 위젯(WelcomeHeader/StarredCard/QuotaCard/SharedWithMeCard) + 신규 endpoint `GET /api/me/shared-with-me` + `useMySharedWithMe` hook + `DashboardCard` 컴포넌트. ADR #48 신규. favorites-list 트랙(PR #243) 산출물 reuse. recent files 는 ADR #9 (`FILE_VIEWED`) blocker 로 v1.1 deferral |
+| ~~User Home Dashboard (root `/`)~~ | — | — | ✓ 2026-05-14 user-home-dashboard 풀세트 (PR #246 + #248 + #252 + #253) | **closure (4 위젯 모두 actionable)** — (a) PR #246 root `/` redirect → personal dashboard 4 위젯(Welcome/Starred/Quota/SharedWithMe) + 신규 endpoint `GET /api/me/shared-with-me`. ADR #48 신규. favorites-list 트랙(PR #243) 산출물 reuse. (b) **follow-up 풀세트**: PR #248 SharedWithMeCard row click → explorer navigation + backend response `workspace`/`navigationFolderId` 확장. PR #252 StarredCard row click(backend 변경 0). PR #253 WelcomeHeader "내 워크스페이스 →" 진입 link. (c) recent files 는 ADR #9 (`FILE_VIEWED`) blocker 로 v1.1 deferral. 업로드/새 폴더 quick action dialog 자동 오픈은 explorer 측 `?action=` query handler 도입 시 별도 트랙 |
 
 ---
 
