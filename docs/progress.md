@@ -5,6 +5,53 @@
 
 ---
 
+## 2026-05-14 — Dashboard 트랙 follow-up 풀세트 (PR #248/#252/#253/#254)
+
+> PR #246 (User Home Dashboard 본체) 머지 직후 single-day shipping 으로 4 위젯 모두 actionable 화 + dev-docs sweep.
+
+### 범위
+
+PR #246 의 4 위젯이 **정적 표시** 만 가능하던 것을 모두 **actionable** 로 closure. backend response 확장 1건 + frontend navigation handler 3건 + dev-docs archive sweep 1건.
+
+### PR 인벤토리
+
+- **PR #248** — SharedWithMeCard row click + backend `MySharedWithMeItem` 응답 확장
+  - backend: `workspace: {kind, id}` + `navigationFolderId` 추가. `MeSharedQueryService` 가 `fileMap`/`folderMap` entity 통째 캐싱하여 scope + folderId 추출 (단일 추가 query 없이 기존 batch resolve 확장)
+  - frontend: row 를 `<button>` 으로, onClick → `buildWorkspacePath(workspace, navigationFolderId)` + (file 인 경우) `?file=resourceId` query
+  - docs/02 §7.17 응답 shape 갱신
+- **PR #252** — StarredCard row click (backend 변경 0)
+  - frontend only — `FavoriteItem.scope`/`parentId`/`resourceId` 그대로 reuse (PR #243 산출물)
+  - file: `parentId` 가 file.folder_id → URL + `?file=resourceId`. folder: `resourceId` 자체로 navigate
+  - scope 없는 row 또는 file 인데 parentId null 이면 button disabled (graceful skip)
+- **PR #253** — WelcomeHeader "내 워크스페이스 →" 진입 link
+  - frontend only — default workspace 결정 (department 우선 → first team fallback) → `buildWorkspacePath` 합성
+  - workspace 0 시 link 미렌더 (zero-state 안내만)
+  - **KISS 결정**: PR #246 spec §3.1 의 두 버튼(업로드/새 폴더) 안은 explorer 측 `?action=` query handler 도입 필요로 scope 큼 → 단일 navigation link 통합 (별도 follow-up 으로 분리)
+- **PR #254** — dev/process sweep
+  - `dev/process/email-listener-dev-docs/` (PR #236 머지 후 archive 누락) → `dev/completed/dual-approval-phase4-email-listener/` 정식 archive
+  - `dev/process/p2a-followup-folder-detail-starred.patch` 삭제 (이미 master 에 머지됨 확인 — `FolderDetailResponse.starred` 존재)
+
+### 결정/편차
+
+- **권한 가드 일관성** — sharer 워크스페이스 비멤버라도 grant 보유 시 explorer 진입 가능 (backend evaluator ADR #28 grant 우선 lookup). 권한 없으면 explorer 페이지가 자체 처리 — dashboard 측 별도 가드 추가 안 함
+- **navigation 합성 정책** — file: parent folder + `?file=resourceId` query (RightPanel 자동 오픈), folder: 자기 자신. SharedWithMeCard / StarredCard 동형 패턴
+- **a11y** — 두 카드 row 모두 `aria-label "{name} 열기"` 명시
+- **테스트 mock 패턴** — `next/navigation.useRouter` 의 `push` 만 mock + 나머지 메서드는 vi.fn()로 stub. `fireEvent.click(getByLabelText)` → `pushMock.toHaveBeenCalledWith(expectedUrl)` 검증
+
+### 검증
+
+- 4 PR 모두 CI 풀그린 (frontend vitest + backend junit)
+- typecheck/lint pass
+- master fast-forward sync 매 PR 직후
+
+### 다음 세션 컨텍스트
+
+- Dashboard 4 위젯 풀세트 actionable closure — recent files (ADR #9 unblock) / 업로드·새 폴더 dialog 자동 오픈 (explorer `?action=` query handler) 만 follow-up
+- Tier 1 잔여 모두 ADR/spec blocker — `audit_level + FILE_VIEWED` (ADR #9 audit 파티션 결정), 확장자 whitelist + MIME magic (spec 부재), MFA / refresh rotation (ADR #18 결정)
+- Tier 2 multi-week 트랙 — Plan A Phase 3+ (잔여 6 task + Phase 11+), Plan B frontend foundation (Plan A 선결), SSE / S3 migration
+
+---
+
 ## 2026-05-14 — User Home Dashboard (root `/` redirect → personal dashboard, PR #246)
 
 > **Note**: 본 entry는 PR #246 머지 후 closure followup으로 추가 (PR 본체에서 progress.md 누락). 트랙 실행은 다른 세션. 본 문서화는 git log + spec + PR diff 기준 객관 사실만 기록.
