@@ -6,6 +6,7 @@ import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.UpdateTimestamp;
 
 import java.io.Serializable;
 import java.time.OffsetDateTime;
@@ -74,6 +75,15 @@ public class User implements Serializable {
 
     @Column(name = "created_at", nullable = false, updatable = false)
     private OffsetDateTime createdAt;
+
+    /**
+     * users-updated-at 트랙 (V24, 2026-05-14) — 마지막 변경 시각.
+     * Hibernate {@link UpdateTimestamp}가 INSERT/UPDATE 시 자동 set/갱신 — 호출자/서비스 코드 무관.
+     * audit_log row와 cross-reference 가능. docs/02 §2.1.
+     */
+    @UpdateTimestamp
+    @Column(name = "updated_at", nullable = false)
+    private OffsetDateTime updatedAt;
 
     @Column(name = "deleted_at")
     private OffsetDateTime deletedAt;
@@ -161,6 +171,14 @@ public class User implements Serializable {
 
     public OffsetDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    /**
+     * users-updated-at — 마지막 변경 시각. Hibernate가 자동 갱신 (V24).
+     * 신규 INSERT 직후 = createdAt과 동치, 이후 모든 mutation에서 갱신.
+     */
+    public OffsetDateTime getUpdatedAt() {
+        return updatedAt;
     }
 
     public OffsetDateTime getDeletedAt() {
