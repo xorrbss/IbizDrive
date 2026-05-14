@@ -662,12 +662,16 @@ class PermissionRepositoryTest {
         UUID f2 = insertFolder(null, "f2", granter);
         UUID f3 = insertFolder(null, "f3", granter);
 
-        // me 에 USER grant 2건 (f1 먼저, f2 나중) + other 에 USER grant 1건 + everyone grant 1건
-        insertPermission("folder", f1, "user", me, "read", granter);
-        // 분리 가능한 created_at 보장을 위해 약간 시간 차 — JDBC 단일 sql 호출은 동일 트랜잭션이지만
-        // postgres NOW() resolution(microsec) 으로 INSERT 순서가 ORDER BY 안정에 영향.
-        // 본 native query 의 ORDER BY 는 created_at DESC, id DESC tie-break — 순서 보장 OK.
-        insertPermission("folder", f2, "user", me, "edit", granter);
+        // me 에 USER grant 2건 (f1 먼저, f2 나중) + other 에 USER grant 1건 + everyone grant 1건.
+        //
+        // **결정성**: ORDER BY created_at DESC, id DESC tie-break이지만 id는 UUID random이라
+        // tie-break이 비결정. 두 INSERT가 같은 ms에 들어가면 (CI에서 발생) 결과 순서가 흔들린다.
+        // 따라서 createdAt을 명시적으로 10ms 차로 INSERT — DEFAULT NOW() 의존 제거 (PR #251 첫 CI fail
+        // 원인 해소).
+        Instant t1 = Instant.now();
+        Instant t2 = t1.plusMillis(10);
+        insertPermissionAt("folder", f1, "user", me, "read", granter, t1);
+        insertPermissionAt("folder", f2, "user", me, "edit", granter, t2);
         insertPermission("folder", f3, "user", other, "read", granter);
         insertPermissionEveryone("folder", f3, "read", granter);
 
@@ -793,6 +797,22 @@ class PermissionRepositoryTest {
             "INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, " +
             "preset, granted_by) VALUES (?, ?, ?, ?, ?, ?, ?)",
             UUID.randomUUID(), resourceType, resourceId, subjectType, subjectId, preset, grantedBy
+        );
+    }
+
+    /**
+     * createdAt 명시 변종 — ORDER BY created_at DESC 결정성이 필요한 테스트용.
+     * 기본 helper는 DEFAULT NOW()라 같은 ms에 두 INSERT가 들어가면 id DESC tie-break(UUID random)에
+     * 의존해 비결정. 본 변종으로 명시 시각을 INSERT하면 ORDER BY가 결정적.
+     */
+    private void insertPermissionAt(String resourceType, UUID resourceId,
+                                    String subjectType, UUID subjectId,
+                                    String preset, UUID grantedBy, Instant createdAt) {
+        jdbc.update(
+            "INSERT INTO permissions(id, resource_type, resource_id, subject_type, subject_id, " +
+            "preset, granted_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            UUID.randomUUID(), resourceType, resourceId, subjectType, subjectId, preset, grantedBy,
+            java.sql.Timestamp.from(createdAt)
         );
     }
 
