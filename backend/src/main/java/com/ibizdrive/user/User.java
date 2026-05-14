@@ -200,6 +200,26 @@ public class User implements Serializable {
         return lockedAt != null;
     }
 
+    /**
+     * admin-user-lock-unlock — 관리자 수동 잠금 (ADR #20). lockedAt = 호출 시각.
+     * 호출자(서비스)는 self-protection 검증 + 멱등 분기 + audit emit + save flush 책임.
+     * 자동 lock (5회 실패 + 423 ACCOUNT_LOCKED, docs/02 §7.4 line 1188)도 같은 메서드 진입점 공유.
+     */
+    public void lock(OffsetDateTime at) {
+        if (at == null) {
+            throw new IllegalArgumentException("lock time must not be null");
+        }
+        this.lockedAt = at;
+    }
+
+    /**
+     * admin-user-lock-unlock — 관리자 수동 잠금 해제. lockedAt = NULL.
+     * 호출자(서비스)는 멱등 분기 + audit emit + save flush 책임. 이미 unlocked면 NOP.
+     */
+    public void unlock() {
+        this.lockedAt = null;
+    }
+
     public boolean isDeleted() {
         return deletedAt != null;
     }

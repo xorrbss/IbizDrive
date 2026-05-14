@@ -39,6 +39,7 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -450,6 +451,88 @@ class AdminUserControllerTest {
                 .with(user(memberPrincipal)).with(csrf())
                 .contentType("application/json")
                 .content(json.writeValueAsString(Map.of("role", "MEMBER"))))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(adminUserService);
+    }
+
+    // ── admin-user-lock-unlock: POST /:id/lock + DELETE /:id/lock ──────
+
+    @Test
+    void lock_adminPrincipal_returns200WithUpdatedUser() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        User locked = new User(
+            targetId, "lockme@example.com", "Lock Me",
+            "{bcrypt}$2a$12$dummy",
+            Role.MEMBER, true, false, OffsetDateTime.now()
+        );
+        locked.lock(OffsetDateTime.now());
+        when(adminUserService.lockUser(eq(targetId), eq(ACTOR_ID))).thenReturn(locked);
+
+        mvc.perform(post("/api/admin/users/{id}/lock", targetId)
+                .with(user(adminPrincipal)).with(csrf()))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.id").value(targetId.toString()))
+            .andExpect(jsonPath("$.email").value("lockme@example.com"));
+    }
+
+    @Test
+    void lock_selfLock_returns403SelfProtection() throws Exception {
+        doThrow(new AdminSelfProtectionException("self-lock forbidden"))
+            .when(adminUserService).lockUser(eq(ACTOR_ID), eq(ACTOR_ID));
+
+        mvc.perform(post("/api/admin/users/{id}/lock", ACTOR_ID)
+                .with(user(adminPrincipal)).with(csrf()))
+            .andExpect(status().isForbidden())
+            .andExpect(jsonPath("$.code").value("FORBIDDEN"))
+            .andExpect(jsonPath("$.reason").value("SELF_PROTECTION"));
+    }
+
+    @Test
+    void lock_targetNotFound_returns404() throws Exception {
+        UUID ghost = UUID.randomUUID();
+        doThrow(new AdminUserNotFoundException(ghost.toString()))
+            .when(adminUserService).lockUser(eq(ghost), any(UUID.class));
+
+        mvc.perform(post("/api/admin/users/{id}/lock", ghost)
+                .with(user(adminPrincipal)).with(csrf()))
+            .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void lock_unauthenticated_returns401() throws Exception {
+        mvc.perform(post("/api/admin/users/{id}/lock", UUID.randomUUID())
+                .with(csrf()))
+            .andExpect(status().isUnauthorized());
+        verifyNoInteractions(adminUserService);
+    }
+
+    @Test
+    void lock_memberAuthenticated_returns403() throws Exception {
+        mvc.perform(post("/api/admin/users/{id}/lock", UUID.randomUUID())
+                .with(user(memberPrincipal)).with(csrf()))
+            .andExpect(status().isForbidden());
+        verifyNoInteractions(adminUserService);
+    }
+
+    @Test
+    void unlock_adminPrincipal_returns204() throws Exception {
+        UUID targetId = UUID.randomUUID();
+        User unlocked = new User(
+            targetId, "unlockme@example.com", "Unlock Me",
+            "{bcrypt}$2a$12$dummy",
+            Role.MEMBER, true, false, OffsetDateTime.now()
+        );
+        when(adminUserService.unlockUser(eq(targetId), eq(ACTOR_ID))).thenReturn(unlocked);
+
+        mvc.perform(delete("/api/admin/users/{id}/lock", targetId)
+                .with(user(adminPrincipal)).with(csrf()))
+            .andExpect(status().isNoContent());
+    }
+
+    @Test
+    void unlock_memberAuthenticated_returns403() throws Exception {
+        mvc.perform(delete("/api/admin/users/{id}/lock", UUID.randomUUID())
+                .with(user(memberPrincipal)).with(csrf()))
             .andExpect(status().isForbidden());
         verifyNoInteractions(adminUserService);
     }

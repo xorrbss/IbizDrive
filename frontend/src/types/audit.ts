@@ -16,6 +16,8 @@ export type AuditEventType =
   | 'file.restored'
   | 'file.purged'
   | 'file.moved.cross_workspace'
+  | 'file.starred'
+  | 'file.unstarred'
   // 버전
   | 'version.created'
   | 'version.restored'
@@ -29,6 +31,8 @@ export type AuditEventType =
   | 'folder.purged'
   | 'folder.audit_level_changed'
   | 'folder.moved.cross_workspace'
+  | 'folder.starred'
+  | 'folder.unstarred'
   // 권한 / 공유
   | 'permission.granted'
   | 'permission.revoked'
@@ -46,6 +50,8 @@ export type AuditEventType =
   | 'user.password.forgot_requested'
   | 'user.password.reset'
   | 'user.mfa.enabled'
+  | 'user.locked'
+  | 'user.unlocked'
   // 관리자
   | 'admin.user.created'
   | 'admin.user.updated'
@@ -58,11 +64,21 @@ export type AuditEventType =
   | 'admin.department.updated'
   | 'admin.department.deactivated'
   | 'admin.cron.toggled'
+  | 'admin.retention.changed'
+  | 'admin.approval.requested'
+  | 'admin.approval.granted'
+  | 'admin.approval.rejected'
+  | 'admin.approval.expired'
   // 시스템
   | 'system.backup.completed'
   | 'system.purge.executed'
   | 'storage.orphan.cleaned'
+  | 'system.favorites.orphans_cleaned'
   // 팀
+  | 'team.created'
+  | 'team.updated'
+  | 'team.member.added'
+  | 'team.member.removed'
   | 'team.member.role_changed'
   | 'team.archived'
   | 'team.restored'

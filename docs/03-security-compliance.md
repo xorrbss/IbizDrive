@@ -734,6 +734,8 @@ type AuditEventType =
   | 'user.password.forgot_requested'  // A1.5 P3 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43) — 가입자만 emit (anti-enumeration)
   | 'user.password.reset'             // A1.5 P4 활성화 (`a1.5-email-infra`, 2026-05-02, ADR #43)
   | 'user.mfa.enabled'
+  | 'user.locked'                    // admin-user-lock-unlock 활성화 (2026-05-14) — 관리자 수동 또는 자동 lock(login 5회 실패) 공통 wire, metadata={trigger:'admin.manual' | 'system.failed_login_threshold'}로 발동 출처 구분
+  | 'user.unlocked'                  // admin-user-lock-unlock 활성화 (2026-05-14) — 관리자 수동 unlock, metadata={trigger:'admin.manual'}
   // 관리자
   | 'admin.user.created'
   | 'admin.user.updated'
@@ -764,6 +766,7 @@ type AuditEventType =
   | 'system.backup.completed'
   | 'system.purge.executed'
   | 'storage.orphan.cleaned'  // 활성화 (`storage-orphan-cleanup`, 2026-05-02, ADR #38) — actor_id=NULL, target_type=system, metadata={runId,scanned,candidates,deleted,failed,truncated,durationMs}, docs/02 §5.6
+  | 'system.favorites.orphans_cleaned'  // 활성화 (`favorites-cron-cleanup`, PR #245, 2026-05-13) — V23 cron. actor_id=NULL, target_type=system, metadata={runId,scanned,deleted,durationMs}
   // 감사 로그 자체
   | 'audit.exported'   // docs/04 §7.2 — CSV/JSON 내보내기 자체도 감사 기록
 ```

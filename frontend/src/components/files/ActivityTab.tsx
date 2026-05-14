@@ -60,6 +60,8 @@ const EVENT_LABELS: Partial<Record<AuditEventType, string>> = {
   'file.deleted': '삭제',
   'file.restored': '복원',
   'file.purged': '영구 삭제',
+  'file.starred': '즐겨찾기 추가',
+  'file.unstarred': '즐겨찾기 제거',
   'version.created': '새 버전',
   'version.restored': '버전 복원',
   'version.downloaded': '버전 다운로드',
