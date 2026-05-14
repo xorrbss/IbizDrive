@@ -1,9 +1,11 @@
 // frontend/src/components/files/FileTable.tsx
 'use client'
-import { useRef, useState, useCallback, useEffect } from 'react'
+import { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useRouter } from 'next/navigation'
 import { useFilesInFolder } from '@/hooks/useFilesInFolder'
+import { useFileFiltersStore } from '@/stores/fileFilters'
+import { applyFileFilters } from '@/lib/fileFilters'
 import { useSortParams } from '@/hooks/useSortParams'
 import { useViewParam } from '@/hooks/useViewParam'
 import { useGridColumns } from '@/hooks/useGridColumns'
@@ -49,7 +51,12 @@ type Props = {
 export function FileTable({ folderId }: Props) {
   const { sort, dir } = useSortParams()
   const { view } = useViewParam()
-  const { data: items, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
+  const { data: rawItems, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
+  const filters = useFileFiltersStore((s) => s.filters)
+  // FilterPopover/FilterChips (design-zip components.jsx §FilterPopover/§FilterChips) client-side
+  // 적용 — kinds/modified/starred/shared 4 섹션 AND. paginated 환경에서 의미를 갖는 범위는 작지만
+  // v1.x folder당 items 수가 작은 가정으로 충분. backend filter 통합은 별도 트랙.
+  const items = useMemo(() => applyFileFilters(rawItems, filters), [rawItems, filters])
   const [focusedIndex, setFocusedIndex] = useState(-1)
   const scrollRef = useRef<HTMLDivElement>(null)
   // Grid 모드 전용 scroll container (가상화 대상). list 분기에서는 무시되고, grid 분기에서만 attach.
