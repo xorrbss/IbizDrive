@@ -6,16 +6,15 @@ import type { FileItem } from '@/types/file'
 const fixedNow = Date.parse('2026-05-14T12:00:00Z')
 
 const makeItem = (over: Partial<FileItem> = {}): FileItem => ({
-  id: over.id ?? 'i1',
-  name: over.name ?? 'item',
-  type: over.type ?? 'file',
-  mimeType: over.mimeType ?? 'application/pdf',
-  size: over.size ?? 1024,
-  updatedAt: over.updatedAt ?? '2026-05-14T11:00:00Z',
-  updatedBy: over.updatedBy ?? 'me',
-  parentId: over.parentId ?? 'p1',
-  starred: over.starred,
-  shareCount: over.shareCount,
+  id: 'i1',
+  name: 'item',
+  type: 'file',
+  mimeType: 'application/pdf',
+  size: 1024,
+  updatedAt: '2026-05-14T11:00:00Z',
+  updatedBy: 'me',
+  parentId: 'p1',
+  ...over,
 })
 
 describe('fileItemKind', () => {
