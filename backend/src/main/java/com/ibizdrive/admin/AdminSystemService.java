@@ -28,7 +28,7 @@ public class AdminSystemService {
     }
 
     /**
-     * 4종 cron 중 하나의 enabled 값을 갱신한다. 같은 값으로의 no-op 토글도 audit row를 남긴다.
+     * 6종 cron 중 하나의 enabled 값을 갱신한다. 같은 값으로의 no-op 토글도 audit row를 남긴다.
      *
      * @throws IllegalArgumentException unknown key (글로벌 핸들러가 400 BAD_REQUEST로 변환)
      */

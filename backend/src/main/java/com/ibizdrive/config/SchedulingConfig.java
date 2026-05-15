@@ -15,11 +15,12 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Spring scheduling + 스케줄 잡들의 properties record 등록 지점 (A7.3, SHARE_EXPIRED cron,
  * permissions-expired-cron).
  *
- * <p>{@code @EnableScheduling}은 무조건 활성 — 5 cron job({@link com.ibizdrive.purge.HardPurgeJob},
+ * <p>{@code @EnableScheduling}은 무조건 활성 — 6 cron job({@link com.ibizdrive.purge.HardPurgeJob},
  * {@link com.ibizdrive.share.ShareExpirationJob},
  * {@link com.ibizdrive.permission.PermissionExpirationJob},
  * {@link com.ibizdrive.storage.StorageOrphanCleanupJob},
- * {@link com.ibizdrive.approval.PendingAdminApprovalExpirationJob}) 빈은 항상 등록되며 매 tick마다 진입한다.
+ * {@link com.ibizdrive.approval.PendingAdminApprovalExpirationJob},
+ * {@link com.ibizdrive.favorite.FavoritesCleanupJob}) 빈은 항상 등록되며 매 tick마다 진입한다.
  *
  * <p>잡-개별 enabled 게이트는 {@link com.ibizdrive.admin.CronPolicyRepository#isEnabled} (DB
  * 단일 row lookup, V11 admin-cron-policy-toggle 트랙)로 위임 — 각 잡의 {@code run()} 첫 줄에서
@@ -27,7 +28,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * (cleanup v1.x). 토글은 ADMIN UI(`/admin/system`) → `PUT /api/admin/system/cron/{key}`로
  * 재기동 없이 즉시 반영.
  *
- * <p>스케줄러는 단일 thread로 충분 (현재 잡 4개, 모두 짧은 batch). 다중 잡이 동시에 무거워지면 별도
+ * <p>스케줄러는 단일 thread로 충분 (현재 잡 6개, 모두 짧은 batch). 다중 잡이 동시에 무거워지면 별도
  * {@code TaskScheduler} pool 빈 도입 검토.
  */
 @Configuration

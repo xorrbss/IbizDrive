@@ -600,6 +600,8 @@ storage 객체 (LocalFs):
 > **읽기 권한 확장** (Wave 1.5 `auditor-cron-readonly`, 2026-05-07): 백엔드 `GET /api/admin/system/cron` 가드를 `hasRole('ADMIN') OR hasRole('AUDITOR')`로 확장. 감사자가 외부 모니터링/스크립트로 cron 설정을 직접 확인 가능.
 >
 > **UI 진입 확장** (Wave 1.5 `auditor-admin-ui-access`, 2026-05-07): 프론트 `<AdminGuard>`에 `allowedRoles` prop을 도입하고 admin layout을 `['ADMIN','AUDITOR']`로 완화. AUDITOR는 `/admin/audit/logs`, `/admin/system`에 직접 진입 가능. 그 외 ADMIN-only 페이지는 페이지 단에서 default 가드로 다시 좁힌다(§1.1, §1.2). `AdminSideNav`도 AUDITOR에게는 두 항목만 노출.
+>
+> **favorites orphan cleanup 추가** (`favorites-cron-cleanup`, PR #245, 2026-05-13): V23이 `cron_policy`에 `favorites.cleanup` row를 시드(default `enabled=false`). file/folder hard-purge 후 남는 `favorites` orphan row를 일괄 삭제. `/admin/system`에서 토글 + `GET /api/admin/system/cron`에 6번째 잡으로 노출. Audit `system.favorites.orphans_cleaned` (summary-only 1건/run). [¶]
 
 | 작업 | 주기 | 상태 | 설명 |
 |---|---|---|---|
@@ -612,6 +614,7 @@ storage 객체 (LocalFs):
 | `audit.archive` | 매월 1일 | *v1.x deferred* | 감사 로그 월별 파티션 아카이빙. ADR #9 audit_level/파티션 미구현. |
 | `share.expire` | default 5분 | **MVP** (`enabled=false` default) | `shares.expires_at <= NOW() AND revoked_at IS NULL` row를 자동 만료 (`share-expired-cron`, 2026-05-01). [‡] |
 | `permission.expire` | default 5분 | **MVP** (`enabled=false` default) | `permissions.expires_at <= NOW()` row를 자동 cleanup (`permissions-expired-cron`, 2026-05-01). [‡‡] |
+| `favorites.cleanup` | 매일 02:00 (KST) | **v1.x** (`enabled=false` default) | `favorites` orphan row(file/folder hard-purge 후 남은 dangling reference) 일괄 삭제 (`favorites-cron-cleanup`, PR #245, 2026-05-13). [¶] |
 
 > [†] `purge.expired` (A7) 정책 상세: docs/02 §7.11.1. **DB-only** (storage 모듈 부재) — S3 객체는 orphan으로 잔존, audit `after_state.orphanStorageKeys` (cap=1000)에 기록. Properties: `app.purge.{enabled, max-per-run, cron, zone}`. Audit: `SYSTEM_PURGE_EXECUTED` summary-only 1건/run. ROLE 없음 (system actor).
 >
@@ -620,6 +623,8 @@ storage 객체 (LocalFs):
 > [‡‡] `permission.expire` 정책 상세: docs/02 §7.10.1. ADR #34 backlog closure. Properties: `app.permission.expiration.{enabled(default false), batch-size(200), cron("0 */5 * * * *"), zone("Asia/Seoul")}`. 단위 처리(per-row 트랜잭션) — `PermissionService.expirePermission(permissionId)`가 `lockById` (PESSIMISTIC_WRITE) → snapshot → DELETE (permissions 테이블에 `revoked_at` 부재로 soft-delete 불가). Audit `permission.expired`는 `actor_id=NULL`, `metadata.trigger='system.expiration'`. `findEffective`가 이미 `expires_at > NOW()` 필터링하므로 cron 가치는 (a) DB cleanup, (b) audit trail. 다중 인스턴스 안전(row-level pessimistic lock).
 >
 > [§] `storage.orphan.cleanup` 정책 상세: docs/02 §5.6. ADR #38. Properties: `app.storage.orphan-cleanup.{enabled(default false), cron("0 0 1 * * *"), zone("Asia/Seoul"), max-per-run(10000), grace-hours(24), batch-size(200)}`. 알고리즘: liveSet=`file_versions.storage_key` 전체 stream(NO `deleted_at` 필터, trash 보호) → `StorageClient.listOlderThan(grace=24h)` walk → diff → per-row delete(IOException isolation) → cap 도달 시 truncated=true. Audit: `STORAGE_ORPHAN_CLEANED` summary-only 1건/run, `actor_id=NULL`, target_type=`system`, `metadata={runId,scanned,candidates,deleted,failed,truncated,durationMs}`. MVP single-instance 가정 (`@SchedulerLock` 미도입). HTTP 운영 트리거 endpoint 미도입(backlog).
+>
+> [¶] `favorites.cleanup` 정책 상세 (`favorites-cron-cleanup`, PR #245, V23 cron seed). Properties: `app.favorites.cleanup.{cron("0 0 2 * * *"), zone("Asia/Seoul")}` — enabled 토글은 `cron_policy` 테이블 단일 source(`app.*.enabled` yml 필드 없음, V11 admin-cron-policy-toggle 정합). 알고리즘: file/folder의 active/trashed 양쪽에 존재하지 않는 `resource_id`를 참조하는 `favorites` row를 단일 `@Transactional`에서 일괄 삭제. Audit: `FAVORITES_ORPHANS_CLEANED` summary-only 1건/run, `actor_id=NULL`, target_type=`system`, `after_state={deletedRows,durationMs}` — `deletedRows == 0`이면 audit 미발행(노이즈 회피). v1.x 가정상 favorites 규모 작음 — batch limit 미정의. 늘어나면 후속 V_next에서 max-per-run 추가.
 
 ---
 
