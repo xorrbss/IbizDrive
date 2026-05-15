@@ -7,7 +7,7 @@ import type { CronJobStatus } from '@/types/system'
 /**
  * `/admin/system` (Wave 1 — T3, admin-cron-policy-toggle 확장).
  *
- * <p>4 카드 viewer + ADMIN-only 토글 switch + ConfirmDialog. AUDITOR는 viewer 그대로
+ * <p>6 카드 viewer + ADMIN-only 토글 switch + ConfirmDialog. AUDITOR는 viewer 그대로
  * (토글 미노출). 프론트 권한 가드는 UX용이며, 실제 보안은 backend
  * `@PreAuthorize("hasRole('ADMIN')")` (docs/03 §3 + 핵심 원칙 #10).
  *
