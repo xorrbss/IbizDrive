@@ -9,6 +9,7 @@ import { applyFileFilters } from '@/lib/fileFilters'
 import { useSortParams } from '@/hooks/useSortParams'
 import { useViewParam } from '@/hooks/useViewParam'
 import { useGridColumns } from '@/hooks/useGridColumns'
+import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useOpenFile } from '@/hooks/useOpenFile'
 import { useSelectionStore } from '@/stores/selection'
 import { FileRow } from './FileRow'
@@ -51,6 +52,7 @@ type Props = {
 export function FileTable({ folderId }: Props) {
   const { sort, dir } = useSortParams()
   const { view } = useViewParam()
+  const { folder } = useCurrentFolder()
   const { data: rawItems, isLoading, error, refetch } = useFilesInFolder(folderId, sort, dir)
   const filters = useFileFiltersStore((s) => s.filters)
   // FilterPopover/FilterChips (design-zip components.jsx §FilterPopover/§FilterChips) client-side
@@ -460,7 +462,7 @@ export function FileTable({ folderId }: Props) {
 
   return (
     <div ref={containerRef} className="relative flex flex-col flex-1 min-h-0 overflow-hidden">
-      <UploadOverlay visible={isDragging} />
+      <UploadOverlay visible={isDragging} folderName={folder?.name} />
       {body}
     </div>
   )
