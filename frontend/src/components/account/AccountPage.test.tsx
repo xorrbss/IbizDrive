@@ -188,3 +188,39 @@ describe('AccountPage — 액션 섹션', () => {
     })
   })
 })
+
+// 디자인 토큰 회귀 가드 — PR #270 화이트리스트 규칙 (docs/design-system.md §1).
+// invalid 토큰 (bg-bg-N) 이 silent drop 되어 transparent 렌더되는 sleeping bug 재발 차단.
+describe('AccountPage — 디자인 토큰 회귀 가드', () => {
+  beforeEach(() => {
+    useMeMock.mockReset()
+  })
+
+  it('프로필/액션 섹션 bg-surface-1 사용 (bg-bg-\\d 미사용)', () => {
+    useMeMock.mockReturnValue({ data: session(), isLoading: false, isError: false })
+    const { container } = wrap(<AccountPage />)
+    const sections = container.querySelectorAll('section')
+    expect(sections.length).toBeGreaterThanOrEqual(2)
+    sections.forEach((s) => {
+      expect(s.className).toContain('bg-surface-1')
+      expect(s.className).not.toMatch(/\bbg-bg-\d/)
+    })
+  })
+
+  it('department chip bg-surface-2 / role chip bg-accent-soft (bg-bg-\\d 미사용)', () => {
+    useMeMock.mockReturnValue({
+      data: session({
+        departments: [{ id: 'd1', name: '개발팀', path: '/회사/개발팀' }],
+        roles: ['ADMIN'],
+      }),
+      isLoading: false, isError: false,
+    })
+    wrap(<AccountPage />)
+    const deptChip = screen.getByText('개발팀')
+    expect(deptChip.className).toContain('bg-surface-2')
+    expect(deptChip.className).not.toMatch(/\bbg-bg-\d/)
+    const roleChip = screen.getByText('ADMIN')
+    expect(roleChip.className).toContain('bg-accent-soft')
+    expect(roleChip.className).not.toMatch(/\bbg-bg-\d/)
+  })
+})
