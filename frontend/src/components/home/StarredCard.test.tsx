@@ -108,4 +108,23 @@ describe('StarredCard', () => {
     fireEvent.click(btn)
     expect(pushMock).not.toHaveBeenCalled()
   })
+
+  // 회귀 가드 — row hover + chip 이 invalid `bg-bg-2` 로 transparent 렌더되던 PR #267 fix 보호.
+  it('row button hover + chip — bg-surface-2 사용 (bg-bg-2 미사용)', () => {
+    vi.mocked(useMyFavorites).mockReturnValue({
+      data: {
+        items: [
+          { resourceType: 'file', resourceId: 'f1', name: 'doc.pdf', parentId: null, starredAt: '' },
+        ],
+      },
+      isLoading: false, isError: false,
+    } as any)
+    render(<StarredCard />)
+    const btn = screen.getByLabelText('doc.pdf 열기')
+    expect(btn.className).toContain('hover:bg-surface-2')
+    expect(btn.className).not.toMatch(/\bbg-bg-\d/)
+    const chip = screen.getByText('파일')
+    expect(chip.className).toContain('bg-surface-2')
+    expect(chip.className).not.toMatch(/\bbg-bg-\d/)
+  })
 })

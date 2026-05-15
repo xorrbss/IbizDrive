@@ -5,6 +5,39 @@
 
 ---
 
+## 2026-05-15 — dashboard card bg-surface 회귀 가드 (PR #267 follow-up)
+
+> PR #267 (tailwind-tokens sweep) closure 보고에서 분리한 follow-up #1. dashboard 카드 4종이 className 단정 가드 zero coverage 였던 공백 메움. dashboard-followups (PR #248~#254) 작성 당시 invalid `bg-bg-N` 가 test fail 없이 통과한 원인 차단.
+
+### 범위
+
+`DashboardCard` (4 dashboard 위젯 wrapper) + 3 consumer 카드 (`QuotaCard` / `StarredCard` / `SharedWithMeCard`) 각각에 `bg-surface-*` 포함 + `bg-bg-\d` 미포함 단정 1건씩 추가. 단일 wrapper 가드 + 위젯별 고유 사이트 (progress bar / hover / chip) 분담.
+
+### 변경
+
+- frontend `components/home/DashboardCard.test.tsx` — **신규**. outer `<section>` className `bg-surface-1` 포함 + `bg-bg-\d` 미포함 단정 (4 dashboard 위젯 wrapper 일괄 보호)
+- frontend `components/home/QuotaCard.test.tsx` — progress bar 트랙 `bg-surface-2` 가드 1건 추가 (QuotaCard 고유 사이트)
+- frontend `components/home/StarredCard.test.tsx` — row button `hover:bg-surface-2` + chip `bg-surface-2` 가드 1건 추가
+- frontend `components/home/SharedWithMeCard.test.tsx` — 동등 패턴 (hover + preset chip)
+
+### 결정/편차
+
+- **DashboardCard 신규 test 파일** — `QuotaCard`/`StarredCard`/`SharedWithMeCard` 가 모두 `DashboardCard` 를 렌더하지만 outer section 단정을 3 곳에 중복하지 않고 wrapper 컴포넌트 자체 테스트 1건으로 처리. PR #259 처럼 신규 컴포넌트라도 design 원본 미존재이면 className 화이트리스트 가드만이라도 우선
+- **HomeDashboard.test.tsx 미수정** — 4 카드 통합 렌더 smoke test 만 존재 (단일 카드 사이트가 아닌 page-level). 본 PR scope 외
+
+### 검증
+
+- `pnpm typecheck` PASS
+- `pnpm lint` PASS (사전 favorites/page.tsx aria warning 1건 — 본 PR 무관)
+- `pnpm test` 209 files / 1554 tests PASS (PR #267 의 1550 + 신규 4 = 1554)
+
+### 회고
+
+- **회귀 가드 follow-up 분리 패턴 효과** — PR #267 본체는 정정만 단일 commit, 가드는 별도 PR. ultrareview follow-up (PR #260/#266) 분리 정책 재확인 — atomic diff + reviewable + bisect 용이
+- **dashboard-followups (PR #248~#254) 가 invalid token 을 silent 통과시킨 원인** — 카드 visual rendering 가드가 className 단정 zero 였음. 본 PR 로 4 카드 모두 className 가드 도입 → 동일 systemic drift 재발 차단
+
+---
+
 ## 2026-05-15 — Tailwind `bg-bg-1`/`bg-bg-2` invalid token typo sweep
 
 > design-fidelity 점검 중 발견된 systemic sleeping bug. `globals.css` `@theme inline` 은 `--color-surface-1/2` 만 노출하고 `--color-bg-1/2` 는 미정의 → 9 사이트에서 Tailwind silent drop 으로 배경 transparent 렌더. 단일 sweep PR 로 6 component + 1 admin page 정정.
