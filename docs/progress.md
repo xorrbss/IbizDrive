@@ -5,7 +5,7 @@
 
 ---
 
-## 2026-05-15 — quick-action-dialog (WelcomeHeader 업로드/새 폴더, PR #<TBD>)
+## 2026-05-15 — quick-action-dialog (WelcomeHeader 업로드/새 폴더, PR #269)
 
 > User Home Dashboard PR #246 spec §3.1 의 보류 트랙 closure. PR #253 의 단일 navigation link 를 quick action 2 버튼 + URL convention `?action=new-folder` 로 정식 구현.
 
