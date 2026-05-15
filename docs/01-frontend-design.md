@@ -1651,6 +1651,12 @@ export function useOpenFile() {
 }
 ```
 
+### 17.4a `?action=` — dashboard quick action deep link
+
+`/d/...` 와 `/t/...` workspace folder 페이지는 `?action=new-folder` query 를 받으면 `useQuickActionParam` hook 이 감지 → `CreateFolderDialog` 를 mount + `router.replace` 로 `?action` 만 즉시 제거(다른 query 보존). 발급자는 현재 dashboard `WelcomeHeader` 의 "새 폴더" 버튼 하나(`router.push(workspaceRoot?action=new-folder)`). `/trash`, `/shared`, `/favorites`, `/admin` 등 다른 위치에서는 무시. 알 수 없는 action 값도 silent skip. 새 action 케이스 추가 시 hook 의 switch 분기 확장 + 본 절 갱신.
+
+spec: `docs/superpowers/specs/2026-05-15-quick-action-dialog-design.md`.
+
 ### 17.5 WorkspaceFolderTree (lazy expand — FolderTree 대체)
 
 ```tsx
