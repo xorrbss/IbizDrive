@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-15 — quick-action-dialog (WelcomeHeader 업로드/새 폴더, PR #269)
+
+> User Home Dashboard PR #246 spec §3.1 의 보류 트랙 closure. PR #253 의 단일 navigation link 를 quick action 2 버튼 + URL convention `?action=new-folder` 로 정식 구현.
+
+### 범위
+
+WelcomeHeader 의 "내 워크스페이스 →" link 1 개를 업로드/새 폴더 quick action 2 버튼으로 교체. 두 액션을 다른 패턴으로 분리(업로드 = in-place file picker / 새 폴더 = `?action=` URL convention). backend 변경 0.
+
+### 변경
+
+- frontend `hooks/useQuickActionParam.ts` (신규) — `?action=new-folder` query 감지 + 1-shot consume (`router.replace` 로 `?action` 만 제거, 다른 query 보존).
+- frontend `hooks/useQuickActionParam.test.ts` (신규) — 5 케이스 + production `router.replace` URL 갱신 시뮬레이션 mock.
+- frontend `components/home/WelcomeHeader.tsx` — link 제거 + 업로드/새 폴더 버튼 + hidden file input + 클릭 핸들러. 0-workspace 시 두 버튼 disabled.
+- frontend `components/home/WelcomeHeader.test.tsx` — 기존 3 → 6 케이스(navigate URL verify + 업로드 enqueue/push verify + 파일 0개 취소 가드).
+- frontend `app/(explorer)/d/[deptId]/[[...parts]]/ClientFilesPage.tsx` + 동일 team 변형 — `useQuickActionParam` 호출 + `CreateFolderDialog` mount.
+
+### 결정/편차
+
+- **두 액션 분리** — 업로드는 user gesture 보존(`<input>.click()` 정책), 새 폴더는 dialog 가 explorer 컨텍스트 안에서 열려야 의미 있어 navigation 필요. URL convention 1 케이스만(KISS).
+- **`closeNewFolder` 후 URL 재방문 무동작** — `?action` 이 mount 시점에 이미 cleansed 되어 dialog 재오픈 없음. 사용자가 X 로 close 후 history.back 해도 dialog 재오픈 없음.
+- **테스트 mock 정정** — 첫 verbatim 시도에서 test 5(`closeNewFolder`)가 실패 → 분석 결과 vanilla `vi.fn()` replaceMock 이 production `router.replace` 의 URL 갱신을 시뮬레이션 안 함. effect deps `params` identity 가 매 render 마다 새 객체라 effect 재실행 → state 재오픈 false negative. mock 에 `mockPath`/`mockQuery` 갱신 implementation 추가로 해결. hook code 자체는 spec 그대로 유지(YAGNI — production 동작은 정확).
+
+### 미포함 (의도된 분리)
+
+- **ClientFilesPage 통합 테스트** — `useQuickActionParam` hook 단위 테스트 5 + WelcomeHeader 단위 6 + `CreateFolderDialog` 기존 단위로 회귀 가드 충분 판단. spec §7.3 에서 임의로 명시.
+- **수동 검증** — plan §Task 7 §3 항목 5건. CI 풀그린 + 단위 테스트 가드로 회귀 충분.
+
+### 검증
+
+- frontend `pnpm test --run` — 1562 / 1562 PASS, 210 files. 신규 11건(hook 5 + WelcomeHeader 6) 포함, 회귀 0.
+- frontend `pnpm typecheck` exit 0.
+- frontend `pnpm lint` — pre-existing favorites/page.tsx aria-disabled warning 1건(본 PR 무관), errors 0.
+
+### 회고
+
+- subagent dispatch 시 working directory + branch guard 누락 → 첫 implementer 가 master 브랜치에 commit 발생. rebase 로 복구(commit 1개) 후 후속 subagent prompt 에 "branch must be feat/...; abort with BLOCKED if not" 명시 → 잔여 3 commit 정상 landing.
+- `useOpenFile.test.ts` 의 `vi.fn()` mock 패턴을 그대로 답습한 verbatim test 가 effect-구동 hook 에서는 부족 → test design self-review 시 production effect/dep 구조와 mock 동작 합치를 명시적으로 확인하는 패턴 채택.
+
+---
+
 ## 2026-05-15 — docs/design-system §1 토큰 이름 화이트리스트 규칙 (PR #267/#268 closure)
 
 > PR #267 (tailwind-tokens sweep) closure 보고에서 분리한 follow-up #2. invalid 토큰 이름 silent drop 함정을 docs/design-system.md §1 에 코드화 — "하드코딩 금지" 규칙 옆에 동등 권위로 명시.
