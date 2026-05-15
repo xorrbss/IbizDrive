@@ -22,6 +22,23 @@ Linear / Notion 스타일의 조용한 엔터프라이즈 톤. 3열 레이아웃
 
 컴포넌트에서는 `bg-white`, `text-gray-500`, `border-gray-200` 같은 절대값 사용 금지. 반드시 토큰 유틸 (`bg-surface-1`, `text-fg-muted`, `border-border`) 사용.
 
+### 토큰 이름 화이트리스트
+
+`globals.css` `@theme inline` 블록에 정의된 토큰 이름만 사용. 노출된 토큰 ground truth 는 globals.css §`@theme inline` (`--color-bg`, `--color-surface-1/2/3`, `--color-border/-strong`, `--color-fg/-2/-muted/-subtle`, `--color-accent/-hover/-soft/-text/-fg`, `--color-danger`, `--color-warn`, `--color-success/-soft`) — 본 문서 §2 색상 표와 1:1.
+
+**`bg-bg-1`, `bg-bg-2` 같은 미정의 이름은 Tailwind 가 silent drop** — 컴파일 에러 0, 테스트 fail 0, 시각상으로만 배경이 transparent 로 렌더됨. 2026-05-15 PR #267 sweep 이 9 사이트 / 6 파일 systemic drift 정정한 사례 — 컴포넌트 첫 작성 시 silent drop 이 발견되지 않아 후속 PR 들이 같은 typo 차용.
+
+#### 회귀 가드 패턴
+
+ESLint 자동 가드 없음. 시각 회귀를 막으려면 컴포넌트 test 에 className 단정 추가:
+
+```ts
+expect(element.className).toContain('bg-surface-1')
+expect(element.className).not.toMatch(/\bbg-bg-\d/)
+```
+
+`bg-bg-\d` 정규식이 invalid 이름 재발을 1차 차단. 예시: PR #267 (FilterChips/FilterPopover) + PR #268 (DashboardCard/QuotaCard/StarredCard/SharedWithMeCard).
+
 ---
 
 ## 2. 색상
