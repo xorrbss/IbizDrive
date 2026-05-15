@@ -10,10 +10,10 @@ import type { AuthSession } from '@/types/auth'
  *
  * <p>핵심 가드:
  * <ul>
- *   <li>4 카드가 fixed order(purge → share → permission → storage)로 렌더</li>
+ *   <li>6 카드가 fixed order(purge → share → permission → storage → admin.approval → favorites.cleanup)로 렌더</li>
  *   <li>각 카드: label / enabled 배지(ON/OFF) / cron / zone</li>
  *   <li>loading / error 분기</li>
- *   <li>(P6) ADMIN 세션 — 4 카드 모두 토글 switch 노출</li>
+ *   <li>(P6) ADMIN 세션 — 6 카드 모두 토글 switch 노출</li>
  *   <li>(P6) AUDITOR 세션 — 토글 switch 미노출, 카드는 그대로</li>
  *   <li>(P6) 토글 클릭 → ConfirmDialog → 확인 → mutation 호출</li>
  *   <li>(P6) 토글 클릭 → ConfirmDialog → 취소 → mutation 미호출</li>
@@ -57,6 +57,21 @@ const FIXTURE: CronJobsResponse = {
       zone: 'Asia/Seoul',
       maxPerRun: 10000,
       graceHours: 24,
+    },
+    {
+      key: 'admin.approval.expire',
+      label: '2인 승인 만료 처리',
+      enabled: false,
+      cron: '0 */5 * * * *',
+      zone: 'Asia/Seoul',
+      batchSize: 200,
+    },
+    {
+      key: 'favorites.cleanup',
+      label: '즐겨찾기 orphan 정리',
+      enabled: false,
+      cron: '0 0 2 * * *',
+      zone: 'Asia/Seoul',
     },
   ],
 }
@@ -104,20 +119,22 @@ describe('/admin/system — read-only cron status', () => {
     mockUseMe.mockReturnValue({ data: SESSION_AUDITOR })
   })
 
-  it('renders 4 jobs in fixed order with label/cron/zone/enabled badge', () => {
+  it('renders 6 jobs in fixed order with label/cron/zone/enabled badge', () => {
     mockUseAdminSystemCron.mockReturnValue({ data: FIXTURE, isLoading: false, isError: false })
     wrap(<AdminSystemPage />)
 
     // 헤더
     expect(screen.getByRole('heading', { level: 1, name: /시스템/ })).toBeTruthy()
 
-    // 4 카드 — testid로 순서 확인
+    // 6 카드 — testid로 순서 확인
     const cards = screen.getAllByTestId(/^cron-card-/)
-    expect(cards).toHaveLength(4)
+    expect(cards).toHaveLength(6)
     expect(cards[0].getAttribute('data-testid')).toBe('cron-card-purge.expired')
     expect(cards[1].getAttribute('data-testid')).toBe('cron-card-share.expire')
     expect(cards[2].getAttribute('data-testid')).toBe('cron-card-permission.expire')
     expect(cards[3].getAttribute('data-testid')).toBe('cron-card-storage.orphan.cleanup')
+    expect(cards[4].getAttribute('data-testid')).toBe('cron-card-admin.approval.expire')
+    expect(cards[5].getAttribute('data-testid')).toBe('cron-card-favorites.cleanup')
 
     // 각 카드 페이로드
     expect(cards[0].textContent).toContain('휴지통 hard purge')
@@ -128,6 +145,13 @@ describe('/admin/system — read-only cron status', () => {
     expect(cards[1].textContent).toContain('공유 만료 처리')
     expect(cards[1].textContent).toContain('ON')
     expect(cards[1].textContent).toContain('0 */5 * * * *')
+
+    // 5/6번째 카드 (V21/V23 drift recovery): label + cron + OFF 배지
+    expect(cards[4].textContent).toContain('2인 승인 만료 처리')
+    expect(cards[4].textContent).toContain('OFF')
+    expect(cards[5].textContent).toContain('즐겨찾기 orphan 정리')
+    expect(cards[5].textContent).toContain('OFF')
+    expect(cards[5].textContent).toContain('0 0 2 * * *')
 
     // batchSize / maxPerRun / graceHours 노출 확인 (옵셔널 필드)
     expect(cards[0].textContent).toContain('10000') // purge.maxPerRun
@@ -157,7 +181,7 @@ describe('AdminSystemPage — cron 토글 (admin-cron-policy-toggle)', () => {
     mockUseAdminToggleCron.mockReturnValue({ mutate: vi.fn(), isPending: false })
   })
 
-  it('ADMIN 세션 — 4 카드 모두에 토글 switch 노출', async () => {
+  it('ADMIN 세션 — 6 카드 모두에 토글 switch 노출', async () => {
     mockUseMe.mockReturnValue({ data: SESSION_ADMIN })
     wrap(<AdminSystemPage />)
     await waitFor(() => {
@@ -167,6 +191,8 @@ describe('AdminSystemPage — cron 토글 (admin-cron-policy-toggle)', () => {
     expect(screen.getByTestId('cron-toggle-share.expire')).toBeTruthy()
     expect(screen.getByTestId('cron-toggle-permission.expire')).toBeTruthy()
     expect(screen.getByTestId('cron-toggle-storage.orphan.cleanup')).toBeTruthy()
+    expect(screen.getByTestId('cron-toggle-admin.approval.expire')).toBeTruthy()
+    expect(screen.getByTestId('cron-toggle-favorites.cleanup')).toBeTruthy()
   })
 
   it('AUDITOR 세션 — 토글 switch 미노출, 카드는 그대로', async () => {
@@ -179,6 +205,8 @@ describe('AdminSystemPage — cron 토글 (admin-cron-policy-toggle)', () => {
     expect(screen.queryByTestId('cron-toggle-share.expire')).toBeNull()
     expect(screen.queryByTestId('cron-toggle-permission.expire')).toBeNull()
     expect(screen.queryByTestId('cron-toggle-storage.orphan.cleanup')).toBeNull()
+    expect(screen.queryByTestId('cron-toggle-admin.approval.expire')).toBeNull()
+    expect(screen.queryByTestId('cron-toggle-favorites.cleanup')).toBeNull()
   })
 
   it('토글 클릭 → ConfirmDialog → 확인 → mutation 호출', async () => {

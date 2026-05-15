@@ -9,6 +9,8 @@ export type CronJobKey =
   | 'share.expire'
   | 'permission.expire'
   | 'storage.orphan.cleanup'
+  | 'admin.approval.expire'
+  | 'favorites.cleanup'
 
 export interface CronJobStatus {
   /** application.yml 키와 동형. */
