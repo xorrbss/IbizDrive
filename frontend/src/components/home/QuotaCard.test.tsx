@@ -52,4 +52,16 @@ describe('QuotaCard', () => {
     render(<QuotaCard />)
     expect(screen.getByText(/불러오는 중/)).toBeTruthy()
   })
+
+  // 회귀 가드 — progress bar 트랙이 invalid `bg-bg-2` 로 transparent 렌더되던 PR #267 fix 보호.
+  it('progress bar 트랙 — bg-surface-2 사용 (bg-bg-2 미사용)', () => {
+    vi.mocked(useStorageQuota).mockReturnValue({
+      data: { usedBytes: 1, totalBytes: 100 },
+      isLoading: false, isError: false,
+    } as any)
+    render(<QuotaCard />)
+    const track = screen.getByRole('progressbar')
+    expect(track.className).toContain('bg-surface-2')
+    expect(track.className).not.toMatch(/\bbg-bg-\d/)
+  })
 })

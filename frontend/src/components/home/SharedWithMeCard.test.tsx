@@ -94,4 +94,19 @@ describe('SharedWithMeCard', () => {
     render(<SharedWithMeCard />)
     expect(screen.getByText(/공유 목록을 불러올 수 없습니다/)).toBeTruthy()
   })
+
+  // 회귀 가드 — row hover + preset chip 이 invalid `bg-bg-2` 로 transparent 렌더되던 PR #267 fix 보호.
+  it('row button hover + preset chip — bg-surface-2 사용 (bg-bg-2 미사용)', () => {
+    vi.mocked(useMySharedWithMe).mockReturnValue({
+      data: { items: [baseItem()], nextCursor: null },
+      isLoading: false, isError: false,
+    } as any)
+    render(<SharedWithMeCard />)
+    const btn = screen.getByLabelText('계약서.pdf 열기')
+    expect(btn.className).toContain('hover:bg-surface-2')
+    expect(btn.className).not.toMatch(/\bbg-bg-\d/)
+    const chip = screen.getByText('read')
+    expect(chip.className).toContain('bg-surface-2')
+    expect(chip.className).not.toMatch(/\bbg-bg-\d/)
+  })
 })
