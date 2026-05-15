@@ -5,6 +5,52 @@
 
 ---
 
+## 2026-05-15 — `/account` 마이 페이지 + Avatar/UserMenu Link wire
+
+> brainstorming → writing-plans → 8-task TDD 실행 풀 사이클 첫 적용. TopBar 우측 Avatar 클릭 → `/account` 진입. 프로필 read-only + 액션 hub (비밀번호/관리자/로그아웃). UserMenu (사이드바) 이름/이메일 영역도 같은 진입점.
+
+### 범위
+
+신규 라우트 `/account` + 단일 client component `AccountPage` (~128 lines). **신규 API/hook 0** — `useMe` + `useLogout` reuse. TopBar Avatar + UserMenu 이름/이메일 영역에 `<Link href="/account">` wrap.
+
+### 변경 (10 파일, +1548 / -3)
+
+- frontend 신규 `app/(explorer)/account/page.tsx` (8 lines) — server entry
+- frontend 신규 `app/(explorer)/account/page.test.tsx` (14 lines, 1 test) — smoke
+- frontend 신규 `components/account/AccountPage.tsx` (128 lines) — client component
+- frontend 신규 `components/account/AccountPage.test.tsx` (226 lines, 15 tests) — h1/loading/error/profile 5/액션 5/디자인 토큰 가드 2
+- frontend `components/topbar/TopBar.tsx:64-71` — Avatar 를 `<Link href="/account" aria-label="마이 페이지">` wrap + focus-visible:ring
+- frontend `components/topbar/TopBar.test.tsx` — Avatar Link wrap 가드 1건
+- frontend `components/auth/UserMenu.tsx:33-42` — 이름/이메일 영역 `<Link href="/account">` wrap + hover affordance
+- frontend `components/auth/UserMenu.test.tsx` — Link wrap 가드 1건
+- docs `superpowers/specs/2026-05-15-account-page-design.md` (166 lines) — 15 섹션 spec
+- docs `superpowers/plans/2026-05-15-account-page.md` (970 lines) — 8 TDD task plan
+- docs `progress.md` — 본 entry
+
+### 결정/편차
+
+- **단일 파일 AccountPage** — ProfileSection / AccountActions 분리 보류 (각각 ~40 lines, oversharding 회피). 향후 활동 로그/편집 추가 시 분리 검토 (spec §5)
+- **신규 API/hook 0** — backend 변경 0. UserMenu 의 logout 패턴 (try/catch + router.replace) 동일 재사용
+- **UserMenu 유지** — 사이드바 빠른 진입 + 페이지 자세한 hub 의 의도된 역할 분담 (spec §13). 비밀번호 변경 link 가 양쪽에 노출되지만 의도적
+- **디자인 토큰 가드** — PR #270 화이트리스트 규칙 준수 (docs/design-system.md §1). `bg-surface-1/2`/`bg-accent-soft` className 단정 + `bg-bg-\d` 미포함 단정 2건 포함
+- **subagent-driven workflow 첫 시도** — implementer subagent 가 첫 task 에서 pnpm test 단계에 stuck (전체 suite 7분 + filter 미적용). 이후 task 는 controller 직접 구현 + 최종 reviewer subagent 1회로 가속 ([[feedback_subagent_workflow]] 의 "작은 cleanup 은 controller 직접 fix" 패턴)
+
+### 검증
+
+- `pnpm typecheck` PASS
+- `pnpm lint` PASS (사전 favorites/page.tsx aria warning 1건 — 본 PR 무관)
+- `pnpm test` 213 files / **1583 tests PASS** (+18 신규)
+- final reviewer subagent: **Approved for merge** — Critical/Important 0, Minor 3 (모두 spec 의도 부합)
+- CI 양쪽 SUCCESS 확정 후 merge ([[feedback_local_skip_ci_gap]] 준수)
+
+### 회고
+
+- **brainstorming → writing-plans → subagent-driven 풀 사이클** — scope/approach/spec 3 gate 만 사용자 확인, 실행은 자율. 패턴 정립
+- **subagent 사용 한계** — 첫 implementer 가 pnpm test 백그라운드 출력 대기에서 stuck. 작은 TDD 단위는 controller 직접 처리가 더 빠름. subagent 는 final reviewer (read-only, comprehensive) 처럼 큰 호흡 task 에 더 적합
+- **filter 미적용 이슈** — `pnpm test -- --run <file>` 가 package script 에서 전체 suite 로 fallback. Task 8 시 한 번 일괄로 그린 확인이 더 효율적이라는 결과
+
+---
+
 ## 2026-05-15 — quick-action-dialog (WelcomeHeader 업로드/새 폴더, PR #269)
 
 > User Home Dashboard PR #246 spec §3.1 의 보류 트랙 closure. PR #253 의 단일 navigation link 를 quick action 2 버튼 + URL convention `?action=new-folder` 로 정식 구현.

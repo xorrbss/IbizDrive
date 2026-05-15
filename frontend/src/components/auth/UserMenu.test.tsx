@@ -69,4 +69,13 @@ describe('UserMenu — admin 링크 (m-admin-entry-rewrite P4)', () => {
     expect(getByRole('button', { name: '로그아웃' })).not.toBeNull()
     expect(getByRole('link', { name: '비밀번호 변경' })).not.toBeNull()
   })
+
+  it('이름/이메일 영역 — /account Link wrap (마이 페이지 진입)', () => {
+    useMeMock.mockReturnValue({ data: session(['MEMBER']), isLoading: false, isError: false })
+    const { getByRole, getByText } = wrap(<UserMenu />)
+    const link = getByRole('link', { name: '마이 페이지' })
+    expect(link.getAttribute('href')).toBe('/account')
+    expect(link.contains(getByText('Alice'))).toBe(true)
+    expect(link.contains(getByText('alice@example.com'))).toBe(true)
+  })
 })

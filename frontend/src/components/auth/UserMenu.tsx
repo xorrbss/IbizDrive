@@ -30,14 +30,18 @@ export function UserMenu() {
   return (
     <div className="flex flex-col gap-1 px-2 py-2 mt-1 border-t border-border">
       <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0 flex flex-col">
+        <Link
+          href="/account"
+          aria-label="마이 페이지"
+          className="min-w-0 flex flex-col hover:bg-surface-2 rounded -mx-1 px-1 py-0.5"
+        >
           <span className="text-[12px] font-medium text-fg truncate">
             {data?.user?.name ?? '사용자'}
           </span>
           <span className="text-[11px] text-fg-muted truncate">
             {data?.user?.email ?? ''}
           </span>
-        </div>
+        </Link>
         <button
           type="button"
           onClick={onClick}
