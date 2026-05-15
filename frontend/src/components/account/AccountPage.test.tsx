@@ -1,12 +1,13 @@
 /* eslint-disable @typescript-eslint/no-explicit-any -- vi.mocked return value cast (UseQueryResult 전체 shape 재현 회피) */
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent } from '@testing-library/react'
 import React from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { AccountPage } from './AccountPage'
 
+const routerReplace = vi.fn()
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn(), back: vi.fn() }),
+  useRouter: () => ({ replace: routerReplace, push: vi.fn(), back: vi.fn() }),
 }))
 
 const useMeMock = vi.fn()
@@ -14,8 +15,9 @@ vi.mock('@/hooks/useMe', () => ({
   useMe: () => useMeMock(),
 }))
 
+const logoutMutate = vi.fn()
 vi.mock('@/hooks/useLogout', () => ({
-  useLogout: () => ({ mutateAsync: vi.fn(), isPending: false }),
+  useLogout: () => ({ mutateAsync: logoutMutate, isPending: false }),
 }))
 
 const wrap = (node: React.ReactNode) => {
@@ -128,5 +130,61 @@ describe('AccountPage — 프로필 섹션', () => {
     wrap(<AccountPage />)
     expect(screen.getByText('ADMIN')).toBeTruthy()
     expect(screen.getByText('MEMBER')).toBeTruthy()
+  })
+})
+
+describe('AccountPage — 액션 섹션', () => {
+  beforeEach(() => {
+    useMeMock.mockReset()
+    logoutMutate.mockReset()
+    logoutMutate.mockResolvedValue(undefined)
+    routerReplace.mockReset()
+  })
+
+  it('비밀번호 변경 링크 — href="/account/password"', () => {
+    useMeMock.mockReturnValue({ data: session(), isLoading: false, isError: false })
+    wrap(<AccountPage />)
+    const link = screen.getByRole('link', { name: '비밀번호 변경' })
+    expect(link.getAttribute('href')).toBe('/account/password')
+  })
+
+  it('ADMIN role → "관리자 페이지" 링크 노출 + href="/admin"', () => {
+    useMeMock.mockReturnValue({
+      data: session({ roles: ['ADMIN'] }),
+      isLoading: false, isError: false,
+    })
+    wrap(<AccountPage />)
+    const link = screen.getByRole('link', { name: '관리자 페이지' })
+    expect(link.getAttribute('href')).toBe('/admin')
+  })
+
+  it('non-admin (MEMBER) → "관리자 페이지" 링크 미노출', () => {
+    useMeMock.mockReturnValue({
+      data: session({ roles: ['MEMBER'] }),
+      isLoading: false, isError: false,
+    })
+    wrap(<AccountPage />)
+    expect(screen.queryByRole('link', { name: '관리자 페이지' })).toBeNull()
+  })
+
+  it('로그아웃 버튼 클릭 → useLogout.mutateAsync 호출 + router.replace("/login")', async () => {
+    useMeMock.mockReturnValue({ data: session(), isLoading: false, isError: false })
+    wrap(<AccountPage />)
+    const btn = screen.getByRole('button', { name: '로그아웃' })
+    fireEvent.click(btn)
+    await vi.waitFor(() => {
+      expect(logoutMutate).toHaveBeenCalledTimes(1)
+      expect(routerReplace).toHaveBeenCalledWith('/login')
+    })
+  })
+
+  it('로그아웃 mutation 실패해도 router.replace("/login") 진행 (사용자 의도 우선)', async () => {
+    logoutMutate.mockRejectedValue(new Error('network'))
+    useMeMock.mockReturnValue({ data: session(), isLoading: false, isError: false })
+    wrap(<AccountPage />)
+    fireEvent.click(screen.getByRole('button', { name: '로그아웃' }))
+    await vi.waitFor(() => {
+      expect(routerReplace).toHaveBeenCalledWith('/login')
+    })
   })
 })
