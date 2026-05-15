@@ -5,6 +5,77 @@
 
 ---
 
+## 2026-05-15 — file-favorites-toggle-followup (PR #241 ultrareview follow-up, PR #260)
+
+> PR #241 (file-favorites P2a frontend) ultrareview 의 두 nit-level finding 1줄/4줄 단위 정정. backlog 항목 아님 (review follow-up).
+
+### 범위
+
+`useToggleStar` folder 분기 race window + `BreadcrumbWithStar` 토글 실패 시 toast 부재 — 두 진입점(`FileRowActionMenu` vs `BreadcrumbWithStar`) 간 UX 비일관 해소.
+
+### 변경 (2 파일, +13 / -6)
+
+- frontend `hooks/useToggleStar.ts` — folder 분기 `setQueryData(qk.folder(id))` 전 `await qc.cancelQueries({ queryKey: folderKey })` 1줄 추가. list 분기는 이미 `cancelQueries(filesListPrefix)` 호출 중이라 대칭 완성
+- frontend `components/folders/BreadcrumbWithStar.tsx` — `toggle.mutate(..., { onError: (err) => toast.error(messageForError(err, '즐겨찾기 변경에 실패했습니다.')) })` wire. `FileRowActionMenu.tsx:113-126` 동등 패턴 적용 (sonner + `messageForError` import)
+
+### 결정/편차
+
+- **TanStack Query 표준 optimistic-update 레시피** — `cancelQueries` → `setQueryData` 순서. `useCurrentFolder` 가 `staleTime: 60_000` + 기본 `refetchOnWindowFocus` 라 in-flight `getFolder` 응답이 optimistic write 이후 도착하면 `starred` 를 stale 값으로 덮어써 Breadcrumb 별 깜빡임 발생. `onSettled` invalidate 까지의 race window 제거
+- **두 진입점 UX 통일** — `FileRowActionMenu` (FileRow → 더보기 → 즐겨찾기) 와 `BreadcrumbWithStar` (현재 폴더 헤더 별 토글) 모두 backend 403/404 거절 시 toast 노출. PR #241 description 의 "backend 권한에서 거절 시 onError toast 로 fallback" 약속 이행
+
+### 미포함 (의도된 분리)
+
+- **수동 검증 (shared workspace root folder 별 토글 + backend 403 mock 으로 toast 노출)** — 선택 항목. CI 풀그린 + hook unit test 5건 PASS 로 회귀 가드 충분 판단
+
+### 검증
+
+- frontend `pnpm typecheck` PASS (sweep 전)
+- frontend `pnpm test` 1520 / 1520 PASS (`useToggleStar` 5건 포함)
+- CI 풀그린 (frontend vitest + backend junit)
+- master fast-forward sync 직후 closure
+
+### 회고
+
+- PR #241 머지 시 ultrareview 가 즉시 풀그린 이었으나 nit 2건 잔존 → 다음 세션 trivial follow-up. **ultrareview nit 도 별도 PR 로 분리** 정책 재확인 — 본체에 흡수하지 않고 reviewable atomic diff 유지
+- 5라인 patch + CI 풀그린 단일 commit 형태는 ultrareview follow-up 표준 모범 사례. 이 패턴 재사용
+
+---
+
+## 2026-05-15 — permission-enum-sync (frontend Permission enum 1:1 미러 정합, PR #258)
+
+> dual-approval Phase 2 (PR #168, 2026-05-13) 에서 backend `Permission.APPROVE_ADMIN_ACTION` 추가 후 frontend `permission.ts` 가 9 값에 멈춰있던 **sleeping bug** 정정. CLAUDE.md §4 계약 파일(`src/types/permission.ts`) drift 해소.
+
+### 범위
+
+backend `Permission.java`(10값 = 9 resource-level + APPROVE_ADMIN_ACTION) ↔ frontend `permission.ts`(9값) drift 해소. backlog 항목 아님 (sleeping bug fix).
+
+### 변경
+
+- frontend `permission.ts` — union + `PERMISSIONS` 배열에 `APPROVE_ADMIN_ACTION` 추가 (`PermissionFlags` 자동 derive)
+- frontend `permission.test.ts` — 회귀 가드 length 9 → 10, expected set 확장
+- frontend `PermissionsTab.LABELS` — 한글 라벨 '관리자 승인' 추가 (`Record<Permission, string>` 완성)
+- frontend `Breadcrumb.test.tsx` `ALL_FALSE` — `PermissionFlags` 새 필드 추가
+- frontend `PermissionsTab.test.tsx` / `RightPanel.test.tsx` — chip count 9 → 10 (followup commit `6c6ca2c`)
+- backend `Permission.java` Javadoc — "9 값" → "10 값 = 9 resource-level + APPROVE_ADMIN_ACTION"
+- docs/03 §3.1 callout — 동일 표현 + MANAGE_LEGAL_HOLD v2.x deferred 명시
+
+### 미포함 (의도된 분리)
+
+- **`MANAGE_LEGAL_HOLD`** — v2.x deferred, backend enum 미정의. 본 PR에서 frontend stub 만들면 반대 방향 drift 유발 → Legal Hold framework 활성화 PR이 정식 추가
+- **Preset 매트릭스 변경 0** — `APPROVE_ADMIN_ACTION` 은 ROLE ADMIN 전속, 어떤 preset 에도 미포함 (docs/03 §3.2)
+
+### 검증
+
+- frontend `pnpm typecheck` PASS
+- frontend `PermissionsTab.test.tsx` + `RightPanel.test.tsx` 27/27 PASS
+- CI 풀그린 (frontend vitest + backend junit, 후속 commit 포함)
+
+### 결정/편차
+
+- **PR 본체에 followup test fix 누락** — 본체 commit (`0cd9f6d`) 머지 시 `PermissionsTab.test.tsx` / `RightPanel.test.tsx` 의 하드코딩 '9개' 가정 3건 미반영 → frontend vitest FAILURE. followup commit (`6c6ca2c`) 으로 즉시 정정 후 머지. 회고: 계약 파일(`permission.ts`) 변경 시 `grep -n "9"` 보다 `grep -rn "9.*chip\|chip.*9"` 같은 의미 단위 검색이 sleeping test 회피에 안전
+
+---
+
 ## 2026-05-14 — Dashboard 트랙 follow-up 풀세트 (PR #248/#252/#253/#254)
 
 > PR #246 (User Home Dashboard 본체) 머지 직후 single-day shipping 으로 4 위젯 모두 actionable 화 + dev-docs sweep.
