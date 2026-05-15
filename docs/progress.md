@@ -5,6 +5,37 @@
 
 ---
 
+## 2026-05-15 — file-card grid-star fidelity (design zip §grid-star, PR #263)
+
+> file-favorites P2a 트랙 전수 검증 중 발견된 sleeping design drift 정정. 기능 wire 는 PR #241/#260 으로 완전하나 grid view 의 starred 배지가 누락되어 있던 1건 closure.
+
+### 범위
+
+design zip `components.jsx` L466 + `styles.css` L744~753 의 `.grid-star` 사양이 `FileRow`(list view, L408 `badge-star`) 만 반영되고 `FileCard`(grid view) 는 미반영. design-sweep-phase-2 가 list 배지만 처리하고 grid 배지를 빠뜨린 sleeping drift.
+
+### 변경 (2 파일, +36 / -1)
+
+- frontend `components/files/FileCard.tsx` — outer `<div role="gridcell">` `relative` + `item.starred && <span aria-label="즐겨찾기" className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-surface-1 text-warn shadow-sm"><Star size={11} className="fill-current" /></span>`. 디자인 토큰 매핑: `var(--warn)` → `text-warn`, `var(--surface-1)` → `bg-surface-1`, `var(--shadow-sm)` → `shadow-sm`, `top/right:6px` → `top-1.5 right-1.5`
+- frontend `components/files/FileCard.test.tsx` — 회귀 가드 1건 (`starred=true` 시 `getByLabelText('즐겨찾기')` + `absolute` / `text-warn` 클래스, `false` 시 미렌더)
+
+### 결정/편차
+
+- **그릇 단순화 유지** — 기존 `FileCard` 는 zip 의 `.grid-thumb` wrapper 없이 `FileTypeIcon` 직접 inline 사용. 본 PR 도 thumbnail wrapper 도입 없이 outer card 의 `relative` 만 추가. 시각상 별 위치는 카드 우상단 동일
+- **size=11 + fill** — list view (`FileRow.tsx:178~184`) 와 동일 패턴 (`Star size={11}` + `fill-current` text-warn). 카드 자체 `.grid-star` 원형 배경(`w-5 h-5 rounded-full bg-surface-1`) 으로 thumbnail 위 시인성 확보
+
+### 검증
+
+- `pnpm typecheck` PASS
+- `pnpm lint` PASS (사전부터 있던 favorites/page.tsx aria warning 1건 — 본 PR 무관)
+- `pnpm test FileCard.test.tsx` 7/7 PASS (기존 6건 + 신규 1건)
+
+### 회고
+
+- 트랙 closure 직후 사용자 요청으로 "디자인 + 기능 모두 적용?" 검증 → 4 부위 중 1건 누락 발견. **트랙 closure 시 design fidelity 표를 항목별로 명시** 패턴 효과적 — list view 만 확인하고 끝낸 design-sweep-phase-2 의 함정 회피 가능
+- 본 fix 가 5라인 patch 라 별도 PR 단일 commit 형태 적합. ultrareview follow-up (PR #260) 와 동일 패턴 재사용
+
+---
+
 ## 2026-05-15 — file-favorites-toggle-followup (PR #241 ultrareview follow-up, PR #260)
 
 > PR #241 (file-favorites P2a frontend) ultrareview 의 두 nit-level finding 1줄/4줄 단위 정정. backlog 항목 아님 (review follow-up).
