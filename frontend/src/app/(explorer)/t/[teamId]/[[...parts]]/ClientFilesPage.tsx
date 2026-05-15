@@ -15,6 +15,8 @@ import { UploadConflictDialog } from '@/components/upload/UploadConflictDialog'
 import { MoveFolderDialog } from '@/components/files/MoveFolderDialog'
 import { RenameDialog } from '@/components/files/RenameDialog'
 import { ShareDialog } from '@/components/shares/ShareDialog'
+import { CreateFolderDialog } from '@/components/explorer/CreateFolderDialog'
+import { useQuickActionParam } from '@/hooks/useQuickActionParam'
 import { useUploadBeforeUnload } from '@/hooks/useUploadBeforeUnload'
 import { useGlobalShortcuts } from '@/hooks/useGlobalShortcuts'
 
@@ -26,6 +28,8 @@ export function ClientFilesPage({ teamId, parts }: { teamId: string; parts: stri
   useCloseFileOnFolderChange(folder?.id)
   useUploadBeforeUnload()
   useGlobalShortcuts()
+
+  const { newFolderOpen, closeNewFolder } = useQuickActionParam(folderId)
 
   const team = workspaces?.teams.find((t) => t.id === teamId)
 
@@ -87,6 +91,11 @@ export function ClientFilesPage({ teamId, parts }: { teamId: string; parts: stri
       <MoveFolderDialog />
       <RenameDialog />
       <ShareDialog />
+      <CreateFolderDialog
+        parentId={folderId}
+        open={newFolderOpen}
+        onClose={closeNewFolder}
+      />
     </div>
   )
 }
