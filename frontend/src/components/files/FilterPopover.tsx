@@ -48,7 +48,7 @@ export function FilterPopover({ onClose }: FilterPopoverProps) {
       ref={ref}
       role="dialog"
       aria-label="파일 필터"
-      className="absolute right-0 top-full mt-1 z-20 w-[320px] rounded-lg border border-border bg-bg-1 shadow-lg p-3 space-y-3"
+      className="absolute right-0 top-full mt-1 z-20 w-[320px] rounded-lg border border-border bg-surface-1 shadow-lg p-3 space-y-3"
     >
       <section>
         <div className="text-[12px] font-semibold text-fg-2 mb-1.5">파일 종류</div>

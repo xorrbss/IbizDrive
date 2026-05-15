@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-15 — Tailwind `bg-bg-1`/`bg-bg-2` invalid token typo sweep
+
+> design-fidelity 점검 중 발견된 systemic sleeping bug. `globals.css` `@theme inline` 은 `--color-surface-1/2` 만 노출하고 `--color-bg-1/2` 는 미정의 → 9 사이트에서 Tailwind silent drop 으로 배경 transparent 렌더. 단일 sweep PR 로 6 component + 1 admin page 정정.
+
+### 범위
+
+frontend 9 사이트 × 6 파일 (`bg-bg-1` 2건 / `bg-bg-2` 5건 / `hover:bg-bg-2` 2건) → `bg-surface-1/2` / `hover:bg-surface-2` 로 일괄 정정. 코드베이스 다른 popover/카드(`TweaksPanel`, `UploadQueueDock`, admin 모달 등)는 이미 `bg-surface-*` 사용 중 — 본 PR이 convention 통일 마무리.
+
+### 변경
+
+- frontend `components/files/FilterPopover.tsx:51` — `bg-bg-1` → `bg-surface-1` (PR #259 origin)
+- frontend `components/files/FilterChips.tsx:47` — `bg-bg-2` → `bg-surface-2` (PR #259 origin)
+- frontend `components/home/DashboardCard.tsx:18` — `bg-bg-1` → `bg-surface-1` (User Home Dashboard 카드 컨테이너)
+- frontend `components/home/QuotaCard.tsx:32` — `bg-bg-2` → `bg-surface-2` (progress bar 트랙)
+- frontend `components/home/StarredCard.tsx:69,73` — `hover:bg-bg-2` + `bg-bg-2` → `surface-2`
+- frontend `components/home/SharedWithMeCard.tsx:56,61` — `hover:bg-bg-2` + `bg-bg-2` → `surface-2`
+- frontend `app/admin/retention/page.tsx:102` — `bg-bg-2` → `bg-surface-2` (inline `<code>` 배경)
+- frontend `components/files/FilterChips.test.tsx` — 회귀 가드 1건 (`bg-surface-2` 포함 + `bg-bg-\d` 미포함 단정)
+- frontend `components/files/FilterPopover.test.tsx` — 회귀 가드 1건 (동등 패턴, dialog 컨테이너 대상)
+
+### 결정/편차
+
+- **alias 추가 안 함** — 대안 1: `globals.css @theme inline` 에 `--color-bg-1: var(--surface-1)` alias 정의로 1줄 추가 vs 6 파일 수정. KISS + 기존 구조 우선 (코드베이스 다른 곳은 이미 `bg-surface-*` 사용) 으로 9 사이트 직접 정정 선택. 별도 토큰 의미 부여 없음
+- **회귀 가드 범위** — FilterChips/FilterPopover 만 추가. dashboard 카드들은 카드 자체 className 단정 없는 smoke test 위주라 본 PR 에서 가드 미추가 (별도 follow-up 시 검토)
+- **dashboard 카드 origin** — `bg-bg-1/2` 는 dashboard-followups (PR #248/#252/#253/#254) 작성자가 사용한 패턴이었으나 시각상 transparent 라 시인성 저하만 발생 (테스트 fail 없음). PR #259 가 같은 패턴 차용하면서 systemic drift 확정
+
+### 검증
+
+- `pnpm typecheck` PASS
+- `pnpm lint` PASS (사전부터 있던 favorites/page.tsx aria warning 1건 — 본 PR 무관)
+- `pnpm test` 208 files / 1550 tests PASS (regression guard 2건 포함, 사전 1548 + 2)
+- `git diff --stat` — 9 files +32 / -9
+
+### 회고
+
+- **design-fidelity 점검 → systemic bug 발견 패턴** — 사용자 "디자인 기준으로 기능 다 구현?" 질문 → Explore agent 가 FilterPopover/Chips 의 2 사이트 보고 → 직접 grep 확장으로 9 사이트 / 6 파일 확인. 한 PR 의 typo 가 후속 PR 에 차용되며 systemic drift 로 성장하는 사례. **새 component 의 className 토큰은 `globals.css @theme inline` 에 노출된 토큰 화이트리스트만 사용** 가드를 ultrareview 체크리스트에 추가하면 유사 사례 차단
+- **dashboard 카드 자체 className 가드 부재** — `pnpm test` 1550건 그린이었으나 dashboard 카드들의 시각 배경 누락은 zero coverage. backlog 항목 아니라 follow-up 으로 분리 — 본 PR 은 정정만, 가드 확장은 별도 트랙
+
+---
+
 ## 2026-05-15 — file-card grid-star fidelity (design zip §grid-star, PR #263)
 
 > file-favorites P2a 트랙 전수 검증 중 발견된 sleeping design drift 정정. 기능 wire 는 PR #241/#260 으로 완전하나 grid view 의 starred 배지가 누락되어 있던 1건 closure.

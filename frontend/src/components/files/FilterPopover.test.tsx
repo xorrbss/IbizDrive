@@ -45,4 +45,14 @@ describe('FilterPopover', () => {
     fireEvent.click(screen.getByText('적용'))
     expect(onClose).toHaveBeenCalled()
   })
+
+  // 회귀 가드 — invalid Tailwind token (`bg-bg-1`) 재발 방지.
+  // globals.css `@theme inline` 은 `--color-surface-1` 만 노출하고 `--color-bg-1` 은 미정의.
+  // `bg-bg-1` 사용 시 popover 컨테이너 배경이 transparent 로 렌더됨.
+  it('popover 컨테이너 배경 토큰 — bg-surface-1 사용 (bg-bg-1 미사용)', () => {
+    render(<FilterPopover onClose={() => {}} />)
+    const dialog = screen.getByRole('dialog', { name: '파일 필터' })
+    expect(dialog.className).toContain('bg-surface-1')
+    expect(dialog.className).not.toMatch(/\bbg-bg-\d/)
+  })
 })

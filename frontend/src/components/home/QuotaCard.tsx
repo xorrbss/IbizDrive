@@ -29,7 +29,7 @@ export function QuotaCard() {
             <span className="text-fg-2"> / {total > 0 ? formatBytes(total) : '할당량 미설정'}</span>
           </div>
           <div
-            className="h-2 rounded bg-bg-2 overflow-hidden"
+            className="h-2 rounded bg-surface-2 overflow-hidden"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={100}

@@ -99,7 +99,7 @@ function PolicyPageBody() {
         </h2>
         <p className="text-[12px] text-fg-2">
           현재는 단일 ADMIN 즉시 적용. v1.x++에서 <strong>2인 승인(dual-approval)</strong>{' '}
-          workflow가 도입되면 본 endpoint(<code className="bg-bg-2 px-1 rounded">PUT /api/admin/trash/policy</code>)
+          workflow가 도입되면 본 endpoint(<code className="bg-surface-2 px-1 rounded">PUT /api/admin/trash/policy</code>)
           가 hook point가 됩니다 (운영 런북 docs/04 §16 / ADR #47).
         </p>
       </section>

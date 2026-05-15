@@ -45,4 +45,17 @@ describe('FilterChips', () => {
     fireEvent.click(screen.getByText('전체 지우기'))
     expect(useFileFiltersStore.getState().filters).toEqual(DEFAULT_FILE_FILTERS)
   })
+
+  // 회귀 가드 — invalid Tailwind token (`bg-bg-2`) 재발 방지.
+  // globals.css `@theme inline` 은 `--color-surface-2` 만 노출하고 `--color-bg-2` 는 미정의.
+  // `bg-bg-2` 사용 시 Tailwind 가 silent drop 하여 chip 배경이 transparent 로 렌더됨.
+  it('chip 배경 토큰 — bg-surface-2 사용 (bg-bg-2 미사용)', () => {
+    useFileFiltersStore.setState({
+      filters: { ...DEFAULT_FILE_FILTERS, kinds: ['pdf'] },
+    })
+    render(<FilterChips />)
+    const chip = screen.getByText('PDF').parentElement as HTMLElement
+    expect(chip.className).toContain('bg-surface-2')
+    expect(chip.className).not.toMatch(/\bbg-bg-\d/)
+  })
 })

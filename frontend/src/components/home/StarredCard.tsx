@@ -66,11 +66,11 @@ export function StarredCard() {
                   type="button"
                   onClick={() => navigateTo(it)}
                   disabled={!navigable}
-                  className="flex w-full items-center justify-between gap-2 py-1 px-1 -mx-1 rounded hover:bg-bg-2 text-left disabled:cursor-default disabled:hover:bg-transparent"
+                  className="flex w-full items-center justify-between gap-2 py-1 px-1 -mx-1 rounded hover:bg-surface-2 text-left disabled:cursor-default disabled:hover:bg-transparent"
                   aria-label={`${it.name} 열기`}
                 >
                   <span className="truncate text-fg">{it.name}</span>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-bg-2 text-fg-2 shrink-0 ml-2">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-surface-2 text-fg-2 shrink-0 ml-2">
                     {it.resourceType === 'folder' ? '폴더' : '파일'}
                   </span>
                 </button>

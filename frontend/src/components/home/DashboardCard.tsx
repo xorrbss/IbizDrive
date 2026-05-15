@@ -15,7 +15,7 @@ export interface DashboardCardProps {
 
 export function DashboardCard({ title, subtitle, right, children }: DashboardCardProps) {
   return (
-    <section className="rounded-lg border border-border bg-bg-1 p-4">
+    <section className="rounded-lg border border-border bg-surface-1 p-4">
       <header className="mb-3 flex items-start justify-between gap-2">
         <div>
           <h2 className="text-[14px] font-semibold text-fg">{title}</h2>
