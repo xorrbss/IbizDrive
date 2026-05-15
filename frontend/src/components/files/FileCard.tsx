@@ -1,4 +1,5 @@
 'use client'
+import { Star } from 'lucide-react'
 import { fileIconKind } from '@/lib/fileIcon'
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon'
 import type { FileItem } from '@/types/file'
@@ -62,8 +63,16 @@ export function FileCard({
         if (isPending) return
         onDoubleClick?.(item)
       }}
-      className={`select-none rounded-md border border-border bg-surface-1 ${stateClass} flex flex-col items-center justify-center p-3 text-center transition-[border-color,box-shadow] duration-[120ms]`}
+      className={`relative select-none rounded-md border border-border bg-surface-1 ${stateClass} flex flex-col items-center justify-center p-3 text-center transition-[border-color,box-shadow] duration-[120ms]`}
     >
+      {item.starred && (
+        <span
+          aria-label="즐겨찾기"
+          className="absolute top-1.5 right-1.5 inline-flex items-center justify-center w-5 h-5 rounded-full bg-surface-1 text-warn shadow-sm"
+        >
+          <Star size={11} className="fill-current" aria-hidden />
+        </span>
+      )}
       <FileTypeIcon kind={iconKind} size={36} className={iconColor} />
       <div
         className="mt-2 text-[12.5px] text-fg font-medium line-clamp-2 break-all w-full"
