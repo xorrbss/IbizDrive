@@ -108,6 +108,32 @@ describe('FileCard (M16.1)', () => {
     expect(cell.className).toMatch(/ring-accent/)
   })
 
+  it('starred=true — grid-star 배지 (top-right) 노출, false 시 미노출', () => {
+    // zip styles.css `.grid-star { position: absolute; top: 6px; right: 6px; color: var(--warn); ... }`
+    // (L744~753). list view FileRow:178~184 와 동일하게 starred 자료가 있을 때만 렌더.
+    const { rerender } = render(
+      <FileCard
+        item={{ ...ITEM, starred: true }}
+        isFocused={false}
+        isSelected={false}
+        isPending={false}
+      />,
+    )
+    const badge = screen.getByLabelText('즐겨찾기')
+    expect(badge.className).toMatch(/absolute/)
+    expect(badge.className).toMatch(/text-warn/)
+
+    rerender(
+      <FileCard
+        item={ITEM}
+        isFocused={false}
+        isSelected={false}
+        isPending={false}
+      />,
+    )
+    expect(screen.queryByLabelText('즐겨찾기')).toBeNull()
+  })
+
   it('pending 상태 — 클릭 무시 + aria-disabled', () => {
     const onClick = vi.fn()
     render(
