@@ -5,6 +5,38 @@
 
 ---
 
+## 2026-05-15 — docs/design-system §1 토큰 이름 화이트리스트 규칙 (PR #267/#268 closure)
+
+> PR #267 (tailwind-tokens sweep) closure 보고에서 분리한 follow-up #2. invalid 토큰 이름 silent drop 함정을 docs/design-system.md §1 에 코드화 — "하드코딩 금지" 규칙 옆에 동등 권위로 명시.
+
+### 범위
+
+`docs/design-system.md` §1 "토큰 전략" 에 새 하위 섹션 **"토큰 이름 화이트리스트"** 추가. globals.css `@theme inline` ground truth + silent drop 경고 + 회귀 가드 패턴 (className 단정 정규식) 명시. backlog 항목 아님 (process 개선).
+
+### 변경 (2 파일, +20 / -0)
+
+- docs `design-system.md` §1 — "토큰 이름 화이트리스트" 하위 섹션 추가 (`@theme inline` 노출 토큰 enumerate + `bg-bg-N` silent drop 경고 + 회귀 가드 정규식 `/\bbg-bg-\d/`)
+- docs `progress.md` — closure entry
+
+### 결정/편차
+
+- **위치 선택** — 후보 3건 검토: CLAUDE.md §3 (cross-cutting 원칙 11개, frontend-specific Tailwind concern 추가 시 dilution) / docs/01-frontend-design.md §19 (architectural principles, design tokens 비범위) / docs/design-system.md §1 (이미 "하드코딩 금지" 규칙 보유, 동등 권위 부여 자연). **design-system.md §1 선택** — 기존 규칙 옆에 placement, 토큰 ground truth 와 같은 문서 안에 있어 cross-reference 0
+- **자동 가드 없음 명시** — ESLint plugin 작성 비용 vs 회귀 가드 test pattern 비용 비교 시 후자가 KISS. 본 PR 은 가드 작성 패턴만 docs 화, lint 도구는 v2.x 시 재검토
+- **CLAUDE.md §3 미수정** — 11개 핵심 원칙은 cross-cutting backend/frontend 공유. Tailwind 토큰은 frontend-only 범위라 §3 진입 시 권위 dilution 우려
+
+### 검증
+
+- docs only — typecheck/lint/test 영향 0
+- markdown linter 없음 (프로젝트 정책)
+- CI 양쪽 SUCCESS 확정 후 merge ([[feedback_local_skip_ci_gap]] 준수, PR #268 의 early-merge 재발 방지)
+
+### 회고
+
+- **3 PR 한 트랙 closure** — PR #267 (정정) + PR #268 (회귀 가드) + 본 PR (process docs). 동일 sleeping bug 발견 → fix → guard → docs 의 ultrareview follow-up 분리 패턴 풀 사이클. 다음 systemic drift 시 동일 3-step 적용 가능
+- **co-session collision 복구 학습** — PR #268 도중 다른 세션 commit 사이에 내 commit 끼임 ([[feedback_edit_path_in_worktree]]). `cherry-pick` + `rebase --onto` + backup ref 패턴으로 안전 복구 — 다음 세션 시작 시 `git branch --show-current` 또는 dev/process/ 체크로 사전 예방 권장
+
+---
+
 ## 2026-05-15 — dashboard card bg-surface 회귀 가드 (PR #267 follow-up)
 
 > PR #267 (tailwind-tokens sweep) closure 보고에서 분리한 follow-up #1. dashboard 카드 4종이 className 단정 가드 zero coverage 였던 공백 메움. dashboard-followups (PR #248~#254) 작성 당시 invalid `bg-bg-N` 가 test fail 없이 통과한 원인 차단.
