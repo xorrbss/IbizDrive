@@ -1,5 +1,6 @@
 'use client'
 import Link from 'next/link'
+import { Settings } from 'lucide-react'
 import { WorkspaceFolderTree } from './WorkspaceFolderTree'
 
 export function WorkspaceSection({
@@ -27,10 +28,11 @@ export function WorkspaceSection({
       {kind === 'team' && !archived && (
         <Link
           href={`/t/${workspaceId}/settings/members`}
-          className="float-right opacity-0 group-hover:opacity-100 text-[11px] text-fg-muted hover:underline"
+          className="float-right opacity-0 group-hover:opacity-100 focus-visible:opacity-100 w-6 h-6 inline-flex items-center justify-center rounded text-fg-muted hover:text-fg hover:bg-surface-2 transition-colors"
           aria-label={`${title} 팀 설정`}
+          title={`${title} 팀 설정`}
         >
-          설정
+          <Settings size={13} aria-hidden />
         </Link>
       )}
       <WorkspaceFolderTree
