@@ -7,7 +7,12 @@
  * 변경 시 양쪽 동시 갱신 (계약 — CLAUDE.md §4 계약 파일 표).
  */
 
-/** 9 권한 — 백엔드 Permission enum 이름과 동일한 UPPER_SNAKE_CASE. */
+/**
+ * 10 권한 — 백엔드 Permission enum 이름과 동일한 UPPER_SNAKE_CASE.
+ *
+ * APPROVE_ADMIN_ACTION은 dual-approval framework(ADR #47) secondary 결정자 가드 —
+ * ROLE ADMIN만 보유하며 preset 매트릭스에 포함되지 않음 (시스템 전역 권한).
+ */
 export type Permission =
   | 'READ'
   | 'UPLOAD'
@@ -18,6 +23,7 @@ export type Permission =
   | 'SHARE'
   | 'PERMISSION_ADMIN'
   | 'PURGE'
+  | 'APPROVE_ADMIN_ACTION'
 
 export const PERMISSIONS: readonly Permission[] = [
   'READ',
@@ -29,6 +35,7 @@ export const PERMISSIONS: readonly Permission[] = [
   'SHARE',
   'PERMISSION_ADMIN',
   'PURGE',
+  'APPROVE_ADMIN_ACTION',
 ] as const
 
 /** 5 preset — 백엔드 Preset enum의 wire format(lowercase)과 동일. */

@@ -9,11 +9,11 @@ import { PERMISSIONS, PRESETS, PRESET_PERMISSIONS, type Permission, type Preset 
  */
 
 describe('Permission enum mirror', () => {
-  it('has exactly 9 values', () => {
-    expect(PERMISSIONS).toHaveLength(9)
+  it('has exactly 10 values', () => {
+    expect(PERMISSIONS).toHaveLength(10)
   })
 
-  it('contains all 9 expected values in UPPER_SNAKE_CASE', () => {
+  it('contains all 10 expected values in UPPER_SNAKE_CASE', () => {
     expect(new Set(PERMISSIONS)).toEqual(
       new Set<Permission>([
         'READ',
@@ -25,6 +25,7 @@ describe('Permission enum mirror', () => {
         'SHARE',
         'PERMISSION_ADMIN',
         'PURGE',
+        'APPROVE_ADMIN_ACTION',
       ]),
     )
   })

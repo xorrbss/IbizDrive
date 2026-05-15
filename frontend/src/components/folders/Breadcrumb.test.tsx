@@ -34,6 +34,7 @@ const ALL_FALSE: PermissionFlags = {
   SHARE: false,
   PERMISSION_ADMIN: false,
   PURGE: false,
+  APPROVE_ADMIN_ACTION: false,
 }
 
 function wrap(qc: QueryClient) {

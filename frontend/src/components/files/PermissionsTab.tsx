@@ -42,6 +42,7 @@ const LABELS: Record<Permission, string> = {
   SHARE: '공유',
   PERMISSION_ADMIN: '권한 관리',
   PURGE: '영구 삭제',
+  APPROVE_ADMIN_ACTION: '관리자 승인',
 }
 
 function PermissionChip({
