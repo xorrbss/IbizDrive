@@ -116,4 +116,16 @@ describe('TopBar (G2 — 3-column grid + 햄버거)', () => {
       expect(avatar.getAttribute('data-initial')).toBe('')
     })
   })
+
+  describe('Avatar Link wrap (마이 페이지 진입)', () => {
+    it('Avatar 가 <a href="/account" aria-label="마이 페이지"> 안에 wrap', () => {
+      useMeMock.mockReturnValue({ data: null, isLoading: false, isError: false })
+      render(<TopBar />)
+      const link = screen.getByLabelText('마이 페이지')
+      expect(link.tagName.toLowerCase()).toBe('a')
+      expect(link.getAttribute('href')).toBe('/account')
+      const avatar = screen.getByTestId('avatar-stub')
+      expect(link.contains(avatar)).toBe(true)
+    })
+  })
 })

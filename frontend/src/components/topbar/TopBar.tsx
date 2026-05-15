@@ -1,4 +1,5 @@
 'use client'
+import Link from 'next/link'
 import { Menu, Keyboard } from 'lucide-react'
 import { TweaksPanel } from './TweaksPanel'
 import { SearchBar } from './SearchBar'
@@ -63,7 +64,13 @@ export function TopBar() {
           <Keyboard size={16} aria-hidden />
         </button>
         <TweaksPanel />
-        <Avatar initial={displayName} displayName={displayName} />
+        <Link
+          href="/account"
+          aria-label="마이 페이지"
+          className="inline-flex rounded-full focus:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        >
+          <Avatar initial={displayName} displayName={displayName} />
+        </Link>
       </div>
     </div>
   )
