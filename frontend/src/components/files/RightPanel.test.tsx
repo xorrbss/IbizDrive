@@ -232,7 +232,7 @@ describe('RightPanel', () => {
     expect(listFileActivityMock).not.toHaveBeenCalled()
   })
 
-  it('M-RP.3 — 권한 탭 클릭 시 권한 chip 9개 렌더 + 보유 권한 강조', async () => {
+  it('M-RP.3 — 권한 탭 클릭 시 권한 chip 10개 렌더 + 보유 권한 강조', async () => {
     mockQuery = 'file=file_abc'
     getFileDetailMock.mockResolvedValue({
       id: 'file_abc',
@@ -251,7 +251,7 @@ describe('RightPanel', () => {
       screen.getByRole('tab', { name: '권한' }).getAttribute('aria-selected'),
     ).toBe('true')
     const list = await screen.findByLabelText('파일 권한 목록')
-    expect(list.querySelectorAll('li').length).toBe(9)
+    expect(list.querySelectorAll('li').length).toBe(10)
     await waitFor(() => {
       expect(
         document

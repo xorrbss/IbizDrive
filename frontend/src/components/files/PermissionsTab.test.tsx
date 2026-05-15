@@ -32,14 +32,14 @@ describe('PermissionsTab — M-RP.3', () => {
     listResourcePermissionsMock.mockResolvedValue([])
   })
 
-  it('9개 권한 chip을 모두 렌더한다', async () => {
+  it('10개 권한 chip을 모두 렌더한다', async () => {
     getEffectivePermissionsMock.mockResolvedValue([])
     wrap(<PermissionsTab fileId="file_a" />)
     await waitFor(() => {
       expect(getEffectivePermissionsMock).toHaveBeenCalled()
     })
     const list = await screen.findByLabelText('파일 권한 목록')
-    expect(list.querySelectorAll('li').length).toBe(9)
+    expect(list.querySelectorAll('li').length).toBe(10)
   })
 
   it('보유 권한은 data-held=true, 미보유는 false로 시각 구분', async () => {
@@ -86,7 +86,7 @@ describe('PermissionsTab — M-RP.3', () => {
 
     const list = await screen.findByLabelText('파일 권한 목록')
     const chips = list.querySelectorAll('li')
-    expect(chips.length).toBe(9)
+    expect(chips.length).toBe(10)
     chips.forEach((c) => {
       expect(c.getAttribute('data-held')).toBe('false')
     })
