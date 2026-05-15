@@ -53,12 +53,12 @@ export function SharedWithMeCard() {
               <button
                 type="button"
                 onClick={() => navigateTo(it)}
-                className="flex w-full items-center justify-between gap-2 py-1 px-1 -mx-1 rounded hover:bg-bg-2 text-left"
+                className="flex w-full items-center justify-between gap-2 py-1 px-1 -mx-1 rounded hover:bg-surface-2 text-left"
                 aria-label={`${it.name} 열기`}
               >
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span className="truncate text-fg">{it.name}</span>
-                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-bg-2 text-fg-2 shrink-0">
+                  <span className="text-[11px] px-1.5 py-0.5 rounded bg-surface-2 text-fg-2 shrink-0">
                     {it.preset}
                   </span>
                 </div>

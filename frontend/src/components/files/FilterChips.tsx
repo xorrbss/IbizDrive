@@ -44,7 +44,7 @@ export function FilterChips() {
       {chips.map((c) => (
         <span
           key={c.key}
-          className="inline-flex items-center gap-1 text-[12px] px-2 py-0.5 rounded bg-bg-2 text-fg-2"
+          className="inline-flex items-center gap-1 text-[12px] px-2 py-0.5 rounded bg-surface-2 text-fg-2"
         >
           <span>{c.label}</span>
           <button
