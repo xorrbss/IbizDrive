@@ -105,6 +105,20 @@ describe('useFolderUpload', () => {
     expect(enqueue).not.toHaveBeenCalled()
   })
 
+  it('같은 부모의 형제 폴더는 병렬 — getFolderChildren는 부모당 1회만', async () => {
+    const plan: FolderUploadPlan = {
+      entries: [],
+      dirPaths: [['proj'], ['proj', 'a'], ['proj', 'b'], ['proj', 'c']],
+    }
+    const res = await run(plan)
+
+    // 형제 a/b/c가 proj-id 자식 조회를 공유 → 1회 (base 1회는 별개)
+    const projChildrenCalls = getChildren.mock.calls.filter((c) => c[0] === 'proj-id').length
+    expect(projChildrenCalls).toBe(1)
+    expect(res.createdFolders).toBe(4)
+    expect(res.errors).toEqual([])
+  })
+
   it('createFolder 409(race) → 자식 재조회로 기존 id 병합', async () => {
     getChildren
       .mockResolvedValueOnce([]) // 최초 조회 — 없음 → 생성 시도

@@ -40,9 +40,12 @@
 
 - `pnpm typecheck` PASS / `pnpm lint` PASS (경고 1건은 무관한 타 파일) / `pnpm test` (folderUpload 8 + useNativeFileDrop 5 + useFolderUpload 5 + SidebarNewButton 3 + FileTable 12 회귀 없음)
 
+### 후속 (같은 트랙, PR #273)
+
+- **형제 폴더 병렬 생성** 추가 — materialize를 깊이별 그룹 처리로 변경, 같은 깊이는 `Promise.all`, `getFolderChildren`는 in-flight promise 캐시로 부모당 1회. 벽시계 시간 ∝ 트리 깊이(폴더 수 아님). depth 방향은 부모 id 의존으로 직렬 불가피, 동시성은 브라우저 연결 수(~6) 제한. test +1 (총 6).
+
 ### 다음 세션 컨텍스트
 
-- 대형 트리는 parent당 `getFolderChildren`/`createFolder` 직렬 round-trip — 현재 MVP 한계(YAGNI). 필요 시 폴더 생성 진행 표시/병렬화 검토.
 - 폴더 생성 실패는 sonner toast 집계 메시지만 — 항목별 상세는 미노출. 필요 시 UploadPanel에 폴더 생성 단계 표시 검토.
 
 ## 2026-05-15 — `/account` 마이 페이지 + Avatar/UserMenu Link wire

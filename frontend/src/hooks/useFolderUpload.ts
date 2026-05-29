@@ -60,18 +60,19 @@ export function useFolderUpload() {
       baseFolderId: string,
     ): Promise<FolderUploadResult> => {
       const resolved = new Map<string, string>([[ROOT_KEY, baseFolderId]])
-      const childrenCache = new Map<string, Array<{ name: string; id: string }>>()
+      // 부모별 자식 목록을 in-flight promise로 캐시 — 같은 깊이 형제가 병렬 실행돼도
+      // 동일 부모의 getFolderChildren는 1회만 나간다.
+      const childrenCache = new Map<string, Promise<Array<{ name: string; id: string }>>>()
       const createdParents = new Set<string>()
       const errors: FolderUploadResult['errors'] = []
       let createdFolders = 0
 
-      const getChildren = async (parentId: string) => {
+      const getChildren = (parentId: string) => {
         let cached = childrenCache.get(parentId)
         if (!cached) {
-          cached = (await api.getFolderChildren(parentId)).map((f) => ({
-            name: f.name,
-            id: f.id,
-          }))
+          cached = api
+            .getFolderChildren(parentId)
+            .then((list) => list.map((f) => ({ name: f.name, id: f.id })))
           childrenCache.set(parentId, cached)
         }
         return cached
@@ -88,7 +89,6 @@ export function useFolderUpload() {
         if (existing) return existing.id
         try {
           const created = await api.createFolder(parentId, name)
-          childrenCache.get(parentId)?.push({ name: created.name, id: created.id })
           createdParents.add(parentId)
           createdFolders++
           return created.id
@@ -103,21 +103,32 @@ export function useFolderUpload() {
         }
       }
 
-      // 디렉토리: 깊이 오름차순 — parent가 child보다 먼저 해석되도록.
-      const dirPaths = [...plan.dirPaths].sort((a, b) => a.length - b.length)
-      for (const dirPath of dirPaths) {
-        const parentSegs = dirPath.slice(0, -1)
-        const segName = dirPath[dirPath.length - 1]
-        const parentId = resolved.get(keyOf(parentSegs))
-        if (!parentId) {
-          errors.push({ path: dirPath.join('/'), message: '상위 폴더 생성 실패로 건너뜀' })
-          continue
-        }
-        try {
-          resolved.set(keyOf(dirPath), await resolveOrCreate(parentId, segName))
-        } catch (e) {
-          errors.push({ path: dirPath.join('/'), message: messageOf(e) })
-        }
+      // 디렉토리를 깊이별 그룹으로 — parent(얕은 깊이)가 child보다 먼저 해석되도록 깊이 오름차순으로
+      // 처리하되, 같은 깊이(형제)는 Promise.all로 병렬 생성한다 (벽시계 시간 ∝ 트리 깊이).
+      const byDepth = new Map<number, string[][]>()
+      for (const dirPath of plan.dirPaths) {
+        const arr = byDepth.get(dirPath.length) ?? []
+        arr.push(dirPath)
+        byDepth.set(dirPath.length, arr)
+      }
+      const depths = [...byDepth.keys()].sort((a, b) => a - b)
+      for (const depth of depths) {
+        await Promise.all(
+          byDepth.get(depth)!.map(async (dirPath) => {
+            const parentSegs = dirPath.slice(0, -1)
+            const segName = dirPath[dirPath.length - 1]
+            const parentId = resolved.get(keyOf(parentSegs))
+            if (!parentId) {
+              errors.push({ path: dirPath.join('/'), message: '상위 폴더 생성 실패로 건너뜀' })
+              return
+            }
+            try {
+              resolved.set(keyOf(dirPath), await resolveOrCreate(parentId, segName))
+            } catch (e) {
+              errors.push({ path: dirPath.join('/'), message: messageOf(e) })
+            }
+          }),
+        )
       }
 
       // 파일을 해석된 folderId별 그룹으로 묶어 기존 파이프라인에 enqueue.

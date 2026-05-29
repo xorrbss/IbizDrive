@@ -886,9 +886,10 @@ remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리
 [drop: FileSystemEntry[]  |  input: File[].webkitRelativePath]
   → lib/folderUpload.extract*()   →  FolderUploadPlan { entries: {file, pathSegments[]}[], dirPaths: string[][] }
   → hooks/useFolderUpload.uploadFolder(plan, baseFolderId)
-       1. dirPaths dedupe + 깊이순 정렬
-       2. parent별 api.getFolderChildren 1회 조회(캐시) → normalizeFileName 비교로
-          기존 폴더면 병합(id 재사용) / 없으면 api.createFolder → Map<pathKey, folderId>
+       1. dirPaths를 깊이별 그룹으로 (깊이 오름차순)
+       2. 깊이별로 처리 — 같은 깊이(형제)는 Promise.all 병렬 생성, parent별 api.getFolderChildren는
+          in-flight promise 캐시로 1회만 조회 → normalizeFileName 비교로 기존 폴더면 병합(id 재사용)
+          / 없으면 api.createFolder → Map<pathKey, folderId>
        3. 파일을 resolved folderId별로 그룹핑 → useUpload.enqueue(files, folderId)  (기존 파이프라인)
        4. 생성 발생한 parentId마다 invalidations.afterFolderCreated
 ```
@@ -918,7 +919,8 @@ remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리
 6. **미지원 폴백** — `webkitGetAsEntry`/`webkitdirectory` 미지원 시 flat 파일 업로드로 폴백
    (사내 데스크탑 Chromium 가정, §실행 환경).
 
-> 대형 트리는 parent당 getFolderChildren/createFolder가 직렬로 발생 — round-trip 비용은 MVP 한계로 둔다(YAGNI).
+> 폴더 생성은 깊이별로 처리하되 같은 깊이(형제)는 병렬 — 벽시계 시간 ∝ 트리 깊이(폴더 수 아님). 깊이 방향은
+> 부모 id 의존으로 직렬이 불가피. 동시성은 브라우저 호스트당 연결 수(~6)로 사실상 제한된다.
 
 ---
 
