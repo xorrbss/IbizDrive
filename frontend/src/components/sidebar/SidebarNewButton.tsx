@@ -1,8 +1,11 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { ChevronDown, FolderPlus, Plus, Upload } from 'lucide-react'
+import { ChevronDown, FolderPlus, FolderUp, Plus, Upload } from 'lucide-react'
+import { toast } from 'sonner'
 import { useUpload } from '@/hooks/useUpload'
+import { useFolderUpload } from '@/hooks/useFolderUpload'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
+import { extractInputFiles } from '@/lib/folderUpload'
 import { CreateFolderDialog } from '@/components/explorer/CreateFolderDialog'
 
 /**
@@ -22,10 +25,20 @@ export function SidebarNewButton() {
   const [createOpen, setCreateOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const folderInputRef = useRef<HTMLInputElement>(null)
   const { folderId } = useCurrentFolder()
   const { enqueue } = useUpload()
+  const { uploadFolder } = useFolderUpload()
 
   const disabled = folderId.length === 0
+
+  // webkitdirectory는 JSX prop 타입에 없어 attribute로 직접 설정 (폴더 선택 input).
+  useEffect(() => {
+    const el = folderInputRef.current
+    if (!el) return
+    el.setAttribute('webkitdirectory', '')
+    el.setAttribute('directory', '')
+  }, [])
 
   useEffect(() => {
     if (!open) return
@@ -57,10 +70,28 @@ export function SidebarNewButton() {
     fileInputRef.current?.click()
   }
 
+  const handleFolderUploadClick = () => {
+    setOpen(false)
+    if (disabled) return
+    folderInputRef.current?.click()
+  }
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files
     if (!files || files.length === 0) return
     enqueue(Array.from(files), folderId)
+    e.target.value = ''
+  }
+
+  const handleFolderChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    const plan = extractInputFiles(Array.from(files))
+    void uploadFolder(plan, folderId).then((res) => {
+      if (res.errors.length > 0) {
+        toast.error(`일부 폴더를 업로드하지 못했습니다 (${res.errors.length}건).`)
+      }
+    })
     e.target.value = ''
   }
 
@@ -104,6 +135,15 @@ export function SidebarNewButton() {
             <Upload size={14} className="text-fg-2" aria-hidden />
             <span>파일 업로드</span>
           </button>
+          <button
+            type="button"
+            role="menuitem"
+            onClick={handleFolderUploadClick}
+            className="flex items-center gap-2.5 px-2.5 py-2 rounded text-fg text-[13px] hover:bg-surface-2 text-left"
+          >
+            <FolderUp size={14} className="text-fg-2" aria-hidden />
+            <span>폴더 업로드</span>
+          </button>
         </div>
       )}
       <input
@@ -113,6 +153,14 @@ export function SidebarNewButton() {
         hidden
         aria-hidden
         onChange={handleFileChange}
+      />
+      <input
+        ref={folderInputRef}
+        type="file"
+        multiple
+        hidden
+        aria-hidden
+        onChange={handleFolderChange}
       />
       <CreateFolderDialog
         parentId={folderId}

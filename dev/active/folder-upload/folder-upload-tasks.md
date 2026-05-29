@@ -11,7 +11,7 @@ Last Updated: 2026-05-29
 - [x] **P2** `lib/folderUpload.ts` 추출 유틸
 - [x] **P3** `useNativeFileDrop.ts` entry 캡처
 - [x] **P4** `useFolderUpload.ts` materialize 오케스트레이터
-- [ ] **P5** 진입점 와이어링 (FileTable / SidebarNewButton)
+- [x] **P5** 진입점 와이어링 (FileTable / SidebarNewButton)
 - [ ] **P6** 통합 검증 + 문서 동기화
 
 ---
