@@ -875,6 +875,53 @@ remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리
 권한은 backend `hasPermission(#id, 'file', 'READ')` (ADR #36 — DOWNLOAD enum 미도입).
 `usePermission().DOWNLOAD`(M8)는 UX 게이트, 진실의 출처는 backend READ 가드.
 
+### 9.6 폴더 업로드 (디렉토리 구조 보존)
+
+폴더(디렉토리)를 드롭하거나 선택하면 하위 구조를 대상 폴더 아래 그대로 재현하며 내부 파일을 업로드한다.
+**프론트 오케스트레이션으로 구현하며 백엔드는 변경하지 않는다.**
+
+#### 동작 흐름
+
+```text
+[drop: FileSystemEntry[]  |  input: File[].webkitRelativePath]
+  → lib/folderUpload.extract*()   →  FolderUploadPlan { entries: {file, pathSegments[]}[], dirPaths: string[][] }
+  → hooks/useFolderUpload.uploadFolder(plan, baseFolderId)
+       1. dirPaths를 깊이별 그룹으로 (깊이 오름차순)
+       2. 깊이별로 처리 — 같은 깊이(형제)는 Promise.all 병렬 생성, parent별 api.getFolderChildren는
+          in-flight promise 캐시로 1회만 조회 → normalizeFileName 비교로 기존 폴더면 병합(id 재사용)
+          / 없으면 api.createFolder → Map<pathKey, folderId>
+       3. 파일을 resolved folderId별로 그룹핑 → useUpload.enqueue(files, folderId)  (기존 파이프라인)
+       4. 생성 발생한 parentId마다 invalidations.afterFolderCreated
+```
+
+#### 진입점
+
+- **드래그&드롭** — `useNativeFileDrop`이 drop 시점에 `dataTransfer.items[].webkitGetAsEntry()`를
+  **동기** 캡처해 콜백에 `entries`로 전달(아래 ADR 참조). 디렉토리 entry가 있으면 폴더 경로,
+  없으면 기존 flat `enqueue`.
+- **버튼** — `SidebarNewButton` "폴더 업로드" 메뉴 → 별도 hidden `<input webkitdirectory>`.
+  각 `File.webkitRelativePath`로 경로 복원.
+
+#### 설계 결정 (ADR)
+
+1. **백엔드 무변경 / 프론트 오케스트레이션** — 기존 `POST /api/folders`(`getFolderChildren`/`createFolder`)와
+   `POST /api/files`(`enqueue`)만으로 충분. upload 엔드포인트에 `relativePath`를 추가하는 백엔드 확장은
+   트랜잭션 범위·책임 분리 측면에서 거부. scope 상속·`UNIQUE(parent, normalized_name)`·409 RENAME_CONFLICT는
+   백엔드가 그대로 보증한다 (docs/02 §3, §6).
+2. **폴더 이름 충돌 = 병합(merge)** — 대상에 같은 이름 폴더가 이미 있으면 그 폴더 id를 재사용(중복 폴더 미생성).
+   파일명 충돌만 기존 §9.2 `UploadConflictDialog`로 처리. 재업로드 시 자연스러운 동작.
+3. **업로드 store 무변경** — 폴더를 먼저 전부 materialize한 뒤 해석된 folderId로 기존 `enqueue(files, folderId)`를
+   호출. `UploadTask`에 path 필드를 추가하지 않는다 (파이프라인 무변경, §9.1 계약 유지).
+4. **빈 폴더도 생성** — 디렉토리 경로는 내부 파일 유무와 무관하게 materialize.
+5. **`DataTransferItemList` 수명** — drop 핸들러 반환 후 items가 무효화되므로 `webkitGetAsEntry()`는
+   drop 시점에 동기 호출해 entry 참조를 캡처. 비동기 재귀(`file()`/`readEntries`)는 캡처한 entry로 수행.
+   `readEntries()`는 한 번에 ≤100개만 반환하므로 empty까지 반복 호출한다.
+6. **미지원 폴백** — `webkitGetAsEntry`/`webkitdirectory` 미지원 시 flat 파일 업로드로 폴백
+   (사내 데스크탑 Chromium 가정, §실행 환경).
+
+> 폴더 생성은 깊이별로 처리하되 같은 깊이(형제)는 병렬 — 벽시계 시간 ∝ 트리 깊이(폴더 수 아님). 깊이 방향은
+> 부모 id 의존으로 직렬이 불가피. 동시성은 브라우저 호스트당 연결 수(~6)로 사실상 제한된다.
+
 ---
 
 ## 10. 검색 견고성 (v3 보강)

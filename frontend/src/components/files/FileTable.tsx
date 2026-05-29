@@ -18,8 +18,11 @@ import { FileTableSkeleton } from './FileTableSkeleton'
 import { FileTableEmpty } from './FileTableEmpty'
 import { FileTableError } from './FileTableError'
 import { FileTableForbidden } from './FileTableForbidden'
-import { useNativeFileDrop } from '@/hooks/useNativeFileDrop'
+import { useNativeFileDrop, type NativeDropPayload } from '@/hooks/useNativeFileDrop'
 import { useUpload } from '@/hooks/useUpload'
+import { useFolderUpload } from '@/hooks/useFolderUpload'
+import { extractDropEntries } from '@/lib/folderUpload'
+import { toast } from 'sonner'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useRenameUiStore } from '@/stores/renameUi'
 import { UploadOverlay } from '@/components/upload/UploadOverlay'
@@ -70,12 +73,24 @@ export function FileTable({ folderId }: Props) {
   // 좌측 inset border(또는 grid의 accent ring) 시각 표시 (zip styles.css `.tr.opened`).
   const { open: openFile, fileId: openedFileId } = useOpenFile()
   const { enqueue: enqueueUploads } = useUpload()
+  const { uploadFolder } = useFolderUpload()
   const handleNativeDrop = useCallback(
-    (files: File[]) => {
+    ({ files, entries }: NativeDropPayload) => {
+      // 디렉토리 entry가 하나라도 있으면 폴더 업로드 경로 (loose 파일도 함께 처리됨, docs/01 §9.6).
+      if (entries && entries.some((e) => e.isDirectory)) {
+        void extractDropEntries(entries)
+          .then((plan) => uploadFolder(plan, folderId))
+          .then((res) => {
+            if (res.errors.length > 0) {
+              toast.error(`일부 폴더를 업로드하지 못했습니다 (${res.errors.length}건).`)
+            }
+          })
+        return
+      }
       if (files.length === 0) return
       enqueueUploads(files, folderId)
     },
-    [enqueueUploads, folderId],
+    [enqueueUploads, uploadFolder, folderId],
   )
   const isDragging = useNativeFileDrop(containerRef, handleNativeDrop)
 
