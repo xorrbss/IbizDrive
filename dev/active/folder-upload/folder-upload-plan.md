@@ -50,8 +50,8 @@ Last Updated: 2026-05-29
 | P2 | `lib/folderUpload.ts` 추출 유틸 + 단위 테스트 (RED→GREEN) | typecheck/test | ☐ |
 | P3 | `useNativeFileDrop.ts` entry 동기 캡처 + 콜백 페이로드 변경 + 테스트 | typecheck/test | ☐ |
 | P4 | `useFolderUpload.ts` materialize 오케스트레이터 + 테스트 | typecheck/test | ☐ |
-| P5 | 진입점 와이어링 — `FileTable` 드롭 라우팅 + `SidebarNewButton` 폴더 메뉴 | typecheck/lint | ☐ |
-| P6 | 통합 검증 + 수동 verify + progress.md + 문서 동기화 | full gate | ☐ |
+| P5 | 진입점 와이어링 — `FileTable` 드롭 라우팅 + `SidebarNewButton` 폴더 메뉴 | typecheck/lint | ✅ |
+| P6 | 통합 검증 + 수동 verify + progress.md + 문서 동기화 | full gate | 🔄 진행 중 |
 
 ### 데이터 흐름 (P2~P5 합산)
 

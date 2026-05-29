@@ -5,6 +5,46 @@
 
 ---
 
+## 2026-05-29 — 폴더 업로드 정식 구현 (프론트 오케스트레이션, 백엔드 무변경)
+
+> 사용자 보고: "폴더 업로드가 에러난다". 진단 결과 폴더 업로드는 미구현 — 디렉토리 가짜 File이
+> XHR 본문 읽기 실패로 오해성 "네트워크 에러"로 표면화. 사용자 선택(B)으로 정식 구현.
+> Dev Docs `dev/active/folder-upload/` 기반 P0~P6.
+
+### 범위
+
+드래그&드롭(`webkitGetAsEntry` 재귀) + 사이드바 "폴더 업로드"(`<input webkitdirectory>`)로 폴더 하위
+구조를 그대로 재현하며 파일 업로드. **백엔드/마이그레이션/업로드 store 변경 0** — 기존
+`getFolderChildren`(병합 판단) + `createFolder`(생성) + `useUpload.enqueue`(기존 파이프라인) 재사용.
+
+### 변경 (신규 3 + 수정 4 + 문서 2)
+
+- docs `01-frontend-design.md` — **§9.6 폴더 업로드** 신규 (흐름 + 진입점 + ADR 6항목)
+- frontend 신규 `lib/folderUpload.ts` (+test, 8) — `extractInputFiles`/`extractDropEntries` → `FolderUploadPlan`
+- frontend `hooks/useNativeFileDrop.ts` (+test, 5) — 콜백 `{files, entries}` + drop 시점 `webkitGetAsEntry` 동기 캡처
+- frontend 신규 `hooks/useFolderUpload.ts` (+test, 5) — materialize(깊이순 병합/생성, 409 재조회, 403/400 서브트리 스킵) + 그룹 enqueue + `afterFolderCreated`
+- frontend `components/files/FileTable.tsx` — 드롭에 디렉토리 entry 있으면 폴더 경로 라우팅
+- frontend 신규 `components/sidebar/SidebarNewButton.tsx` "폴더 업로드" 메뉴 + `webkitdirectory` input (+test, 3)
+- docs `progress.md` — 본 entry
+
+### 결정/인사이트
+
+- **백엔드 무변경 / 프론트 오케스트레이션** — `getFolderChildren`+`createFolder`가 이미 존재해 upload
+  엔드포인트 `relativePath` 확장 불필요. scope 상속·UNIQUE·409는 백엔드가 그대로 보증. KISS·기존 구조 우선.
+- **폴더 이름 충돌 = 병합** (대소문자 무시, `normalizedNameForDedup` 기준) — 중복 폴더 미생성, 파일 충돌만 기존 다이얼로그.
+- **store 무변경** — 폴더 먼저 전부 materialize 후 해석된 folderId로 기존 `enqueue` 호출. `UploadTask`에 path 미추가.
+- **`DataTransferItemList` 수명** — items는 핸들러 반환 후 무효화 → drop 시점 동기 `webkitGetAsEntry`로 entry 참조 캡처. `readEntries`는 ≤100 배치라 empty까지 반복.
+- **빈 폴더도 생성**, **미지원 브라우저는 flat files 폴백**.
+
+### 검증
+
+- `pnpm typecheck` PASS / `pnpm lint` PASS (경고 1건은 무관한 타 파일) / `pnpm test` (folderUpload 8 + useNativeFileDrop 5 + useFolderUpload 5 + SidebarNewButton 3 + FileTable 12 회귀 없음)
+
+### 다음 세션 컨텍스트
+
+- 대형 트리는 parent당 `getFolderChildren`/`createFolder` 직렬 round-trip — 현재 MVP 한계(YAGNI). 필요 시 폴더 생성 진행 표시/병렬화 검토.
+- 폴더 생성 실패는 sonner toast 집계 메시지만 — 항목별 상세는 미노출. 필요 시 UploadPanel에 폴더 생성 단계 표시 검토.
+
 ## 2026-05-15 — `/account` 마이 페이지 + Avatar/UserMenu Link wire
 
 > brainstorming → writing-plans → 8-task TDD 실행 풀 사이클 첫 적용. TopBar 우측 Avatar 클릭 → `/account` 진입. 프로필 read-only + 액션 hub (비밀번호/관리자/로그아웃). UserMenu (사이드바) 이름/이메일 영역도 같은 진입점.

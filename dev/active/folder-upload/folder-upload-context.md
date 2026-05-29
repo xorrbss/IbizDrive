@@ -9,6 +9,10 @@ Last Updated: 2026-05-29
 - 2026-05-29: bootstrap (P0). plan/context/tasks 3파일 작성. 코드 변경 없음.
   - 원인 진단 완료: 폴더 업로드 미구현 → 디렉토리 가짜 File이 XHR 본문 읽기 실패로 오해성 에러.
   - 아키텍처 결정: **프론트 오케스트레이션 / 백엔드 무변경** (기존 getFolderChildren + createFolder + enqueue 재사용).
+- 2026-05-29: P1~P5 구현 완료 (단일 세션). 커밋 6개.
+  - P1 `docs/01 §9.6` / P2 `lib/folderUpload.ts`(8 test) / P3 `useNativeFileDrop` entry 캡처(5 test)
+  - P4 `useFolderUpload` 오케스트레이터(5 test) / P5 FileTable 라우팅 + SidebarNewButton 메뉴(3 test)
+  - typecheck/lint PASS. P6 전체 test 게이트 + PR만 남음.
 
 ## Current Execution Contract
 
