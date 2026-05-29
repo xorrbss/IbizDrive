@@ -71,7 +71,7 @@ export function FileTable({ folderId }: Props) {
   const { open: openFile, fileId: openedFileId } = useOpenFile()
   const { enqueue: enqueueUploads } = useUpload()
   const handleNativeDrop = useCallback(
-    (files: File[]) => {
+    ({ files }: { files: File[]; entries: FileSystemEntry[] | null }) => {
       if (files.length === 0) return
       enqueueUploads(files, folderId)
     },

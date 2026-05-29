@@ -2,9 +2,19 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, act } from '@testing-library/react'
 import { useNativeFileDrop } from './useNativeFileDrop'
 
-function makeDataTransfer(files: File[], types: string[] = ['Files']): DataTransfer {
+function makeDataTransfer(
+  files: File[],
+  types: string[] = ['Files'],
+  entries?: Array<FileSystemEntry | null>,
+): DataTransfer {
+  const items = entries
+    ? entries.map((en) => ({ kind: 'file', webkitGetAsEntry: () => en }))
+    : undefined
   return {
     files: Object.assign(files, { item: (i: number) => files[i] }),
+    items: items
+      ? Object.assign(items, { length: items.length, [Symbol.iterator]: Array.prototype[Symbol.iterator] })
+      : undefined,
     types,
     dropEffect: 'copy',
     effectAllowed: 'all',
@@ -53,7 +63,7 @@ describe('useNativeFileDrop', () => {
     expect(result.current).toBe(false)
   })
 
-  it('drop → onDrop(files) 호출 + isDragging=false', () => {
+  it('drop → onDrop({files, entries}) 호출 + isDragging=false (items 없으면 entries=null)', () => {
     const { result } = render()
     const files = [new File([''], 'a.txt'), new File([''], 'b.txt')]
     const dt = makeDataTransfer(files)
@@ -63,11 +73,31 @@ describe('useNativeFileDrop', () => {
     act(() => {
       fireDragEvent(el, 'drop', dt)
     })
-    const called = onDrop.mock.calls[0][0] as File[]
-    expect(called).toHaveLength(2)
-    expect(called[0].name).toBe('a.txt')
-    expect(called[1].name).toBe('b.txt')
+    const payload = onDrop.mock.calls[0][0] as {
+      files: File[]
+      entries: FileSystemEntry[] | null
+    }
+    expect(payload.files).toHaveLength(2)
+    expect(payload.files[0].name).toBe('a.txt')
+    expect(payload.files[1].name).toBe('b.txt')
+    expect(payload.entries).toBeNull()
     expect(result.current).toBe(false)
+  })
+
+  it('items가 있으면 webkitGetAsEntry 결과를 entries로 동기 캡처 (null 제외)', () => {
+    render()
+    const files = [new File([''], 'dir')]
+    const dirEntry = { isDirectory: true, isFile: false, name: 'dir' } as unknown as FileSystemEntry
+    const dt = makeDataTransfer(files, ['Files'], [dirEntry, null])
+    act(() => {
+      fireDragEvent(el, 'drop', dt)
+    })
+    const payload = onDrop.mock.calls[0][0] as {
+      files: File[]
+      entries: FileSystemEntry[] | null
+    }
+    expect(payload.entries).toHaveLength(1)
+    expect(payload.entries?.[0]).toBe(dirEntry)
   })
 
   it('중첩 dragenter/leave 카운터', () => {
