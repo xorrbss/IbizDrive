@@ -8,7 +8,7 @@ Last Updated: 2026-05-29
 
 - [x] **P0** bootstrap (plan/context/tasks)
 - [x] **P1** 설계 문서 §9.6
-- [ ] **P2** `lib/folderUpload.ts` 추출 유틸
+- [x] **P2** `lib/folderUpload.ts` 추출 유틸
 - [ ] **P3** `useNativeFileDrop.ts` entry 캡처
 - [ ] **P4** `useFolderUpload.ts` materialize 오케스트레이터
 - [ ] **P5** 진입점 와이어링 (FileTable / SidebarNewButton)
