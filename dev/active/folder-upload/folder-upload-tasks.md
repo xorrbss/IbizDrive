@@ -7,7 +7,7 @@ Last Updated: 2026-05-29
 ## Phase 상태
 
 - [x] **P0** bootstrap (plan/context/tasks)
-- [ ] **P1** 설계 문서 §9.6
+- [x] **P1** 설계 문서 §9.6
 - [ ] **P2** `lib/folderUpload.ts` 추출 유틸
 - [ ] **P3** `useNativeFileDrop.ts` entry 캡처
 - [ ] **P4** `useFolderUpload.ts` materialize 오케스트레이터
@@ -16,9 +16,9 @@ Last Updated: 2026-05-29
 
 ---
 
-## P1 — 설계 문서 §9.6
+## P1 — 설계 문서 §9.6  ✅
 
-- [ ] `docs/01-frontend-design.md`에 `### 9.6 폴더 업로드` 추가
+- [x] `docs/01-frontend-design.md`에 `### 9.6 폴더 업로드` 추가 (§9.5 다음, ADR 6항목 포함)
 
 **작업 전 필독**
 - `dev/active/folder-upload/folder-upload-plan.md` §"데이터 흐름", §"중요한 의사결정"
