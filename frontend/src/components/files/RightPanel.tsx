@@ -124,7 +124,9 @@ export function RightPanel() {
         </div>
       </header>
 
-      {data && !isLoading && !error && <PreviewCard kind={kind} />}
+      {data && !isLoading && !error && (
+        <PreviewCard key={data.id} file={data} kind={kind} />
+      )}
 
       <div
         role="tablist"
@@ -394,21 +396,72 @@ const PREVIEW_BG: Record<FileTypeIconKind, string> = {
   archive: '#EEEBE2',
 }
 
-function PreviewCard({ kind }: { kind: FileTypeIconKind }) {
+// backend INLINE_SAFE_MIME(FileDownloadController)과 동기화 — 이 목록 밖은 서버가
+// attachment로 폴백하므로 <img>/새 탭 미리보기를 시도하지 않는다 (ADR #51).
+const INLINE_IMAGE_MIME = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/gif',
+  'image/webp',
+])
+
+/**
+ * P4 미리보기 (ADR #51, docs/01 §11.1) — 이미지: 패널 내 실제 렌더 + 클릭 시 새 탭.
+ * PDF: 새 탭 미리보기 버튼 (전역 X-Frame-Options: DENY로 iframe 임베드 불가).
+ * 그 외 타입·이미지 로드 실패: 기존 플레이스홀더 유지. 이미지 로드 실패 상태는
+ * 호출부의 key={file.id}가 파일 전환 시 리셋한다.
+ */
+function PreviewCard({ file, kind }: { file: FileItem; kind: FileTypeIconKind }) {
+  const [imgFailed, setImgFailed] = useState(false)
+  const mime = (file.mimeType || '').toLowerCase()
+  const isImage = kind === 'image' && INLINE_IMAGE_MIME.has(mime) && !imgFailed
+  const isPdf = mime === 'application/pdf'
+
+  if (isImage) {
+    return (
+      <button
+        type="button"
+        data-testid="rp-preview-image"
+        aria-label={`${file.name} 미리보기 새 탭에서 열기`}
+        onClick={() => api.openFilePreview(file.id)}
+        className="mx-3.5 mt-3 mb-1 h-28 rounded-md overflow-hidden shrink-0 cursor-zoom-in"
+        style={{ background: PREVIEW_BG[kind] }}
+      >
+        <img
+          src={api.previewFileUrl(file.id)}
+          alt={`${file.name} 미리보기`}
+          onError={() => setImgFailed(true)}
+          className="w-full h-full object-contain"
+        />
+      </button>
+    )
+  }
+
   return (
     <div
-      aria-hidden
+      aria-hidden={!isPdf}
       data-testid="rp-preview-card"
       className="mx-3.5 mt-3 mb-1 h-28 rounded-md flex flex-col items-center justify-center gap-2 px-3 shrink-0"
       style={{ background: PREVIEW_BG[kind] }}
     >
       <FileTypeIcon kind={kind} size={42} />
-      <div className="w-full max-w-[180px] space-y-1">
-        <div className="h-1 rounded-full bg-fg/15" />
-        <div className="h-1 rounded-full bg-fg/15" style={{ width: '75%' }} />
-        <div className="h-1 rounded-full bg-fg/15" style={{ width: '85%' }} />
-        <div className="h-1 rounded-full bg-fg/15" style={{ width: '55%' }} />
-      </div>
+      {isPdf ? (
+        <button
+          type="button"
+          data-testid="rp-preview-pdf-open"
+          onClick={() => api.openFilePreview(file.id)}
+          className="text-[11.5px] px-2 py-0.5 rounded border border-fg/20 text-fg/70 hover:bg-fg/5 transition-colors"
+        >
+          새 탭에서 미리보기
+        </button>
+      ) : (
+        <div className="w-full max-w-[180px] space-y-1">
+          <div className="h-1 rounded-full bg-fg/15" />
+          <div className="h-1 rounded-full bg-fg/15" style={{ width: '75%' }} />
+          <div className="h-1 rounded-full bg-fg/15" style={{ width: '85%' }} />
+          <div className="h-1 rounded-full bg-fg/15" style={{ width: '55%' }} />
+        </div>
+      )}
     </div>
   )
 }

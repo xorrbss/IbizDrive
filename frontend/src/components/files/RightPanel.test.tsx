@@ -20,6 +20,10 @@ const getEffectivePermissionsMock = vi.fn()
 const listFileActivityMock = vi.fn()
 const listResourcePermissionsMock = vi.fn()
 const downloadFileMock = vi.fn()
+const previewFileUrlMock = vi.fn(
+  (id: string) => `/api/files/${id}/download?disposition=inline`,
+)
+const openFilePreviewMock = vi.fn()
 vi.mock('@/lib/api', () => ({
   api: {
     getFileDetail: (...args: unknown[]) => getFileDetailMock(...args),
@@ -30,6 +34,8 @@ vi.mock('@/lib/api', () => ({
     listResourcePermissions: (...args: unknown[]) =>
       listResourcePermissionsMock(...args),
     downloadFile: (...args: unknown[]) => downloadFileMock(...args),
+    previewFileUrl: (id: string) => previewFileUrlMock(id),
+    openFilePreview: (...args: unknown[]) => openFilePreviewMock(...args),
   },
 }))
 
@@ -544,5 +550,118 @@ describe('RightPanel', () => {
     await waitFor(() => {
       expect(screen.getByTestId('rp-preview-card')).toBeTruthy()
     })
+  })
+
+  // ── P4 미리보기 (ADR #51, docs/01 §11.1) ──────────────────────────
+
+  it('P4 — 이미지 파일은 inline <img> 미리보기 렌더', async () => {
+    mockQuery = 'file=img_1'
+    getFileDetailMock.mockResolvedValue({
+      id: 'img_1',
+      name: '사진.png',
+      type: 'file',
+      mimeType: 'image/png',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    const img = await screen.findByAltText('사진.png 미리보기')
+    expect(img.getAttribute('src')).toBe(
+      '/api/files/img_1/download?disposition=inline',
+    )
+    // 클릭 시 새 탭 미리보기
+    fireEvent.click(screen.getByTestId('rp-preview-image'))
+    expect(openFilePreviewMock).toHaveBeenCalledWith('img_1')
+  })
+
+  it('P4 — 이미지 로드 실패 시 플레이스홀더로 폴백', async () => {
+    mockQuery = 'file=img_1'
+    getFileDetailMock.mockResolvedValue({
+      id: 'img_1',
+      name: 'broken.png',
+      type: 'file',
+      mimeType: 'image/png',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    const img = await screen.findByAltText('broken.png 미리보기')
+    fireEvent.error(img)
+    await waitFor(() => {
+      expect(screen.getByTestId('rp-preview-card')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('rp-preview-image')).toBeNull()
+  })
+
+  it('P4 — SVG는 inline 미리보기 미시도 (XSS 화이트리스트 제외)', async () => {
+    mockQuery = 'file=svg_1'
+    getFileDetailMock.mockResolvedValue({
+      id: 'svg_1',
+      name: 'vector.svg',
+      type: 'file',
+      mimeType: 'image/svg+xml',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rp-preview-card')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('rp-preview-image')).toBeNull()
+  })
+
+  it('P4 — PDF는 "새 탭에서 미리보기" 버튼', async () => {
+    mockQuery = 'file=pdf_1'
+    getFileDetailMock.mockResolvedValue({
+      id: 'pdf_1',
+      name: 'spec.pdf',
+      type: 'file',
+      mimeType: 'application/pdf',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    const btn = await screen.findByTestId('rp-preview-pdf-open')
+    fireEvent.click(btn)
+    expect(openFilePreviewMock).toHaveBeenCalledWith('pdf_1')
+  })
+
+  it('P4 — 기타 타입은 기존 플레이스홀더 유지', async () => {
+    mockQuery = 'file=doc_1'
+    getFileDetailMock.mockResolvedValue({
+      id: 'doc_1',
+      name: 'memo.docx',
+      type: 'file',
+      mimeType:
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      size: 100,
+      updatedAt: '2026-04-20T09:00:00Z',
+      updatedBy: 'u',
+      parentId: 'root',
+    })
+
+    wrap(<RightPanel />)
+
+    await waitFor(() => {
+      expect(screen.getByTestId('rp-preview-card')).toBeTruthy()
+    })
+    expect(screen.queryByTestId('rp-preview-image')).toBeNull()
+    expect(screen.queryByTestId('rp-preview-pdf-open')).toBeNull()
   })
 })

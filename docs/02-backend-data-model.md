@@ -1572,12 +1572,17 @@ POST /api/files   (Content-Type: multipart/form-data)
 
 GET /api/files/:id/download
   Guard:    @PreAuthorize hasPermission(#id, 'file', 'READ')   — ADR #36: DOWNLOAD enum 도입 안 함
+  Query:    disposition=inline (선택, ADR #51 미리보기) — MIME이 inline 화이트리스트
+            (image/png, image/jpeg, image/gif, image/webp, application/pdf)일 때만
+            Content-Disposition: inline. 그 외 MIME은 조용히 attachment 폴백 (오류 아님).
+            SVG는 script 실행 가능하므로 화이트리스트에서 의도적으로 제외 (docs/03 §5.3).
   Response: 200 OK
     Headers:
       Content-Type:        version.mimeType (null/invalid → application/octet-stream)
       Content-Length:      version.sizeBytes
       ETag:                "<versionId>"
       Content-Disposition: attachment; filename="<ascii-fallback>"; filename*=UTF-8''<percent-encoded>
+                           (disposition=inline + 화이트리스트 MIME이면 attachment 대신 inline)
     Body: stream from StorageClient.read(version.storageKey)
   Audit: emitAudit(FILE_DOWNLOADED)
   Errors: 404 (deleted or missing), 403 PERMISSION_DENIED

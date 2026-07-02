@@ -10,8 +10,10 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.Set;
 import java.util.UUID;
 
 /**
@@ -19,6 +21,10 @@ import java.util.UUID;
  *
  * <ul>
  *   <li><b>GET</b> {@code /api/files/{id}/download} — 200 + 바이너리 stream</li>
+ *   <li><b>GET</b> {@code /api/files/{id}/download?disposition=inline} — 미리보기 (ADR #51).
+ *       MIME이 {@link #INLINE_SAFE_MIME} 화이트리스트에 있을 때만 {@code Content-Disposition: inline},
+ *       그 외에는 attachment로 조용히 폴백 (렌더링 기반 XSS 방지 — docs/03 §5.3의 attachment 방어를
+ *       안전 타입에 한해 선택적으로 해제). SVG는 스크립트 실행 가능하므로 화이트리스트 제외.</li>
  * </ul>
  *
  * <p><b>응답 헤더</b>:
@@ -59,10 +65,19 @@ public class FileDownloadController {
         this.service = service;
     }
 
+    /**
+     * inline 렌더링을 허용하는 MIME 화이트리스트 (ADR #51). 브라우저가 실행 가능한 콘텐츠
+     * (HTML, SVG, XML 등)는 제외 — 그 외 타입은 disposition=inline 요청이어도 attachment 유지.
+     */
+    static final Set<String> INLINE_SAFE_MIME = Set.of(
+        "image/png", "image/jpeg", "image/gif", "image/webp", "application/pdf"
+    );
+
     @GetMapping("/{id}/download")
     @PreAuthorize("hasPermission(#id, 'file', 'READ')")
     public ResponseEntity<InputStreamResource> download(
         @PathVariable("id") UUID id,
+        @RequestParam(name = "disposition", required = false) String disposition,
         @AuthenticationPrincipal IbizDriveUserDetails principal
     ) {
         DownloadHandle handle = service.download(id, principal.getUser().getId());
@@ -71,7 +86,11 @@ public class FileDownloadController {
         FileVersion version = handle.version();
 
         MediaType contentType = parseContentType(version.getMimeType());
-        String contentDisposition = ContentDispositionHeaders.build(file.getName());
+        boolean inline = "inline".equals(disposition)
+            && INLINE_SAFE_MIME.contains(contentType.getType() + "/" + contentType.getSubtype());
+        String contentDisposition = inline
+            ? ContentDispositionHeaders.buildInline(file.getName())
+            : ContentDispositionHeaders.build(file.getName());
 
         return ResponseEntity.ok()
             .contentType(contentType)

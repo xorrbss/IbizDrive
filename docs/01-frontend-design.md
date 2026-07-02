@@ -980,6 +980,21 @@ export function normalizeFileName(s: string): string {
 | 403 | `<FileTableForbidden />` | 에러 분기 |
 | 404 | `<NotFound />` | `not-found.tsx` |
 
+### 11.1 RightPanel 파일 미리보기 (P4, ADR #51 — 2026-07-02)
+
+`RightPanel`의 `PreviewCard`가 파일 타입별로 실제 미리보기를 렌더한다:
+
+| 타입 | 동작 |
+|---|---|
+| 이미지 (png/jpeg/gif/webp) | 패널 내 `<img src="/api/files/{id}/download?disposition=inline">` 렌더. 클릭 시 새 탭. 로드 실패 시 플레이스홀더 폴백 (`key={file.id}`로 파일 전환 시 실패 상태 리셋) |
+| PDF | "새 탭에서 미리보기" 버튼 → `window.open(inline URL, '_blank', 'noopener,noreferrer')`. 전역 `X-Frame-Options: DENY` 때문에 iframe 임베드 불가 — top-level 탐색은 무영향 |
+| 그 외 / SVG | 기존 아이콘 플레이스홀더 유지. SVG는 script 실행 가능 → inline 화이트리스트 제외 (backend와 동기) |
+
+- inline 허용 판정의 진실 출처는 **backend** `FileDownloadController.INLINE_SAFE_MIME` (docs/02 §7.6) —
+  화이트리스트 밖 MIME은 서버가 attachment로 폴백하므로 frontend 목록(`INLINE_IMAGE_MIME`)은 UX 최적화용.
+- wire 헬퍼: `api.previewFileUrl(id)` / `api.openFilePreview(id)` (`lib/api.ts`).
+- Office 문서 인라인 미리보기(렌더러 필요)·그리드 썸네일은 별도 트랙 (§18 row 16).
+
 ---
 
 ## 12. 접근성 & 키보드 내비게이션
