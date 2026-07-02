@@ -159,6 +159,25 @@ describe('useUpload', () => {
     expect(invalidateSpy).toHaveBeenCalled()
   })
 
+  it('다중 마운트 — 같은 task에 XHR은 1개만 기동 (동기 claim 가드)', async () => {
+    // useUpload은 dock/ConflictDialog/UploadButton/FileTable/SidebarNewButton 등에
+    // 동시 마운트된다. 구독자마다 XHR을 기동하면 task 1건당 마운트 수만큼 중복 POST —
+    // fresh state 동기 claim이 첫 구독자만 통과시키는지 검증 (e2e upload.e2e.ts 동반 가드).
+    const { result } = renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
+    renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
+    renderHook(() => useUpload(), { wrapper: makeWrapper(client) })
+
+    await act(async () => {
+      result.current.enqueue([fakeFile('single.txt')], 'folder_x')
+    })
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(2000)
+    })
+
+    expect(MockXHR.instances).toHaveLength(1)
+    expect(useUploadStore.getState().queue[0].status).toBe('done')
+  })
+
   it('enqueue 409 + envelope details → status conflict + conflictWith 설정', async () => {
     MockXHR.responses.set('conflict.pdf', {
       kind: 'load',
