@@ -64,17 +64,16 @@ export function useUpload() {
         return
       }
 
-      // csrf 부트스트랩 중 cancel 등으로 task가 'queued'를 벗어났을 수 있음 (#165 follow-up).
-      // xhrMap 등록 전이라 store.cancel이 xhr를 abort하지 못한 상태 → 명시적 abort.
+      // csrf 부트스트랩 중 cancel 등으로 task가 'uploading'(구독 시점 claim)을 벗어났을 수
+      // 있음 (#165 follow-up). xhrMap 등록 전이라 store.cancel이 xhr를 abort하지 못한 상태 →
+      // 명시적 abort.
       const cur = useUploadStore.getState().queue.find((t) => t.id === task.id)
-      if (!cur || cur.status !== 'queued') {
+      if (!cur || cur.status !== 'uploading') {
         xhr.abort()
         return
       }
 
       xhrMap.current.set(task.id, xhr)
-
-      updateTask(task.id, { status: 'uploading' })
 
       xhr.upload.onprogress = (e) => {
         if (!e.lengthComputable) return
@@ -146,6 +145,13 @@ export function useUpload() {
         if (t.status !== 'queued') continue
         const prevTask = prev.queue.find((p) => p.id === t.id)
         if (prevTask?.status === 'queued') continue
+        // useUpload은 여러 컴포넌트에 동시 마운트된다(dock/ConflictDialog/UploadButton/
+        // FileTable/SidebarNewButton 등) — 모든 구독자가 같은 queued transition을 보므로,
+        // fresh state에서 동기적으로 'uploading'을 claim한 첫 구독자만 XHR을 기동한다.
+        // 미가드 시 task 1건당 마운트 수만큼 중복 POST (upload.e2e.ts가 회귀 가드).
+        const fresh = useUploadStore.getState().queue.find((x) => x.id === t.id)
+        if (!fresh || fresh.status !== 'queued') continue
+        updateTask(t.id, { status: 'uploading' })
         startTask(t)
       }
     })
@@ -155,7 +161,7 @@ export function useUpload() {
       for (const xhr of xhrMapSnapshot.values()) xhr.abort()
       xhrMapSnapshot.clear()
     }
-  }, [startTask])
+  }, [startTask, updateTask])
 
   const cancel = useCallback(
     (id: string) => {
