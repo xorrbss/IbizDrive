@@ -123,6 +123,40 @@ class AuditLogAppendOnlyTest {
         }
     }
 
+    @Test
+    void privilegeQuery_detectsMutableAndAppendOnlyConnections() throws SQLException {
+        // ADR #49 — AuditAppendOnlyStartupCheck의 has_table_privilege SQL semantics 통합 검증.
+        // superuser(테스트 기본 계정)는 변조 가능으로, app_user는 append-only로 판정되어야 한다.
+        Boolean superuserCanMutate = jdbc.queryForObject(
+            AuditAppendOnlyStartupCheck.PRIVILEGE_QUERY, (rs, i) -> rs.getBoolean(2));
+        assertEquals(Boolean.TRUE, superuserCanMutate,
+            "superuser 연결은 audit_log 변조 가능으로 감지되어야 함");
+
+        try (Connection conn = appUserConnection();
+             Statement stmt = conn.createStatement();
+             var rs = stmt.executeQuery(AuditAppendOnlyStartupCheck.PRIVILEGE_QUERY)) {
+            assertTrue(rs.next());
+            assertEquals(APP_USER, rs.getString(1));
+            assertFalse(rs.getBoolean(2), "app_user 연결은 append-only로 판정되어야 함");
+        }
+    }
+
+    @Test
+    void appUser_canSelectPostV4Tables() throws SQLException {
+        // V25 GRANT 캐치업 회귀 가드 — V8+ 신규 테이블에 app_user 접근 가능해야
+        // "app_user만 application 사용" 게이트(BETA-RELEASE §2.4)가 실제로 이행 가능하다.
+        try (Connection conn = appUserConnection();
+             Statement stmt = conn.createStatement()) {
+            for (String table : new String[] {
+                "password_reset_tokens", "cron_policy", "teams",
+                "pending_admin_approvals", "favorites"}) {
+                assertDoesNotThrow(
+                    () -> stmt.executeQuery("SELECT 1 FROM " + table + " LIMIT 1").close(),
+                    "app_user는 " + table + " SELECT 가능해야 함 (V25)");
+            }
+        }
+    }
+
     private Connection appUserConnection() throws SQLException {
         return DriverManager.getConnection(postgres.getJdbcUrl(), APP_USER, APP_PASS);
     }

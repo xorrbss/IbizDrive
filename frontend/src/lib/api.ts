@@ -671,6 +671,23 @@ export const api = {
   },
 
   /**
+   * P4 미리보기 (ADR #51) — inline disposition URL. backend가 안전 MIME
+   * (png/jpeg/gif/webp/pdf)일 때만 inline, 그 외는 attachment로 폴백하므로
+   * 호출부에서 MIME 재검증 불필요. `<img src>` 및 새 탭 열기 공용.
+   */
+  previewFileUrl(id: string): string {
+    return `/api/files/${encodeURIComponent(id)}/download?disposition=inline`
+  },
+
+  /**
+   * 새 탭 미리보기 — PDF 등 패널 내 렌더 불가 타입용. `X-Frame-Options: DENY`
+   * (SecurityConfig 전역) 때문에 iframe 임베드는 불가 — top-level 탐색은 무영향.
+   */
+  openFilePreview(id: string): void {
+    window.open(api.previewFileUrl(id), '_blank', 'noopener,noreferrer')
+  },
+
+  /**
    * M11 / F1.1 검색 — 백엔드 GET /api/search 직접 호출 (ADR #33, docs/02 §7.8).
    *
    * 호출자(useSearch)는 이미 normalizeForSearch + 최소 2자 게이트를 통과한 query를 넘김.

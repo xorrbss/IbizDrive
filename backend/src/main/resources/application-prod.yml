@@ -6,16 +6,20 @@
 #
 # 본 파일이 하는 것:
 #   1. 세션 쿠키 Secure 강제 (HTTPS only).
+#   2. audit_log append-only 연결 검증 강제 (ADR #49) — 런타임 계정이 audit_log를 변조할 수
+#      있으면(= app_user 미사용) 부팅 실패. BETA-RELEASE.md §2.4 게이트의 코드 측 안전망.
 #
-# 운영 cron 4종(`purge` / `share-expiration` / `permission-expiration` /
-# `storage-orphan-cleanup`)의 enabled 토글은 yml-enabled-cleanup 트랙(2026-05-09)에서
-# `cron_policy` DB 테이블로 이관 — V11 시드가 4 row를 enabled=false로 초기화하며,
+# 운영 cron 6종(`purge` / `share-expiration` / `permission-expiration` /
+# `storage-orphan-cleanup` / `favorites-cleanup` / `admin-approval-expiration`)의 enabled
+# 토글은 yml-enabled-cleanup 트랙(2026-05-09)에서 `cron_policy` DB 테이블로 이관 —
+# V11/V21/V23 시드가 6 row를 enabled=false로 초기화하며,
 # 운영자는 `/admin/system` 토글 또는 `PUT /api/admin/system/cron/{key}`로 활성화한다.
 #
 # 본 파일이 하지 않는 것 (운영자 책임 = 환경 변수 또는 사내 시크릿 저장소 주입):
 #   - `SPRING_DATASOURCE_PASSWORD` — dev default 사용 절대 금지 (`BETA-RELEASE.md` §2.3).
 #   - `IBIZDRIVE_CORS_ALLOWED_ORIGINS` — 사내 도메인으로 override (default `http://localhost:3000`).
-#   - `IBIZDRIVE_SLACK_WEBHOOK_URL` — Slack 알림 비활성 시 빈 값 / 미설정 (`logback-spring.xml` 참조).
+#   - Slack 장애 알림 — in-process logback appender 비채택 (BETA-RELEASE.md §8: 외부 log
+#     shipper의 alert rule 책임, v1.x 관측성 트랙). logback-spring.xml은 존재하지 않는다.
 #   - HTTPS 종단 / HSTS — 리버스 프록시 또는 ALB 책임 (docs/03 §2 참조).
 #
 # 본 파일은 dev/test 환경에 영향 0 — `spring.profiles.active=prod`일 때만 머지된다.
@@ -26,6 +30,14 @@ server:
     session:
       cookie:
         secure: true        # HTTPS only — 운영 리버스 프록시가 TLS 종단 필수
+
+# ADR #49 — prod는 audit_log append-only 연결 검증을 fail-fast로 강제.
+# 런타임 datasource가 app_user(V4)가 아니면(owner/superuser 접속) 부팅이 실패한다.
+# 대응: SPRING_DATASOURCE_USERNAME=app_user + 교체된 비밀번호 주입 (BETA-RELEASE.md §2.4).
+app:
+  audit:
+    append-only-check:
+      enforce: true
 
 # a1.5 SMTP 발송 — 실제 값은 운영자 환경변수로 주입 (사내 시크릿 저장소).
 # 미주입 시 JavaMailSender 빈 미등록 → SmtpEmailService 부팅 실패 → 무음 발송 방지.
@@ -43,6 +55,6 @@ spring:
             enable: true
 
 # 운영 cron schedule/zone/batch 등 정의는 base application.yml 그대로 사용. enabled 토글은
-# admin-cron-toggle 트랙(2026-05-08)에서 cron_policy DB 테이블로 전환됨 — V11 마이그레이션이
-# 4 row를 enabled=false로 시드하므로, prod 첫 부팅 후 ADMIN UI(/admin/system)에서 토글로 활성화한다.
+# admin-cron-toggle 트랙(2026-05-08)에서 cron_policy DB 테이블로 전환됨 — V11/V21/V23이
+# 6 row를 enabled=false로 시드하므로, prod 첫 부팅 후 ADMIN UI(/admin/system)에서 토글로 활성화한다.
 # 단일 인스턴스 가정 — 멀티 인스턴스 시 `@SchedulerLock` 필요(`BETA-RELEASE.md` §3 주).

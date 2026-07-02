@@ -73,7 +73,7 @@ class FileDownloadControllerTest {
         when(service.download(eq(FILE_ID), eq(ACTOR)))
             .thenReturn(new DownloadHandle(file, version, stream));
 
-        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, principal);
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, null, principal);
 
         assertThat(res.getStatusCode()).isEqualTo(HttpStatus.OK);
         HttpHeaders h = res.getHeaders();
@@ -98,7 +98,7 @@ class FileDownloadControllerTest {
         when(service.download(eq(FILE_ID), eq(ACTOR)))
             .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(payload)));
 
-        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, principal);
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, null, principal);
 
         String cd = res.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION);
         assertThat(cd).startsWith("attachment; filename=\"");
@@ -121,7 +121,7 @@ class FileDownloadControllerTest {
         when(service.download(eq(FILE_ID), eq(ACTOR)))
             .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(new byte[]{1, 2, 3, 4})));
 
-        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, principal);
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, null, principal);
 
         assertThat(res.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
     }
@@ -133,9 +133,67 @@ class FileDownloadControllerTest {
         when(service.download(eq(FILE_ID), eq(ACTOR)))
             .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(new byte[]{1})));
 
-        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, principal);
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, null, principal);
 
         assertThat(res.getHeaders().getContentType()).isEqualTo(MediaType.APPLICATION_OCTET_STREAM);
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // disposition=inline — 미리보기 (ADR #51)
+    // ──────────────────────────────────────────────────────────────────
+
+    @Test
+    void download_inlineDisposition_safeMime_returnsInline() {
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "photo.png");
+        FileVersion version = newVersion(VERSION_ID, FILE_ID, "image/png", 3);
+        when(service.download(eq(FILE_ID), eq(ACTOR)))
+            .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(new byte[]{1, 2, 3})));
+
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, "inline", principal);
+
+        assertThat(res.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+            .startsWith("inline; filename=\"photo.png\"");
+    }
+
+    @Test
+    void download_inlineDisposition_unsafeMime_fallsBackToAttachment() {
+        // text/html은 inline 렌더 시 stored XSS 벡터 — 화이트리스트 밖은 attachment 유지.
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "page.html");
+        FileVersion version = newVersion(VERSION_ID, FILE_ID, "text/html", 1);
+        when(service.download(eq(FILE_ID), eq(ACTOR)))
+            .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(new byte[]{1})));
+
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, "inline", principal);
+
+        assertThat(res.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+            .startsWith("attachment;");
+    }
+
+    @Test
+    void download_inlineDisposition_svg_fallsBackToAttachment() {
+        // SVG는 script 실행 가능 — image/* 이지만 화이트리스트에서 의도적으로 제외.
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "vector.svg");
+        FileVersion version = newVersion(VERSION_ID, FILE_ID, "image/svg+xml", 1);
+        when(service.download(eq(FILE_ID), eq(ACTOR)))
+            .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(new byte[]{1})));
+
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, "inline", principal);
+
+        assertThat(res.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+            .startsWith("attachment;");
+    }
+
+    @Test
+    void download_inlineDisposition_pdf_returnsInline() {
+        FileItem file = newFile(FILE_ID, FOLDER_ID, "spec.pdf");
+        FileVersion version = newVersion(VERSION_ID, FILE_ID, "application/pdf", 1);
+        when(service.download(eq(FILE_ID), eq(ACTOR)))
+            .thenReturn(new DownloadHandle(file, version, new ByteArrayInputStream(new byte[]{1})));
+
+        ResponseEntity<InputStreamResource> res = controller.download(FILE_ID, "inline", principal);
+
+        assertThat(res.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+            .startsWith("inline; filename=\"spec.pdf\"");
     }
 
     // ──────────────────────────────────────────────────────────────────
@@ -147,7 +205,7 @@ class FileDownloadControllerTest {
         when(service.download(eq(FILE_ID), eq(ACTOR)))
             .thenThrow(new FileNotFoundException("not found: " + FILE_ID));
 
-        assertThatThrownBy(() -> controller.download(FILE_ID, principal))
+        assertThatThrownBy(() -> controller.download(FILE_ID, null, principal))
             .isInstanceOf(FileNotFoundException.class);
     }
 
@@ -156,7 +214,7 @@ class FileDownloadControllerTest {
         when(service.download(eq(FILE_ID), eq(ACTOR)))
             .thenThrow(new IllegalStateException("storage read failed"));
 
-        assertThatThrownBy(() -> controller.download(FILE_ID, principal))
+        assertThatThrownBy(() -> controller.download(FILE_ID, null, principal))
             .isInstanceOf(IllegalStateException.class)
             .hasMessageContaining("storage read failed");
     }

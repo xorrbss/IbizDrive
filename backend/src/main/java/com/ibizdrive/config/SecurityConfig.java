@@ -30,6 +30,9 @@ import java.util.Map;
  * <p>매처 분리:
  * <ul>
  *   <li>{@code /api/health} — permitAll (smoke)</li>
+ *   <li>{@code /actuator/health(/**)} — permitAll (LB/모니터링 probe, ADR #50.
+ *       상세 컴포넌트는 {@code show-details: when-authorized + roles: ADMIN}으로 은닉.
+ *       health 외 actuator endpoint는 미노출 + anyRequest authenticated 이중 차단)</li>
  *   <li>{@code /api/auth/csrf} — permitAll (토큰 발급, 인증 전 호출)</li>
  *   <li>{@code /api/auth/login} — permitAll (로그인 endpoint, A1.3)</li>
  *   <li>{@code /api/auth/signup} — permitAll + CSRF 면제 (self-signup, ADR #41)</li>
@@ -145,6 +148,7 @@ public class SecurityConfig {
             .addFilterAfter(sessionValidityFilter, SecurityContextHolderFilter.class)
             .authorizeHttpRequests(auth -> auth
                 .requestMatchers("/api/health").permitAll()
+                .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                 .requestMatchers("/api/auth/csrf").permitAll()
                 .requestMatchers("/api/auth/login").permitAll()
                 .requestMatchers("/api/auth/signup").permitAll()

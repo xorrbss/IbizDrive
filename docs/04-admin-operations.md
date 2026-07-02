@@ -33,7 +33,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 | `/admin` (대시보드) | ADMIN | `hasRole('ADMIN')` |
 | `/admin/audit/logs` | ADMIN, AUDITOR | `hasAnyRole('ADMIN','AUDITOR')` |
 | `/admin/system` | ADMIN, AUDITOR | `hasAnyRole('ADMIN','AUDITOR')` |
-| `/admin/users` | ADMIN | `hasRole('ADMIN')` |
+| `/admin/members` (구 `/admin/users` — 페이지 rename, backend API는 `/api/admin/users` 유지) | ADMIN | `hasRole('ADMIN')` |
 | `/admin/departments` | ADMIN | `hasRole('ADMIN')` |
 | `/admin/permissions` | ADMIN | `hasRole('ADMIN')` |
 | `/admin/storage` | ADMIN | `hasRole('ADMIN')` |
@@ -47,10 +47,14 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 > **활성 라우트** (admin-dashboard 트랙 closure, 2026-05-07):
 > - `/admin` — KPI 대시보드 (admin-dashboard 트랙 closure, 2026-05-07)
 > - `/admin/audit/logs` — 감사 로그 (M12 closure)
-> - `/admin/users` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 (Wave 1 T1 closure)
+> - `/admin/members` — 사용자 목록 + 초대 + 검색·재활성·displayName 편집 + quota 컬럼 (Wave 1 T1 closure; 구 `/admin/users`에서 rename — backend API는 `/api/admin/users` 유지)
 > - `/admin/departments` — 부서 CRUD(생성/검색/rename/(de)activate, Wave 2 T4)
 > - `/admin/permissions` — 권한 매트릭스 viewer + 단일 row 철회 (subject/resource/preset/q 필터 + 만료 배지 + 행별 "철회" 버튼, Wave 2 T5 + admin-permission-revoke follow-up 2026-05-09; grant 다이얼로그는 v1.x deferred)
-> - `/admin/system` — 운영 cron 4종 read-only 노출 (Wave 1 T3, 변경은 application.yml + 재기동)
+> - `/admin/system` — 운영 cron 6종 enabled 토글 (`cron_policy` DB 단일 source, `PUT /api/admin/system/cron/{key}` — §15.4. 종전 "read-only + yml 재기동" 기술은 admin-cron-policy-toggle 2026-05-08 이전 상태)
+> - `/admin/approvals` — 2인 승인 pending 목록/승인/거부 (ADR #47 — 게이트 `app.dual-approval.*` 활성 시 사용)
+> - `/admin/teams` — 팀 관리 (admin-teams T8, 2026-05-10)
+> - `/admin/retention` — 휴지통 보존 정책 editor (trash-retention-mutation, 2026-05-11)
+> - `/admin/sharing` — 공유 정책 (design fidelity — mutation은 disabled, backend endpoint v1.x)
 > - `/admin/storage` — 시스템 합계 + 정리 기록 overview (admin-storage-overview, Wave 2 T8, 2026-05-07)
 > - `/admin/trash/all` — 전역 휴지통 viewer (q/type/ownerId 필터 + cursor pagination + 단건 복원/영구삭제, Wave 2 T9, 2026-05-07)
 >
@@ -58,7 +62,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ```text
 /admin                       (활성 — KPI 대시보드, admin-dashboard 트랙 2026-05-07)
-├─ /users                  사용자 초대 + 목록 (검색/편집/활성 토글)         (활성, 2026-05-06)
+├─ /members                사용자 초대 + 목록 (검색/편집/활성 토글, 구 /users) (활성, 2026-05-06)
 │  ├─ /:id                 사용자 상세 + 활동                              (v1.x deferred)
 │  └─ /import              CSV 일괄 import                                (v1.x deferred)
 ├─ /departments              부서 CRUD (생성/검색/rename/(de)activate)     (활성, Wave 2 T4)
@@ -84,10 +88,10 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 │  ├─ /file-size           파일 크기/확장자 정책                            (v1.x deferred)
 │  ├─ /retention           보존 기간                                       (v1.x deferred)
 │  └─ /audit-levels        감사 레벨 폴더 지정                             (v1.x deferred)
-└─ /system                  운영 cron 4종 read-only 노출 (Wave 1 T3, 2026-05-07)  (활성)
+└─ /system                  운영 cron 6종 enabled 토글 (cron_policy DB, 2026-05-08)  (활성)
    ├─ /health              시스템 상태                                     (v1.x deferred)
    ├─ /backups             백업 이력                                       (v1.x deferred)
-   └─ /jobs                배치 작업 모니터링                               (v1.x deferred — `/system` 본문에서 4 cron 설정만 노출)
+   └─ /jobs                배치 작업 모니터링                               (v1.x deferred — `/system` 본문에서 6 cron 설정만 노출)
 ```
 
 ---
@@ -119,7 +123,7 @@ ADR #21 잔여 closure로 `/admin` 진입을 두 계층으로 분리:
 
 ## 4. 사용자 관리
 
-> **MVP closure (admin-user-mgmt + admin-user-search-update, 2026-05-06)**. backend `User` 도메인은 v0 (A14/A16 closure)이고, admin frontend `/admin/users` 페이지는 초대 + 목록(검색·역할·활성/비활성·표시 이름) 운영 가능. 부서/쿼터/일괄작업은 v1.x.
+> **MVP closure (admin-user-mgmt + admin-user-search-update, 2026-05-06)**. backend `User` 도메인은 v0 (A14/A16 closure)이고, admin frontend `/admin/members` 페이지(구 `/admin/users`)는 초대 + 목록(검색·역할·활성/비활성·표시 이름) 운영 가능. 부서/쿼터/일괄작업은 v1.x.
 
 ### 4.1 사용자 목록
 
@@ -152,7 +156,7 @@ audit 분리 이유: deactivated는 제재 의미를 가지므로 별도 enum으
 나머지 일반 속성 변경은 admin.user.updated로 흡수(reactivate 포함).
 ```
 
-> **MVP 상태**: 모두 `/admin/users`에서 운영 가능 (admin-user-mgmt + admin-user-search-update, 2026-05-06). 파일 소유권 이관 UI는 v1.x.
+> **MVP 상태**: 모두 `/admin/members`에서 운영 가능 (admin-user-mgmt + admin-user-search-update, 2026-05-06). 파일 소유권 이관 UI는 v1.x.
 
 ### 4.4 사용자 Import
 
@@ -570,9 +574,16 @@ storage 객체 (LocalFs):
 
 > **운영 (전체)**. metrics 인프라(Prometheus/Grafana 등) 외부 책임. MVP는 application logs(`com.ibizdrive` INFO) + audit_log 직접 조회로 대체. 외부 출시 시점에 metrics export endpoint(`/actuator/prometheus`) 도입 검토.
 
+### 12.0 헬스체크 (2026-07-02, ADR #50)
+
+- [x] **`GET /actuator/health`** — LB/모니터링용 종합 헬스 (익명 permitAll, status만 노출. **DB 다운 시 503 DOWN**). ADMIN 세션은 컴포넌트 상세(db/diskSpace) 조회 가능
+- [x] `GET /actuator/health/liveness` · `/readiness` — probe 분리. readiness group이 db indicator 포함
+- `GET /api/health`는 process-liveness 스모크로만 유지 — **의존성 검사 없음, LB 헬스 판정에 사용 금지**
+- health 외 actuator endpoint(metrics 등)는 미노출 + 인증 이중 차단 — 노출은 v1.x 관측성 트랙
+
 ### 12.1 시스템 지표
 
-- [ ] API 응답 시간 (p50/p95/p99) — *운영 (Spring Boot Actuator + Micrometer 도입 시점)*
+- [ ] API 응답 시간 (p50/p95/p99) — *운영 (Micrometer 노출 — Actuator 자체는 ADR #50로 도입됨, endpoint 노출은 v1.x)*
 - [ ] 에러율 (5xx) — *운영*
 - [ ] DB 커넥션 풀 사용률 — *운영 (HikariCP 메트릭 expose)*
 - [ ] storage 업로드/다운로드 처리량 — *운영*
@@ -630,7 +641,12 @@ storage 객체 (LocalFs):
 
 ## 14. 관리자 액션의 감사
 
-> **v1.x deferred**. admin frontend `/admin/{users,departments,permissions,storage,policies,system}` 페이지가 모두 미구현이라 emit 시점이 0. `AuditEventType.ADMIN_*` 7 enum 정의됨 (mvp-qa-security Phase 2 P2.2 검증), runtime emission은 admin frontend 트랙 도입 시점에 활성화.
+> **현행화 (2026-07-02)** — 종전 "admin 페이지 모두 미구현, emit 0" 기술은 stale. admin frontend는
+> `/admin/{members,departments,permissions,storage,system,teams,approvals,retention,sharing,audit,trash/all}`
+> 활성 상태이고, `ADMIN_USER_CREATED`/`ADMIN_USER_DEACTIVATED`/`ADMIN_ROLE_CHANGED`/`ADMIN_USER_UPDATED`/
+> `ADMIN_DEPARTMENT_*`/`ADMIN_CRON_TOGGLED`/`ADMIN_RETENTION_CHANGED`/`ADMIN_QUOTA_CHANGED`/`AUDIT_EXPORTED`
+> 등 관리자 emit 다수 활성 (커버리지 집계는 `BETA-RELEASE.md` §6이 단일 source). 잔여 미emit은
+> `BETA-RELEASE.md` §7 deferred 매핑 참조 (Legal Hold, audit_level, `FILE_VIEWED` 등).
 
 ```text
 원칙: 관리자 액션일수록 감사 로그 강화
@@ -638,7 +654,7 @@ storage 객체 (LocalFs):
 모든 관리자 UI 동작 = audit_log 기록
   예: admin.user.updated, admin.role.changed, admin.quota.changed,
       admin.legal_hold.placed, admin.policy.changed
-   ↳ MVP: enum 정의만. emit은 v1.x admin frontend 트랙에서 활성화.
+   ↳ Wave 1/2 closure로 관리자 emit 다수 활성 (상단 현행화 note + BETA-RELEASE §6 참조).
 
 Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
    ↳ MVP: M12 audit logs UI에 actor_role 필터 미구현 (v1.x)
@@ -719,13 +735,13 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
    GROUP BY event_type;
    ```
 
-### 15.4 운영 cron 4종 변경 절차
+### 15.4 운영 cron 6종 변경 절차
 
 **enabled 토글**: ADMIN UI(`/admin/system`)에서 카드별 토글. 즉시 반영(다음 tick부터). 변경 이력은 audit_log `admin.cron.toggled`로 추적되며 `cron_policy` 테이블에 영구 저장(재기동 후에도 유지). admin-cron-policy-toggle 트랙(2026-05-08).
 
 **schedule / zone / batchSize / maxPerRun / graceHours 변경**: `application-prod.yml` 편집 + 재기동 (기존 절차).
 
-**운영 cron 4종** (`backend/src/main/resources/application.yml`):
+**운영 cron 6종** (`backend/src/main/resources/application.yml`):
 
 | 키 | 정의 | 역할 |
 |---|---|---|
@@ -733,6 +749,8 @@ Audit 뷰는 actor_role 필터로 관리자 액션만 조회 가능
 | `app.share.expiration` | `cron:"0 */5 * * * *"` (매 5분) | SHARE_EXPIRED — 만료 share row 자동 정리 + audit |
 | `app.permission.expiration` | `cron:"0 */5 * * * *"` (매 5분) | PERMISSION_EXPIRED — 만료 permission row hard delete + audit |
 | `app.storage.orphan-cleanup` | `cron:"0 0 1 * * *"` (매일 새벽 1시) | A15 backlog — 고아 객체 정리 |
+| `app.favorites.cleanup` | `cron:"0 0 2 * * *"` (매일 새벽 2시) | hard-purge된 대상의 favorites orphan row 정리 (V23) |
+| `app.admin-approval.expiration` | `cron:"0 */5 * * * *"` (매 5분) | ADR #47 — pending_admin_approvals 만료 처리 (V21) |
 
 > enabled 토글은 yml이 아닌 `cron_policy` DB 테이블 단일 source(admin-cron-toggle, 2026-05-08; yml-enabled-cleanup, 2026-05-09에서 yml `app.*.enabled` 필드 + 4 `*Properties.enabled` record param 제거 완료). yml은 schedule/zone/batchSize/maxPerRun/graceHours 정의만 보유 — 변경 시 재기동 필요.
 
@@ -896,7 +914,7 @@ archive PR 등 master 위 작업도 본 패턴으로 분리한다 (메인 worktr
 [ requested_by admin ]                         [ secondary admin ]
         │                                              │
         │ 1. 기존 admin 페이지에서 액션 시도                │
-        │    (e.g. /admin/users/:id role 변경)         │
+        │    (e.g. /admin/members에서 role 변경)        │
         │                                              │
         │ 2. 백엔드: 게이트 ON → framework INSERT       │
         │    202 Accepted + APPROVAL_REQUIRED          │
@@ -972,7 +990,7 @@ EmailService 재사용 — ADR #42/45 패턴, async fire-and-forget. SMTP 실패
 #### 16.5.1 일반 흐름
 
 1. 운영 액션 요청 발생 (e.g. 사용자 `xxx`를 ADMIN으로 승격)
-2. 운영자 A가 `/admin/users/:id`에서 role 변경 시도 → 202 + 토스트 → `/admin/approvals` redirect
+2. 운영자 A가 `/admin/members`에서 role 변경 시도 → 202 + 토스트 → `/admin/approvals` redirect
 3. 운영자 A가 사내 채널/메일로 운영자 B에게 검토 요청 (자동 알림 외 명시 communication 권장)
 4. 운영자 B가 payload + reason 검증 (티켓 ID 또는 사내 정책 부합 여부) → 승인 또는 거부
 5. APPROVED → 즉시 action 실행 + 양쪽에 알림 → 종료

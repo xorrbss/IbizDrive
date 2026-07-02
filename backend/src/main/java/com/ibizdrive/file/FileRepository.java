@@ -278,8 +278,8 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
      * <p>{@code cursorUpdatedAt}/{@code cursorId} 둘 다 NULL이면 첫 페이지. NOT NULL이면 그 tuple
      * 보다 strictly less than인 row만 반환. {@code WHERE deleted_at IS NULL}로 휴지통 항목 제외.
      *
-     * <p>현재 schema에 {@code normalized_name} 단독 인덱스가 없어 row scan 발생 — ADR #33 가정
-     * (활성 row 수 < 10k MVP). 큰 데이터셋 시 trigram/tsvector 마이그레이션 트랙.
+     * <p>V26 {@code idx_files_normalized_name_trgm}(pg_trgm GIN, partial {@code deleted_at IS NULL})
+     * 이 양측 wildcard LIKE를 커버 — ADR #33이 예정한 trigram 트랙 close (2026-07-02).
      */
     @Query(value = """
         SELECT * FROM files

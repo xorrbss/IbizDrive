@@ -810,6 +810,12 @@ function classifyError(xhr: XMLHttpRequest): UploadTask['error'] {
 }
 ```
 
+**100MB 사전 검증 (2026-07-02)**: `stores/upload.ts` `enqueue`가 `MAX_UPLOAD_SIZE_BYTES`
+(`lib/uploadErrors.ts`, backend `spring.servlet.multipart.max-file-size: 100MB`와 동기화) 초과
+파일을 서버 왕복 없이 즉시 `failed` + `too_large` 에러로 표면화한다 — 도크에 사유가 보이고
+XHR 미기동. `retry()`는 `too_large` task를 재큐잉하지 않는다 (서버가 항상 거부).
+모든 진입 경로(버튼/드롭/폴더 업로드)가 enqueue를 거치므로 단일 검증 지점.
+
 ### 9.2 충돌 다이얼로그
 
 ```tsx
@@ -979,6 +985,21 @@ export function normalizeFileName(s: string): string {
 | 일반 에러 | `<FileTableError onRetry />` | `error.tsx` |
 | 403 | `<FileTableForbidden />` | 에러 분기 |
 | 404 | `<NotFound />` | `not-found.tsx` |
+
+### 11.1 RightPanel 파일 미리보기 (P4, ADR #51 — 2026-07-02)
+
+`RightPanel`의 `PreviewCard`가 파일 타입별로 실제 미리보기를 렌더한다:
+
+| 타입 | 동작 |
+|---|---|
+| 이미지 (png/jpeg/gif/webp) | 패널 내 `<img src="/api/files/{id}/download?disposition=inline">` 렌더. 클릭 시 새 탭. 로드 실패 시 플레이스홀더 폴백 (`key={file.id}`로 파일 전환 시 실패 상태 리셋) |
+| PDF | "새 탭에서 미리보기" 버튼 → `window.open(inline URL, '_blank', 'noopener,noreferrer')`. 전역 `X-Frame-Options: DENY` 때문에 iframe 임베드 불가 — top-level 탐색은 무영향 |
+| 그 외 / SVG | 기존 아이콘 플레이스홀더 유지. SVG는 script 실행 가능 → inline 화이트리스트 제외 (backend와 동기) |
+
+- inline 허용 판정의 진실 출처는 **backend** `FileDownloadController.INLINE_SAFE_MIME` (docs/02 §7.6) —
+  화이트리스트 밖 MIME은 서버가 attachment로 폴백하므로 frontend 목록(`INLINE_IMAGE_MIME`)은 UX 최적화용.
+- wire 헬퍼: `api.previewFileUrl(id)` / `api.openFilePreview(id)` (`lib/api.ts`).
+- Office 문서 인라인 미리보기(렌더러 필요)·그리드 썸네일은 별도 트랙 (§18 row 16).
 
 ---
 

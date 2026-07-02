@@ -24,10 +24,22 @@ final class ContentDispositionHeaders {
      * 표현({@code %20})으로 후처리 — RFC 5987은 {@code *} parameter 값에 form encoding을 허용하지 않는다.
      */
     static String build(String displayName) {
+        return build(displayName, "attachment");
+    }
+
+    /**
+     * {@code inline} disposition 변형 — 미리보기(ADR #51). 호출 전 MIME 화이트리스트 검증은
+     * caller({@link FileDownloadController}) 책임 — 본 헬퍼는 헤더 형식만 담당.
+     */
+    static String buildInline(String displayName) {
+        return build(displayName, "inline");
+    }
+
+    private static String build(String displayName, String dispositionType) {
         String safeAscii = sanitizeAscii(displayName);
         String utf8Pct = URLEncoder.encode(displayName, StandardCharsets.UTF_8)
             .replace("+", "%20");
-        return "attachment; filename=\"" + safeAscii + "\"; filename*=UTF-8''" + utf8Pct;
+        return dispositionType + "; filename=\"" + safeAscii + "\"; filename*=UTF-8''" + utf8Pct;
     }
 
     /**
