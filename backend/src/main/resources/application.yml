@@ -125,6 +125,12 @@ app:
   audit:
     export:
       row-cap: 10000
+    # ADR #49 — 부팅 시 런타임 DB 계정의 audit_log UPDATE/DELETE/TRUNCATE 권한 검사
+    # (AuditAppendOnlyStartupCheck). enforce=true면 위반 시 부팅 실패(fail-fast).
+    # dev 기본 false: 로컬은 postgres superuser로 돌므로 WARN 로그만 남긴다 (docs/local-dev.md).
+    # prod는 application-prod.yml이 true로 강제 — app_user(V4) 접속이 아니면 부팅 불가.
+    append-only-check:
+      enforce: false
   # a1.5 이메일 — 발신자 주소 + 재설정 링크 base URL.
   # dev는 ConsoleEmailService가 활성화되어 SMTP 미설정으로도 부팅 가능.
   # prod는 application-prod.yml이 spring.mail.* 환경변수를 추가 주입.

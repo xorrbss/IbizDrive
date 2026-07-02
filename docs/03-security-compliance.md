@@ -790,8 +790,10 @@ folders.audit_level:
 
 ### 4.4 감사 로그 불변성 강제
 
-- [ ] DB 레벨 REVOKE UPDATE, DELETE (02 문서 §2.8)
-- [ ] application role과 admin role 분리
+- [x] DB 레벨 REVOKE UPDATE, DELETE (`V4__audit_log_revoke.sql`, 02 문서 §2.8, ADR #25) — `AuditLogAppendOnlyTest`가 SQLState 42501로 증명
+- [x] application role과 admin role 분리 (V4 `app_user`/`audit_admin`/`db_superuser`) — V25가 V8+ 신규 테이블 GRANT 캐치업으로 app_user 런타임 전환을 실제 이행 가능하게 함
+- [x] 부팅 시 런타임 계정 append-only 검증 (`AuditAppendOnlyStartupCheck`, ADR #49) — prod `enforce=true` fail-fast, dev WARN. datasource가 owner/superuser로 연결되면 REVOKE가 무력화되는 갭을 코드로 차단
+- [ ] V4 role 기본 비밀번호 교체 (`ALTER ROLE app_user PASSWORD ...`) — 운영 배포 전 수동 게이트 (BETA-RELEASE §2.4)
 - [ ] 파티션 분리 + WORM storage (v1.x)
 
 ### 4.5 감사 이벤트 심각도 (severity)

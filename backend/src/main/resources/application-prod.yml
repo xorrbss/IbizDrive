@@ -6,6 +6,8 @@
 #
 # 본 파일이 하는 것:
 #   1. 세션 쿠키 Secure 강제 (HTTPS only).
+#   2. audit_log append-only 연결 검증 강제 (ADR #49) — 런타임 계정이 audit_log를 변조할 수
+#      있으면(= app_user 미사용) 부팅 실패. BETA-RELEASE.md §2.4 게이트의 코드 측 안전망.
 #
 # 운영 cron 4종(`purge` / `share-expiration` / `permission-expiration` /
 # `storage-orphan-cleanup`)의 enabled 토글은 yml-enabled-cleanup 트랙(2026-05-09)에서
@@ -26,6 +28,14 @@ server:
     session:
       cookie:
         secure: true        # HTTPS only — 운영 리버스 프록시가 TLS 종단 필수
+
+# ADR #49 — prod는 audit_log append-only 연결 검증을 fail-fast로 강제.
+# 런타임 datasource가 app_user(V4)가 아니면(owner/superuser 접속) 부팅이 실패한다.
+# 대응: SPRING_DATASOURCE_USERNAME=app_user + 교체된 비밀번호 주입 (BETA-RELEASE.md §2.4).
+app:
+  audit:
+    append-only-check:
+      enforce: true
 
 # a1.5 SMTP 발송 — 실제 값은 운영자 환경변수로 주입 (사내 시크릿 저장소).
 # 미주입 시 JavaMailSender 빈 미등록 → SmtpEmailService 부팅 실패 → 무음 발송 방지.

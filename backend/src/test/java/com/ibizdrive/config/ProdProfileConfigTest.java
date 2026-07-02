@@ -40,6 +40,30 @@ class ProdProfileConfigTest {
     }
 
     @Test
+    void prodProfile_enforcesAuditAppendOnlyCheck() {
+        // ADR #49 — prod는 audit_log append-only 연결 검증을 fail-fast로 강제.
+        runner.run(context -> {
+            assertThat(context).hasNotFailed();
+            var env = context.getEnvironment();
+            assertThat(env.getProperty("app.audit.append-only-check.enforce", Boolean.class))
+                .as("prod must fail boot when runtime DB account can mutate audit_log")
+                .isTrue();
+        });
+    }
+
+    @Test
+    void devProfile_doesNotEnforceAuditAppendOnlyCheck() {
+        // dev는 postgres superuser 로컬 흐름(docs/local-dev.md)을 막지 않음 — WARN only.
+        new ApplicationContextRunner()
+            .withInitializer(new ConfigDataApplicationContextInitializer())
+            .run(context -> {
+                assertThat(context).hasNotFailed();
+                var env = context.getEnvironment();
+                assertThat(env.getProperty("app.audit.append-only-check.enforce", Boolean.class)).isFalse();
+            });
+    }
+
+    @Test
     void devProfile_keepsCookieInsecure() {
         // dev/test profile은 secure cookie 강제 안 함 — prod 한정 동작 회귀 차단.
         new ApplicationContextRunner()

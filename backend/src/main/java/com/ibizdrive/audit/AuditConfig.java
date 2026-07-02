@@ -10,6 +10,6 @@ import org.springframework.context.annotation.Configuration;
  * 등록 ({@link com.ibizdrive.storage.StorageConfig} 패턴 동형).
  */
 @Configuration
-@EnableConfigurationProperties(AuditExportProperties.class)
+@EnableConfigurationProperties({AuditExportProperties.class, AuditAppendOnlyProperties.class})
 public class AuditConfig {
 }
