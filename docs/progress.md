@@ -5,7 +5,44 @@
 
 ---
 
-## 2026-07-02 — 파일 미리보기(P4, ADR #51) + 업로드 100MB 사전 검증 + 검색 trgm 인덱스(V26)
+## 2026-07-03 — E2E 확장 트랙 (업로드·공유·버전·휴지통 복원) + useUpload 중복 기동 버그 수정
+
+> 도입 평가에서 지적된 "E2E 4개 스펙(15케이스)뿐, 핵심 흐름 미커버" 갭 해소.
+> 작성 과정에서 e2e가 실제 제품 버그(업로드 중복 XHR)를 발견 — 테스트로 덮지 않고 수정 (원칙 9).
+
+### 변경
+
+- **신규 `e2e/support/apiMocks.ts`** — 공용 fake-fetch 하네스 (auth.e2e.ts 컨벤션 확장).
+  실 backend(2026-07-02 로컬 스택)에서 캡처한 wire 1:1 + in-memory 상태
+  (업로드/삭제/복원/공유가 상태를 변경해 invalidate 재fetch 흐름까지 검증)
+- **신규 스펙 4**: `upload.e2e.ts`(성공/409 충돌→새 버전 resolution 재전송/100MB 사전 차단 —
+  File.size 위장으로 실버퍼 회피), `share.e2e.ts`(사용자 검색→편집 preset 부여),
+  `version.e2e.ts`(타임라인→과거 버전 복원→current 이동. ?file= URL 직접 진입 —
+  docs/01 §2.3 계약), `trash-restore.e2e.ts`(복원/영구삭제 confirm/원위치 복귀)
+- **레거시 현대화 3**: `routing`/`move`/`trash` — mock 데이터 시절(`/files` 평면 라우트,
+  "인사팀" 픽스처) 스펙이라 team-centric pivot 후 실행 불가였던 것을 하네스 기반 재작성
+- `playwright.config.ts` — expect timeout 10s(dev 서버 콜드 컴파일 대응),
+  `PLAYWRIGHT_CHANNEL` env로 시스템 Chrome 폴백(브라우저 다운로드 불가 환경)
+
+### 🐛 버그 수정 — useUpload 다중 마운트 중복 XHR (e2e가 발견)
+
+- **증상**: `useUpload()`가 dock/ConflictDialog/UploadButton/FileTable/SidebarNewButton 5곳에
+  동시 마운트 → 구독자마다 같은 queued task에 XHR 기동 → **업로드 1건당 5중 POST**.
+  실 backend에서는 1건 201 + 4건 409(RENAME_CONFLICT)로 위장되어 발견 어려움 —
+  하네스 기반 e2e에서 목록에 파일 5개가 생기며 표면화
+- **수정**: 구독 콜백이 fresh state에서 동기적으로 'uploading'을 claim — 첫 구독자만
+  startTask. #165(csrf 부트스트랩 중 cancel) 사후 체크는 'uploading' 기준으로 정렬
+- 회귀 가드: 단위(3중 마운트 → `MockXHR.instances` 1개) + e2e(`drive.uploadPostCount === 1`)
+
+### 검증
+
+- Playwright **18/18 GREEN** (45.7s, 시스템 Chrome channel) / vitest 전체 + typecheck + lint GREEN
+
+### 다음 세션 컨텍스트
+
+- e2e는 여전히 CI 미실행(ci.yml에 playwright 단계 없음) — 로컬 게이트. CI 도입 시
+  `npx playwright install chromium` 캐시 + 이 트랙의 mock 하네스는 backend 불요라 부담 적음
+- DnD 실드래그·폴더 업로드 재귀 드롭은 Playwright flaky 특성상 미커버 (기존 NOTE 유지)
 
 > 도입 평가 중기 권고 중 외부 결정 블로커가 없는 3건 일괄 진행. 각각 원자적 변경으로 검증.
 
