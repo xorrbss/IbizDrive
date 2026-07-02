@@ -1654,6 +1654,8 @@ GET /api/search?q=&type=file|folder|all&cursor=&limit=
   서버 처리:
   1. q normalize → minLen 2 검증
   2. type 분기 → file 검색(LIKE) + folder 검색(LIKE) [+ cursor tuple 조건]
+     — V26 pg_trgm GIN 인덱스(idx_files/folders_normalized_name_trgm, partial deleted_at IS NULL)가
+       양측 wildcard LIKE를 커버 (2026-07-02, ADR #33이 예정한 trigram 트랙 close)
   3. 각 테이블당 LIMIT (limit+1) — hasMore 판정 + nextCursor 발급
   4. type=all이면 in-memory merge sort `(updatedAt DESC, type DESC, id DESC)`
   5. 권한 후처리 — actor의 effective READ (ADR #33: ROLE short-circuit + resource grant fallback)
