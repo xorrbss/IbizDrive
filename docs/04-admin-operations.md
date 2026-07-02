@@ -574,9 +574,16 @@ storage 객체 (LocalFs):
 
 > **운영 (전체)**. metrics 인프라(Prometheus/Grafana 등) 외부 책임. MVP는 application logs(`com.ibizdrive` INFO) + audit_log 직접 조회로 대체. 외부 출시 시점에 metrics export endpoint(`/actuator/prometheus`) 도입 검토.
 
+### 12.0 헬스체크 (2026-07-02, ADR #50)
+
+- [x] **`GET /actuator/health`** — LB/모니터링용 종합 헬스 (익명 permitAll, status만 노출. **DB 다운 시 503 DOWN**). ADMIN 세션은 컴포넌트 상세(db/diskSpace) 조회 가능
+- [x] `GET /actuator/health/liveness` · `/readiness` — probe 분리. readiness group이 db indicator 포함
+- `GET /api/health`는 process-liveness 스모크로만 유지 — **의존성 검사 없음, LB 헬스 판정에 사용 금지**
+- health 외 actuator endpoint(metrics 등)는 미노출 + 인증 이중 차단 — 노출은 v1.x 관측성 트랙
+
 ### 12.1 시스템 지표
 
-- [ ] API 응답 시간 (p50/p95/p99) — *운영 (Spring Boot Actuator + Micrometer 도입 시점)*
+- [ ] API 응답 시간 (p50/p95/p99) — *운영 (Micrometer 노출 — Actuator 자체는 ADR #50로 도입됨, endpoint 노출은 v1.x)*
 - [ ] 에러율 (5xx) — *운영*
 - [ ] DB 커넥션 풀 사용률 — *운영 (HikariCP 메트릭 expose)*
 - [ ] storage 업로드/다운로드 처리량 — *운영*

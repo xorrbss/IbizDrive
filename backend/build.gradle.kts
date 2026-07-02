@@ -21,6 +21,9 @@ dependencies {
     // Spring Boot
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    // Actuator — ADR #50. LB/모니터링용 /actuator/health (DB·디스크 포함 종합 상태).
+    // health만 노출 (application.yml management 블록). metrics/prometheus는 v1.x 관측성 트랙.
+    implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     // AOP — A2.1b @Audited annotation processing (ADR #24).

@@ -41,6 +41,25 @@ spring:
       max-request-size: 110MB
       file-size-threshold: 1MB    # 디스크 spill 임계값 — 메모리 보호
 
+# ADR #50 — Actuator 헬스체크. LB/모니터링은 /actuator/health 사용 (DB·디스크 indicator 포함 —
+# DB 다운 시 status DOWN). /api/health는 A1 보안 배선 스모크용 process-liveness로 유지.
+# health 외 endpoint는 미노출 — metrics/prometheus 노출은 v1.x 관측성 트랙 (docs/04 §12).
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      probes:
+        enabled: true                 # /actuator/health/liveness · /readiness (LB/k8s probe)
+      show-details: when-authorized   # 익명(LB)은 status만, ADMIN 세션은 컴포넌트 상세
+      show-components: when-authorized
+      roles: ADMIN
+      group:
+        readiness:
+          include: readinessState,db  # readiness가 DB 연결 상태를 반영
+
 server:
   port: 8080
   servlet:
