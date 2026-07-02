@@ -1,5 +1,18 @@
 export type UploadErrorKind =
-  | 'network' | 'permission' | 'quota' | 'server' | 'conflict'
+  | 'network' | 'permission' | 'quota' | 'server' | 'conflict' | 'too_large'
+
+/**
+ * backend `spring.servlet.multipart.max-file-size: 100MB`(application.yml)와 동기화.
+ * enqueue 시점 사전 검증(stores/upload.ts)이 서버 왕복 없이 즉시 거부하는 기준.
+ */
+export const MAX_UPLOAD_SIZE_BYTES = 100 * 1024 * 1024
+
+export function oversizeError(): { kind: UploadErrorKind; message: string } {
+  return {
+    kind: 'too_large',
+    message: '파일이 최대 업로드 크기(100MB)를 초과합니다',
+  }
+}
 
 export function classifyError(xhr: { status: number }): {
   kind: UploadErrorKind

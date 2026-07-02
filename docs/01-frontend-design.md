@@ -810,6 +810,12 @@ function classifyError(xhr: XMLHttpRequest): UploadTask['error'] {
 }
 ```
 
+**100MB 사전 검증 (2026-07-02)**: `stores/upload.ts` `enqueue`가 `MAX_UPLOAD_SIZE_BYTES`
+(`lib/uploadErrors.ts`, backend `spring.servlet.multipart.max-file-size: 100MB`와 동기화) 초과
+파일을 서버 왕복 없이 즉시 `failed` + `too_large` 에러로 표면화한다 — 도크에 사유가 보이고
+XHR 미기동. `retry()`는 `too_large` task를 재큐잉하지 않는다 (서버가 항상 거부).
+모든 진입 경로(버튼/드롭/폴더 업로드)가 enqueue를 거치므로 단일 검증 지점.
+
 ### 9.2 충돌 다이얼로그
 
 ```tsx

@@ -1,5 +1,9 @@
 import { create } from 'zustand'
-import type { UploadErrorKind } from '@/lib/uploadErrors'
+import {
+  MAX_UPLOAD_SIZE_BYTES,
+  oversizeError,
+  type UploadErrorKind,
+} from '@/lib/uploadErrors'
 
 export type UploadConflictResolution = 'new_version' | 'rename' | 'skip'
 
@@ -43,15 +47,20 @@ export const useUploadStore = create<UploadState>((set, get) => ({
 
   enqueue: (files, targetFolderId) => {
     const now = Date.now()
-    const tasks: UploadTask[] = files.map((file) => ({
-      id: uid(),
-      file,
-      targetFolderId,
-      status: 'queued',
-      progress: 0,
-      uploadedBytes: 0,
-      enqueuedAt: now,
-    }))
+    // 100MB 초과는 서버 왕복 없이 즉시 failed로 표면화 — 도크에 사유가 보이고 XHR 미기동.
+    const tasks: UploadTask[] = files.map((file) => {
+      const oversize = file.size > MAX_UPLOAD_SIZE_BYTES
+      return {
+        id: uid(),
+        file,
+        targetFolderId,
+        status: oversize ? 'failed' : 'queued',
+        progress: 0,
+        uploadedBytes: 0,
+        error: oversize ? oversizeError() : undefined,
+        enqueuedAt: now,
+      }
+    })
     set((s) => ({ queue: [...s.queue, ...tasks] }))
     return tasks.map((t) => t.id)
   },
@@ -83,7 +92,8 @@ export const useUploadStore = create<UploadState>((set, get) => ({
   retry: (id) =>
     set((s) => ({
       queue: s.queue.map((t) =>
-        t.id === id
+        // too_large는 재시도해도 서버가 항상 거부 — failed 유지 (사전 검증과 정합)
+        t.id === id && t.error?.kind !== 'too_large'
           ? { ...t, status: 'queued', progress: 0, uploadedBytes: 0, error: undefined }
           : t,
       ),

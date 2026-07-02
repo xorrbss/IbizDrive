@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest'
+import { MAX_UPLOAD_SIZE_BYTES } from '@/lib/uploadErrors'
 import { useUploadStore } from './upload'
 
 function reset() {
@@ -7,6 +8,13 @@ function reset() {
 
 function fakeFile(name: string, size = 100): File {
   return new File([new Uint8Array(size)], name)
+}
+
+// 실제 100MB 버퍼 할당 회피 — size property만 위장
+function oversizeFile(name: string): File {
+  const f = fakeFile(name, 1)
+  Object.defineProperty(f, 'size', { value: MAX_UPLOAD_SIZE_BYTES + 1 })
+  return f
 }
 
 describe('useUploadStore', () => {
@@ -96,5 +104,45 @@ describe('useUploadStore', () => {
     useUploadStore.getState().updateTask(c, { status: 'done' })
     useUploadStore.getState().updateTask(d, { status: 'failed' })
     expect(useUploadStore.getState().pendingCount()).toBe(2)
+  })
+
+  // ── 100MB 사전 검증 (backend multipart max-file-size 동기화) ────────
+
+  it('enqueue는 100MB 초과 파일을 즉시 failed(too_large)로 표면화', () => {
+    const [id] = useUploadStore
+      .getState()
+      .enqueue([oversizeFile('big.bin')], 'f')
+    const t = useUploadStore.getState().queue.find((x) => x.id === id)!
+    expect(t.status).toBe('failed')
+    expect(t.error?.kind).toBe('too_large')
+    expect(t.error?.message).toContain('100MB')
+  })
+
+  it('enqueue 경계값 — 정확히 100MB는 queued (초과만 거부)', () => {
+    const exact = fakeFile('exact.bin', 1)
+    Object.defineProperty(exact, 'size', { value: MAX_UPLOAD_SIZE_BYTES })
+    const [id] = useUploadStore.getState().enqueue([exact], 'f')
+    expect(useUploadStore.getState().queue.find((x) => x.id === id)!.status).toBe(
+      'queued',
+    )
+  })
+
+  it('enqueue 혼합 — 초과 파일만 failed, 나머지는 queued', () => {
+    const ids = useUploadStore
+      .getState()
+      .enqueue([fakeFile('ok.txt'), oversizeFile('big.bin')], 'f')
+    const q = useUploadStore.getState().queue
+    expect(q.find((x) => x.id === ids[0])!.status).toBe('queued')
+    expect(q.find((x) => x.id === ids[1])!.status).toBe('failed')
+  })
+
+  it('retry는 too_large task를 재큐잉하지 않음 (서버가 항상 거부)', () => {
+    const [id] = useUploadStore
+      .getState()
+      .enqueue([oversizeFile('big.bin')], 'f')
+    useUploadStore.getState().retry(id)
+    const t = useUploadStore.getState().queue.find((x) => x.id === id)!
+    expect(t.status).toBe('failed')
+    expect(t.error?.kind).toBe('too_large')
   })
 })
