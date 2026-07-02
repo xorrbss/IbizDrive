@@ -5,7 +5,134 @@
 
 ---
 
-## 2026-05-29 — 폴더 업로드 정식 구현 (프론트 오케스트레이션, 백엔드 무변경)
+## 2026-07-02 — 파일 미리보기(P4, ADR #51) + 업로드 100MB 사전 검증 + 검색 trgm 인덱스(V26)
+
+> 도입 평가 중기 권고 중 외부 결정 블로커가 없는 3건 일괄 진행. 각각 원자적 변경으로 검증.
+
+### 1) 파일 미리보기 (ADR #51, docs/01 §11.1, docs/02 §7.6)
+
+- backend: `GET /api/files/{id}/download?disposition=inline` — `INLINE_SAFE_MIME`
+  (png/jpeg/gif/webp/pdf) 화이트리스트일 때만 inline, 그 외/SVG는 attachment 조용한 폴백.
+  `ContentDispositionHeaders.buildInline` 추가. 별도 preview endpoint 미도입 (KISS)
+- frontend: `PreviewCard` 실구현 — 이미지는 패널 내 `<img>`(클릭 시 새 탭, onError 폴백),
+  PDF는 "새 탭에서 미리보기" 버튼(전역 XFO DENY 유지 위해 iframe 대신 top-level).
+  `api.previewFileUrl`/`openFilePreview` 헬퍼
+- 테스트: BE `FileDownloadControllerTest` +4 (HTML/SVG 거부 포함) / FE `RightPanel.test.tsx` +5,
+  `api.previewFile.test.ts` +3
+
+### 2) 업로드 100MB 사전 검증 (docs/01 §9.1)
+
+- `stores/upload.ts` enqueue가 `MAX_UPLOAD_SIZE_BYTES`(backend multipart 100MB와 동기화,
+  `lib/uploadErrors.ts`) 초과 파일을 서버 왕복 없이 즉시 failed + `too_large`로 표면화.
+  retry는 too_large 재큐잉 안 함. 테스트 +4 (경계값 포함)
+
+### 3) 검색 pg_trgm 인덱스 (V26, docs/02 §7.8)
+
+- `V26__search_trgm_indexes.sql` — pg_trgm 확장 + files/folders `normalized_name` GIN
+  (partial `deleted_at IS NULL`). FileRepository 주석이 예정해 둔 trigram 트랙 close.
+  `SearchTrgmIndexSchemaTest` 신규 (확장/인덱스 정의 회귀 가드)
+
+### 검증
+
+- FE `typecheck`/`lint`/`test` 전체 GREEN, BE `gradlew test` 전체 GREEN
+- 로컬 실서버 E2E: png 업로드 → default=attachment / `?disposition=inline`=**inline** /
+  txt inline 요청=attachment 폴백 / `GET /api/search?q=pixel` 정상 / pg_trgm+인덱스 2종+V26 적용 확인
+- preview DB에 검증용 `preview-e2e` 부서 + pixel.png/note.txt 잔존 (브라우저 확인용)
+
+### 다음 세션 컨텍스트
+
+- 도입 평가 잔여 항목은 전부 외부 결정 블로커: MFA(TOTP vs FIDO2, ADR #18), 확장자 whitelist(spec),
+  S3/KMS(인프라), SSO(IdP), SSE/tus(spec) — `docs/v1x-backlog.md` 참조. E2E(Playwright) 확장은 별도 트랙 권장
+
+## 2026-07-02 — Actuator 헬스체크 도입 (P3, ADR #50)
+
+> 도입 평가 P3 후속. 기존 `/api/health`가 정적 `{"status":"ok"}`라 DB 다운을 감지 못하던
+> 맹점 해소 — LB/모니터링용 종합 헬스 endpoint 확보.
+
+### 변경 (신규 1 + 수정 4)
+
+- `build.gradle.kts` — `spring-boot-starter-actuator` 추가
+- `application.yml` — management 블록: **health만 노출**, probes 활성, readiness group에 db,
+  `show-details/components: when-authorized + roles: ADMIN` (익명 LB는 status만)
+- `SecurityConfig` — `/actuator/health(/**)` permitAll 매처 (그 외 actuator는 미노출 + authenticated 이중 차단)
+- `HealthController` — javadoc으로 용도 제한 명시 (process-liveness 스모크 — LB 헬스 판정 금지).
+  endpoint 자체는 SecurityIntegrationTest 계약 보존 위해 존치
+- 테스트: 신규 `ActuatorHealthE2ETest` (익명 UP+상세 은닉 / readiness / metrics 401 — Testcontainers, CI 실행)
+- docs: `00-overview.md` ADR #50 / `04-admin-operations.md` §12.0 신설 / `BETA-RELEASE.md` §8 /
+  `local-dev.md` §6.3 트러블슈팅 힌트
+
+### 검증
+
+- `gradlew test` 전체 GREEN
+- 로컬 수동 E2E: 익명 `/actuator/health` = `{"status":"UP"}` 상세 은닉 / ADMIN 세션 = db·diskSpace 상세 /
+  `/actuator/metrics` = 401 / **PG 정지 → `/actuator/health` 503 DOWN, `/api/health`는 200(맹점 재현)** /
+  PG 재기동 → UP 자동 복귀
+
+### 다음 세션 컨텍스트
+
+- metrics/prometheus endpoint 노출은 v1.x 관측성 트랙 (Actuator 기반은 갖춰짐 — docs/04 §12.1)
+- 도입 평가 P1~P3 전부 완료. 다음 후보: 미리보기(P4)·검색 개선·MFA 등 중기 권고 (평가 보고서 §4)
+
+## 2026-07-02 — 운영 문서 드리프트 정정 (P2, 문서 + 주석만)
+
+> 도입 평가 P2 후속. 운영자가 그대로 믿으면 사고로 이어지는 문서-코드 불일치 정정.
+> 코드 동작 변경 0 — 문서 5 + yml 주석 1.
+
+### 정정 목록
+
+- **`BETA-RELEASE.md` §3/§9 (최우선)** — "prod profile이 cron enabled=true로 자동 활성"은 **오정보**였음
+  (yml-enabled-cleanup 2026-05-09 이후 실제는 `cron_policy` DB 시드 6종 전부 false + 수동 토글).
+  §9의 `[x] 자동 활성` 체크도 `[ ]` 운영자 게이트로 정정. cron 4종→6종(V21 admin.approval.expire,
+  V23 favorites.cleanup 반영), 활성화 절차(/admin/system 또는 PUT) 명시
+- `BETA-RELEASE.md` — Flyway "V1~V18"→V25, dual-approval "code 0줄"→구현 완료(게이트 default false),
+  `/admin/users`→`/admin/members` rename 반영
+- `docs/local-dev.md` §6.2 — T2 CSRF fix(`CsrfAwareAccessDeniedHandler` 403+CSRF_MISMATCH) 머지 완료
+  상태로 섹션 closure ("fix 머지 후 닫는다" 조건 이행). V1~V15/15 migrations→V25 현행화
+- `docs/04-admin-operations.md` — §1/§2 라우트 맵 `/admin/users`→`/admin/members` + 누락 활성 페이지
+  4종(approvals/teams/retention/sharing) 추가, §2/§15.4 "cron 4종 read-only"→"6종 토글(cron_policy DB)"
+  + cron 표 2행 추가, §14 "admin 페이지 모두 미구현, emit 0"→현행화(11페이지 활성 + ADMIN_* emit 다수),
+  §16 흐름도 라우트 정정
+- `application-prod.yml` 주석 — 존재하지 않는 `logback-spring.xml` 참조 제거(Slack 알림은 외부 log
+  shipper 책임으로 결정된 사실 반영), "cron 4종/V11 4 row"→"6종/V11·V21·V23 6 row"
+
+### 검증
+
+- `ProdProfileConfigTest` GREEN (yml 주석 변경 후 파싱 회귀 없음)
+- 잔여 드리프트 재스캔: "자동 활성/enabled=true로 override/read-only 노출/V1~V15/V1~V18" 매치 0건.
+  잔존 `/api/admin/users`·"cron 4종 활성화" 표기는 backend API 경로·트랙명 역사 기록으로 정확함
+
+### 다음 세션 컨텍스트
+
+- P3(정적 헬스체크 → Actuator 도입) 미착수. docs/04 §12 모니터링/BETA-RELEASE §8과 연계 필요
+
+## 2026-07-02 — audit append-only 런타임 강제 (ADR #49, V25 GRANT 캐치업)
+
+> 도입 평가에서 발견된 P1 리스크 해소: V4 REVOKE가 `app_user`에만 적용되는데 기본 datasource
+> 계정은 owner/superuser라 append-only 보증이 수동 게이트(BETA-RELEASE §2.4)에만 의존하던 갭.
+> 구현 중 추가 발견 — V8+ 신규 테이블에 app_user GRANT 누락으로 게이트 이행 자체가 불가능한 상태.
+
+### 변경 (신규 3 + 수정 6)
+
+- backend 신규 `V25__app_user_grants_catchup.sql` — blanket GRANT(ALL TABLES/SEQUENCES) 후 audit_log만 UPDATE/DELETE/TRUNCATE 재-REVOKE
+- backend 신규 `audit/AuditAppendOnlyStartupCheck.java` — 부팅 시 `has_table_privilege` OR 검사 (ApplicationRunner). enforce=true면 계정명+안내 포함 fail-fast, false면 WARN
+- backend 신규 `audit/AuditAppendOnlyProperties.java` (+`AuditConfig` 등록) — `app.audit.append-only-check.enforce`
+- `application.yml` enforce=false 기본(로컬 superuser 흐름 보존) / `application-prod.yml` enforce=true 강제
+- 테스트: 신규 `AuditAppendOnlyStartupCheckTest`(정책 매트릭스 5) + `AuditLogAppendOnlyTest` 확장(+2: SQL semantics, V25 회귀) + `ProdProfileConfigTest`(+2: prod true/dev false)
+- docs: `00-overview.md` ADR #49 / `03-security-compliance.md` §4.4 현행화 / `BETA-RELEASE.md` §2.4 게이트 갱신(+V4 기본 비밀번호 교체 항목 신설)
+
+### 결정/인사이트
+
+- V4 기본 role 비밀번호(`app_pass` 등)는 적용된 마이그레이션이라 수정 불가(Flyway checksum) → 운영 배포 전 `ALTER ROLE ... PASSWORD` 교체를 §2.4 수동 게이트로 명시
+- V25는 수기 테이블 나열 대신 blanket GRANT — 누락=런타임 장애인 목록의 수동 유지가 더 위험(KISS). 이후 신규 테이블은 기존 관례(V5~V7)대로 개별 GRANT 포함할 것
+
+### 검증
+
+- `gradlew test` 전체 GREEN (Testcontainers 기반은 Docker 부재로 skip — CI에서 실행)
+- 로컬 수동: V25 적용 + enforce=false WARN / enforce=true 부팅 실패 / app_user 접속 시 통과 (아래 세션 검증 참조)
+
+### 다음 세션 컨텍스트
+
+- P2(BETA-RELEASE cron 자동활성 오정보 등 문서 드리프트), P3(정적 헬스체크·Actuator 부재) 미착수 — 도입 평가 권고 순서대로 진행 예정
 
 > 사용자 보고: "폴더 업로드가 에러난다". 진단 결과 폴더 업로드는 미구현 — 디렉토리 가짜 File이
 > XHR 본문 읽기 실패로 오해성 "네트워크 에러"로 표면화. 사용자 선택(B)으로 정식 구현.
