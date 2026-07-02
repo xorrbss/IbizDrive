@@ -46,24 +46,32 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 ### 2.4 DB / 스토리지
 
 - [ ] managed Postgres (RDS 또는 동등) + 자동 일일 스냅샷 + PITR
-- [ ] DB role 분리 (V4 `app_user` / `audit_admin` / `db_superuser`) 적용 — `app_user`만 application 사용
+- [ ] DB role 분리 (V4 `app_user` / `audit_admin` / `db_superuser`) 적용 — `app_user`만 application 사용. **prod 부팅이 자동 검증** (ADR #49 `AuditAppendOnlyStartupCheck`: 런타임 계정에 audit_log UPDATE/DELETE/TRUNCATE 권한이 있으면 부팅 실패). V25가 V8+ 신규 테이블 GRANT 캐치업 완료 — app_user 전환 시 런타임 42501 없음
+- [ ] V4 role 기본 비밀번호 교체 — `ALTER ROLE app_user PASSWORD '<시크릿>'`, `ALTER ROLE audit_admin PASSWORD '<시크릿>'`. 마이그레이션에 하드코딩된 `app_pass`/`audit_admin_pass` 운영 사용 절대 금지
 - [ ] storage 디스크 (`ibizdrive.storage.local.root=./uploads`) 백업 정책 (rsync 또는 snapshot)
-- [ ] Flyway 마이그레이션 V1~V18 적용 확인 — **V13(`scope_type` NOT NULL) 적용 전 folders/files 테이블이 비어 있어야 함** (spec `2026-05-09-team-centric-pivot-design.md §6` green-field cutover 전제, `docs/local-dev.md §6.1` 트러블슈팅 참조)
+- [ ] Flyway 마이그레이션 V1~V25 적용 확인 — **V13(`scope_type` NOT NULL) 적용 전 folders/files 테이블이 비어 있어야 함** (spec `2026-05-09-team-centric-pivot-design.md §6` green-field cutover 전제, `docs/local-dev.md §6.1` 트러블슈팅 참조)
 
 ## 3. 운영 cron 활성화
 
-`application-prod.yml`이 모두 `enabled=true`로 override (mvp-prod-profile closure). `SPRING_PROFILES_ACTIVE=prod` 활성 시 자동.
-`ProdProfileConfigTest`가 키 누락/오타를 회귀 차단.
+> ⚠️ **자동 활성이 아니다 (2026-07-02 정정).** 종전 본 절의 "prod profile이 `enabled=true`로
+> override, prod 활성 시 자동" 기술은 yml-enabled-cleanup 트랙(2026-05-09) 이후 실제 동작과
+> 불일치한 오정보였다. enabled의 단일 source는 **`cron_policy` DB 테이블**이며, V11/V21/V23
+> 시드가 **6종 전부 `enabled=false`**로 초기화한다. yml의 `app.*.enabled` 키는 제거됨 —
+> yml은 schedule/zone/batch 정의만 보유 (`docs/04 §15.4`).
 
-| Cron | 활성화 옵션 | prod profile |
+**운영자 필수 절차**: prod 첫 부팅 후 `/admin/system` UI(또는 `PUT /api/admin/system/cron/{key}`)에서 수동 토글. 켜지 않으면 휴지통 영구삭제·공유/권한 만료 등이 **전혀 돌지 않는다**.
+
+| Cron (`cron_policy` key) | 시드 | 역할 |
 |---|---|---|
-| `purge.expired` | `app.purge.enabled=true` | ✓ — 휴지통 30일 후 hard delete |
-| `share.expire` | `app.share.expiration.enabled=true` | ✓ — 만료된 공유 자동 expire + audit |
-| `permission.expire` | `app.permission.expiration.enabled=true` | ✓ — 만료된 권한 cleanup + audit |
-| `storage.orphan.cleanup` | `app.storage.orphan-cleanup.enabled=true` | ✓ — 일일 storage 객체 회수 (ADR #38) |
+| `purge.expired` | false — 수동 토글 | 휴지통 30일 후 hard delete |
+| `share.expire` | false — 수동 토글 | 만료된 공유 자동 expire + audit |
+| `permission.expire` | false — 수동 토글 | 만료된 권한 cleanup + audit |
+| `storage.orphan.cleanup` | false — 수동 토글 | 일일 storage 객체 회수 (ADR #38) |
+| `favorites.cleanup` | false — 수동 토글 | hard-purge된 대상의 favorites row 정리 (V23) |
+| `admin.approval.expire` | false — 수동 토글 | pending_admin_approvals 만료 처리 (ADR #47, V21) |
 
 > 단일 인스턴스 가정 — 멀티 인스턴스 시 `@SchedulerLock` 도입 필요(ADR backlog).
-> default profile(dev/test/CI)에서는 모두 `false` 유지 — 무영향.
+> dev/test/CI에서도 동일 시드(false) — 무영향.
 
 ## 4. 보안 헤더 / CSRF
 
@@ -110,7 +118,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - MFA / refresh rotation / SCIM — ADR #18 (`USER_MFA_ENABLED` emit deferred)
 - audit_level / 파티션 / `FILE_VIEWED` emit / `FOLDER_AUDIT_LEVEL_CHANGED` emit — ADR #9 (docs/04 §6 line 269)
 - Legal Hold (전체 §6.3 / §10) — docs/00 §4.3 v2.x (`ADMIN_LEGAL_HOLD_PLACED` / `ADMIN_LEGAL_HOLD_RELEASED` emit deferred)
-- admin frontend (정책 페이지) — admin shell + `/admin/users` 초대/목록/role 변경/비활성/검색/재활성/displayName 편집 (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1) + `/admin/departments` 부서 CRUD(생성/검색/rename/(de)activate, admin-department-crud Wave 2 T4) + `/admin/permissions` 권한 매트릭스 read-only viewer(subject/resource/preset/q 필터 + 만료 배지, admin-permission-matrix Wave 2 T5) + `/admin/system` 운영 cron 4종 노출 (Wave 1 T3 — `GET /api/admin/system/cron` read-only viewer; admin-cron-policy-toggle Wave 2 closure 후속(2026-05-08)에서 `PUT /api/admin/system/cron/{key}` ADMIN-only 토글 + `cron_policy` 테이블 + `admin.cron.toggled` audit 추가 — schedule/zone/batchSize/maxPerRun은 v1.x. 읽기 가드는 Wave 1.5 `auditor-cron-readonly`에서 ADMIN+AUDITOR로 확장. UI 진입은 Wave 1.5 `auditor-admin-ui-access`(2026-05-07)에서 layout 가드를 ADMIN+AUDITOR로 완화 — `/admin/audit/logs`와 `/admin/system`은 AUDITOR 진입 가능, mutation 페이지/액션은 페이지 단 default 가드로 ADMIN-only 유지) + `/admin/storage` 시스템 합계 + 정리 기록 overview(admin-storage-overview, 2026-05-07) + `/admin/trash/all` 전역 휴지통 viewer(q/type/ownerId 필터 + cursor pagination + 단건 복원/영구삭제 + V10 `deletedBy` 컬럼(wave2-t9-deleted-by Wave 2 T9 follow-up, 2026-05-08 — files/folders.deleted_by UUID + 단방향 CHECK + ON DELETE SET NULL, backfill 미실시 → V10 이전 row는 UI "—") + 일괄 복원·영구삭제(admin-trash-bulk Wave 2 T9 follow-up, 2026-05-08 — `POST /api/admin/trash/bulk` action+items, cap 200, 부분 실패 모델, per-item 기존 audit emit 그대로, 새 enum 0), wave2-t9-admin-global-trash Wave 2 T9, 2026-05-07 — `GET /api/admin/trash`, mutation은 기존 endpoint 재사용. 휴지통 보존 정책 viewer는 wave2-trash-policy-viewer Wave 2 T9 follow-up #114 closure + mutation editor는 trash-retention-mutation Phase A/B/C #167/#169/#173 closure (V17 + TrashPolicyService + PUT + audit + frontend editor, 2026-05-11). 2인 승인은 v1.x spec만 정합(v1x-confirm-2admin-design #124, code 0줄)) + audit logs UI(M12) 활성. quota mutation 5-phase track 전체 closure: spec drift fix #185 + V18 storage_quota/used 컬럼 #186 + Phase 3 backend `AdminUserQuotaService` + `GET/PUT /api/admin/users/{id}/quota` ADMIN-only + `ADMIN_QUOTA_CHANGED` emit + AFTER_COMMIT listener #198 + Phase 4 frontend `/admin/members` quota 컬럼 + `AdminUserQuotaCell` 인라인 editor + `useAdminUpdateUserQuota` + `AdminUserSummaryResponse`에 storageQuota/storageUsed 필드 추가 #203 + Phase 5 upload enforcement: `UserQuotaEnforcer` + `FileUploadService.upload` 진입 가드 + storage_used 증분 + 413 QUOTA_EXCEEDED + GlobalExceptionHandler 매핑 (본 트랙 2026-05-12). storage_used 감소(휴지통 영구 삭제/admin hard delete)는 Phase 6 follow-up. 권한 mutation은 admin-permission-revoke 단일 row 철회 #123 closure + grant-permission-dialog Phase A/B #157 (subject=everyone) closure, Phase C/D(USER/DEPT picker + ResourcePermissionsList 통합)는 v1.x
+- admin frontend (정책 페이지) — admin shell + `/admin/members`(구 `/admin/users`, 페이지 rename) 초대/목록/role 변경/비활성/검색/재활성/displayName 편집 (m-admin-entry-rewrite + admin-user-mgmt + admin-user-search-update Wave 1 T1) + `/admin/departments` 부서 CRUD(생성/검색/rename/(de)activate, admin-department-crud Wave 2 T4) + `/admin/permissions` 권한 매트릭스 read-only viewer(subject/resource/preset/q 필터 + 만료 배지, admin-permission-matrix Wave 2 T5) + `/admin/system` 운영 cron 4종 노출 (Wave 1 T3 — `GET /api/admin/system/cron` read-only viewer; admin-cron-policy-toggle Wave 2 closure 후속(2026-05-08)에서 `PUT /api/admin/system/cron/{key}` ADMIN-only 토글 + `cron_policy` 테이블 + `admin.cron.toggled` audit 추가 — schedule/zone/batchSize/maxPerRun은 v1.x. 읽기 가드는 Wave 1.5 `auditor-cron-readonly`에서 ADMIN+AUDITOR로 확장. UI 진입은 Wave 1.5 `auditor-admin-ui-access`(2026-05-07)에서 layout 가드를 ADMIN+AUDITOR로 완화 — `/admin/audit/logs`와 `/admin/system`은 AUDITOR 진입 가능, mutation 페이지/액션은 페이지 단 default 가드로 ADMIN-only 유지) + `/admin/storage` 시스템 합계 + 정리 기록 overview(admin-storage-overview, 2026-05-07) + `/admin/trash/all` 전역 휴지통 viewer(q/type/ownerId 필터 + cursor pagination + 단건 복원/영구삭제 + V10 `deletedBy` 컬럼(wave2-t9-deleted-by Wave 2 T9 follow-up, 2026-05-08 — files/folders.deleted_by UUID + 단방향 CHECK + ON DELETE SET NULL, backfill 미실시 → V10 이전 row는 UI "—") + 일괄 복원·영구삭제(admin-trash-bulk Wave 2 T9 follow-up, 2026-05-08 — `POST /api/admin/trash/bulk` action+items, cap 200, 부분 실패 모델, per-item 기존 audit emit 그대로, 새 enum 0), wave2-t9-admin-global-trash Wave 2 T9, 2026-05-07 — `GET /api/admin/trash`, mutation은 기존 endpoint 재사용. 휴지통 보존 정책 viewer는 wave2-trash-policy-viewer Wave 2 T9 follow-up #114 closure + mutation editor는 trash-retention-mutation Phase A/B/C #167/#169/#173 closure (V17 + TrashPolicyService + PUT + audit + frontend editor, 2026-05-11). 2인 승인은 framework 구현 완료 — ADR #47 Phase 1~4: V20/V21 + `AdminApprovalController` 5 endpoint + 핸들러 3종(role_change/trash_purge/retention_change) + `/admin/approvals` UI + 만료 cron + 이메일 알림. 게이트 `app.dual-approval.*.enabled` default=false로 **비활성 출고** (2026-07-02 현행화 — 종전 "code 0줄"은 stale)) + audit logs UI(M12) 활성. quota mutation 5-phase track 전체 closure: spec drift fix #185 + V18 storage_quota/used 컬럼 #186 + Phase 3 backend `AdminUserQuotaService` + `GET/PUT /api/admin/users/{id}/quota` ADMIN-only + `ADMIN_QUOTA_CHANGED` emit + AFTER_COMMIT listener #198 + Phase 4 frontend `/admin/members` quota 컬럼 + `AdminUserQuotaCell` 인라인 editor + `useAdminUpdateUserQuota` + `AdminUserSummaryResponse`에 storageQuota/storageUsed 필드 추가 #203 + Phase 5 upload enforcement: `UserQuotaEnforcer` + `FileUploadService.upload` 진입 가드 + storage_used 증분 + 413 QUOTA_EXCEEDED + GlobalExceptionHandler 매핑 (본 트랙 2026-05-12). storage_used 감소(휴지통 영구 삭제/admin hard delete)는 Phase 6 follow-up. 권한 mutation은 admin-permission-revoke 단일 row 철회 #123 closure + grant-permission-dialog Phase A/B #157 (subject=everyone) closure, Phase C/D(USER/DEPT picker + ResourcePermissionsList 통합)는 v1.x
 - DB backup cron — managed Postgres / RDS 자동 백업으로 대체, docs/04 §13 "별도 cron 미구현" (`SYSTEM_BACKUP_COMPLETED` emit deferred)
 
 ## 8. 모니터링 (사내 베타 최소)
@@ -118,7 +126,8 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 - [ ] application logs 수집 (`com.ibizdrive` INFO 이상) — *운영자 책임 (외부 log shipper: fluent-bit / Promtail / Datadog agent)*
 - [ ] audit_log SELECT 권한 (AUDITOR/ADMIN role)을 사내 보안 담당자에게 부여
 - [ ] 슬랙 webhook (장애 알림) — *운영자 책임 (외부 log shipper의 alert rule, in-process logback appender 비채택, v1.x 관측성 트랙)*
-- [ ] DB connection pool 사용률 — *v1.x (Actuator 도입 시점)*
+- [x] 헬스체크 endpoint — `GET /actuator/health` (ADR #50, 2026-07-02): DB·디스크 포함, DB 다운 시 503. LB/모니터링은 이 endpoint 사용 (`/api/health`는 의존성 검사 없는 스모크 — 헬스 판정 금지)
+- [ ] DB connection pool 사용률 — *v1.x (Actuator는 ADR #50로 도입됨 — metrics endpoint 노출이 잔여)*
 
 ## 9. 베타 출시 GO 결정
 
@@ -126,7 +135,7 @@ Source: `mvp-qa-security-week-11-12` 트랙 closure + `feature/mvp-prod-profile`
 
 - [x] §1 코드 베이스 게이트 (모든 행 ✓)
 - [ ] §2 인프라 게이트 (운영자 sign-off)
-- [x] §3 cron 4종 prod profile에서 자동 활성 (mvp-prod-profile closure) — 운영 1회 dry-run은 staging 가동 시점에 확인
+- [ ] §3 운영 cron 6종 활성화 — **자동 아님**: prod 첫 부팅 후 `/admin/system`에서 수동 토글 + 운영 1회 dry-run (staging 가동 시점 확인. 2026-07-02 정정 — 종전 "[x] 자동 활성"은 오정보)
 - [x] §4 보안 헤더 (코드 적용)
 - [x] §5 인증 / 세션 (코드 적용)
 - [x] §6 감사 / 권한 (코드 적용)
