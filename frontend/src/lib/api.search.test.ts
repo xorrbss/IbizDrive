@@ -42,6 +42,39 @@ describe('api.searchFiles (fetch)', () => {
     expect(init).toMatchObject({ method: 'GET', credentials: 'include' })
   })
 
+  it('filters.type=file → query string에 type=file 포함 (ADR #52)', async () => {
+    await api.searchFiles({ q: '계약', filters: { type: 'file' } })
+    const u = new URL(fetchMock.mock.calls[0][0], 'http://x')
+    expect(u.searchParams.get('type')).toBe('file')
+  })
+
+  it('filters.ownerId → query string에 ownerId 포함', async () => {
+    await api.searchFiles({ q: '계약', filters: { ownerId: 'user-123' } })
+    const u = new URL(fetchMock.mock.calls[0][0], 'http://x')
+    expect(u.searchParams.get('ownerId')).toBe('user-123')
+  })
+
+  it('type + ownerId 동시 전송', async () => {
+    await api.searchFiles({ q: '계약', filters: { type: 'folder', ownerId: 'u9' } })
+    const u = new URL(fetchMock.mock.calls[0][0], 'http://x')
+    expect(u.searchParams.get('type')).toBe('folder')
+    expect(u.searchParams.get('ownerId')).toBe('u9')
+  })
+
+  it('빈 filters → type/ownerId 미전송', async () => {
+    await api.searchFiles({ q: '계약', filters: {} })
+    const u = new URL(fetchMock.mock.calls[0][0], 'http://x')
+    expect(u.searchParams.has('type')).toBe(false)
+    expect(u.searchParams.has('ownerId')).toBe(false)
+  })
+
+  it('알 수 없는 type 값은 무시 (type=all 등)', async () => {
+    await api.searchFiles({ q: '계약', filters: { type: 'all', ownerId: '' } })
+    const u = new URL(fetchMock.mock.calls[0][0], 'http://x')
+    expect(u.searchParams.has('type')).toBe(false)
+    expect(u.searchParams.has('ownerId')).toBe(false)
+  })
+
   it('1자 q는 호출하지 않고 빈 결과 반환 (방어)', async () => {
     const { items } = await api.searchFiles({ q: 'a', filters: {} })
     expect(items).toEqual([])

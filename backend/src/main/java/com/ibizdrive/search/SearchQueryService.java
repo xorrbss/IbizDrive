@@ -68,12 +68,14 @@ public class SearchQueryService {
      * @param role       actor의 ROLE — ADMIN/AUDITOR short-circuit에 사용
      * @param rawQuery   클라이언트 raw 입력 — 서버에서 정규화 (idempotent하나 안전을 위해 재실행)
      * @param type       null = file + folder 양쪽
+     * @param ownerId    null = 전체 소유자, NOT NULL = 해당 owner_id로 제한 (ADR #52). files·folders
+     *                   양쪽 owner_id에 적용 (folder도 필터됨)
      * @param cursorWire opaque cursor (null = 첫 페이지)
      * @param limitOpt   null이면 {@link #DEFAULT_LIMIT}, MAX_LIMIT 초과 시 cap
      */
     @Transactional(readOnly = true)
     public SearchPage search(UUID actorId, Role role, String rawQuery, String type,
-                             String cursorWire, Integer limitOpt) {
+                             UUID ownerId, String cursorWire, Integer limitOpt) {
         String normalized = NormalizeUtil.normalizeForSearch(rawQuery == null ? "" : rawQuery);
         if (normalized.length() < MIN_QUERY_LENGTH) {
             throw new IllegalArgumentException("INVALID_SEARCH_QUERY");
@@ -93,12 +95,12 @@ public class SearchQueryService {
 
         List<SearchResultDto> merged = new ArrayList<>(fetchSize * 2);
         if (wantFile) {
-            for (FileItem f : fileRepository.searchByNormalizedName(pattern, cursorUpdatedAt, cursorId, fetchSize)) {
+            for (FileItem f : fileRepository.searchByNormalizedName(pattern, ownerId, cursorUpdatedAt, cursorId, fetchSize)) {
                 merged.add(SearchResultDto.fromFile(f));
             }
         }
         if (wantFolder) {
-            for (Folder fd : folderRepository.searchByNormalizedName(pattern, cursorUpdatedAt, cursorId, fetchSize)) {
+            for (Folder fd : folderRepository.searchByNormalizedName(pattern, ownerId, cursorUpdatedAt, cursorId, fetchSize)) {
                 merged.add(SearchResultDto.fromFolder(fd));
             }
         }
@@ -131,19 +133,19 @@ public class SearchQueryService {
         }
 
         long totalEstimate = (cursor == null)
-            ? computeTotalEstimate(pattern, wantFile, wantFolder)
+            ? computeTotalEstimate(pattern, ownerId, wantFile, wantFolder)
             : -1L;
 
         return new SearchPage(List.copyOf(page), nextCursor, totalEstimate);
     }
 
-    private long computeTotalEstimate(String pattern, boolean wantFile, boolean wantFolder) {
+    private long computeTotalEstimate(String pattern, UUID ownerId, boolean wantFile, boolean wantFolder) {
         long total = 0;
         if (wantFile) {
-            total += fileRepository.countByNormalizedName(pattern);
+            total += fileRepository.countByNormalizedName(pattern, ownerId);
         }
         if (wantFolder) {
-            total += folderRepository.countByNormalizedName(pattern);
+            total += folderRepository.countByNormalizedName(pattern, ownerId);
         }
         return total;
     }

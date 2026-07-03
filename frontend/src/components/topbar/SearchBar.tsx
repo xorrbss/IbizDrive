@@ -2,8 +2,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Search, X } from 'lucide-react'
 import { useSearch } from '@/hooks/useSearch'
+import { useMe } from '@/hooks/useMe'
 import { FOCUS_SEARCH_EVENT } from '@/hooks/useGlobalShortcuts'
 import { SearchResults } from './SearchResults'
+import { SearchFilterBar, type SearchTypeFilter } from './SearchFilterBar'
 
 /**
  * 상단 검색 입력. docs/01 §10:
@@ -20,7 +22,20 @@ export function SearchBar() {
   const [query, setQuery] = useState('')
   const [open, setOpen] = useState(false)
   const [focused, setFocused] = useState(false)
-  const search = useSearch(query)
+  const [typeFilter, setTypeFilter] = useState<SearchTypeFilter>('all')
+  const [myFilesOnly, setMyFilesOnly] = useState(false)
+  const me = useMe()
+
+  // filters 조립 (ADR #52) — 미선택 키는 생략하여 backend가 전체로 처리.
+  const currentUserId = me.data?.user.id
+  const filters = useMemo(() => {
+    const f: Record<string, unknown> = {}
+    if (typeFilter !== 'all') f.type = typeFilter
+    if (myFilesOnly && currentUserId) f.ownerId = currentUserId
+    return f
+  }, [typeFilter, myFilesOnly, currentUserId])
+
+  const search = useSearch(query, filters)
 
   // 사내 환경은 다수가 Windows. mac의 ⌘ 기호는 Windows 사용자에게 인지 부담.
   // navigator.platform 으로 분기 (deprecated이나 deterministic; userAgentData는 점진 도입).
@@ -107,16 +122,29 @@ export function SearchBar() {
         </kbd>
       )}
       {open && (
-        <SearchResults
-          query={query}
-          isFetching={search.isFetching}
-          isError={search.isError}
-          items={search.data?.items}
-          onSelect={() => {
-            setOpen(false)
-            setQuery('')
-          }}
-        />
+        <>
+          <SearchFilterBar
+            type={typeFilter}
+            onTypeChange={setTypeFilter}
+            myFilesOnly={myFilesOnly}
+            onMyFilesOnlyChange={setMyFilesOnly}
+            myFilesDisabled={!currentUserId}
+          />
+          {/* 필터 바(약 2.4rem) 아래로 결과 드롭다운 오프셋. 래퍼는 height 0(absolute child)
+              이라 내부 SearchResults의 top-full은 이 래퍼 top(= 입력 하단 + 2.4rem)에 앵커된다. */}
+          <div className="absolute left-0 right-0 top-[calc(100%_+_2.4rem)]">
+            <SearchResults
+              query={query}
+              isFetching={search.isFetching}
+              isError={search.isError}
+              items={search.data?.items}
+              onSelect={() => {
+                setOpen(false)
+                setQuery('')
+              }}
+            />
+          </div>
+        </>
       )}
     </div>
   )

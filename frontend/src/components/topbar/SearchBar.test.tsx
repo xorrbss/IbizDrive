@@ -11,6 +11,11 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => new URLSearchParams(''),
 }))
 
+// useMe 모킹 — 로그인 사용자 (내 파일만 필터 enabled 검증용)
+vi.mock('@/hooks/useMe', () => ({
+  useMe: () => ({ data: { user: { id: 'me-1' } } }),
+}))
+
 function wrap(node: ReactNode) {
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   return <QueryClientProvider client={qc}>{node}</QueryClientProvider>
@@ -108,5 +113,33 @@ describe('SearchBar', () => {
     expect(input.value).toBe('')
     // 결과 안내 메시지도 사라짐
     expect(screen.queryByText(/2자 이상 입력하세요/)).toBeNull()
+  })
+
+  // ── 필터 바 (ADR #52) ─────────────────────────────────────────────
+
+  it('focus 시 필터 바 노출, blur 후 숨김', () => {
+    render(wrap(<SearchBar />))
+    const input = screen.getByRole('searchbox') as HTMLInputElement
+    expect(screen.queryByRole('group', { name: '검색 필터' })).toBeNull()
+    fireEvent.focus(input)
+    expect(screen.getByRole('group', { name: '검색 필터' })).toBeTruthy()
+  })
+
+  it('종류 필터 클릭 시 aria-pressed 갱신', () => {
+    render(wrap(<SearchBar />))
+    fireEvent.focus(screen.getByRole('searchbox'))
+    const folderBtn = screen.getByRole('button', { name: '폴더' })
+    expect(folderBtn.getAttribute('aria-pressed')).toBe('false')
+    fireEvent.click(folderBtn)
+    expect(folderBtn.getAttribute('aria-pressed')).toBe('true')
+  })
+
+  it('로그인 사용자 → "내 파일만" 체크박스 enabled', () => {
+    render(wrap(<SearchBar />))
+    fireEvent.focus(screen.getByRole('searchbox'))
+    const cb = screen.getByRole('checkbox', { name: /내 파일만/ }) as HTMLInputElement
+    expect(cb.disabled).toBe(false)
+    fireEvent.click(cb)
+    expect(cb.checked).toBe(true)
   })
 })

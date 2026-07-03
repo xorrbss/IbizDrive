@@ -280,11 +280,15 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
      *
      * <p>V26 {@code idx_files_normalized_name_trgm}(pg_trgm GIN, partial {@code deleted_at IS NULL})
      * 이 양측 wildcard LIKE를 커버 — ADR #33이 예정한 trigram 트랙 close (2026-07-02).
+     *
+     * <p>{@code ownerId} 필터 (ADR #52, 2026-07-03): NULL이면 전체 소유자, NOT NULL이면 해당
+     * owner_id로 제한. {@code idx_files_owner}(V5) 인덱스 활용.
      */
     @Query(value = """
         SELECT * FROM files
         WHERE deleted_at IS NULL
           AND normalized_name LIKE :pattern ESCAPE '\\'
+          AND (CAST(:ownerId AS uuid) IS NULL OR owner_id = CAST(:ownerId AS uuid))
           AND (
             CAST(:cursorUpdatedAt AS timestamptz) IS NULL
             OR updated_at < CAST(:cursorUpdatedAt AS timestamptz)
@@ -294,19 +298,22 @@ public interface FileRepository extends JpaRepository<FileItem, UUID> {
         LIMIT :limit
         """, nativeQuery = true)
     List<FileItem> searchByNormalizedName(@Param("pattern") String pattern,
+                                          @Param("ownerId") UUID ownerId,
                                           @Param("cursorUpdatedAt") Instant cursorUpdatedAt,
                                           @Param("cursorId") UUID cursorId,
                                           @Param("limit") int limit);
 
     /**
      * A9.2 — search totalEstimate 보조. 첫 페이지에서만 호출 — cursor 페이지에서는 비용 회피.
+     * {@code ownerId} 필터는 search 쿼리와 동일 의미 (ADR #52).
      */
     @Query(value = """
         SELECT COUNT(*) FROM files
         WHERE deleted_at IS NULL
           AND normalized_name LIKE :pattern ESCAPE '\\'
+          AND (CAST(:ownerId AS uuid) IS NULL OR owner_id = CAST(:ownerId AS uuid))
         """, nativeQuery = true)
-    long countByNormalizedName(@Param("pattern") String pattern);
+    long countByNormalizedName(@Param("pattern") String pattern, @Param("ownerId") UUID ownerId);
 
     /**
      * Plan D Task 15 — cross-workspace move 완료 후 invariant 검증 (a), file 분기.

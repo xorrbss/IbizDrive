@@ -9,11 +9,13 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.util.UUID;
+
 /**
- * 검색 REST endpoint — A9 (docs/02 §7.8, ADR #33).
+ * 검색 REST endpoint — A9 (docs/02 §7.8, ADR #33; owner 필터 ADR #52).
  *
  * <ul>
- *   <li><b>GET</b> {@code /api/search?q=&type=&cursor=&limit=} — list (A9.3). 200 {@link SearchPage}</li>
+ *   <li><b>GET</b> {@code /api/search?q=&type=&ownerId=&cursor=&limit=} — list (A9.3). 200 {@link SearchPage}</li>
  * </ul>
  *
  * <p>인증된 모든 사용자에 대해 열린 endpoint — 결과는 service 단의 READ 권한 후처리로 필터된다
@@ -32,13 +34,19 @@ public class SearchController {
 
     /**
      * 검색 list. {@code q}는 required. {@code type} ∈ {file,folder,all}, default=all (null 동등).
-     * {@code cursor}는 직전 응답 {@code nextCursor} echo back. {@code limit} default 50, hard cap 100.
+     * {@code ownerId} optional — 지정 시 해당 소유자 항목만 (ADR #52). Spring이 UUID로 파싱,
+     * 형식 오류는 400. {@code cursor}는 직전 응답 {@code nextCursor} echo back. {@code limit}
+     * default 50, hard cap 100.
+     *
+     * <p>필터 값(type/ownerId)은 cursor에 인코딩되지 않으므로 페이지 요청마다 동일하게 재전달해야 한다
+     * (SearchCursor는 정렬 tuple만 보존).
      */
     @GetMapping
     @PreAuthorize("isAuthenticated()")
     public ResponseEntity<SearchPage> search(
         @RequestParam("q") String q,
         @RequestParam(value = "type", required = false) String type,
+        @RequestParam(value = "ownerId", required = false) UUID ownerId,
         @RequestParam(value = "cursor", required = false) String cursor,
         @RequestParam(value = "limit", required = false) Integer limit,
         @AuthenticationPrincipal IbizDriveUserDetails principal
@@ -48,6 +56,7 @@ public class SearchController {
             principal.getUser().getRole(),
             q,
             normalizeType(type),
+            ownerId,
             cursor,
             limit
         );

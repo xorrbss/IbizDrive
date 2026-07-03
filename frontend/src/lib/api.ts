@@ -693,8 +693,8 @@ export const api = {
    * 호출자(useSearch)는 이미 normalizeForSearch + 최소 2자 게이트를 통과한 query를 넘김.
    * 1자 이하/빈 query는 방어적으로 즉시 빈 결과 (useQuery enabled=false 보조).
    *
-   * filters는 현재 backend 미지원 (ADR #33 — type/mime/owner 등은 후속 트랙). 시그니처는
-   * 호출부 drift 회피 위해 보존.
+   * filters: `type`('file'|'folder') + `ownerId`(소유자 UUID) 지원 (ADR #52, 2026-07-03).
+   * 미지정 키는 query string에서 생략 → backend가 전체로 처리. mime/date 필터는 여전히 미지원.
    *
    * 응답 SearchPage{items,nextCursor,totalEstimate}를 FileItem[]로 매핑. file은
    * folderId→parentId, sizeBytes→size; folder는 parentId 그대로(null→'' root). updatedBy는
@@ -712,6 +712,11 @@ export const api = {
     if (!q || q.length < 2) return { items: [] }
 
     const qs = new URLSearchParams({ q })
+    // 필터 (ADR #52) — type은 backend가 기존 지원, ownerId는 owner 필터. 미지정 키는 미전송.
+    const type = params.filters.type
+    if (type === 'file' || type === 'folder') qs.set('type', type)
+    const ownerId = params.filters.ownerId
+    if (typeof ownerId === 'string' && ownerId.length > 0) qs.set('ownerId', ownerId)
 
     const res = await fetch(`/api/search?${qs.toString()}`, {
       method: 'GET',

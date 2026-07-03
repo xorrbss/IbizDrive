@@ -261,6 +261,7 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
         SELECT * FROM folders
         WHERE deleted_at IS NULL
           AND normalized_name LIKE :pattern ESCAPE '\\'
+          AND (CAST(:ownerId AS uuid) IS NULL OR owner_id = CAST(:ownerId AS uuid))
           AND (
             CAST(:cursorUpdatedAt AS timestamptz) IS NULL
             OR updated_at < CAST(:cursorUpdatedAt AS timestamptz)
@@ -270,19 +271,22 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
         LIMIT :limit
         """, nativeQuery = true)
     List<Folder> searchByNormalizedName(@Param("pattern") String pattern,
+                                        @Param("ownerId") UUID ownerId,
                                         @Param("cursorUpdatedAt") Instant cursorUpdatedAt,
                                         @Param("cursorId") UUID cursorId,
                                         @Param("limit") int limit);
 
     /**
      * A9.2 — search totalEstimate 보조 (folder 분기). FileRepository 동등.
+     * {@code ownerId} 필터 동일 의미 (ADR #52). folders엔 mime_type 컬럼이 없어 owner만 적용.
      */
     @Query(value = """
         SELECT COUNT(*) FROM folders
         WHERE deleted_at IS NULL
           AND normalized_name LIKE :pattern ESCAPE '\\'
+          AND (CAST(:ownerId AS uuid) IS NULL OR owner_id = CAST(:ownerId AS uuid))
         """, nativeQuery = true)
-    long countByNormalizedName(@Param("pattern") String pattern);
+    long countByNormalizedName(@Param("pattern") String pattern, @Param("ownerId") UUID ownerId);
 
     /**
      * Plan D Task 12 — cross-workspace 이동 시 subtree 폴더의 (scope_type, scope_id) 일괄 갱신.
