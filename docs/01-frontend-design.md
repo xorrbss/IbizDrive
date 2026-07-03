@@ -971,7 +971,21 @@ export function normalizeFileName(s: string): string {
 
 백엔드도 **동일한 normalize 함수**로 `files.normalized_name` 컬럼을 만들어야 함 (Postgres `NORMALIZE()` 또는 애플리케이션 레벨 동기화).
 
-> **백엔드 계약**: `api.searchFiles` → `GET /api/search?q=&type=&cursor=&limit=` (docs/02 §7.8). 알고리즘/필터 범위는 ADR #33 (docs/00 §5).
+> **백엔드 계약**: `api.searchFiles` → `GET /api/search?q=&type=&ownerId=&cursor=&limit=` (docs/02 §7.8). 알고리즘/필터 범위는 ADR #33/#52 (docs/00 §5).
+
+### 10.1 검색 필터 (ADR #52 — 2026-07-03)
+
+`SearchBar` 드롭다운 상단의 `SearchFilterBar`가 검색 필터를 노출한다:
+
+| 필터 | UI | 동작 |
+|---|---|---|
+| 종류(type) | 전체 / 파일 / 폴더 세그먼트 (aria-pressed 토글) | `type=file\|folder` 전송 (전체는 미전송) |
+| 소유자(ownerId) | "내 파일만" 체크박스 | `ownerId=useMe().user.id` 전송. 비로그인 시 disabled |
+
+- 필터 상태는 `SearchBar`가 소유하고 `filters` 객체(`{ type?, ownerId? }`)로 조립해 `useSearch(query, filters)`에 전달. 미선택 키는 생략 → backend가 전체로 처리.
+- `api.searchFiles`가 `filters.type`/`filters.ownerId`를 query string에 append (`'file'\|'folder'`, 비어있지 않은 문자열만).
+- `SearchFilterBar`는 presentational — 값/콜백만 받는다. `onMouseDown preventDefault`로 결과 드롭다운 blur(120ms) 전에 클릭 처리.
+- mime/date 필터는 미도입 (ADR #52 — folders에 mime 컬럼 부재).
 
 ---
 

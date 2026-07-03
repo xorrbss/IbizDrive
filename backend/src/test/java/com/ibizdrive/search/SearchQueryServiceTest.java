@@ -60,21 +60,21 @@ class SearchQueryServiceTest {
 
     @Test
     void search_minLengthViolation_throws() {
-        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "a", null, null, null))
+        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "a", null, null, null, null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("INVALID_SEARCH_QUERY");
     }
 
     @Test
     void search_blankQuery_throws() {
-        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "   ", null, null, null))
+        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "   ", null, null, null, null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("INVALID_SEARCH_QUERY");
     }
 
     @Test
     void search_invalidType_throws() {
-        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "foo", "movie", null, null))
+        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "foo", "movie", null, null, null))
             .isInstanceOf(IllegalArgumentException.class)
             .hasMessage("INVALID_SEARCH_QUERY");
     }
@@ -84,12 +84,12 @@ class SearchQueryServiceTest {
     @Test
     void search_emptyRepos_returnsEmptyPage_zeroEstimate() {
         adminCanRead();
-        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(fileRepository.countByNormalizedName(anyString())).thenReturn(0L);
-        when(folderRepository.countByNormalizedName(anyString())).thenReturn(0L);
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
 
-        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", null, null, null);
+        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", null, null, null, null);
 
         assertThat(page.items()).isEmpty();
         assertThat(page.nextCursor()).isNull();
@@ -101,26 +101,61 @@ class SearchQueryServiceTest {
     @Test
     void search_typeFile_skipsFolderRepo() {
         adminCanRead();
-        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(fileRepository.countByNormalizedName(anyString())).thenReturn(0L);
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
 
-        service.search(ACTOR, Role.ADMIN, "foo", "file", null, null);
+        service.search(ACTOR, Role.ADMIN, "foo", "file", null, null, null);
 
-        verify(fileRepository).searchByNormalizedName(anyString(), any(), any(), anyInt());
-        verify(folderRepository, never()).searchByNormalizedName(anyString(), any(), any(), anyInt());
-        verify(folderRepository, never()).countByNormalizedName(anyString());
+        verify(fileRepository).searchByNormalizedName(anyString(), any(), any(), any(), anyInt());
+        verify(folderRepository, never()).searchByNormalizedName(anyString(), any(), any(), any(), anyInt());
+        verify(folderRepository, never()).countByNormalizedName(anyString(), any());
     }
 
     @Test
     void search_typeFolder_skipsFileRepo() {
         adminCanRead();
-        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(folderRepository.countByNormalizedName(anyString())).thenReturn(0L);
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
 
-        service.search(ACTOR, Role.ADMIN, "foo", "folder", null, null);
+        service.search(ACTOR, Role.ADMIN, "foo", "folder", null, null, null);
 
-        verify(folderRepository).searchByNormalizedName(anyString(), any(), any(), anyInt());
-        verify(fileRepository, never()).searchByNormalizedName(anyString(), any(), any(), anyInt());
+        verify(folderRepository).searchByNormalizedName(anyString(), any(), any(), any(), anyInt());
+        verify(fileRepository, never()).searchByNormalizedName(anyString(), any(), any(), any(), anyInt());
+    }
+
+    // ── owner filter (ADR #52) ─────────────────────────────────────────
+
+    @Test
+    void search_ownerId_passedToBothRepositories() {
+        UUID owner = UUID.fromString("dddddddd-dddd-dddd-dddd-dddddddddddd");
+        adminCanRead();
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
+
+        service.search(ACTOR, Role.ADMIN, "foo", null, owner, null, null);
+
+        // ownerId가 search + count 양쪽, file + folder 양쪽에 전달돼야 함
+        verify(fileRepository).searchByNormalizedName(anyString(), eq(owner), any(), any(), anyInt());
+        verify(folderRepository).searchByNormalizedName(anyString(), eq(owner), any(), any(), anyInt());
+        verify(fileRepository).countByNormalizedName(anyString(), eq(owner));
+        verify(folderRepository).countByNormalizedName(anyString(), eq(owner));
+    }
+
+    @Test
+    void search_ownerIdNull_passesNullToRepositories() {
+        adminCanRead();
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
+
+        service.search(ACTOR, Role.ADMIN, "foo", null, null, null, null);
+
+        // ownerId=null → repo에도 null (전체 소유자, WHERE 절이 IS NULL 분기로 무효화)
+        verify(fileRepository).searchByNormalizedName(anyString(), eq((UUID) null), any(), any(), anyInt());
+        verify(folderRepository).searchByNormalizedName(anyString(), eq((UUID) null), any(), any(), anyInt());
     }
 
     // ── merge sort by updatedAt DESC ───────────────────────────────────
@@ -132,14 +167,14 @@ class SearchQueryServiceTest {
         UUID folderId = UUID.fromString("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb");
 
         adminCanRead();
-        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), anyInt()))
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(newFile(fileId, "foo.pdf", t0.minusSeconds(10))));
-        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), anyInt()))
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(newFolder(folderId, "foo-team", t0)));
-        when(fileRepository.countByNormalizedName(anyString())).thenReturn(1L);
-        when(folderRepository.countByNormalizedName(anyString())).thenReturn(1L);
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(1L);
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(1L);
 
-        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", null, null, null);
+        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", null, null, null, null);
 
         assertThat(page.items()).hasSize(2);
         assertThat(page.items().get(0).id()).isEqualTo(folderId);
@@ -160,20 +195,20 @@ class SearchQueryServiceTest {
 
         when(permissionService.effectivePermissions(Role.MEMBER))
             .thenReturn(EnumSet.noneOf(Permission.class));
-        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), anyInt()))
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(
                 newFile(granted, "ok.pdf", t0),
                 newFile(denied, "blocked.pdf", t0.minusSeconds(1))
             ));
-        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(fileRepository.countByNormalizedName(anyString())).thenReturn(2L);
-        when(folderRepository.countByNormalizedName(anyString())).thenReturn(0L);
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(2L);
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
         when(permissionResolver.isGranted(eq(ACTOR), eq("file"), eq(granted), eq(Permission.READ)))
             .thenReturn(true);
         when(permissionResolver.isGranted(eq(ACTOR), eq("file"), eq(denied), eq(Permission.READ)))
             .thenReturn(false);
 
-        SearchPage page = service.search(ACTOR, Role.MEMBER, "foo", null, null, null);
+        SearchPage page = service.search(ACTOR, Role.MEMBER, "foo", null, null, null, null);
 
         assertThat(page.items()).hasSize(1);
         assertThat(page.items().get(0).id()).isEqualTo(granted);
@@ -190,16 +225,16 @@ class SearchQueryServiceTest {
         UUID b = UUID.fromString("11111111-2222-3333-4444-555555555555");
 
         adminCanRead();
-        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), anyInt()))
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt()))
             .thenReturn(List.of(
                 newFile(a, "foo.pdf", t0),
                 newFile(b, "foo2.pdf", t0.minusSeconds(1))
             ));
-        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(fileRepository.countByNormalizedName(anyString())).thenReturn(2L);
-        when(folderRepository.countByNormalizedName(anyString())).thenReturn(0L);
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.countByNormalizedName(anyString(), any())).thenReturn(2L);
+        when(folderRepository.countByNormalizedName(anyString(), any())).thenReturn(0L);
 
-        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", "file", null, 1);
+        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", "file", null, null, 1);
 
         assertThat(page.items()).hasSize(1);
         assertThat(page.items().get(0).id()).isEqualTo(a);
@@ -216,21 +251,21 @@ class SearchQueryServiceTest {
     void search_cursorPage_returnsTotalEstimateMinusOne() {
         Instant t0 = Instant.parse("2026-04-30T10:00:00Z");
         adminCanRead();
-        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
-        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), anyInt())).thenReturn(List.of());
+        when(fileRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
+        when(folderRepository.searchByNormalizedName(anyString(), any(), any(), any(), anyInt())).thenReturn(List.of());
 
         String cursorWire = SearchCursor.encode(t0.toEpochMilli(), "file", UUID.randomUUID());
-        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", null, cursorWire, null);
+        SearchPage page = service.search(ACTOR, Role.ADMIN, "foo", null, null, cursorWire, null);
 
         assertThat(page.totalEstimate()).isEqualTo(-1L);
         // count 쿼리 호출 안 됨 — cursor 페이지에서 비용 회피
-        verify(fileRepository, never()).countByNormalizedName(anyString());
-        verify(folderRepository, never()).countByNormalizedName(anyString());
+        verify(fileRepository, never()).countByNormalizedName(anyString(), any());
+        verify(folderRepository, never()).countByNormalizedName(anyString(), any());
     }
 
     @Test
     void search_invalidCursor_throwsIllegalArgument() {
-        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "foo", null, "!!!not-base64!!!", null))
+        assertThatThrownBy(() -> service.search(ACTOR, Role.ADMIN, "foo", null, null, "!!!not-base64!!!", null))
             .isInstanceOf(IllegalArgumentException.class);
     }
 

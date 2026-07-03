@@ -1643,27 +1643,31 @@ DELETE /api/files/upload/:uploadId  (사용자 취소 또는 만료)
 | GET | `/api/search` | isAuthenticated (결과는 권한 필터링) | — | `q → normalizeForSearch(q)` | `WHERE deleted_at IS NULL` | 400 `INVALID_SEARCH_QUERY` (minLength 미달 / type invalid / cursor invalid) |
 
 ```text
-GET /api/search?q=&type=file|folder|all&cursor=&limit=
+GET /api/search?q=&type=file|folder|all&ownerId=&cursor=&limit=
   - q (required, string): 검색어. 서버 정규화 q' = normalizeForSearch(q) (NFC + lowercase + 공백 collapse + trim)
                           minLength: 2 (정규화 후 기준 — 1자/공백만 → 400 INVALID_SEARCH_QUERY)
   - type (optional, default=all): "file" | "folder" | "all". invalid → 400.
+  - ownerId (optional, UUID): 지정 시 해당 소유자 항목만 (ADR #52). files·folders 양쪽 owner_id에 적용.
+                              Spring이 UUID 파싱 — 형식 오류는 400. 미지정 = 전체 소유자.
   - cursor (optional): 직전 응답의 nextCursor를 echo back. 첫 페이지에서는 미지정.
                        opaque base64 url-safe `{updatedAtEpochMs}|{type}|{id}` (ADR #33).
+                       필터(type/ownerId)는 cursor에 미인코딩 → 페이지마다 동일 필터 재전달 필요.
   - limit (optional, default=50, cap=100)
 
   서버 처리:
   1. q normalize → minLen 2 검증
-  2. type 분기 → file 검색(LIKE) + folder 검색(LIKE) [+ cursor tuple 조건]
+  2. type 분기 → file 검색(LIKE) + folder 검색(LIKE) [+ ownerId + cursor tuple 조건]
      — V26 pg_trgm GIN 인덱스(idx_files/folders_normalized_name_trgm, partial deleted_at IS NULL)가
        양측 wildcard LIKE를 커버 (2026-07-02, ADR #33이 예정한 trigram 트랙 close)
+     — ownerId 지정 시 `AND (CAST(:ownerId AS uuid) IS NULL OR owner_id = CAST(:ownerId AS uuid))` (ADR #52)
   3. 각 테이블당 LIMIT (limit+1) — hasMore 판정 + nextCursor 발급
   4. type=all이면 in-memory merge sort `(updatedAt DESC, type DESC, id DESC)`
   5. 권한 후처리 — actor의 effective READ (ADR #33: ROLE short-circuit + resource grant fallback)
   6. SearchPage 빌드
 
-  out-of-scope (ADR #33로 박제):
+  out-of-scope (ADR #33/#52):
   - tsvector full-text / pg_trgm fuzzy match (별도 마이그레이션 트랙)
-  - owner / modifiedFrom / modifiedTo 필터 (frontend 미사용 — 추가 시 controller param + service overload hook)
+  - mime / modifiedFrom / modifiedTo 필터 (mime는 folders 컬럼 부재로 미도입 — ADR #52)
   - 검색 audit emission (SEARCH_QUERIED enum 정의 0, 보안 트랙)
 
   Response: 200 application/json

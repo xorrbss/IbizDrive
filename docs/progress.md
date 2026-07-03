@@ -5,6 +5,41 @@
 
 ---
 
+## 2026-07-03 — 검색 필터(타입/소유자, ADR #52) + DnD 실드래그 e2e
+
+> 도입 평가 후속 2트랙. 검색은 파일명 LIKE만 지원하던 것에 type/owner 필터 추가,
+> DnD는 flaky 이유로 미커버였던 실제 드래그를 mock 하네스 위에서 검증.
+
+### 검색 필터 (ADR #52)
+
+- backend: `SearchController`에 `ownerId` optional `@RequestParam UUID` 추가 →
+  `SearchQueryService.search` 시그니처 확장 → 4개 repository 쿼리(files/folders × search/count)에
+  `AND (CAST(:ownerId AS uuid) IS NULL OR owner_id = CAST(:ownerId AS uuid))`. type은 backend가
+  이미 지원(frontend 미노출이었을 뿐). cursor에는 필터 미인코딩 → 페이지마다 재전달
+- frontend: `searchFiles`가 `filters.type`/`filters.ownerId`를 query string에 append,
+  신규 `SearchFilterBar`(전체/파일/폴더 세그먼트 + "내 파일만" 체크박스, ownerId=useMe().user.id),
+  `SearchBar`가 필터 상태 소유 + useSearch에 전달
+- mime 필터는 제외 — 사용자 범위가 type/owner였고 folders에 mime 컬럼 부재(YAGNI)
+- 테스트: BE `SearchQueryServiceTest`(+2)·`SearchControllerTest`(재작성+ownerId),
+  FE `api.search.test.ts`(+5)·신규 `SearchFilterBar.test.tsx`·`SearchBar.test.tsx`(+3)
+- docs: ADR #33 owner closure + 신규 ADR #52, docs/02 §7.8, docs/01 §10.1
+
+### DnD 실드래그 e2e
+
+- 신규 `e2e/dnd.e2e.ts` — dnd-kit PointerSensor(distance 5px) 통과하는 실제 마우스 시퀀스
+  (hover→down→활성화용 12px 이동→타깃 다단계 이동→up). 파일→하위폴더 드래그 이동,
+  DragOverlay 배지 노출, 파일 위 no-op(over=null) 3케이스
+- `apiMocks.ts`에 `moveCalls` 추적 추가 (실제 move API 호출 검증)
+
+### 검증
+
+- (진행 중) BE full + FE full + Playwright 전체 + 실서버 검색 E2E
+
+### 다음 세션 컨텍스트
+
+- 검색 mime/date 필터·검색 결과 owner 표시(SearchResultDto ownerId 추가 필요)는 미도입
+- e2e CI 편입(ci.yml Playwright 단계)은 여전히 후속 트랙
+
 ## 2026-07-03 — E2E 확장 트랙 (업로드·공유·버전·휴지통 복원) + useUpload 중복 기동 버그 수정
 
 > 도입 평가에서 지적된 "E2E 4개 스펙(15케이스)뿐, 핵심 흐름 미커버" 갭 해소.
