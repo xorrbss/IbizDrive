@@ -97,6 +97,8 @@ export class MockDrive {
   lastUploadPostData: string | null = null
   /** 업로드 POST 횟수 — useUpload 다중 마운트 중복 기동 회귀 가드. */
   uploadPostCount = 0
+  /** move 요청 기록 — DnD/다이얼로그 이동 검증용 (경로에서 추출한 {kind,id,targetFolderId}). */
+  moveCalls: Array<{ kind: 'files' | 'folders'; id: string; targetFolderId: string }> = []
 
   private seq = 0
 
@@ -261,13 +263,23 @@ export class MockDrive {
       })
     })
 
-    // ── 이동 (MoveFolderDialog — useMoveBulk 단건 fanout) ──
-    await page.route('**/api/files/*/move', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    )
-    await page.route('**/api/folders/*/move', (route) =>
-      route.fulfill({ status: 200, contentType: 'application/json', body: '{}' }),
-    )
+    // ── 이동 (MoveFolderDialog · DnD — useMoveBulk 단건 fanout) ──
+    const recordMove = (route: import('@playwright/test').Route, kind: 'files' | 'folders') => {
+      const m = new URL(route.request().url()).pathname.match(
+        new RegExp(`^/api/${kind}/([^/]+)/move$`),
+      )
+      let targetFolderId = ''
+      try {
+        targetFolderId =
+          (route.request().postDataJSON() as { targetFolderId?: string })?.targetFolderId ?? ''
+      } catch {
+        // body 없음/파싱 실패 — targetFolderId 미기록
+      }
+      if (m) this.moveCalls.push({ kind, id: decodeURIComponent(m[1]), targetFolderId })
+      return route.fulfill({ status: 200, contentType: 'application/json', body: '{}' })
+    }
+    await page.route('**/api/files/*/move', (route) => recordMove(route, 'files'))
+    await page.route('**/api/folders/*/move', (route) => recordMove(route, 'folders'))
 
     // ── 폴더 items (FileTable 목록) ──
     await page.route(`**/api/folders/${IDS.rootFolder}/items**`, (route) =>
