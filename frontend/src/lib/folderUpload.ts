@@ -11,14 +11,21 @@ export type UploadEntry = {
   pathSegments: string[]
 }
 
+export type FolderUploadError = {
+  path: string
+  message: string
+}
+
 /**
  * 추출 결과.
  * - entries: 업로드할 파일 + 경로
  * - dirPaths: 생성해야 할 디렉토리 경로 전체(조상 포함, 빈 폴더 포함). dedupe됨, 정렬은 호출부 책임.
+ * - errors: drop 재귀 중 읽지 못한 파일/폴더. 나머지 항목은 계속 업로드한다.
  */
 export type FolderUploadPlan = {
   entries: UploadEntry[]
   dirPaths: string[][]
+  errors?: FolderUploadError[]
 }
 
 /** 경로 배열 → dedup 키. JSON 직렬화로 구분자 충돌 없이 고유. */
@@ -55,9 +62,14 @@ export function extractInputFiles(files: File[]): FolderUploadPlan {
 export async function extractDropEntries(
   entries: Array<FileSystemEntry | null>,
 ): Promise<FolderUploadPlan> {
-  const out: FolderUploadPlan = { entries: [], dirPaths: [] }
+  const out: FolderUploadPlan = { entries: [], dirPaths: [], errors: [] }
   for (const entry of entries) {
-    if (entry) await walk(entry, [], out)
+    if (!entry) continue
+    try {
+      await walk(entry, [], out)
+    } catch (e) {
+      pushError(out, entry.name, messageFromUnknown(e, '항목을 읽을 수 없습니다'))
+    }
   }
   // dirPaths dedupe (재귀 중 디렉토리는 1회 방문이지만 방어적으로 정리)
   const seen = new Set<string>()
@@ -76,18 +88,44 @@ async function walk(
   out: FolderUploadPlan,
 ): Promise<void> {
   if (entry.isFile) {
-    const file = await entryFile(entry as FileSystemFileEntry)
-    out.entries.push({ file, pathSegments: parentPath })
+    try {
+      const file = await entryFile(entry as FileSystemFileEntry)
+      out.entries.push({ file, pathSegments: parentPath })
+    } catch (e) {
+      pushError(
+        out,
+        [...parentPath, entry.name].join('/'),
+        messageFromUnknown(e, '파일을 읽을 수 없습니다'),
+      )
+    }
     return
   }
   if (entry.isDirectory) {
     const dirPath = [...parentPath, entry.name]
     out.dirPaths.push(dirPath)
-    const reader = (entry as FileSystemDirectoryEntry).createReader()
-    let batch = await readEntries(reader)
-    while (batch.length > 0) {
-      for (const child of batch) await walk(child, dirPath, out)
-      batch = await readEntries(reader)
+    try {
+      const reader = (entry as FileSystemDirectoryEntry).createReader()
+      let batch = await readEntries(reader)
+      while (batch.length > 0) {
+        for (const child of batch) {
+          try {
+            await walk(child, dirPath, out)
+          } catch (e) {
+            pushError(
+              out,
+              [...dirPath, child.name].join('/'),
+              messageFromUnknown(e, '항목을 읽을 수 없습니다'),
+            )
+          }
+        }
+        batch = await readEntries(reader)
+      }
+    } catch (e) {
+      pushError(
+        out,
+        dirPath.join('/'),
+        messageFromUnknown(e, '폴더를 읽을 수 없습니다'),
+      )
     }
   }
 }
@@ -98,6 +136,16 @@ function entryFile(entry: FileSystemFileEntry): Promise<File> {
 
 function readEntries(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
   return new Promise((resolve, reject) => reader.readEntries(resolve, reject))
+}
+
+function pushError(out: FolderUploadPlan, path: string, message: string): void {
+  const errors = out.errors ?? []
+  errors.push({ path, message })
+  out.errors = errors
+}
+
+function messageFromUnknown(e: unknown, fallback: string): string {
+  return e instanceof Error && e.message ? e.message : fallback
 }
 
 function collectAncestors(

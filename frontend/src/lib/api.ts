@@ -492,7 +492,11 @@ export const api = {
         Accept: 'application/json',
         'X-CSRF-TOKEN': csrf,
       },
-      body: JSON.stringify({ targetFolderId }),
+      body: JSON.stringify(
+        type === 'folder'
+          ? { targetParentId: targetFolderId }
+          : { targetFolderId },
+      ),
     })
     if (!res.ok) {
       throw await buildApiError(res, `moveItem failed: ${res.status}`)

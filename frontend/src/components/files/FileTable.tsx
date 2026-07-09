@@ -82,8 +82,11 @@ export function FileTable({ folderId }: Props) {
           .then((plan) => uploadFolder(plan, folderId))
           .then((res) => {
             if (res.errors.length > 0) {
-              toast.error(`일부 폴더를 업로드하지 못했습니다 (${res.errors.length}건).`)
+              toast.error(`일부 항목을 업로드하지 못했습니다 (${res.errors.length}건).`)
             }
+          })
+          .catch(() => {
+            toast.error('폴더 업로드를 시작하지 못했습니다. 다시 시도해 주세요.')
           })
         return
       }

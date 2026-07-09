@@ -155,4 +155,16 @@ describe('useFolderUpload', () => {
     expect(res.errors.length).toBeGreaterThanOrEqual(2)
     expect(res.errors.some((e) => e.path === 'proj' && e.message.includes('권한'))).toBe(true)
   })
+
+  it('추출 단계 오류를 결과 errors에 포함하되 업로드 가능한 파일은 enqueue', async () => {
+    const plan: FolderUploadPlan = {
+      entries: [{ file: f('ok.txt'), pathSegments: [] }],
+      dirPaths: [],
+      errors: [{ path: 'proj/locked.tmp', message: 'locked' }],
+    }
+    const res = await run(plan)
+
+    expect(enqueue).toHaveBeenCalledWith([expect.objectContaining({ name: 'ok.txt' })], 'base')
+    expect(res.errors).toEqual([{ path: 'proj/locked.tmp', message: 'locked' }])
+  })
 })

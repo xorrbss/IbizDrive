@@ -87,6 +87,22 @@ describe('api.moveFiles', () => {
     })
   })
 
+  it('폴더 이동은 backend 계약에 맞춰 targetParentId로 보낸다', async () => {
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
+
+    const result = await api.moveFiles(
+      [{ id: 'folder_sales', type: 'folder' }],
+      'folder_hr',
+    )
+
+    expect(result).toEqual({ movedIds: ['folder_sales'] })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('/api/folders/folder_sales/move')
+    expect(JSON.parse((init as RequestInit).body as string)).toEqual({
+      targetParentId: 'folder_hr',
+    })
+  })
+
   it('movedIds를 반환한다 (단건)', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }))
 

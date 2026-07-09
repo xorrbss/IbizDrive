@@ -12,7 +12,11 @@ import { useCurrentWorkspace } from '@/hooks/useCurrentWorkspace'
  * - containsFolderIds: ids 중 type='folder'만 (filesInFolder 캐시에서 매칭)
  * - sourceWorkspace: 현재 URL에서 파싱한 workspace 컨텍스트 (cross-workspace 드롭 판정용)
  */
-export function useDragPayload(rowId: string, rowParentId: string): MoveDragData {
+export function useDragPayload(
+  rowId: string,
+  rowParentId: string,
+  rowType?: 'file' | 'folder',
+): MoveDragData {
   const selectedIds = useSelectionStore((s) => s.ids)
   const qc = useQueryClient()
   const ws = useCurrentWorkspace()
@@ -27,9 +31,14 @@ export function useDragPayload(rowId: string, rowParentId: string): MoveDragData
   })
   const items = matches[0]?.[1] ?? []
 
-  const containsFolderIds = items
-    .filter((f) => ids.includes(f.id) && f.type === 'folder')
-    .map((f) => f.id)
+  const folderIds = new Set(
+    items
+      .filter((f) => ids.includes(f.id) && f.type === 'folder')
+      .map((f) => f.id),
+  )
+  if (rowType === 'folder' && ids.includes(rowId)) {
+    folderIds.add(rowId)
+  }
 
   const sourceWorkspace = ws
     ? { kind: ws.section, id: ws.workspaceId }
@@ -39,7 +48,7 @@ export function useDragPayload(rowId: string, rowParentId: string): MoveDragData
     type: 'move-files',
     ids,
     sourceFolderId: rowParentId,
-    containsFolderIds,
+    containsFolderIds: Array.from(folderIds),
     sourceWorkspace,
   }
 }

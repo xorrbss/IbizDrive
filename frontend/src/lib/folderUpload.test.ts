@@ -30,6 +30,16 @@ function fileEntry(name: string): MockEntry {
   } as unknown as MockEntry
 }
 
+function unreadableFileEntry(name: string): MockEntry {
+  return {
+    isFile: true,
+    isDirectory: false,
+    name,
+    file: (_ok: (f: File) => void, fail?: (e: Error) => void) =>
+      fail?.(new Error('locked')),
+  } as unknown as MockEntry
+}
+
 /** children를 batchSize 단위로 나눠 readEntries가 ≤batchSize씩 반환하도록 시뮬레이트. */
 function dirEntry(name: string, children: MockEntry[], batchSize = 100): MockEntry {
   return {
@@ -116,5 +126,19 @@ describe('extractDropEntries', () => {
   it('null entry(webkitGetAsEntry 미지원/비파일)는 무시', async () => {
     const plan = await extractDropEntries([null, fileEntry('a.txt')])
     expect(plan.entries).toHaveLength(1)
+  })
+
+  it('파일 읽기 실패는 errors에 담고 나머지 파일은 계속 추출', async () => {
+    const tree = dirEntry('proj', [
+      unreadableFileEntry('locked.tmp'),
+      fileEntry('ok.txt'),
+    ])
+    const plan = await extractDropEntries([tree])
+    const filePaths = plan.entries.map((e) => [...e.pathSegments, e.file.name].join('/'))
+
+    expect(filePaths).toEqual(['proj/ok.txt'])
+    expect(plan.errors).toEqual([
+      expect.objectContaining({ path: 'proj/locked.tmp', message: 'locked' }),
+    ])
   })
 })

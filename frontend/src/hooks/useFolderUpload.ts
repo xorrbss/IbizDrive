@@ -64,7 +64,7 @@ export function useFolderUpload() {
       // 동일 부모의 getFolderChildren는 1회만 나간다.
       const childrenCache = new Map<string, Promise<Array<{ name: string; id: string }>>>()
       const createdParents = new Set<string>()
-      const errors: FolderUploadResult['errors'] = []
+      const errors: FolderUploadResult['errors'] = [...(plan.errors ?? [])]
       let createdFolders = 0
 
       const getChildren = (parentId: string) => {

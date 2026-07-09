@@ -56,7 +56,7 @@ export function FileRow({
   gridCols,
 }: Props) {
   const toggleSelection = useSelectionStore((s) => s.toggle)
-  const dragData = useDragPayload(item.id, item.parentId)
+  const dragData = useDragPayload(item.id, item.parentId, item.type)
   const draggable = useDraggable({
     id: `${DRAGGABLE_ROW_PREFIX}${item.id}`,
     data: dragData,

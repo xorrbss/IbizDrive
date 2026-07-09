@@ -1,8 +1,8 @@
 'use client'
 import { toast } from 'sonner'
-import { useQueryClient } from '@tanstack/react-query'
+import { useQueries, useQueryClient } from '@tanstack/react-query'
 import { useSelectionStore } from '@/stores/selection'
-import { usePermission } from '@/hooks/usePermission'
+import { usePermission, type PermissionFlags } from '@/hooks/usePermission'
 import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { useCurrentFolder } from '@/hooks/useCurrentFolder'
 import { useMoveUiStore } from '@/stores/moveUi'
@@ -12,7 +12,8 @@ import { useFilesInFolder } from '@/hooks/useFilesInFolder'
 import { useSortParams } from '@/hooks/useSortParams'
 import { api } from '@/lib/api'
 import { messageForError } from '@/lib/errors'
-import { invalidations } from '@/lib/queryKeys'
+import { invalidations, qk } from '@/lib/queryKeys'
+import type { Permission } from '@/types/permission'
 
 type DeletedItem = { id: string; type: 'file' | 'folder' }
 
@@ -24,7 +25,7 @@ export function BulkActionBar() {
   const clear = useSelectionStore((s) => s.clear)
   const count = selectedIds.size
   const ids = Array.from(selectedIds)
-  const can = usePermission()
+  const roleCan = usePermission()
   const { folderId } = useCurrentFolder()
   const qc = useQueryClient()
   const deleteMut = useDeleteBulk({
@@ -49,24 +50,64 @@ export function BulkActionBar() {
   // 단일 선택 시 RenameDialog에 넘길 이름을 현재 폴더 캐시에서 찾는다.
   // 다중/없음일 때는 비활성이라 조회 결과가 비어 있어도 무방.
   const { data: items } = useFilesInFolder(folderId, sort, dir)
+  const selectedPermissions = useSelectedPermissions(ids, roleCan)
   const singleId = count === 1 ? ids[0] : null
   const singleItem =
     singleId && items ? items.find((it) => it.id === singleId) : undefined
   // 정책: count === 1 이면 활성. 폴더/파일 구분 없이 허용한다 — RenameDialog와 백엔드가
   // 양쪽을 모두 지원하므로 BulkActionBar에서 추가로 막을 이유가 없다.
   // 캐시 미스(items 미로딩)는 disabled로 안전하게 폴백.
-  const renameEnabled = count === 1 && !!singleItem
+  const renameEnabled = count === 1 && !!singleItem && selectedPermissions.hasAll('EDIT')
   // 공유는 단일 항목만 (다중 공유 wire는 별도 트랙). file/folder 모두 활성 — A12(폴더 endpoint)
   // + F5.2(ShareDialog folder 분기) closure로 양쪽 진입 가능. 캐시 미스 시 disabled 폴백.
-  const shareEnabled = count === 1 && !!singleItem
+  const shareEnabled = count === 1 && !!singleItem && selectedPermissions.hasAll('SHARE')
+  const moveEnabled = selectedPermissions.hasAll('MOVE')
+  const deleteAllowed = selectedPermissions.hasAll('DELETE')
   // M-Download — backend `GET /api/files/{id}/download` (docs/02 §7.6.1)는 단일 파일만
   // 지원(폴더 zip은 별도 트랙). 단일 파일 선택 시만 활성, 폴더/다중/캐시미스는 비활성.
-  const downloadEnabled = count === 1 && singleItem?.type === 'file'
+  const downloadEnabled =
+    count === 1 &&
+    singleItem?.type === 'file' &&
+    selectedPermissions.hasAll('DOWNLOAD')
   const downloadTitle = downloadEnabled
     ? undefined
     : count !== 1
       ? '단일 파일 선택 시 사용 가능'
-      : '파일만 다운로드 가능'
+      : singleItem?.type !== 'file'
+        ? '파일만 다운로드 가능'
+        : selectedPermissions.isLoading('DOWNLOAD')
+          ? '권한 확인 중'
+          : '다운로드 권한이 없습니다'
+  const moveTitle = moveEnabled
+    ? undefined
+    : selectedPermissions.isLoading('MOVE')
+      ? '권한 확인 중'
+      : '선택한 항목을 이동할 권한이 없습니다'
+  const renameTitle =
+    count !== 1
+      ? '단일 선택 시 사용 가능'
+      : !singleItem
+        ? '단일 선택 시 사용 가능'
+        : selectedPermissions.isLoading('EDIT')
+          ? '권한 확인 중'
+          : renameEnabled
+            ? undefined
+            : '이름 변경 권한이 없습니다'
+  const shareTitle =
+    count !== 1
+      ? '단일 항목 선택 시 사용 가능'
+      : !singleItem
+        ? '단일 항목 선택 시 사용 가능'
+        : selectedPermissions.isLoading('SHARE')
+          ? '권한 확인 중'
+          : shareEnabled
+            ? undefined
+            : '공유 권한이 없습니다'
+  const deleteTitle = deleteAllowed
+    ? undefined
+    : selectedPermissions.isLoading('DELETE')
+      ? '권한 확인 중'
+      : '선택한 항목을 삭제할 권한이 없습니다'
 
   if (count === 0) return null
 
@@ -76,6 +117,7 @@ export function BulkActionBar() {
   }
 
   const handleMove = () => {
+    if (!moveEnabled) return
     openMoveDialog(ids, folderId)
   }
 
@@ -85,6 +127,7 @@ export function BulkActionBar() {
   }
 
   const handleDelete = () => {
+    if (!deleteAllowed) return
     // M9.1 — backend는 file/folder 분기 endpoint이므로 선택 항목의 type을 cache(items)에서
     // 조회해 함께 전달. items 미로딩(캐시 미스) 항목은 보수적으로 'file'로 폴백 — backend가
     // 404를 돌려주면 onError에서 selection 복원되어 사용자 재시도 가능.
@@ -111,61 +154,56 @@ export function BulkActionBar() {
         <span className="text-[12.5px] font-semibold text-accent">{count}개 선택</span>
       </div>
       <div className="flex items-center gap-1">
-        {can.DOWNLOAD && (
-          <button
-            type="button"
-            onClick={handleDownload}
-            disabled={!downloadEnabled}
-            title={downloadTitle}
-            aria-disabled={!downloadEnabled || undefined}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
-          >
-            다운로드
-          </button>
-        )}
-        {can.MOVE && (
-          <button
-            type="button"
-            onClick={handleMove}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg transition-colors"
-          >
-            이동
-          </button>
-        )}
-        {can.EDIT && (
-          <button
-            type="button"
-            onClick={handleRename}
-            disabled={!renameEnabled}
-            title={renameEnabled ? undefined : '단일 선택 시 사용 가능'}
-            aria-disabled={!renameEnabled || undefined}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
-          >
-            이름 변경
-          </button>
-        )}
-        {can.SHARE && (
-          <button
-            type="button"
-            onClick={handleShare}
-            disabled={!shareEnabled}
-            title={shareEnabled ? undefined : '단일 항목 선택 시 사용 가능'}
-            aria-disabled={!shareEnabled || undefined}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
-          >
-            공유
-          </button>
-        )}
-        {can.DELETE && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={deleteMut.isPending}
-            className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] hover:text-danger disabled:opacity-50 transition-colors"
-          >
-            휴지통으로
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={handleDownload}
+          disabled={!downloadEnabled}
+          title={downloadTitle}
+          aria-disabled={!downloadEnabled || undefined}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+        >
+          다운로드
+        </button>
+        <button
+          type="button"
+          onClick={handleMove}
+          disabled={!moveEnabled}
+          title={moveTitle}
+          aria-disabled={!moveEnabled || undefined}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+        >
+          이동
+        </button>
+        <button
+          type="button"
+          onClick={handleRename}
+          disabled={!renameEnabled}
+          title={renameTitle}
+          aria-disabled={!renameEnabled || undefined}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+        >
+          이름 변경
+        </button>
+        <button
+          type="button"
+          onClick={handleShare}
+          disabled={!shareEnabled}
+          title={shareTitle}
+          aria-disabled={!shareEnabled || undefined}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-surface-2 hover:text-fg disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+        >
+          공유
+        </button>
+        <button
+          type="button"
+          onClick={handleDelete}
+          disabled={!deleteAllowed || deleteMut.isPending}
+          title={deleteTitle}
+          aria-disabled={!deleteAllowed || undefined}
+          className="h-7 px-2.5 inline-flex items-center gap-1.5 rounded bg-transparent text-fg-2 text-[12.5px] font-medium hover:bg-[color-mix(in_oklch,var(--danger)_12%,transparent)] hover:text-danger disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-transparent disabled:hover:text-fg-2 transition-colors"
+        >
+          휴지통으로
+        </button>
         <button
           type="button"
           onClick={clear}
@@ -206,4 +244,36 @@ async function undoDelete(
       toast.error(messageForError(err, '복원에 실패했습니다'))
     }
   }
+}
+
+function useSelectedPermissions(ids: string[], roleCan: PermissionFlags) {
+  const needsNodePermissions =
+    ids.length > 0 &&
+    !(
+      roleCan.DOWNLOAD &&
+      roleCan.MOVE &&
+      roleCan.EDIT &&
+      roleCan.DELETE &&
+      roleCan.SHARE
+    )
+  const results = useQueries({
+    queries: ids.map((id) => ({
+      queryKey: qk.permissions(id),
+      queryFn: () => api.getEffectivePermissions(id),
+      staleTime: 60_000,
+      enabled: needsNodePermissions,
+    })),
+  })
+
+  const hasAll = (permission: Permission): boolean => {
+    if (ids.length === 0) return false
+    if (roleCan[permission]) return true
+    return results.length === ids.length &&
+      results.every((r) => r.data?.includes(permission))
+  }
+
+  const isLoading = (permission: Permission): boolean =>
+    !roleCan[permission] && results.some((r) => r.isPending)
+
+  return { hasAll, isLoading }
 }

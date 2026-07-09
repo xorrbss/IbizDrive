@@ -13,6 +13,50 @@ import { useDeleteBulk } from '@/hooks/useDeleteBulk'
 import { api } from '@/lib/api'
 import { toastSpy } from '@/test/mocks/sonner'
 import type { FileItem } from '@/types/file'
+import type { PermissionFlags } from '@/hooks/usePermission'
+
+const FULL_PERMISSION_FLAGS: PermissionFlags = {
+  READ: true,
+  UPLOAD: true,
+  EDIT: true,
+  MOVE: true,
+  DOWNLOAD: true,
+  DELETE: true,
+  SHARE: true,
+  PERMISSION_ADMIN: true,
+  PURGE: false,
+  APPROVE_ADMIN_ACTION: false,
+}
+
+const NO_PERMISSION_FLAGS: PermissionFlags = {
+  READ: false,
+  UPLOAD: false,
+  EDIT: false,
+  MOVE: false,
+  DOWNLOAD: false,
+  DELETE: false,
+  SHARE: false,
+  PERMISSION_ADMIN: false,
+  PURGE: false,
+  APPROVE_ADMIN_ACTION: false,
+}
+
+const { permissionFlags } = vi.hoisted(() => ({
+  permissionFlags: {
+    current: {
+      READ: true,
+      UPLOAD: true,
+      EDIT: true,
+      MOVE: true,
+      DOWNLOAD: true,
+      DELETE: true,
+      SHARE: true,
+      PERMISSION_ADMIN: true,
+      PURGE: false,
+      APPROVE_ADMIN_ACTION: false,
+    } as PermissionFlags,
+  },
+}))
 
 vi.mock('@/hooks/useFilesInFolder', () => ({
   useFilesInFolder: vi.fn(),
@@ -20,17 +64,7 @@ vi.mock('@/hooks/useFilesInFolder', () => ({
 
 // M8: usePermission은 useQuery 기반 — 테스트는 권한 검증과 무관하므로 admin preset 8 권한으로 고정.
 vi.mock('@/hooks/usePermission', () => ({
-  usePermission: () => ({
-    READ: true,
-    UPLOAD: true,
-    EDIT: true,
-    MOVE: true,
-    DOWNLOAD: true,
-    DELETE: true,
-    SHARE: true,
-    PERMISSION_ADMIN: true,
-    PURGE: false,
-  }),
+  usePermission: () => permissionFlags.current,
 }))
 
 vi.mock('@/hooks/useCurrentFolder', () => ({
@@ -50,6 +84,7 @@ vi.mock('@/lib/api', () => ({
     restoreFile: vi.fn(),
     restoreFolder: vi.fn(),
     downloadFile: vi.fn(),
+    getEffectivePermissions: vi.fn(),
   },
 }))
 
@@ -94,6 +129,20 @@ function makeWrapper() {
   Wrapper.displayName = 'Wrapper'
   return Wrapper
 }
+
+beforeEach(() => {
+  permissionFlags.current = FULL_PERMISSION_FLAGS
+  vi.mocked(api.getEffectivePermissions).mockResolvedValue([
+    'READ',
+    'UPLOAD',
+    'EDIT',
+    'MOVE',
+    'DOWNLOAD',
+    'DELETE',
+    'SHARE',
+    'PERMISSION_ADMIN',
+  ])
+})
 
 describe('BulkActionBar — 이름 변경 버튼', () => {
   beforeEach(() => {
@@ -348,6 +397,68 @@ describe('BulkActionBar — 다운로드 버튼 (M-Download)', () => {
     })
     render(<BulkActionBar />, { wrapper: makeWrapper() })
     const btn = screen.getByRole('button', { name: '다운로드' })
+    expect((btn as HTMLButtonElement).disabled).toBe(true)
+  })
+})
+
+describe('BulkActionBar — 삭제 버튼 권한 표시', () => {
+  beforeEach(() => {
+    act(() => {
+      useSelectionStore.getState().clear()
+    })
+    vi.mocked(useFilesInFolder).mockReturnValue({
+      data: ITEMS,
+      isLoading: false,
+      error: null,
+    } as ReturnType<typeof useFilesInFolder>)
+    vi.mocked(useCurrentFolder).mockReturnValue({
+      folderId: 'root',
+      folder: { id: 'root', name: 'root', slugPath: [] },
+      isLoading: false,
+      error: null,
+    } as unknown as ReturnType<typeof useCurrentFolder>)
+    vi.mocked(useSortParams).mockReturnValue({ sort: 'name', dir: 'asc', setSort: vi.fn() })
+  })
+
+  it('전역 role 권한이 없어도 선택 항목에 DELETE가 있으면 활성화', async () => {
+    const mutate = vi.fn()
+    permissionFlags.current = NO_PERMISSION_FLAGS
+    vi.mocked(api.getEffectivePermissions).mockResolvedValue(['READ', 'DELETE'])
+    vi.mocked(useDeleteBulk).mockReturnValue({
+      mutate,
+      isPending: false,
+    } as unknown as ReturnType<typeof useDeleteBulk>)
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '휴지통으로' })
+
+    await waitFor(() => expect((btn as HTMLButtonElement).disabled).toBe(false))
+    expect(btn.getAttribute('title')).toBeNull()
+    act(() => {
+      fireEvent.click(btn)
+    })
+    expect(mutate).toHaveBeenCalledWith({
+      items: [{ id: 'f1', type: 'file' }],
+      folderIdAtStart: 'root',
+    })
+  })
+
+  it('DELETE가 없으면 휴지통 버튼을 비활성 + 사유 tooltip으로 노출', async () => {
+    permissionFlags.current = NO_PERMISSION_FLAGS
+    vi.mocked(api.getEffectivePermissions).mockResolvedValue(['READ', 'UPLOAD'])
+    act(() => {
+      useSelectionStore.getState().selectOnly('f1')
+    })
+
+    render(<BulkActionBar />, { wrapper: makeWrapper() })
+    const btn = screen.getByRole('button', { name: '휴지통으로' })
+
+    await waitFor(() =>
+      expect(btn.getAttribute('title')).toBe('선택한 항목을 삭제할 권한이 없습니다'),
+    )
     expect((btn as HTMLButtonElement).disabled).toBe(true)
   })
 })

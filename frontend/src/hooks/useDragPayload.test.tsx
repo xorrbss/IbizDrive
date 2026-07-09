@@ -67,6 +67,15 @@ describe('useDragPayload', () => {
     expect(result.current.containsFolderIds).toEqual(['b'])
   })
 
+  it('캐시에 없어도 현재 행 타입이 folder이면 containsFolderIds에 포함한다', () => {
+    const qc = new QueryClient()
+
+    const { result } = renderHook(() => useDragPayload('folder-x', 'root', 'folder'), {
+      wrapper: makeWrapper(qc),
+    })
+    expect(result.current.containsFolderIds).toEqual(['folder-x'])
+  })
+
   it('sourceFolderId는 인자 그대로', () => {
     const qc = setupQc()
     const { result } = renderHook(() => useDragPayload('a', 'root'), {

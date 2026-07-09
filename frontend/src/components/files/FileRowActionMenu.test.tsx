@@ -56,9 +56,7 @@ function wrap(node: ReactNode) {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false, staleTime: 0 } },
   })
-  // 권한 query 결과를 미리 캐시에 주입 (모든 플래그 true) — usePermission() 전역 키
-  // qk.effectivePermissions() = ['explorer', 'permissions', 'effective']
-  qc.setQueryData(['explorer', 'permissions', 'effective'], [
+  const allPermissions = [
     'READ',
     'UPLOAD',
     'EDIT',
@@ -68,7 +66,10 @@ function wrap(node: ReactNode) {
     'SHARE',
     'PERMISSION_ADMIN',
     'PURGE',
-  ])
+  ]
+  // 권한 query 결과를 미리 캐시에 주입 (모든 플래그 true) — 행 메뉴는 node별 권한을 본다.
+  qc.setQueryData(['explorer', 'permissions', 'node', 'f1'], allPermissions)
+  qc.setQueryData(['explorer', 'permissions', 'node', 'd1'], allPermissions)
   return <QueryClientProvider client={qc}>{node}</QueryClientProvider>
 }
 

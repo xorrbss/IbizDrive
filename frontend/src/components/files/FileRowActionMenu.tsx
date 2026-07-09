@@ -37,7 +37,7 @@ export function FileRowActionMenu({ item, folderId, isPending }: Props) {
   const ref = useRef<HTMLDivElement | null>(null)
 
   // 전역 권한 게이트 (BulkActionBar 와 동일 패턴 — UX 게이트 한정, 보안 boundary 아님).
-  const can = usePermission()
+  const can = usePermission(item.id)
   const qc = useQueryClient()
   const openMoveDialog = useMoveUiStore((s) => s.openMoveDialog)
   const openRename = useRenameUiStore((s) => s.open)

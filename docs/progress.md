@@ -5,6 +5,50 @@
 
 ---
 
+## 2026-07-09 세션 — 폴더 업로드 무음 실패 + 폴더 이동/삭제 UX 수정
+
+### 완료
+
+- **폴더 업로드 부분 실패 표면화**: `extractDropEntries`가 `FileSystemFileEntry.file()` /
+  `readEntries()` 실패를 항목별 `FolderUploadPlan.errors`로 수집하고 나머지 파일은 계속 추출.
+  `useFolderUpload`가 추출 단계 errors를 결과에 포함해 기존 enqueue 가능한 파일은 계속 업로드.
+- **무음 실패 방지**: `FileTable` 드롭 경로와 `SidebarNewButton` 폴더 선택 경로에 fatal `.catch`
+  토스트 추가. 폴더 선택 input은 plan 생성 직후 value reset으로 같은 폴더 재선택 가능.
+- **폴더 이동 실패 수정**: frontend `api.moveItem`이 folder 이동 시 backend
+  `MoveFolderRequest` 계약(`targetParentId`)으로 body 전송. file 이동은 기존 `targetFolderId` 유지.
+- **DnD 폴더 타입 보강**: `useDragPayload`가 캐시 미스여도 현재 행 타입이 folder이면
+  `containsFolderIds`에 포함해 폴더 드래그가 file endpoint로 오분류되지 않도록 방어.
+- **선택 후 삭제 버튼 미노출 수정**: `BulkActionBar`가 전역 role-only `usePermission()`만 보던
+  문제를 수정. 선택된 항목 id별 effective permission(`qk.permissions(id)`)을 확인해 ADMIN role이
+  아니어도 해당 항목에 `DELETE` grant가 있으면 `휴지통으로` 활성화. DELETE가 없으면 버튼을
+  disabled + 사유 title로 노출해 사용자가 삭제 방법을 잃지 않도록 UX 보강.
+- **행 `...` 메뉴 권한 정합**: `FileRowActionMenu`도 전역 role-only 대신 `usePermission(item.id)`를
+  사용하도록 변경해, node별 grant가 있는 항목의 이동/이름변경/공유/휴지통 액션이 정상 노출되게 함.
+- docs/01 §9.6 폴더 업로드 흐름/ADR에 부분 실패 수집 정책 반영.
+- docs/01 §8.2 / §14.3에 BulkActionBar node별 권한 확인과 disabled delete 예외 반영.
+
+### 검증
+
+- frontend `pnpm test -- folderUpload useFolderUpload api.moveFiles useDragPayload`
+  → Vitest 패턴 확장으로 전체 218 files / 1630 tests PASS
+- frontend `pnpm test -- BulkActionBar`
+  → Vitest 패턴 확장으로 전체 218 files / 1632 tests PASS
+- frontend `pnpm typecheck` PASS
+- frontend `pnpm lint` PASS (기존 경고 2건: favorites `aria-disabled`, RightPanel `<img>`)
+
+### 다음 세션 컨텍스트
+
+- 폴더 업로드 오류 상세는 현재 toast count만 노출. 필요 시 UploadPanel 또는 별도 details toast로
+  `FolderUploadPlan.errors.path/message`를 사용자에게 펼쳐 보여주는 UX를 추가할 수 있음.
+- backend 변경 없음. 폴더 이동 실패의 직접 원인은 frontend body key 불일치였음.
+- 스크린샷처럼 삭제 버튼이 보이지 않던 직접 원인은 BulkActionBar가 node별 권한을 보지 않고
+  role-only 권한만 본 것. 권한 자체가 없는 항목은 이제 disabled `휴지통으로` 버튼으로 사유 노출.
+  행 `...` 메뉴는 node별 권한을 기준으로 기존 숨김 정책을 유지.
+
+### 블로커
+
+- 없음
+
 ## 2026-07-03 — 검색 필터(타입/소유자, ADR #52) + DnD 실드래그 e2e
 
 > 도입 평가 후속 2트랙. 검색은 파일명 LIKE만 지원하던 것에 type/owner 필터 추가,

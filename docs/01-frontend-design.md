@@ -750,6 +750,14 @@ export function BulkActionBar() {
 }
 ```
 
+> **2026-07-09 UX 보강**: BulkActionBar는 전역 role 권한만 보지 않고 선택된 항목의
+> node별 effective permission(`usePermission(id)` / `qk.permissions(id)`)을 확인한다.
+> ADMIN이 아니어도 해당 파일/폴더에 `DELETE`/`MOVE`/`EDIT`/`SHARE` grant가 있으면 액션을
+> 활성화한다. 선택 툴바에서는 권한이 없을 때 `휴지통으로`를 숨기지 않고 disabled + title
+> ("선택한 항목을 삭제할 권한이 없습니다")로 노출한다 — 사용자가 선택 후 액션이 사라져
+> 삭제 방법을 알 수 없는 문제를 막기 위한 §14.3의 예외. 행별 `...` 메뉴도 전역 role이 아닌
+> 해당 item id의 node별 권한을 기준으로 액션을 노출한다.
+
 ---
 
 ## 9. 업로드 (MVP: multipart, v1.x: tus)
@@ -896,8 +904,9 @@ remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리
        2. 깊이별로 처리 — 같은 깊이(형제)는 Promise.all 병렬 생성, parent별 api.getFolderChildren는
           in-flight promise 캐시로 1회만 조회 → normalizeFileName 비교로 기존 폴더면 병합(id 재사용)
           / 없으면 api.createFolder → Map<pathKey, folderId>
-       3. 파일을 resolved folderId별로 그룹핑 → useUpload.enqueue(files, folderId)  (기존 파이프라인)
-       4. 생성 발생한 parentId마다 invalidations.afterFolderCreated
+       3. drop 재귀 중 읽지 못한 파일/폴더는 errors에 수집하고 나머지 항목은 계속 진행
+       4. 파일을 resolved folderId별로 그룹핑 → useUpload.enqueue(files, folderId)  (기존 파이프라인)
+       5. 생성 발생한 parentId마다 invalidations.afterFolderCreated
 ```
 
 #### 진입점
@@ -922,7 +931,10 @@ remove)으로 backend `GET /api/files/{id}/download` (docs/02 §7.6.1)을 트리
 5. **`DataTransferItemList` 수명** — drop 핸들러 반환 후 items가 무효화되므로 `webkitGetAsEntry()`는
    drop 시점에 동기 호출해 entry 참조를 캡처. 비동기 재귀(`file()`/`readEntries`)는 캡처한 entry로 수행.
    `readEntries()`는 한 번에 ≤100개만 반환하므로 empty까지 반복 호출한다.
-6. **미지원 폴백** — `webkitGetAsEntry`/`webkitdirectory` 미지원 시 flat 파일 업로드로 폴백
+6. **부분 실패 표면화** — 재귀 중 특정 파일/폴더를 읽지 못하면 전체 업로드를 중단하지 않고
+   `FolderUploadPlan.errors`에 경로와 메시지를 수집한다. `useFolderUpload` 결과 errors가 있으면
+   토스트로 일부 항목 실패를 알리고, 읽힌 파일은 기존 enqueue 파이프라인으로 계속 업로드한다.
+7. **미지원 폴백** — `webkitGetAsEntry`/`webkitdirectory` 미지원 시 flat 파일 업로드로 폴백
    (사내 데스크탑 Chromium 가정, §실행 환경).
 
 > 폴더 생성은 깊이별로 처리하되 같은 깊이(형제)는 병렬 — 벽시계 시간 ∝ 트리 깊이(폴더 수 아님). 깊이 방향은
@@ -1161,6 +1173,10 @@ export function usePermission(nodeId?: string) {
 | **생산적** (업로드, 새 폴더, 공유) | 비활성 + 툴팁 설명 | 왜 안 되는지 알려줌 |
 | **파괴적** (삭제, 영구 삭제) | 숨김 | 비활성이 오히려 유인 |
 | **조회 불가** (읽기 권한 없음) | 애초에 리스트/트리에 안 뜸 | 백엔드 필터링 |
+
+> 예외: 선택 상태의 `BulkActionBar`는 이미 사용자가 항목을 고른 후 다음 행동을 찾는 문맥이므로,
+> 삭제 권한이 없을 때도 `휴지통으로` 버튼을 disabled 상태로 보여주고 title로 사유를 알려준다
+> (2026-07-09 사용자 피드백). 행별 `...` 메뉴의 파괴적 액션은 기존 숨김 정책 유지.
 
 ### 14.4 ShareDialog (F4 → F5 → A13 → F6 → A16)
 
